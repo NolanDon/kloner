@@ -76,7 +76,7 @@ export default function FAQSection() {
         <section className="bg-white text-neutral-900 pt-40">
             <div className="container-soft">
                 {/* Header */}
-                <div className="mb-10 md:mb-12 flex items-start justify-between">
+                <div className="mb-10 md:mb-12 flex items-start justify-between md:px-40">
                     <h2 className="text-5xl tracking-tight">
                         Frequently Asked Questions
                     </h2>

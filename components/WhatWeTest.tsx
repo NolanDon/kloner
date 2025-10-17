@@ -1,139 +1,174 @@
 // components/WhatWeTest.tsx
-import SectionReveal from "./SectionReveal";
+'use client';
 
-type Category = { label: string; icon?: string };
+import SectionReveal from './SectionReveal';
+import {
+  HeartPulse,
+  Droplets,
+  Activity,
+  Flame,
+  Zap,
+  Scale,
+  Beaker,
+  FlaskConical,
+  Apple,
+  Thermometer,
+  Shield,
+  Dna,
+} from 'lucide-react';
+
+type Category = { label: string; icon: React.ComponentType<any> };
 
 const categories: Category[] = [
-  { label: "Heart & Vascular Health", icon: "/images/icons/heart.png" },
-  { label: "Kidney Health", icon: "/images/icons/kidney.png" },
-  { label: "Metabolic Health", icon: "/images/icons/metabolic.png" },
-  { label: "Inflammation", icon: "/images/icons/inflammation.png" },
-  { label: "Energy", icon: "/images/icons/energy.png" },
-  { label: "Body Composition", icon: "/images/icons/body.png" },
-  { label: "Liver Health", icon: "/images/icons/liver.png" },
-  { label: "Sex Hormones", icon: "/images/icons/sex-hormones.png" },
-  { label: "Nutrients", icon: "/images/icons/nutrients.png" },
-  { label: "Thyroid Health", icon: "/images/icons/thyroid.png" },
-  { label: "Immune System", icon: "/images/icons/immune.png" },
-  { label: "DNA Health", icon: "/images/icons/dna.png" },
+  { label: 'Heart & Vascular Health', icon: HeartPulse },
+  { label: 'Kidney Health', icon: Droplets },
+  { label: 'Metabolic Health', icon: Activity },
+  { label: 'Inflammation', icon: Flame },
+  { label: 'Energy', icon: Zap },
+  { label: 'Body Composition', icon: Scale },
+  { label: 'Liver Health', icon: Beaker },
+  { label: 'Sex Hormones', icon: FlaskConical },
+  { label: 'Nutrients', icon: Apple },
+  { label: 'Thyroid Health', icon: Thermometer },
+  { label: 'Immune System', icon: Shield },
+  { label: 'DNA Health', icon: Dna },
 ];
 
+// biomarker columns (right side)
 const biomarkers = [
-  "Lp(a)",
-  "ADMA",
-  "Lipoprotein fractionation",
-  "Uric Acid / HDL-C",
-  "TG / ApoB",
-  "Atherogenic Coefficient",
-  "Triglyceride / HDL Cholesterol (Molar Ratio)",
-  "VLDL Size",
-  "Large VLDL P",
-  "HDL Size",
-  "Small LDL P",
-  "LDL P",
-  "SDMA",
-  "Cystatin C (with eGFR)",
-  "Non-HDL Cholesterol / Apolipoprotein B",
-  "LDL-C / ApoB",
-  "Neutrophil-to-HDL Cholesterol Ratio (NHR)",
-  "Atherogenic Index of Plasma (AIP)",
-  "Non-HDL Cholesterol / Total Cholesterol",
-  "LDL Cholesterol / Total Cholesterol (Mass Ratio)",
-  "Large HDL P",
-  "LDL Size",
-  "HDL P",
-  "Lipoprotein (a)",
+  'Lp(a)',
+  'ADMA',
+  'Lipoprotein fractionation',
+  'Uric Acid / HDL-C',
+  'TG / ApoB',
+  'Atherogenic Coefficient',
+  'Triglyceride / HDL Cholesterol (Molar Ratio)',
+  'VLDL Size',
+  'Large VLDL P',
+  'HDL Size',
+  'Small LDL P',
+  'LDL P',
+  'SDMA',
+  'Cystatin C (with eGFR)',
+  'Non-HDL Cholesterol / Apolipoprotein B',
+  'LDL-C / ApoB',
+  'Neutrophil-to-HDL Cholesterol Ratio (NHR)',
+  'Atherogenic Index of Plasma (AIP)',
+  'Non-HDL Cholesterol / Total Cholesterol',
+  'LDL Cholesterol / Total Cholesterol (Mass Ratio)',
+  'Large HDL P',
+  'LDL Size',
+  'HDL P',
+  'Lipoprotein (a)',
 ];
 
 const advancedSet = new Set([
-  "VLDL Size",
-  "Large VLDL P",
-  "HDL Size",
-  "Small LDL P",
-  "LDL P",
-  "Large HDL P",
-  "LDL Size",
-  "HDL P",
-  "Lipoprotein (a)",
+  'VLDL Size',
+  'Large VLDL P',
+  'HDL Size',
+  'Small LDL P',
+  'LDL P',
+  'Large HDL P',
+  'LDL Size',
+  'HDL P',
+  'Lipoprotein (a)',
 ]);
 
-function IconChip({ src }: { src?: string }) {
-  if (src) {
-    return (
-      <img
-        src={src}
-        alt=""
-        className="h-7 w-7 rounded-md object-cover ring-1 ring-black/10"
-      />
-    );
-  }
-  // fallback gradient chip if you don't provide an image
+function IconPill({
+  Icon,
+  active = false,
+}: {
+  Icon: React.ComponentType<any>;
+  active?: boolean;
+}) {
   return (
-    <span className="h-7 w-7 rounded-md bg-gradient-to-br from-orange-200 to-rose-200 ring-1 ring-black/10 inline-block" />
+    <span
+      className={`inline-flex h-9 w-9 items-center justify-center rounded-md ring-1 bg-white shadow-sm ${active ? 'ring-neutral-300' : 'ring-neutral-200'
+        }`}
+    >
+      <Icon
+        className={`h-5 w-5 ${active ? 'text-neutral-900' : 'text-neutral-500'
+          }`}
+        strokeWidth={2}
+      />
+    </span>
   );
 }
 
 export default function WhatWeTest() {
+  const activeIndex = 0; // visually emphasize the first row like the reference
   return (
-    <section
-      id="test"
-      className="bg-white text-black border border-t-0 rounded-b-[5%]"
-    >
-      <div className="container-soft py-16 md:py-24">
+    <section id="test" className="relative bg-white text-neutral-900">
+      {/* centered, non–full-width top rule */}
+      <div className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 h-px w-[72%] md:w-[62%] bg-neutral-200 rounded-full" />
 
+      <div className="container-soft md:px-40 py-14 md:py-20">
         <SectionReveal>
-          <h2 className="text-4xl text-black">See everything we test</h2>
-          <p className="mt-3 mb-10 text-black/60 max-w-2xl">
+          <h2 className="text-5xl md:text-6xl font-semibold tracking-tight">
+            See everything we test
+          </h2>
+          <p className="mt-3 mb-10 max-w-2xl text-lg text-neutral-600">
             The following 100+ biomarkers are included with your annual Superpower membership.
           </p>
         </SectionReveal>
 
-        <div className="grid gap-8 md:grid-cols-4">
-          {/* Left two columns: categories with icons */}
+        {/* 4 columns overall: two for categories, two for biomarkers */}
+        <div className="grid gap-10 md:grid-cols-4">
+          {/* Left column A */}
           <div className="space-y-4">
-            {categories.slice(0, 6).map((c, i) => (
-              <SectionReveal key={c.label} delay={i * 0.03}>
-                <div className="flex items-center gap-3">
-                  <IconChip src={c.icon} />
-                  <span className="text-black/80">{c.label}</span>
-                </div>
-              </SectionReveal>
-            ))}
+            {categories.slice(0, 6).map((c, i) => {
+              const Icon = c.icon;
+              const active = i === activeIndex;
+              return (
+                <SectionReveal key={c.label} delay={i * 0.025}>
+                  <div
+                    className={`flex items-center gap-3 ${active ? 'text-neutral-900' : 'text-neutral-500'
+                      }`}
+                  >
+                    <IconPill Icon={Icon} active={active} />
+                    <span className="text-base md:text-[17px] font-medium">
+                      {c.label}
+                    </span>
+                  </div>
+                </SectionReveal>
+              );
+            })}
           </div>
 
+          {/* Left column B */}
           <div className="space-y-4">
-            {categories.slice(6).map((c, i) => (
-              <SectionReveal key={c.label} delay={i * 0.03}>
-                <div className="flex items-center gap-3">
-                  <IconChip src={c.icon} />
-                  <span className="text-black/80">{c.label}</span>
-                </div>
-              </SectionReveal>
-            ))}
+            {categories.slice(6).map((c, i) => {
+              const Icon = c.icon;
+              return (
+                <SectionReveal key={c.label} delay={i * 0.025}>
+                  <div className="flex items-center gap-3 text-neutral-500">
+                    <IconPill Icon={Icon} />
+                    <span className="text-base md:text-[17px] font-medium">
+                      {c.label}
+                    </span>
+                  </div>
+                </SectionReveal>
+              );
+            })}
           </div>
 
-          {/* Right: biomarker list in two columns inside a light card */}
+          {/* Right: biomarker list (no card box) */}
           <div className="md:col-span-2">
-            <div className="rounded-2xl border border-black/10 bg-white p-6 md:p-7 shadow-sm">
-              <ul className="grid grid-cols-1 md:grid-cols-2 gap-y-2 md:gap-x-8">
-                {biomarkers.map((name, i) => {
-                  const isAdv = advancedSet.has(name);
-                  return (
-                    <li
-                      key={name}
-                      className="flex items-center justify-between border-b border-black/5 py-2 last:border-none"
-                    >
-                      <span className="text-black/80">{name}</span>
-                      {isAdv && (
-                        <span className="ml-3 shrink-0 rounded-full border border-black/10 bg-black/5 px-2.5 py-1 text-xs text-black/60">
-                          Advanced panel
-                        </span>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
+            <ul className="grid grid-cols-1 md:grid-cols-2 gap-y-4 md:gap-x-12">
+              {biomarkers.map((name) => {
+                const isAdv = advancedSet.has(name);
+                return (
+                  <li key={name} className="flex items-start justify-between">
+                    <span className="text-neutral-800">{name}</span>
+                    {isAdv && (
+                      <span className="ml-3 shrink-0 rounded-full border border-neutral-200 bg-neutral-100 px-2.5 py-1 text-[11px] leading-none text-neutral-600">
+                        Advanced panel
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         </div>
       </div>

@@ -4,7 +4,7 @@
 @tailwind utilities;
 
 :root { color-scheme: dark; }
-html, body { @apply bg-ink text-white; }
+html, body { @apply bg-white text-white; }
 .container-soft { @apply max-w-6xl mx-auto px-4; }
 .section { @apply py-16 md:py-24; }
 

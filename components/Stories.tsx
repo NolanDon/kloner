@@ -2,11 +2,11 @@
 import SectionReveal from "./SectionReveal";
 
 const stories = [
-  { img: "/images/story-1.jpg", alt: "Story 1" },
-  { img: "/images/story-2.jpg", alt: "Story 2" },
-  { img: "/images/story-3.jpg", alt: "Story 3" },
-  { img: "/images/story-4.jpg", alt: "Story 4" },
-  { img: "/images/story-5.jpg", alt: "Story 5" },
+  { img: "/images/reel.png", alt: "Story 1" },
+  { img: "/images/reel.png", alt: "Story 2" },
+  { img: "/images/reel.png", alt: "Story 3" },
+  { img: "/images/reel.png", alt: "Story 4" },
+  { img: "/images/reel.png", alt: "Story 5" },
 ];
 
 export default function Stories() {
