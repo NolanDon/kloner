@@ -10,7 +10,7 @@
 /* Kill horizontal scroll everywhere */
 html,
 body {
-    @apply bg-white text-neutral-900 overflow-x-clip;
+    @apply bg-white text-black/90 overflow-x-clip;
     /* use clip over hidden when possible */
 }
 
