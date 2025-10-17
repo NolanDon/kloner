@@ -16,7 +16,6 @@ export default function Hero() {
             playsInline
             poster="/images/hero-poster.jpg"
           />
-          {/* optional subtle top fade for legibility (keep or remove) */}
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/10 via-transparent to-transparent" />
         </div>
       </div>
@@ -27,24 +26,25 @@ export default function Hero() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7 }}
-          className="max-w-2xl"
+          className="max-w-2xl mx-auto text-center"
         >
-          <h1 className="text-5xl md:text-6xl font-extrabold text-white/60 leading-tight">
+          <h1 className="text-5xl md:text-6xl font-extrabold text-white leading-tight">
             Unlock your new <br />
             <span className="text-white/80">health intelligence</span>
           </h1>
-          <p className="mt-5 text-white/80 max-w-xl">
+          <p className="mt-5 text-white/80">
             100+ lab tests. Every year. Detect early signs of 1,000+ conditions. All for only $17/month.
           </p>
-          <div className="mt-8 flex items-center gap-4">
+
+          {/* CTA */}
+          <div className="mt-8 flex flex-col items-center gap-2">
             <a
               href="#cta"
-              className="inline-flex items-center gap-2 rounded-full px-5 py-3 bg-accent hover:bg-accent2 transition font-semibold text-white"
+              className="mt-10 mb-2 inline-flex items-center gap-2 rounded-full px-7 py-4 bg-accent hover:bg-accent2 transition text-white"
             >
-              Join Today
-              <span aria-hidden>›</span>
+              Join Today <span aria-hidden>›</span>
             </a>
-            <span className="text-white/60 text-sm">HSA/FSA eligible</span>
+            <span className="text-white text-sm">HSA/FSA eligible</span>
           </div>
         </motion.div>
       </div>

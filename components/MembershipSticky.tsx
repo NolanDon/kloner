@@ -175,7 +175,7 @@ export default function MembershipHero() {
                         <div className="mt-6">
                             <a
                                 href="#start"
-                                className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-full px-6 py-3 bg-orange-500 text-white font-semibold hover:bg-orange-600 transition"
+                                className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-full px-6 py-3 bg-orange-500 text-white hover:bg-orange-600 transition"
                             >
                                 Start testing
                             </a>

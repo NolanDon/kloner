@@ -104,7 +104,7 @@ export default function WhatWeTest() {
 
       <div className="container-soft md:px-40 py-14 md:py-20">
         <SectionReveal>
-          <h2 className="text-5xl md:text-6xl font-semibold tracking-tight">
+          <h2 className="text-5xl md:text-6xl tracking-tight">
             See everything we test
           </h2>
           <p className="mt-3 mb-10 max-w-2xl text-lg text-neutral-600">

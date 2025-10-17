@@ -9,21 +9,21 @@ const items = [
     title: 'Test your whole body',
     text:
       'Get a comprehensive blood draw at one of our 2,000+ partner labs or from the comfort of your own home.',
-    img: '/images/how-1.jpg',
+    img: '/images/works1.png',
     step: 1,
   },
   {
     title: 'An actionable plan',
     text:
       'Easy to understand results and a clear health plan with tailored recommendations on diet, lifestyle changes & supplements.',
-    img: '/images/how-2.jpg',
+    img: '/images/works2.png',
     step: 2,
   },
   {
     title: 'Track improvement',
     text:
       'See your superpower score and biological age improve with each draw and habit change.',
-    img: '/images/how-3.jpg',
+    img: '/images/works3.png',
     step: 3,
   },
 ];

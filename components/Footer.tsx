@@ -11,7 +11,7 @@ export default function Footer() {
             className="
               select-none whitespace-nowrap font-black tracking-tight
               leading-[0.85] pt-3
-              text-[clamp(5.5rem,16vw,22rem)]
+              text-[clamp(5.5rem,14vw,22rem)]
               text-transparent bg-clip-text
             "
             style={{
