@@ -80,12 +80,14 @@ export default function HowItWorks() {
   return (
     <section id="how" className="bg-white text-black">
       <div className="container-soft">
-        <div className="py-14 py-20">
-          <h2 className="text-6xl mb-20 text-black/80">How it works</h2>
+        <div className="py-14 py-10">
+
+          <h2 className="text-6xl mb-10 text-black/80"></h2>
 
           {/* Tall scroll area with sticky content */}
           <div ref={containerRef} className="relative h-[220vh]">
-            <div className="sticky top-24">
+            <div className="sticky top-44">
+          <h2 className="text-6xl mb-10 text-black/80">How it works</h2>
               <div className="relative h-[70vh]">
                 <Card {...items[0]} opacity={o0 as unknown as number} />
                 <Card {...items[1]} opacity={o1 as unknown as number} />
@@ -93,7 +95,7 @@ export default function HowItWorks() {
               </div>
 
               {/* optional progress dots */}
-              <div className="mt-6 flex items-center justify-center gap-2">
+              <div className="flex items-center justify-center gap-2">
                 <span className="h-2 w-2 rounded-full bg-black/70" />
                 <span className="h-2 w-2 rounded-full bg-black/40" />
                 <span className="h-2 w-2 rounded-full bg-black/20" />
