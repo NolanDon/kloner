@@ -102,7 +102,7 @@ export default function WhatWeTest() {
       {/* centered, non–full-width top rule */}
       <div className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 h-px w-[72%] md:w-[62%] bg-neutral-200 rounded-full" />
 
-      <div className="container-soft md:px-40 py-14 md:py-20">
+      <div className="container-soft py-14 md:py-20">
         <SectionReveal>
           <h2 className="text-5xl md:text-6xl tracking-tight">
             See everything we test
@@ -158,7 +158,7 @@ export default function WhatWeTest() {
               {biomarkers.map((name) => {
                 const isAdv = advancedSet.has(name);
                 return (
-                  <li key={name} className="flex items-start justify-between">
+                  <li key={name} className="flex text-xs items-start whitespace-nowrap justify-between">
                     <span className="text-neutral-800">{name}</span>
                     {isAdv && (
                       <span className="ml-3 shrink-0 rounded-full border border-neutral-200 bg-neutral-100 px-2.5 py-1 text-[11px] leading-none text-neutral-600">

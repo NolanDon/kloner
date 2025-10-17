@@ -28,7 +28,7 @@ export default function Hero() {
           transition={{ duration: 0.7 }}
           className="max-w-2xl mx-auto text-center"
         >
-          <h1 className="text-5xl md:text-6xl font-extrabold text-white leading-tight">
+          <h1 className="text-5xl md:text-6xl font-extrabold text-white/90 leading-tight">
             Unlock your new <br />
             <span className="text-white/80">health intelligence</span>
           </h1>

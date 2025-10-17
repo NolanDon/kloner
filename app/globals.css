@@ -1,15 +1,36 @@
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: dark; }
-html, body { @apply bg-white text-white; }
-.container-soft { @apply max-w-6xl mx-auto px-4; }
-.section { @apply py-16 md:py-24; }
+/* Your site is light on white, so don't force dark */
+:root {
+    color-scheme: light;
+}
+
+/* Kill horizontal scroll everywhere */
+html,
+body {
+    @apply bg-white text-neutral-900 overflow-x-clip;
+    /* use clip over hidden when possible */
+}
+
+/* If you must support older Safari, swap to overflow-x-hidden instead */
+/* html, body { overflow-x: hidden; } */
+
+.container-soft {
+    @apply max-w-6xl mx-auto px-4;
+}
+
+.section {
+    @apply py-16 md:py-24;
+}
 
 /* subtle card */
-.card { @apply bg-white/50 backdrop-blur rounded-2xl border border-white/10 shadow; }
+.card {
+    @apply bg-white/50 backdrop-blur rounded-2xl border border-black/10 shadow;
+}
 
 /* diff-like badges */
-.badge { @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold bg-white/10 border border-white/10; }
+.badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold bg-black/5 border border-black/10 text-black/70;
+}
