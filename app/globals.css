@@ -1,0 +1,15 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; }
+html, body { @apply bg-ink text-white; }
+.container-soft { @apply max-w-6xl mx-auto px-4; }
+.section { @apply py-16 md:py-24; }
+
+/* subtle card */
+.card { @apply bg-white/50 backdrop-blur rounded-2xl border border-white/10 shadow; }
+
+/* diff-like badges */
+.badge { @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold bg-white/10 border border-white/10; }
