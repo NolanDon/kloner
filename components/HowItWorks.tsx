@@ -81,7 +81,7 @@ export default function HowItWorks() {
     <section id="how" className="bg-white text-black">
       <div className="container-soft">
         <div className="py-14 py-20">
-          <h2 className="text-6xl mb-20 text-black">How it works</h2>
+          <h2 className="text-6xl mb-20 text-black/80">How it works</h2>
 
           {/* Tall scroll area with sticky content */}
           <div ref={containerRef} className="relative h-[220vh]">

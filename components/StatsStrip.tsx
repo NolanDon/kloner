@@ -20,7 +20,7 @@ export default function StatsStrip() {
           {stats.map((s,i)=>(
             <SectionReveal key={i} delay={i*.05}>
               <div className="card p-6">
-                <div className="text-5xl font-bold">{s.value}</div>
+                <div className="text-5xl text-black/80 font-bold">{s.value}</div>
                 <div className="mt-3 text-black/70">{s.label}</div>
                 <div className="text-black/90 font-medium">{s.sub}</div>
               </div>
