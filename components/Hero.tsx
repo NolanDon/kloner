@@ -3,10 +3,23 @@ import { motion } from "framer-motion";
 
 export default function Hero() {
   return (
-    <section className="relative h-[88vh] min-h-[560px] flex items-center bg-white text-black">
-      {/* Rounded video frame */}
-      <div className="absolute inset-0 px-5 py-5">
-        <div className="relative w-full h-full rounded-3xl overflow-hidden ring-1 ring-black/10 shadow-2xl">
+    <section
+      // Fill the available viewport, but not smaller than 560px
+      className="relative flex items-center bg-white text-black"
+      style={{
+        height: "calc(100dvh - var(--header-h, 0px))",
+        minHeight: 560,
+        // Responsive gutter the video will respect (and safe-areas on iOS)
+        // 16px → 40px depending on viewport width
+        // You can tweak the clamp values to taste.
+        // We also add safe-area insets so it never sits under the notch.
+        ["--hero-gutter" as any]:
+          "max(env(safe-area-inset-left), clamp(16px, 3vw, 10px))",
+      }}
+    >
+      {/* Video frame obeys the gutter, so it's never truly full-bleed */}
+      <div className="absolute inset-0 p-[var(--hero-gutter)]">
+        <div className="relative h-full w-full overflow-hidden rounded-3xl ring-1 ring-black/10 shadow-2xl">
           <video
             className="absolute inset-0 h-full w-full object-cover"
             src="/hero.webm"
@@ -16,6 +29,7 @@ export default function Hero() {
             playsInline
             poster="/images/hero-poster.jpg"
           />
+          {/* subtle legibility fade; remove if you want totally clean */}
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/10 via-transparent to-transparent" />
         </div>
       </div>
@@ -26,7 +40,7 @@ export default function Hero() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7 }}
-          className="max-w-2xl mx-auto text-center"
+          className="mx-auto max-w-2xl text-center"
         >
           <h1 className="text-5xl md:text-6xl font-extrabold text-white/90 leading-tight">
             Unlock your new <br />

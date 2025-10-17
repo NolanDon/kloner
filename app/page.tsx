@@ -25,7 +25,7 @@ export default function Page() {
       <MembershipSticky />
       <FAQSection />
       <WhatWeTest />
-      <ParallaxTypeHero mediaSrc={"/images/holdup.png"} />
+      <ParallaxTypeHero />
       <Footer />
     </main>
   );
