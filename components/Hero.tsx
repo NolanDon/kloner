@@ -2,7 +2,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, useScroll, useTransform } from "framer-motion";
+import Image from "next/image";
 import { Outfit } from "next/font/google";
 
 const display = Outfit({
@@ -11,42 +12,29 @@ const display = Outfit({
 });
 
 export default function Hero() {
+  const sectionRef = useRef<HTMLElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [ready, setReady] = useState(false);
 
+  // Desktop video behavior only (mobile shows image via CSS)
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
 
-    // Try to ensure autoplay on mobile
     const tryPlay = () => v.play().catch(() => { });
-    // Wait for first decoded frame before showing
     const onLoaded = () => {
-      // For Chrome mobile, ensure a painted frame before revealing
-      if ("requestVideoFrameCallback" in v) {
-        // @ts-ignore
-        v.requestVideoFrameCallback?.(() => setReady(true));
-      } else {
-        requestAnimationFrame(() => setReady(true));
-      }
+      // Ensure a painted frame before revealing
+      // @ts-ignore
+      if ("requestVideoFrameCallback" in v) v.requestVideoFrameCallback?.(() => setReady(true));
+      else requestAnimationFrame(() => setReady(true));
       tryPlay();
     };
-
-    const onError = () => {
-      // Retry play (may switch to mp4 fallback)
-      tryPlay();
-    };
-
-    const onVisibility = () => {
-      if (document.hidden) v.pause();
-      else tryPlay();
-    };
+    const onError = () => { tryPlay(); };
+    const onVisibility = () => { document.hidden ? v.pause() : tryPlay(); };
 
     v.addEventListener("loadeddata", onLoaded, { once: true });
     v.addEventListener("error", onError);
     document.addEventListener("visibilitychange", onVisibility);
-
-    // Kick off early in case loadeddata already fired
     tryPlay();
 
     return () => {
@@ -55,8 +43,16 @@ export default function Hero() {
     };
   }, []);
 
+  // Parallax for the mobile image
+  const { scrollYProgress } = useScroll({
+    target: sectionRef,
+    offset: ["start end", "end start"],
+  });
+  const y = useTransform(scrollYProgress, [0, 1], [-20, 20]);
+
   return (
     <section
+      ref={sectionRef}
       className="relative flex items-center bg-white text-black"
       style={{
         height: "calc(100dvh - var(--header-h, 0px))",
@@ -65,33 +61,48 @@ export default function Hero() {
           "max(env(safe-area-inset-left), clamp(12px, 4vw, 10px))",
       }}
     >
-      {/* Video frame */}
+      {/* Media frame */}
       <div className="absolute inset-0 p-[var(--hero-gutter)]">
         <div
           className="
             relative h-full w-full overflow-hidden rounded-2xl md:rounded-3xl
-            ring-0 md:ring-1 md:ring-black/10          /* drop ring on mobile */
-            shadow-lg md:shadow-2xl                    /* lighter shadow on mobile */
+            ring-0 md:ring-1 md:ring-black/10
+            shadow-lg md:shadow-2xl
+            bg-neutral-900               /* prevents white flash under media */
           "
         >
+          {/* MOBILE: parallax image */}
+          <motion.div
+            style={{ y }}
+            className="absolute inset-0 block md:hidden"
+          >
+            <Image
+              src="/images/hero-poster.png"   // ensure this exists at /public/images/hero-poster.png
+              alt="Overdrive hero"
+              fill
+              priority
+              sizes="100vw"
+              className="object-cover"
+            />
+          </motion.div>
+
+          {/* DESKTOP: video */}
           <video
             ref={videoRef}
             className={`
               absolute inset-0 h-full w-full object-cover
               transform-gpu will-change-transform backface-hidden
               transition-opacity duration-300
+              hidden md:block
               ${ready ? "opacity-100" : "opacity-0"}
             `}
-            // Keep these first for mobile autoplay rules
             muted
             playsInline
             autoPlay
             loop
             preload="metadata"
-            // poster="/images/hero-poster.png"
             disablePictureInPicture
             controlsList="nodownload noplaybackrate noremoteplayback"
-            // Extra GPU/compositing hints
             style={{
               WebkitBackfaceVisibility: "hidden",
               backfaceVisibility: "hidden",
@@ -102,6 +113,7 @@ export default function Hero() {
             <source src="/hero.webm" type="video/webm" />
           </video>
 
+          {/* Soft gradient overlay so white text pops */}
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/10 via-transparent to-transparent" />
         </div>
       </div>
