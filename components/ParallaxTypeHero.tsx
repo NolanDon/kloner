@@ -59,7 +59,7 @@ export default function ParallaxTypeHero({
         setTyped(headline.slice(0, i));
     });
 
-    const subOpacity = useTransform(scrollYProgress, [typingEnd - 0.4, typingEnd + 0.14], [0, 1]);
+    const subOpacity = useTransform(scrollYProgress, [typingEnd - 0.10, typingEnd + 0.10], [0, 1]);
 
     return (
         <section ref={sectionRef} className="relative w-full" style={{ height: '100vh' }}>
