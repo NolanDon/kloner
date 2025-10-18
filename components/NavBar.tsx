@@ -36,7 +36,7 @@ export default function NavBar() {
           className={`relative flex items-center px-2 py-2 gap-3 md:gap-4 rounded-pill shadow-pill ${shellClasses}`}
         >
           {/* Logo */}
-          <Link href="/" className="ml-2 font-black tracking-tight text-lg md:text-xl shrink-0">
+          <Link href="/" className="ml-4 font-black tracking-tight text-lg md:text-xl shrink-0">
             <span className="bg-gradient-to-r from-white to-white/70 bg-clip-text text-transparent">over</span>
             <span className="text-white/80">drive</span>
           </Link>
