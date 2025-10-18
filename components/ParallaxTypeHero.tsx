@@ -1,8 +1,8 @@
 // components/ParallaxTypeHero.tsx
 'use client';
 
-import React, { useRef, useState } from 'react';
-import { motion, useMotionValueEvent, useScroll, useTransform } from 'framer-motion';
+import React, { useEffect, useRef, useState } from 'react';
+import { motion, useMotionValueEvent, useScroll, useTransform, useSpring } from 'framer-motion';
 import Image from 'next/image';
 import holdup from '@/public/images/holdup.png';
 
@@ -14,8 +14,8 @@ type Props = {
     subcopy?: string;
     parallaxStrength?: number;
     vignette?: number;
-    typingStart?: number;
-    typingEnd?: number;
+    typingStart?: number; // section progress where typing begins
+    typingEnd?: number;   // section progress where typing ends
 };
 
 export default function ParallaxTypeHero({
@@ -23,49 +23,58 @@ export default function ParallaxTypeHero({
     subcopy = 'Start testing',
     parallaxStrength = 440,
     vignette = 0.35,
-    typingStart = -0.1,
-    typingEnd = 0.15,
+    typingStart = -0.005,
+    typingEnd = 0.10,
 }: Props) {
     const sectionRef = useRef<HTMLDivElement>(null);
-    const { scrollYProgress } = useScroll({ target: sectionRef, offset: ['start start', 'end start'] });
+    const { scrollYProgress } = useScroll({
+        target: sectionRef,
+        offset: ['start start', 'end start'],
+    });
 
-    // Give the image more headroom so edges never show
+    // parallax bg
     const y = useTransform(scrollYProgress, [0, 1], [0, -parallaxStrength]);
-    const scale = useTransform(scrollYProgress, [0, 1], [1.15, 1.05]); // ⬅️ larger than before
+    const scale = useTransform(scrollYProgress, [0, 1], [1.15, 1.05]);
+
+    // --- smoother typing ---
+    // map scroll -> [0..1] within typing window, with easing
+    const norm = useTransform(scrollYProgress, (v) =>
+        clamp((v - typingStart) / (typingEnd - typingStart), 0, 1)
+    );
+    const eased = useTransform(norm, (v) => easeOutCubic(v));
+    // spring smooth the eased progress for buttery typing
+    const smooth = useSpring(eased, { stiffness: 120, damping: 20, mass: 0.25 });
+    // convert to character count
+    const charIndex = useTransform(smooth, (v) => Math.round(v * headline.length));
 
     const [typed, setTyped] = useState('');
-    useMotionValueEvent(scrollYProgress, 'change', (v) => {
-        const norm = clamp((v - typingStart) / (typingEnd - typingStart), 0, 1);
-        const eased = easeOutCubic(norm);
-        setTyped(headline.slice(0, Math.round(eased * headline.length)));
+
+    // initialize on mount to avoid flicker
+    useEffect(() => {
+        setTyped(headline.slice(0, Math.round(smooth.get() * headline.length)));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    useMotionValueEvent(charIndex, 'change', (i) => {
+        setTyped(headline.slice(0, i));
     });
 
     const subOpacity = useTransform(scrollYProgress, [typingEnd - 0.02, typingEnd + 0.14], [0, 1]);
 
     return (
         <section ref={sectionRef} className="relative w-full" style={{ height: '100vh' }}>
-            {/* === Top cap (rounded, bordered, not full-width) === */}
+            {/* Top rounded cap */}
             <div className="pointer-events-none absolute inset-x-0 -top-20 z-20 h-20">
                 <div className="h-full rounded-b-[28px] border border-neutral-200 border-t-0 bg-white" />
             </div>
 
-            {/* Background image (oversized + parallax) */}
+            {/* Background image */}
             <motion.div aria-hidden className="absolute inset-0 z-0 overflow-hidden" style={{ y, scale }}>
-                {/* Bleed beyond viewport to be extra safe */}
                 <div className="absolute -inset-[6vh]">
                     <div className="relative h-full w-full">
-                        <Image
-                            src={holdup}
-                            alt=""
-                            fill
-                            priority
-                            sizes="100vw"
-                            className="object-cover"
-                        />
+                        <Image src={holdup} alt="" fill priority sizes="100vw" className="object-cover" />
                     </div>
                 </div>
-
-                {/* (Optional) overlays */}
                 <div
                     className="absolute inset-0"
                     style={{
@@ -104,7 +113,7 @@ export default function ParallaxTypeHero({
                 </div>
             </div>
 
-            {/* Bottom white curve into next section */}
+            {/* Bottom curve */}
             <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-10 rounded-t-[24px] bg-white" />
 
             <style jsx global>{`

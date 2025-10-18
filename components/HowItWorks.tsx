@@ -20,9 +20,9 @@ const items = [
     step: 2,
   },
   {
-    title: 'Track improvement',
+    title: 'A connected ecosystem',
     text:
-      'See your superpower score and biological age improve with each draw and habit change.',
+      'Book additional diagnostics, buy curated supplements, and track everything from your dashboard.',
     img: '/images/works3.png',
     step: 3,
   },
@@ -34,77 +34,117 @@ function Card({
   title,
   text,
   opacity,
+  scale,
 }: {
   img: string;
   step: number;
   title: string;
   text: string;
-  opacity: number;
+  opacity: any;
+  scale: any;
 }) {
   return (
     <motion.div
-      style={{ opacity }}
-      className="absolute inset-0 flex items-start justify-center"
+      style={{ opacity, scale }}
+      className="w-full max-w-[520px] space-y-4"
     >
-      <div className="w-full max-w-3xl space-y-5">
-        <img
-          src={img}
-          alt=""
-          className="w-full rounded-2xl border border-black/10 shadow-xl"
-        />
-        <div className="flex items-center gap-3">
-          <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold border border-black/15 text-black/70">
-            {step}
-          </span>
-          <h3 className="text-2xl font-semibold text-black">{title}</h3>
-        </div>
-        <p className="text-black/70">{text}</p>
+      <img
+        src={img}
+        alt=""
+        className="w-full h-40 md:h-56 object-cover rounded-2xl border border-black/10 shadow-md"
+      />
+      <div className="flex items-center gap-3">
+        <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold border border-black/15 text-black/70">
+          {step}
+        </span>
+        <h3 className="text-xl font-semibold text-black">{title}</h3>
       </div>
+      <p className="text-black/70 text-sm leading-relaxed">{text}</p>
     </motion.div>
   );
 }
 
 export default function HowItWorks() {
-  // make the whole section tall so the user can scroll while we keep content pinned
   const containerRef = useRef<HTMLDivElement>(null);
+
   const { scrollYProgress } = useScroll({
     target: containerRef,
     offset: ['start start', 'end end'],
   });
 
-  // split the scroll into 3 equal windows (one per card)
-  const o0 = useTransform(scrollYProgress, [0.00, 0.15, 0.32], [1, 1, 0]); // card 1 fades out
-  const o1 = useTransform(scrollYProgress, [0.18, 0.35, 0.52], [0, 1, 0]); // card 2 fades in then out
-  const o2 = useTransform(scrollYProgress, [0.40, 0.65, 0.90], [0, 1, 1]); // card 3 fades in and stays
+  // thresholds (when each step/card should appear)
+  const T1 = 0.0;   // card 1 visible immediately
+  const T2 = 0.33;  // card 2 appears around one-third in
+  const T3 = 0.66;  // card 3 appears around two-thirds in
+  const ε = 0.02;   // small fade-in window
+
+  // card opacities: 0 → 1 at threshold and then STAY 1
+  const c1Opacity = useTransform(scrollYProgress, [0, T1, 1], [1, 1, 1]);
+  const c2Opacity = useTransform(scrollYProgress, [0, T2 - ε, T2, 1], [0, 0, 1, 1]);
+  const c3Opacity = useTransform(scrollYProgress, [0, T3 - ε, T3, 1], [0, 0, 1, 1]);
+
+  // subtle scale-in at threshold (no movement)
+  const c1Scale = useTransform(scrollYProgress, [0, T1, T1 + ε], [1, 1, 1]);
+  const c2Scale = useTransform(scrollYProgress, [0, T2 - ε, T2], [0.96, 0.96, 1]);
+  const c3Scale = useTransform(scrollYProgress, [0, T3 - ε, T3], [0.96, 0.96, 1]);
+
+  // progress bar fill across the section
+  const fill = useTransform(scrollYProgress, [0, 1], ['0%', '100%']);
+
+  // step badges: light up at threshold and stay on
+  const s1 = useTransform(scrollYProgress, [0, T1, 1], [1, 1, 1]);
+  const s2 = useTransform(scrollYProgress, [0, T2 - ε, T2, 1], [0.35, 0.35, 1, 1]);
+  const s3 = useTransform(scrollYProgress, [0, T3 - ε, T3, 1], [0.35, 0.35, 1, 1]);
 
   return (
     <section id="how" className="bg-white text-black">
       <div className="container-soft">
-        <div className="py-14 py-10">
+        {/* Tall scroll container so we have room to reveal each card */}
+        <div ref={containerRef} className="relative h-[180vh]">
+          <div className="sticky top-44">
+            {/* Title stays in place */}
+            <h2 className="text-6xl mb-10 text-black/80">How it works</h2>
 
-          <h2 className="text-6xl mb-10 text-black/80"></h2>
-
-          {/* Tall scroll area with sticky content */}
-          <div ref={containerRef} className="relative h-[220vh]">
-            <div className="sticky top-44">
-          <h2 className="text-6xl mb-10 text-black/80">How it works</h2>
-              <div className="relative h-[70vh]">
-                <Card {...items[0]} opacity={o0 as unknown as number} />
-                <Card {...items[1]} opacity={o1 as unknown as number} />
-                <Card {...items[2]} opacity={o2 as unknown as number} />
+            {/* Static row of cards; they DO NOT move, only reveal */}
+            <div className="relative">
+              <div className="mx-auto flex w-full max-w-6xl items-start justify-between gap-8">
+                <Card {...items[0]} opacity={c1Opacity} scale={c1Scale} />
+                <Card {...items[1]} opacity={c2Opacity} scale={c2Scale} />
+                <Card {...items[2]} opacity={c3Opacity} scale={c3Scale} />
               </div>
+            </div>
 
-              {/* optional progress dots */}
-              <div className="flex items-center justify-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-black/70" />
-                <span className="h-2 w-2 rounded-full bg-black/40" />
-                <span className="h-2 w-2 rounded-full bg-black/20" />
+            {/* Progress bar with accumulating step badges */}
+            <div className="mt-10">
+              <div className="relative mx-auto max-w-5xl">
+                <div className="h-[3px] rounded bg-black/10" />
+                <motion.div
+                  className="absolute inset-y-0 left-0 rounded bg-accent"
+                  style={{ width: fill }}
+                />
+                <div className="absolute -top-3 left-0 right-0 flex justify-between">
+                  <motion.span
+                    style={{ opacity: s1 }}
+                    className="inline-flex h-6 min-w-6 items-center justify-center rounded bg-accent text-white text-xs font-semibold px-2"
+                  >
+                    1
+                  </motion.span>
+                  <motion.span
+                    style={{ opacity: s2 }}
+                    className="inline-flex h-6 min-w-6 items-center justify-center rounded bg-accent text-white text-xs font-semibold px-2"
+                  >
+                    2
+                  </motion.span>
+                  <motion.span
+                    style={{ opacity: s3 }}
+                    className="inline-flex h-6 min-w-6 items-center justify-center rounded bg-accent text-white text-xs font-semibold px-2"
+                  >
+                    3
+                  </motion.span>
+                </div>
               </div>
             </div>
           </div>
-
-          {/* subtle divider to the next section */}
-          <div className="mt-12 h-px bg-black/10" />
         </div>
       </div>
     </section>

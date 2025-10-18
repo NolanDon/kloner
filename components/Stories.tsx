@@ -11,7 +11,7 @@ const stories = [
 
 export default function Stories() {
   return (
-    <section className="section bg-white text-black" id="reviews">
+    <section className="section bg-white text-black mt-20" id="reviews">
       <div className="container-soft">
         <h2 className="text-4xl mb-2 text-black">
           Superpower is changing thousands of lives
