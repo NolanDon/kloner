@@ -126,7 +126,7 @@ export default function ParallaxTypeHero({
                                         group-hover:before:opacity-100
                                         "
                                 />
-                                <span className="relative">Start testing</span>
+                                <span className="relative px-2 py-5">Start testing</span>
                                 <svg
                                     viewBox="0 0 24 24"
                                     className="

@@ -4,6 +4,7 @@ import Image from 'next/image';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { Check, Shield, Clock4, CreditCard } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
+import { AnimatedCreditCard } from './AnimatedCreditCard';
 
 type Doctor = {
     name: string;
@@ -259,7 +260,7 @@ export default function MembershipHero() {
                 <div className="grid lg:grid-cols-12 gap-6 md:gap-12 items-start">
                     {/* Left: rotating cards */}
                     <div className="lg:col-span-5">
-                        <RotatingCards />
+                        <AnimatedCreditCard />
                     </div>
 
                     {/* Right: copy + price + CTA */}
