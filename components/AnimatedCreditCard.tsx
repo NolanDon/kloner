@@ -55,7 +55,7 @@ export function AnimatedCreditCard() {
         const el = ref.current;
         if (!el) return;
 
-        const onPointerMove = (e: PointerEvent) => {
+        const onPointerMove: any = (e: PointerEvent) => {
             const rect = el.getBoundingClientRect();
             const px = (e.clientX - rect.left) / rect.width;
             const py = (e.clientY - rect.top) / rect.height;
