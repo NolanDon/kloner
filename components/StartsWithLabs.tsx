@@ -189,7 +189,7 @@ function Monitor() {
                     {/* top bar */}
                     <div className="px-3 md:px-5 py-2.5 md:py-3 border-b border-neutral-200 flex items-center justify-between gap-2">
                         <div className="font-extrabold tracking-tight text-neutral-900 text-sm md:text-base">
-                            superpower
+                            overdrive
                         </div>
                         <div className="hidden sm:flex gap-2 text-[11px] md:text-xs">
                             {['Home', 'Data', 'Protocol', 'Concierge', 'Services'].map((t, i) => (
@@ -214,7 +214,7 @@ function Monitor() {
                             transition={{ duration: 0.6 }}
                             className="rounded-2xl bg-gradient-to-br from-orange-500 to-rose-500 text-white p-4"
                         >
-                            <div className="text-xs/relaxed text-white/85">superpower score</div>
+                            <div className="text-xs/relaxed text-white/85">overdrive score</div>
                             <div className="text-2xl md:text-3xl font-bold mt-1">
                                 <Counter from={55} to={70} /> <span className="text-white/85 text-sm md:text-base">On Track</span>
                             </div>

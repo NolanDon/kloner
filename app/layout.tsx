@@ -3,8 +3,8 @@ import "./globals.css";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Health Intelligence — Demo",
-  description: "Superpower-style landing built with Next.js, TS, Tailwind, Framer Motion",
+  title: "Overdrive | Home",
+  description: "Overdrive-style landing built with Next.js, TS, Tailwind, Framer Motion",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

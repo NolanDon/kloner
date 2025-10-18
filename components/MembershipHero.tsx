@@ -13,7 +13,7 @@ type Doctor = {
 };
 
 const DOCTORS: Doctor[] = [
-    { name: 'Dr Anant Vinjamoori', role: 'Superpower Chief Longevity Officer, Harvard MD & MBA', src: '/images/doctors/anant.jpg', alt: 'Dr Anant Vinjamoori' },
+    { name: 'Dr Anant Vinjamoori', role: 'Overdrive Chief Longevity Officer, Harvard MD & MBA', src: '/images/doctors/anant.jpg', alt: 'Dr Anant Vinjamoori' },
     { name: 'Dr Leigh Erin Connealy', role: 'Clinician & Founder of The Centre for New Medicine', src: '/images/doctors/leigh.jpg', alt: 'Dr Leigh Erin Connealy' },
     { name: 'Dr Abe Malkin', role: 'Founder & Medical Director of Concierge MD', src: '/images/doctors/abe.jpg', alt: 'Dr Abe Malkin' },
     { name: 'Dr Robert Lufkin', role: 'UCLA Medical Professor, NYT Bestselling Author', src: '/images/doctors/robert.jpg', alt: 'Dr Robert Lufkin' },
@@ -268,7 +268,7 @@ export default function MembershipHero() {
                             What could cost you $15,000 is $199
                         </div>
                         <h3 className="text-3xl sm:text-4xl md:text-5xl mt-1 leading-tight">
-                            Superpower
+                            Overdrive
                             <br className="hidden sm:block" /> Membership
                         </h3>
                         <p className="text-neutral-600 mt-3 max-w-prose text-[15px] md:text-base">

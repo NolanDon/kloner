@@ -209,7 +209,7 @@ function MegaPanel({ active }: { active: NavItem | null }) {
           <div className="text-xs  text-neutral-500 tracking-wider">PRODUCT</div>
           <SimpleLink href="#how" label="How it Works" />
           <SimpleLink href="#test" label="What We Test" />
-          <SimpleLink href="#business" label="Superpower for Business" />
+          <SimpleLink href="#business" label="Overdrive for Business" />
         </div>
 
         {/* Learn more / Other */}

@@ -19,7 +19,7 @@ type Props = {
 };
 
 export default function ParallaxTypeHero({
-    headline = "Health is your greatest superpower. It's time to unlock it.",
+    headline = "Health is your greatest overdrive. It's time to unlock it.",
     subcopy = 'Start testing',
     parallaxStrength = 0,
     vignette = 0.35,

@@ -257,7 +257,7 @@ function MiniAddons() {
 }
 
 /* ----------------------------------------------------------------
-   6) Access to Superpower Clinic
+   6) Access to Overdrive Clinic
    - Unique: liquid fill animation + glow pulse
 ------------------------------------------------------------------*/
 function MiniClinic() {
@@ -307,7 +307,7 @@ const CARDS: CardData[] = [
   { title: 'Your personalized health plan', sub: 'Lifestyle, diet, supplement & Rx recommendations.', Mini: MiniPlan },
   { title: 'Unlimited concierge messaging', sub: 'Ask questions and get answers from our care team.', Mini: MiniConcierge },
   { title: 'Add-on testing anytime', sub: 'Advanced gut microbiome, toxins & cancer screens.', Mini: MiniAddons },
-  { title: 'Access to Superpower Clinic', sub: 'Curated solutions available after medical evaluation.', Mini: MiniClinic },
+  { title: 'Access to Overdrive Clinic', sub: 'Curated solutions available after medical evaluation.', Mini: MiniClinic },
 ];
 
 /* ----------------------------------------------------------------
@@ -323,7 +323,7 @@ export default function MembershipSticky() {
             <div className="sticky top-24">
               <h2 className="text-3xl md:text-4xl leading-tight">What’s included in your membership</h2>
               <p className="mt-3 max-w-md text-neutral-600">
-                Superpower is more than a blood test. Access an ecosystem of diagnostics and
+                Overdrive is more than a blood test. Access an ecosystem of diagnostics and
                 doctor-trusted solutions personalized to you.
               </p>
               <a

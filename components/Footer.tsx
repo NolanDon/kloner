@@ -24,7 +24,7 @@ export default function Footer() {
                 backgroundRepeat: 'no-repeat',
               }}
             >
-              superpower
+              overdrive
             </h2>
           </div>
         </div>
@@ -32,12 +32,12 @@ export default function Footer() {
         {/* Link columns */}
         <div className="mt-6 md:mt-8 grid gap-4 md:gap-10 md:grid-cols-5 text-sm">
           <Column
-            title="Superpower"
-            items={['How it Works', 'What’s Included', 'Membership Login', 'Gift Superpower']}
+            title="Overdrive"
+            items={['How it Works', 'What’s Included', 'Membership Login', 'Gift Overdrive']}
           />
           <Column
             title="Company"
-            items={['Our Why', 'Join the Team', 'Superpower Labs', 'Contact Us', 'FAQs']}
+            items={['Our Why', 'Join the Team', 'Overdrive Labs', 'Contact Us', 'FAQs']}
             noteIndex={1}
             note="We’re hiring!"
           />
@@ -63,7 +63,7 @@ export default function Footer() {
         </div>
 
         <div className="mt-8 md:mt-10 text-xs text-neutral-500">
-          © 2025 Superpower Health, Inc. All rights reserved.
+          © 2025 Overdrive Health, Inc. All rights reserved.
         </div>
       </div>
     </footer>

@@ -12,7 +12,7 @@ export default function StatsStrip() {
       <div className="container-soft">
         <SectionReveal>
           <blockquote className="text-center text-2xl md:text-3xl font-semibold max-w-4xl mx-auto text-black/70">
-            “Superpower gave me what no doctor, supplement, or app ever could: clarity.
+            "Overdrive gave me what no doctor, supplement, or app ever could: clarity.
             If you're tired of vague advice and want real insight into your body, it’s worth it.”
           </blockquote>
         </SectionReveal>

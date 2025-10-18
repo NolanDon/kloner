@@ -87,7 +87,7 @@ export default function Stories() {
       <div className="container-soft">
         <div className="mb-6 flex items-end justify-between gap-4">
           <h2 className="text-4xl md:text-4xl leading-tight">
-            Superpower is changing thousands of lives
+            Overdrive is changing thousands of lives
           </h2>
           <a
             href="#all-reviews"

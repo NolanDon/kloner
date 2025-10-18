@@ -108,7 +108,7 @@ export default function WhatWeTest() {
             See everything we test
           </h2>
           <p className="mt-3 mb-10 max-w-2xl text-lg text-neutral-600">
-            The following 100+ biomarkers are included with your annual Superpower membership.
+            The following 100+ biomarkers are included with your annual Overdrive membership.
           </p>
         </SectionReveal>
 

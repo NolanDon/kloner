@@ -1,5 +1,5 @@
 
-# Superpower-style Landing (Next.js 14 App Router, TS, Tailwind, Framer Motion)
+# Overdrive-style Landing (Next.js 14 App Router, TS, Tailwind, Framer Motion)
 
 This is a clean starter that mirrors the uploaded reference:
 - Video hero with overlay headline + CTA
