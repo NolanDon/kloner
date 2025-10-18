@@ -4,7 +4,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { brand } from "@/lib/config";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
+import { Menu, X } from "lucide-react"; // ← use lucide icons
 
 type NavItem = { label: string; href: string };
 
@@ -32,7 +33,7 @@ export default function NavBar() {
     >
       <div className="container-soft">
         <div
-          className={`relative flex items-center px-4 md:px-5 py-1 gap-3 md:gap-4 rounded-pill shadow-pill border ${shellClasses}`}
+          className={`relative flex items-center px-4 md:px-5 py-2 gap-3 md:gap-4 rounded-pill shadow-pill border ${shellClasses}`}
         >
           {/* Logo */}
           <Link href="/" className="font-black tracking-tight text-lg md:text-xl shrink-0">
@@ -59,12 +60,12 @@ export default function NavBar() {
           <div className="ml-auto shrink-0 flex items-center gap-2 md:gap-4">
             {/* Hamburger (mobile) */}
             <button
-              aria-label="Open menu"
+              aria-label={mOpen ? "Close menu" : "Open menu"}
               aria-expanded={mOpen}
               onClick={() => { setMOpen(v => !v); setOpen(false); }}
               className="md:hidden inline-flex h-10 w-10 items-center justify-center rounded-full ring-1 ring-white/15 text-white/85 hover:bg-white/10 transition"
             >
-              <Hamburger open={mOpen} />
+              {mOpen ? <X size={18} strokeWidth={2.2} /> : <Menu size={18} strokeWidth={2.2} />}
             </button>
 
             {/* Login (desktop) */}
@@ -72,12 +73,21 @@ export default function NavBar() {
               Login
             </a>
 
-            {/* CTA */}
+            {/* CTA (desktop) with glow + arrow hover */}
             <a
               href={brand.cta.href}
-              className="hidden md:inline-flex items-center gap-2 rounded-full px-6 py-4 bg-accent hover:bg-accent2 text-white transition"
+              className="
+                group relative hidden md:inline-flex items-center gap-2
+                rounded-full h-12 px-6
+                bg-accent hover:bg-accent2 text-white
+                shadow-[0_6px_18px_rgba(0,0,0,0.25)]
+                hover:shadow-[0_14px_40px_rgba(0,0,0,0.35)]
+                transition-all duration-200
+              "
             >
-              {brand.cta.label}
+              <span className="pointer-events-none absolute inset-0 rounded-full" />
+              <span className="relative">{brand.cta.label}</span>
+              <ChevronArrow className="relative h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
             </a>
           </div>
 
@@ -129,12 +139,23 @@ export default function NavBar() {
                 >
                   Login
                 </a>
+
+                {/* CTA (mobile) with same effect + arrow */}
                 <a
                   href={brand.cta.href}
                   onClick={() => setMOpen(false)}
-                  className="mt-2 mb-1 inline-flex w-full items-center justify-center rounded-full px-5 py-3 bg-accent hover:bg-accent2 text-white transition"
+                  className="
+                    group relative mt-2 mb-1 inline-flex w-full items-center justify-center
+                    rounded-full h-12 px-5
+                    bg-accent hover:bg-accent2 text-white
+                    shadow-[0_6px_18px_rgba(0,0,0,0.20)]
+                    hover:shadow-[0_12px_28px_rgba(0,0,0,0.28)]
+                    transition-all duration-200
+                  "
                 >
-                  {brand.cta.label}
+                  <span className="pointer-events-none absolute inset-0 rounded-full" />
+                  <span className="relative">{brand.cta.label}</span>
+                  <ChevronArrow className="relative ml-2 h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
                 </a>
               </div>
             </motion.div>
@@ -147,36 +168,20 @@ export default function NavBar() {
 
 /* ---------- pieces ---------- */
 
-function Hamburger({ open }: { open: boolean }) {
+function ChevronArrow({ className = "" }: { className?: string }) {
   return (
-    <svg width="22" height="22" viewBox="0 0 24 24" className="stroke-current">
-      <g
-        style={{
-          transformOrigin: "12px 12px",
-          transition: "transform .2s ease, opacity .2s ease",
-          transform: open ? "rotate(45deg)" : "rotate(0deg)",
-        }}
-      >
-        <line x1="4" x2="20" y1="7" y2="7" strokeWidth="2" strokeLinecap="round" />
-        <line
-          x1="4"
-          x2="20"
-          y1="12"
-          y2="12"
-          strokeWidth="2"
-          strokeLinecap="round"
-          style={{ opacity: open ? 0 : 1 }}
-        />
-        <line
-          x1="4"
-          x2="20"
-          y1="17"
-          y2="17"
-          strokeWidth="2"
-          strokeLinecap="round"
-          style={{ transformOrigin: "12px 17px", transform: open ? "translateY(-5px) rotate(90deg)" : "none" }}
-        />
-      </g>
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M6 12h12" />
+      <path d="M12 6l6 6-6 6" />
     </svg>
   );
 }

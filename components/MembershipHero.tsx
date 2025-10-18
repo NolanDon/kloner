@@ -27,22 +27,133 @@ const BULLETS = [
 ];
 
 /** ----------------------- Auto-rotating cards (left) ----------------------- */
+/** ----------------------- Auto-rotating animated cards (left) ----------------------- */
 function RotatingCards() {
-    // You can swap these for any 4:3 images under /public
+    const reduce = useReducedMotion();
+    const [i, setI] = useState(0);
+
+    // mini cards (each loops on its own)
+    const CardShell = ({ children }: { children: React.ReactNode }) => (
+        <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-neutral-100">
+            {children}
+            {/* $17 chip */}
+            <div className="absolute bottom-3 left-3 md:bottom-4 md:left-4 rounded-xl px-2.5 py-1 bg-white/90 text-neutral-900 text-xs md:text-sm font-semibold shadow">
+                $17<span className="font-normal"> /month</span>
+            </div>
+        </div>
+    );
+
+    const PricePulse = () => (
+        <CardShell>
+            <div className="absolute inset-0 grid place-content-center">
+                <motion.div
+                    className="rounded-2xl bg-accent text-white font-semibold text-lg md:text-xl px-5 py-3 shadow-lg"
+                    animate={{ scale: [1, 1.06, 1] }}
+                    transition={{ duration: 1.8, repeat: Infinity, repeatDelay: 0.4 }}
+                >
+                    Annual panel included
+                </motion.div>
+            </div>
+        </CardShell>
+    );
+
+    const AddonsMarquee = () => {
+        const items = ['Gut Microbiome', 'Toxins', 'Cancer Screens', 'Sleep', 'Hormones'];
+        return (
+            <CardShell>
+                <div className="absolute inset-0 overflow-hidden">
+                    <motion.div
+                        className="absolute left-0 top-1/2 -translate-y-1/2 flex gap-4 px-4"
+                        animate={{ x: ['0%', '-55%'] }}
+                        transition={{ duration: 12, ease: 'linear', repeat: Infinity }}
+                    >
+                        {[...items, ...items].map((k, idx) => (
+                            <motion.div
+                                key={idx}
+                                whileHover={{ rotate: -1.5, y: -4 }}
+                                className="shrink-0 rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-xs md:text-sm font-medium shadow-sm"
+                            >
+                                {k}
+                            </motion.div>
+                        ))}
+                    </motion.div>
+                </div>
+            </CardShell>
+        );
+    };
+
+    const ConciergeTyping = () => (
+        <CardShell>
+            <div className="absolute inset-0 flex flex-col justify-end gap-2 p-4">
+                <motion.div
+                    className="mb-1 inline-flex w-16 items-center justify-center gap-1 self-start rounded-full border border-neutral-200 bg-white/90 px-2 py-1"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.1 }}
+                >
+                    {[0, 1, 2].map((d) => (
+                        <motion.span
+                            key={d}
+                            className="h-1.5 w-1.5 rounded-full bg-neutral-500"
+                            animate={{ y: [0, -3, 0] }}
+                            transition={{ duration: 0.9, repeat: Infinity, delay: d * 0.12 }}
+                        />
+                    ))}
+                </motion.div>
+                <div className="max-w-[72%] rounded-2xl px-3 py-2 text-sm shadow-sm bg-white text-neutral-800 border border-neutral-200">
+                    Is magnesium OK with vitamin D?
+                </div>
+                <div className="max-w-[72%] ml-auto rounded-2xl px-3 py-2 text-sm shadow-sm bg-neutral-900 text-white">
+                    Yes, and I’ll add a reminder to your plan.
+                </div>
+            </div>
+        </CardShell>
+    );
+
+    const PlanChecks = () => {
+        const Row = ({ text, delay }: { text: string; delay: number }) => (
+            <div className="flex items-center gap-3 rounded-xl border border-neutral-200 bg-white/95 px-3 py-2 shadow-sm">
+                <svg viewBox="0 0 24 24" className="h-5 w-5 text-emerald-600">
+                    <motion.path
+                        d="M20 6 9 17l-5-5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        initial={{ pathLength: 0 }}
+                        animate={{ pathLength: [0, 1] }}
+                        transition={{ duration: 0.6, repeat: Infinity, repeatDelay: 1.2, delay }}
+                    />
+                </svg>
+                <span className="text-sm font-medium text-neutral-800">{text}</span>
+            </div>
+        );
+
+        return (
+            <CardShell>
+                <div className="absolute inset-0 flex flex-col justify-center gap-3 p-5">
+                    <Row text="Diet" delay={0.05} />
+                    <Row text="Lifestyle" delay={0.25} />
+                    <Row text="Supplements" delay={0.45} />
+                    <Row text="Rx" delay={0.65} />
+                </div>
+            </CardShell>
+        );
+    };
+
     const slides = useMemo(
         () => [
-            '/images/membership/membership-card.jpg',
-            '/images/membership/addons.jpg',
-            '/images/membership/concierge.jpg',
-            '/images/membership/action-plan.jpg',
+            { key: 'price', label: 'Membership', node: <PricePulse /> },
+            { key: 'addons', label: 'Add-ons', node: <AddonsMarquee /> },
+            { key: 'concierge', label: 'Concierge', node: <ConciergeTyping /> },
+            { key: 'plan', label: 'Plan', node: <PlanChecks /> },
         ],
         []
     );
-    const [i, setI] = useState(0);
-    const reduce = useReducedMotion();
 
     useEffect(() => {
-        if (reduce) return; // respect prefers-reduced-motion
+        if (reduce) return;
         const id = setInterval(() => setI((v) => (v + 1) % slides.length), 3000);
         return () => clearInterval(id);
     }, [slides.length, reduce]);
@@ -53,44 +164,30 @@ function RotatingCards() {
             <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-neutral-100">
                 <AnimatePresence initial={false} mode="popLayout">
                     <motion.div
-                        key={slides[i]}
+                        key={slides[i].key}
                         initial={{ opacity: 0, scale: 1.02 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.98 }}
                         transition={{ duration: 0.5, ease: 'easeOut' }}
                         className="absolute inset-0"
                     >
-                        <Image
-                            src={slides[i]}
-                            alt=""
-                            fill
-                            className="object-cover"
-                            sizes="(min-width:1024px) 40vw, 100vw"
-                            priority
-                        />
+                        {slides[i].node}
                     </motion.div>
                 </AnimatePresence>
-
-                {/* $17 chip */}
-                <div className="absolute bottom-3 left-3 md:bottom-4 md:left-4 rounded-xl px-2.5 py-1 bg-white/90 text-neutral-900 text-xs md:text-sm font-semibold shadow">
-                    $17<span className="font-normal"> /month</span>
-                </div>
             </div>
 
-            {/* thumbnails — scrollable on mobile, clickable to jump */}
+            {/* thumbnails — small pills you can tap to jump */}
             <div className="mt-3 flex items-center gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {slides.map((src, idx) => (
+                {slides.map((s, idx) => (
                     <button
-                        key={src}
+                        key={s.key}
                         onClick={() => setI(idx)}
-                        className={`h-12 w-16 shrink-0 rounded-lg border transition hover:border-neutral-400 ${i === idx ? 'border-neutral-900' : 'border-neutral-200'
-                            } bg-white overflow-hidden`}
-                        aria-label={`Show preview ${idx + 1}`}
+                        className={`h-8 px-3 shrink-0 rounded-full border text-xs font-medium transition
+              ${i === idx ? 'border-neutral-900 bg-neutral-900 text-white' : 'border-neutral-200 bg-white text-neutral-700 hover:border-neutral-400'}`}
+                        aria-label={`Show ${s.label}`}
                         aria-current={i === idx}
                     >
-                        <div className="relative h-full w-full">
-                            <Image src={src} alt="" fill className="object-cover" sizes="64px" />
-                        </div>
+                        {s.label}
                     </button>
                 ))}
             </div>
@@ -131,7 +228,7 @@ export default function MembershipHero() {
 
                     {/* Doctors grid — 2 cols on mobile, 4 cols on md+ */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-                        {DOCTORS.map((d, i) => (
+                        {/* {DOCTORS.map((d, i) => (
                             <motion.div
                                 key={d.name}
                                 initial={{ opacity: 0, y: 8 }}
@@ -154,7 +251,7 @@ export default function MembershipHero() {
                                     <div className="text-[11px] md:text-xs text-neutral-600 mt-1">{d.role}</div>
                                 </div>
                             </motion.div>
-                        ))}
+                        ))} */}
                     </div>
                 </div>
 

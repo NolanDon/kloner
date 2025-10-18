@@ -77,7 +77,7 @@ export default function FAQSection() {
             <div className="container-soft">
                 {/* Header */}
                 <div className="mb-10 md:mb-12 flex items-start justify-between md:px-40">
-                    <h2 className="text-5xl tracking-tight">
+                    <h2 className="text-5xl mb-12 tracking-tight">
                         Frequently Asked Questions
                     </h2>
                     <a
@@ -91,7 +91,7 @@ export default function FAQSection() {
                 {/* Layout: left labels, right list (no card borders) */}
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12">
                     {/* Left labels */}
-                    <div className="md:col-span-3">
+                    <div className="hidden sm:block md:col-span-3">
                         <div className="space-y-24">
                             {GROUPS.map((g) => (
                                 <div key={g.heading} className="text-2xl font-medium text-neutral-900">
