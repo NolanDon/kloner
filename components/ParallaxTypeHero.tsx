@@ -21,7 +21,7 @@ type Props = {
 export default function ParallaxTypeHero({
     headline = "Health is your greatest superpower. It's time to unlock it.",
     subcopy = 'Start testing',
-    parallaxStrength = 440,
+    parallaxStrength = 0,
     vignette = 0.35,
     typingStart = -0.005,
     typingEnd = 0.10,
@@ -62,21 +62,17 @@ export default function ParallaxTypeHero({
     const subOpacity = useTransform(scrollYProgress, [typingEnd - 0.02, typingEnd + 0.14], [0, 1]);
 
     return (
-        // was: style={{ height: '100vh' }}
-        // mobile uses 115svh (a bit taller), desktop remains 100vh
-        <section ref={sectionRef} className="relative w-full h-[115svh] sm:h-[100vh]">
-            {/* Top rounded cap stays the same */}
+        <section ref={sectionRef} className="relative w-full" style={{ height: '100vh' }}>
+            {/* Top rounded cap */}
+            <div className="pointer-events-none absolute inset-x-0 -top-20 z-20 h-20">
+                <div className="h-full rounded-b-[28px] border border-neutral-200 border-t-0 bg-white" />
+            </div>
 
             {/* Background image */}
-            <motion.div
-                aria-hidden
-                className="absolute inset-0 z-0 overflow-hidden"
-                style={{ y, scale }}
-            >
-                {/* more overscan on mobile to avoid any edge showing */}
-                <div className="absolute -inset-[12vh] sm:-inset-[6vh]">
+            <motion.div aria-hidden className="absolute inset-0 z-0 overflow-hidden" style={{ y, scale }}>
+                <div className="absolute -inset-[6vh]">
                     <div className="relative h-full w-full">
-                        <Image src={holdup} alt="" fill priority sizes="100vw" className="object-cover" />
+                        <Image src={holdup} alt="" fill priority sizes="100vw" className="object-contain" />
                     </div>
                 </div>
                 <div
@@ -97,41 +93,38 @@ export default function ParallaxTypeHero({
             </motion.div>
 
             {/* Foreground */}
-            {/* was: className="relative z-10 sticky top-0 flex h-screen items-center" */}
-            {/* mobile uses 100svh so the text + button stay pinned over the image */}
-            <div className="relative z-10 sticky top-0 flex h-[100svh] sm:h-screen items-center">
+            <div className="relative z-10 sticky top-0 flex h-screen items-center">
                 <div className="mx-auto w-full max-w-6xl px-6">
                     <h1 className="max-w-2xl text-5xl font-semibold leading-tight tracking-tight text-white md:text-6xl">
                         <span className="align-middle">{typed}</span>
                         <span className="ml-1 inline-block h-[1.1em] w-[0.06em] translate-y-[0.06em] bg-white opacity-80 animate-[blink_1s_steps(1)_infinite]" />
                     </h1>
 
-                    {/* CTA */}
                     <motion.div initial={{ opacity: 0, y: 8 }} style={{ opacity: subOpacity }}>
                         <div className="mt-5 md:mt-6">
                             <a
                                 href="#start"
                                 className="
-        group relative inline-flex items-center gap-3 whitespace-nowrap
-        h-12 px-7 rounded-full shrink-0
-        text-white text-[15px]
-        bg-accent hover:bg-accent2
-        shadow-[0_6px_18px_rgba(0,0,0,0.25)]
-        hover:shadow-[0_14px_40px_rgba(0,0,0,0.35)]
-        transition-all duration-200
-        focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60
-      "
+                                    group relative inline-flex items-center gap-3 whitespace-nowrap
+                                    h-12 px-7 rounded-full shrink-0
+                                    text-white text-[15px]
+                                    bg-accent hover:bg-accent2
+                                    shadow-[0_6px_18px_rgba(0,0,0,0.25)]
+                                    hover:shadow-[0_14px_40px_rgba(0,0,0,0.35)]
+                                    transition-all duration-200
+                                    focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60
+                                "
                                 aria-label="Start testing"
                             >
                                 {/* soft glow on hover */}
                                 <span
                                     className="
-          pointer-events-none absolute inset-0 rounded-full
-          before:content-[''] before:absolute before:inset-0 before:rounded-full
-          before:bg-white/10 before:opacity-0 before:blur-md
-          before:transition-opacity before:duration-200
-          group-hover:before:opacity-100
-        "
+                                        pointer-events-none absolute inset-0 rounded-full
+                                        before:content-[''] before:absolute before:inset-0 before:rounded-full
+                                        before:bg-white/10 before:opacity-0 before:blur-md
+                                        before:transition-opacity before:duration-200
+                                        group-hover:before:opacity-100
+                                        "
                                 />
                                 <span className="relative">Start testing</span>
                                 <svg

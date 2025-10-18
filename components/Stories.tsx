@@ -83,10 +83,10 @@ function ReelCard({ r, i }: { r: Reel; i: number }) {
 
 export default function Stories() {
   return (
-    <section className="section bg-white text-black" id="reviews">
+    <section className="section bg-white mt-20 text-black" id="reviews">
       <div className="container-soft">
         <div className="mb-6 flex items-end justify-between gap-4">
-          <h2 className="text-4xl md:text-5xl leading-tight">
+          <h2 className="text-4xl md:text-4xl leading-tight">
             Superpower is changing thousands of lives
           </h2>
           <a

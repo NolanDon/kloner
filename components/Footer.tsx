@@ -7,21 +7,26 @@ export default function Footer() {
   return (
     <footer className="relative bg-white text-neutral-900 overflow-visible">
       <div className="container-soft pt-10 md:pt-16 pb-8">
-        {/* Big wordmark (no background/video) */}
-        <div className="relative mx-[-4vw] md:mx-[-6vw]">
-          <h2
-            className="
-              select-none leading-[0.9] pt-1 md:pt-3 font-black tracking-tight
-              text-[clamp(3.75rem,12vw,22rem)] md:text-[clamp(5.5rem,14vw,22rem)]
-              text-transparent bg-clip-text
-            "
-            style={{
-              backgroundImage:
-                'linear-gradient(90deg, #7a2e18 0%, #d44b1c 30%, #ff6f3d 60%, #ffb36b 100%)',
-            }}
-          >
-            superpower
-          </h2>
+        {/* Big wordmark — centered with safe gutters */}
+        <div className="relative">
+          <div className="flex justify-center">
+            <h2
+              className="
+                inline-block text-center whitespace-nowrap select-none
+                leading-[0.88] pt-1 md:pt-3 font-black tracking-tight
+                text-[clamp(3.25rem,17vw,22rem)]
+                text-transparent bg-clip-text
+              "
+              style={{
+                backgroundImage:
+                  'linear-gradient(90deg, #7a2e18 0%, #d44b1c 30%, #ff6f3d 60%, #ffb36b 100%)',
+                backgroundSize: '100% 100%',
+                backgroundRepeat: 'no-repeat',
+              }}
+            >
+              superpower
+            </h2>
+          </div>
         </div>
 
         {/* Link columns */}
@@ -43,11 +48,11 @@ export default function Footer() {
           <Column
             title="Library"
             items={[
-              'Immune System Biomarker',
-              'Energy Biomarkers',
-              'Kidney Health Biomarkers',
-              'Liver Health Biomarkers',
-              'Body Composition Biomarkers',
+              `Immune System \n Biomarker`,
+              `Energy \n Biomarkers`,
+              `Kidney Health \n Biomarkers`,
+              `Liver Health \n Biomarkers`,
+              `Body Composition \n Biomarkers`,
             ]}
           />
           <Column
@@ -99,14 +104,14 @@ function Column({
   }, [isDesktop]);
 
   return (
-    <div className="border-b border-neutral-200/70 md:border-none">
+    <div className="border-b border-neutral-200/70 py-50 md:border-none">
       {/* Header row: acts as accordion trigger on mobile, static label on desktop */}
       <button
         type="button"
         className="
           w-full md:w-auto flex items-center justify-between gap-3
           py-3 md:py-0
-          font-semibold text-neutral-800 md:text-neutral-700
+          text-neutral-800 md:text-neutral-700
           md:mb-3
         "
         aria-controls={sectionId}
@@ -117,8 +122,7 @@ function Column({
         {/* Caret only on mobile */}
         <svg
           viewBox="0 0 24 24"
-          className={`h-5 w-5 md:hidden transition-transform ${open ? 'rotate-180' : 'rotate-0'
-            }`}
+          className={`h-5 w-5 md:hidden transition-transform ${open ? 'rotate-180' : 'rotate-0'}`}
           stroke="currentColor"
           fill="none"
           strokeWidth="2"
@@ -148,13 +152,13 @@ function Column({
                 className="
                   hover:text-neutral-900 text-neutral-800
                   text-[15px] md:text-[inherit]
-                  md:whitespace-nowrap
+                  
                 "
               >
                 {label}
               </a>
               {noteIndex === i && note ? (
-                <span className="ml-2 text-[11px] md:text-[11px] text-[#ff6f3d]">[{note}]</span>
+                <span className="ml-2 text-[11px] md:text-[11px] text-[#ff6f3d] whitespace-nowrap">[{note}]</span>
               ) : null}
             </li>
           ))}
@@ -162,7 +166,7 @@ function Column({
 
         {extraGroup ? (
           <div className="pt-4 md:pt-7">
-            <div className="mb-3 font-semibold text-neutral-800 md:text-neutral-700">
+            <div className="mb-3 text-neutral-700 md:text-neutral-700">
               {extraGroup.heading}
             </div>
             <ul className="space-y-3">
@@ -171,7 +175,7 @@ function Column({
                   <Chevron />
                   <a
                     href="#"
-                    className="hover:text-neutral-900 text-neutral-800 text-[15px] md:text-[inherit]"
+                    className="hover:text-neutral-900 text-neutral-700 text-[15px]"
                   >
                     {label}
                   </a>

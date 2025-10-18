@@ -219,11 +219,11 @@ export default function MembershipHero() {
                             </p>
                         </div>
                         {/* logos */}
-                        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 opacity-70">
+                        {/* <div className="flex flex-wrap items-center gap-x-5 gap-y-2 opacity-70">
                             <span className="text-lg md:text-2xl font-semibold">Stanford</span>
                             <span className="text-lg md:text-2xl font-semibold">Harvard</span>
                             <span className="text-lg md:text-2xl font-semibold">UCLA</span>
-                        </div>
+                        </div> */}
                     </div>
 
                     {/* Doctors grid — 2 cols on mobile, 4 cols on md+ */}
