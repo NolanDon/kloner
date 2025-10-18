@@ -99,7 +99,7 @@ export default function Hero() {
               translate: "0 0 0",
             }}
           >
-            <source src="/hero.webm" type="video/webm" />
+            {/* <source src="/hero.webm" type="video/webm" /> */}
           </video>
 
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/10 via-transparent to-transparent" />

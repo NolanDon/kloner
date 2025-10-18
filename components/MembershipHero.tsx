@@ -260,7 +260,7 @@ export default function MembershipHero() {
                 <div className="grid lg:grid-cols-12 gap-6 md:gap-12 items-start">
                     {/* Left: rotating cards */}
                     <div className="lg:col-span-5">
-                        {/* <AnimatedCreditCard /> */}
+                        <AnimatedCreditCard />
                     </div>
 
                     {/* Right: copy + price + CTA */}
