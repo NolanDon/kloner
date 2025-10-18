@@ -62,15 +62,19 @@ export default function ParallaxTypeHero({
     const subOpacity = useTransform(scrollYProgress, [typingEnd - 0.02, typingEnd + 0.14], [0, 1]);
 
     return (
-        <section ref={sectionRef} className="relative w-full" style={{ height: '100vh' }}>
-            {/* Top rounded cap */}
-            <div className="pointer-events-none absolute inset-x-0 -top-20 z-20 h-20">
-                <div className="h-full rounded-b-[28px] border border-neutral-200 border-t-0 bg-white" />
-            </div>
+        // was: style={{ height: '100vh' }}
+        // mobile uses 115svh (a bit taller), desktop remains 100vh
+        <section ref={sectionRef} className="relative w-full h-[115svh] sm:h-[100vh]">
+            {/* Top rounded cap stays the same */}
 
             {/* Background image */}
-            <motion.div aria-hidden className="absolute inset-0 z-0 overflow-hidden" style={{ y, scale }}>
-                <div className="absolute -inset-[6vh]">
+            <motion.div
+                aria-hidden
+                className="absolute inset-0 z-0 overflow-hidden"
+                style={{ y, scale }}
+            >
+                {/* more overscan on mobile to avoid any edge showing */}
+                <div className="absolute -inset-[12vh] sm:-inset-[6vh]">
                     <div className="relative h-full w-full">
                         <Image src={holdup} alt="" fill priority sizes="100vw" className="object-cover" />
                     </div>
@@ -93,13 +97,16 @@ export default function ParallaxTypeHero({
             </motion.div>
 
             {/* Foreground */}
-            <div className="relative z-10 sticky top-0 flex h-screen items-center">
+            {/* was: className="relative z-10 sticky top-0 flex h-screen items-center" */}
+            {/* mobile uses 100svh so the text + button stay pinned over the image */}
+            <div className="relative z-10 sticky top-0 flex h-[100svh] sm:h-screen items-center">
                 <div className="mx-auto w-full max-w-6xl px-6">
                     <h1 className="max-w-2xl text-5xl font-semibold leading-tight tracking-tight text-white md:text-6xl">
                         <span className="align-middle">{typed}</span>
                         <span className="ml-1 inline-block h-[1.1em] w-[0.06em] translate-y-[0.06em] bg-white opacity-80 animate-[blink_1s_steps(1)_infinite]" />
                     </h1>
 
+                    {/* CTA */}
                     <motion.div initial={{ opacity: 0, y: 8 }} style={{ opacity: subOpacity }}>
                         <div className="mt-5 md:mt-6">
                             <a

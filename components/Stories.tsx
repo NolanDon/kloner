@@ -13,10 +13,10 @@ type Reel = {
 };
 
 const reels: Reel[] = [
-  { src: '/reel1.webm', handle: '@mytechceo', followers: '254k followers', avatar: '/images/avatars/mytechceo.jpg', alt: 'Review by @mytechceo' },
-  { src: '/reel2.webm', handle: '@emmyxtech', followers: '368k followers', avatar: '/images/avatars/emmyxtech.jpg', alt: 'Review by @emmyxtech' },
-  { src: '/reel3.webm', handle: '@stefarmstead', followers: '90.2k, Alo wellness club trainer', avatar: '/images/avatars/stef.jpg', alt: 'Review by @stefarmstead' },
-  { src: '/reel4.webm', handle: '@avnibarman_', followers: '228k followers', avatar: '/images/avatars/avni.jpg', alt: 'Review by @avnibarman_' },
+  { src: '/reel1.webm', handle: '@mytechceo', followers: '254k followers', avatar: '/images/avatars/portfolio1.png', alt: 'Review by @mytechceo' },
+  { src: '/reel2.webm', handle: '@emmyxtech', followers: '368k followers', avatar: '/images/avatars/portfolio2.png', alt: 'Review by @emmyxtech' },
+  { src: '/reel3.webm', handle: '@stefarmstead', followers: '90.2k followers', avatar: '/images/avatars/portfolio4.png', alt: 'Review by @stefarmstead' },
+  { src: '/reel4.webm', handle: '@avnibarman_', followers: '228k followers', avatar: '/images/avatars/portfolio3.png', alt: 'Review by @avnibarman_' },
 ];
 
 function BlueCheck({ className = 'h-4 w-4' }: { className?: string }) {
