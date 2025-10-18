@@ -1,16 +1,60 @@
 // components/Hero.tsx
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Outfit } from "next/font/google";
 
-// Display font for the hero headline
 const display = Outfit({
   subsets: ["latin"],
   weight: ["700", "800", "900"],
 });
 
 export default function Hero() {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+
+    // Try to ensure autoplay on mobile
+    const tryPlay = () => v.play().catch(() => { });
+    // Wait for first decoded frame before showing
+    const onLoaded = () => {
+      // For Chrome mobile, ensure a painted frame before revealing
+      if ("requestVideoFrameCallback" in v) {
+        // @ts-ignore
+        v.requestVideoFrameCallback?.(() => setReady(true));
+      } else {
+        requestAnimationFrame(() => setReady(true));
+      }
+      tryPlay();
+    };
+
+    const onError = () => {
+      // Retry play (may switch to mp4 fallback)
+      tryPlay();
+    };
+
+    const onVisibility = () => {
+      if (document.hidden) v.pause();
+      else tryPlay();
+    };
+
+    v.addEventListener("loadeddata", onLoaded, { once: true });
+    v.addEventListener("error", onError);
+    document.addEventListener("visibilitychange", onVisibility);
+
+    // Kick off early in case loadeddata already fired
+    tryPlay();
+
+    return () => {
+      v.removeEventListener("error", onError);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
+
   return (
     <section
       className="relative flex items-center bg-white text-black"
@@ -23,16 +67,41 @@ export default function Hero() {
     >
       {/* Video frame */}
       <div className="absolute inset-0 p-[var(--hero-gutter)]">
-        <div className="relative h-full w-full overflow-hidden rounded-2xl md:rounded-3xl ring-1 ring-black/10 shadow-2xl">
+        <div
+          className="
+            relative h-full w-full overflow-hidden rounded-2xl md:rounded-3xl
+            ring-0 md:ring-1 md:ring-black/10          /* drop ring on mobile */
+            shadow-lg md:shadow-2xl                    /* lighter shadow on mobile */
+          "
+        >
           <video
-            className="absolute inset-0 h-full w-full object-cover"
-            src="/hero.webm"
-            autoPlay
-            loop
+            ref={videoRef}
+            className={`
+              absolute inset-0 h-full w-full object-cover
+              transform-gpu will-change-transform backface-hidden
+              transition-opacity duration-300
+              ${ready ? "opacity-100" : "opacity-0"}
+            `}
+            // Keep these first for mobile autoplay rules
             muted
             playsInline
-            poster="/images/hero-poster.jpg"
-          />
+            autoPlay
+            loop
+            preload="metadata"
+            // poster="/images/hero-poster.png"
+            disablePictureInPicture
+            controlsList="nodownload noplaybackrate noremoteplayback"
+            // Extra GPU/compositing hints
+            style={{
+              WebkitBackfaceVisibility: "hidden",
+              backfaceVisibility: "hidden",
+              contain: "layout paint size style",
+              translate: "0 0 0",
+            }}
+          >
+            <source src="/hero.webm" type="video/webm" />
+          </video>
+
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/10 via-transparent to-transparent" />
         </div>
       </div>
@@ -49,7 +118,7 @@ export default function Hero() {
             className={`${display.className} pt-20 leading-[0.96] font-semibold text-white
                         text-[clamp(2.6rem,8.2vw,5rem)] tracking-[-0.015em]`}
             style={{
-              textWrap: "balance" as any, // nicer line breaks
+              textWrap: "balance" as any,
               WebkitFontSmoothing: "antialiased",
               MozOsxFontSmoothing: "grayscale",
             }}
@@ -63,7 +132,6 @@ export default function Hero() {
             All for only $17/month.
           </p>
 
-          {/* CTA */}
           <div className="mt-6 md:mt-8 flex flex-col items-center gap-2">
             <a
               href="#cta"
