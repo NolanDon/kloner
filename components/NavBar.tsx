@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { brand } from "@/lib/config";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X } from "lucide-react"; // ← use lucide icons
+import { Menu, X } from "lucide-react";
 
 type NavItem = { label: string; href: string };
 
@@ -33,12 +33,12 @@ export default function NavBar() {
     >
       <div className="container-soft">
         <div
-          className={`relative flex items-center px-4 md:px-5 py-2 gap-3 md:gap-4 rounded-pill shadow-pill border ${shellClasses}`}
+          className={`relative flex items-center px-2 py-2 gap-3 md:gap-4 rounded-pill shadow-pill ${shellClasses}`}
         >
           {/* Logo */}
-          <Link href="/" className="font-black tracking-tight text-lg md:text-xl shrink-0">
-            <span className="bg-gradient-to-r from-white to-white/70 bg-clip-text text-transparent">super</span>
-            <span className="text-white/80">power</span>
+          <Link href="/" className="ml-2 font-black tracking-tight text-lg md:text-xl shrink-0">
+            <span className="bg-gradient-to-r from-white to-white/70 bg-clip-text text-transparent">over</span>
+            <span className="text-white/80">drive</span>
           </Link>
 
           {/* Desktop nav (centered) */}
@@ -73,7 +73,7 @@ export default function NavBar() {
               Login
             </a>
 
-            {/* CTA (desktop) with glow + arrow hover */}
+            {/* CTA (desktop) */}
             <a
               href={brand.cta.href}
               className="
@@ -85,9 +85,7 @@ export default function NavBar() {
                 transition-all duration-200
               "
             >
-              <span className="pointer-events-none absolute inset-0 rounded-full" />
               <span className="relative">{brand.cta.label}</span>
-              <ChevronArrow className="relative h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
             </a>
           </div>
 
@@ -109,7 +107,7 @@ export default function NavBar() {
           </AnimatePresence>
         </div>
 
-        {/* Mobile dropdown (slide-down under pill) */}
+        {/* Mobile dropdown */}
         <AnimatePresence>
           {mOpen && (
             <motion.div
@@ -140,7 +138,6 @@ export default function NavBar() {
                   Login
                 </a>
 
-                {/* CTA (mobile) with same effect + arrow */}
                 <a
                   href={brand.cta.href}
                   onClick={() => setMOpen(false)}
@@ -153,7 +150,6 @@ export default function NavBar() {
                     transition-all duration-200
                   "
                 >
-                  <span className="pointer-events-none absolute inset-0 rounded-full" />
                   <span className="relative">{brand.cta.label}</span>
                   <ChevronArrow className="relative ml-2 h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
                 </a>
@@ -186,27 +182,26 @@ function ChevronArrow({ className = "" }: { className?: string }) {
   );
 }
 
-/* Desktop mega as a separate component (unchanged content-wise) */
 function MegaPanel({ active }: { active: NavItem | null }) {
   return (
     <div className="rounded-3xl border border-white/10 bg-white/90 backdrop-blur shadow-2xl overflow-hidden">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 p-6 md:p-8 text-neutral-900">
-        {/* Left promo card placeholder */}
+        {/* Left animated promo card (looping, no image) */}
         <Link
           href={active?.href || "#"}
           className="hidden md:block rounded-2xl overflow-hidden ring-1 ring-black/10 bg-white shadow-sm"
           aria-label="Learn more"
         >
-          <div className="aspect-[4/3] bg-[url('/images/hero-poster.jpg')] bg-cover bg-center" />
+          <AnimatedPromoCard />
           <div className="p-4">
             <div className="text-xs text-neutral-500">Learn more about your body</div>
-            <div className="mt-1 ">Unlock Your Biological Age Today</div>
+            <div className="mt-1">Unlock Your Biological Age Today</div>
           </div>
         </Link>
 
         {/* Product links */}
         <div className="space-y-4">
-          <div className="text-xs  text-neutral-500 tracking-wider">PRODUCT</div>
+          <div className="text-xs text-neutral-500 tracking-wider">PRODUCT</div>
           <SimpleLink href="#how" label="How it Works" />
           <SimpleLink href="#test" label="What We Test" />
           <SimpleLink href="#business" label="Overdrive for Business" />
@@ -215,14 +210,14 @@ function MegaPanel({ active }: { active: NavItem | null }) {
         {/* Learn more / Other */}
         <div className="grid grid-cols-2 gap-8">
           <div className="space-y-3">
-            <div className="text-xs  text-neutral-500 tracking-wider">LEARN MORE</div>
+            <div className="text-xs text-neutral-500 tracking-wider">LEARN MORE</div>
             <SimpleLink href="#reviews" label="Reviews" />
             <SimpleLink href="#faq" label="FAQs" />
             <SimpleLink href="#why" label="Our Why" />
             <SimpleLink href="#blog" label="Blog" />
           </div>
           <div className="space-y-3">
-            <div className="text-xs  text-neutral-500 tracking-wider">OTHER</div>
+            <div className="text-xs text-neutral-500 tracking-wider">OTHER</div>
             <SimpleLink href="#privacy" label="Privacy Policy" />
             <SimpleLink href="#consent" label="Informed Medical Consent" />
             <SimpleLink href="#terms" label="Terms & Conditions" />
@@ -235,8 +230,86 @@ function MegaPanel({ active }: { active: NavItem | null }) {
 
 function SimpleLink({ href, label }: { href: string; label: string }) {
   return (
-    <a href={href} className="block hover:text-neutral-900 text-neutral-700 transition">
+    <a href={href} className="block hover:text-neutral-900 text-neutral-700 rounded-pill transition">
       {label}
     </a>
+  );
+}
+
+/* ---------- animated placeholder card ---------- */
+
+function AnimatedPromoCard() {
+  return (
+    <div className="relative aspect-[4/3] bg-gradient-to-br from-orange-50/60 via-white to-white">
+      {/* top subtle sheen */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute -inset-x-1/2 -top-1/3 h-1/2 rotate-12 bg-white/40 blur-2xl animate-[sheen_5s_linear_infinite]" />
+      </div>
+
+      {/* rotating progress ring + % */}
+      <div className="absolute right-5 top-5 h-24 w-24">
+        <div className="absolute inset-0 rounded-full bg-neutral-100" />
+        <div className="absolute inset-0 rounded-full [mask:radial-gradient(circle_52%_at_50%_50%,transparent_56%,#000_56%)]">
+          <div className="absolute inset-0 rounded-full bg-[conic-gradient(#F55F2A_0deg,#F55F2A_220deg,transparent_220deg)] animate-[spin_9s_linear_infinite]" />
+        </div>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <motion.span
+            className="text-sm font-semibold text-neutral-800"
+            initial={{ opacity: 0.6 }}
+            animate={{ opacity: [0.6, 1, 0.6] }}
+            transition={{ duration: 2.2, repeat: Infinity }}
+          >
+            78%
+          </motion.span>
+        </div>
+      </div>
+
+      {/* metric pills (cycle up) */}
+      <div className="absolute left-5 top-5 space-y-2 w-40">
+        <MetricPill label="Heart" delay={0} />
+        <MetricPill label="Hormones" delay={0.4} />
+        <MetricPill label="Thyroid" delay={0.8} />
+      </div>
+
+      {/* sparkline bars */}
+      <div className="absolute left-5 right-5 bottom-6 h-10 flex items-end gap-1.5">
+        {[6, 9, 5, 8, 7, 10, 4, 9, 6, 8, 7].map((h, i) => (
+          <div
+            key={i}
+            className="w-2 rounded-t bg-[#F55F2A]/80"
+            style={{
+              height: `${h * 6}px`,
+              animation: `barPulse 1.8s ease-in-out ${i * 0.12}s infinite`,
+            }}
+          />
+        ))}
+      </div>
+
+      <style jsx>{`
+        @keyframes sheen {
+          0%   { transform: translateX(-20%) translateY(0) rotate(12deg); opacity: .6; }
+          50%  { transform: translateX(40%) translateY(0) rotate(12deg); opacity: .2; }
+          100% { transform: translateX(100%) translateY(0) rotate(12deg); opacity: .6; }
+        }
+        @keyframes barPulse {
+          0%, 100% { transform: scaleY(0.86); opacity: .9; }
+          50%      { transform: scaleY(1.06); opacity: 1; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function MetricPill({ label, delay = 0 }: { label: string; delay?: number }) {
+  return (
+    <motion.div
+      className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/90 px-3 py-1.5 shadow-sm"
+      initial={{ y: 8, opacity: 0.0 }}
+      animate={{ y: [8, 0, 8], opacity: [0.0, 1, 0.0] }}
+      transition={{ duration: 4.2, delay, repeat: Infinity, ease: "easeInOut" }}
+    >
+      <span className="inline-block h-2 w-2 rounded-full bg-[#F55F2A]" />
+      <span className="text-xs font-medium text-neutral-700">{label}</span>
+    </motion.div>
   );
 }

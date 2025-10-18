@@ -99,7 +99,6 @@ function MiniUpload() {
           whileInView={{ x: 0, y: 0, rotate: 0, opacity: 1 }}
           viewport={{ once: true }}
           transition={{ ...spring, delay: 0.05 }}
-          className="mx-auto mb-3 h-8 w-6 rounded-sm border border-neutral-300 bg-white shadow-sm"
         />
         {/* progress bar */}
         <div className="mx-auto mb-4 h-2 w-3/4 overflow-hidden rounded bg-neutral-200">

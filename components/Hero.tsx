@@ -36,13 +36,13 @@ export default function Hero() {
           transition={{ duration: 0.7 }}
           className="mx-auto max-w-2xl text-center"
         >
-          <h1 className="leading-tight font-extrabold text-white/90 text-[10vw] sm:text-5xl md:text-6xl">
+          <h1 className="pt-20 leading-tight font-semibold text-white/90 text-[10vw] sm:text-5xl md:text-7xl">
             Unlock your new <br />
             <span className="text-white/80">health intelligence</span>
           </h1>
 
           <p className="mt-4 md:mt-5 text-white/80 text-base sm:text-lg px-2">
-            100+ lab tests. Every year. Detect early signs of 1,000+ conditions. All for only $17/month.
+            100+ lab tests. Every year. Detect early signs of 1,000+ conditions. <br />All for only $17/month.
           </p>
 
           {/* CTA */}
