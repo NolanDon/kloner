@@ -100,16 +100,54 @@ export default function ParallaxTypeHero({
                         <span className="ml-1 inline-block h-[1.1em] w-[0.06em] translate-y-[0.06em] bg-white opacity-80 animate-[blink_1s_steps(1)_infinite]" />
                     </h1>
 
-                    <motion.div
-                        className="mt-6 inline-flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-semibold text-neutral-900 shadow-lg backdrop-blur"
-                        initial={{ opacity: 0, y: 8 }}
-                        style={{ opacity: subOpacity }}
-                    >
-                        {subcopy}
-                        <svg width="18" height="18" viewBox="0 0 24 24" className="-mr-1">
-                            <path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" />
-                        </svg>
+                    <motion.div initial={{ opacity: 0, y: 8 }} style={{ opacity: subOpacity }}>
+                        <div className="mt-5 md:mt-6">
+                            <a
+                                href="#start"
+                                className="
+        group relative inline-flex items-center gap-3 whitespace-nowrap
+        h-12 px-7 rounded-full shrink-0
+        text-white text-[15px]
+        bg-accent hover:bg-accent2
+        shadow-[0_6px_18px_rgba(0,0,0,0.25)]
+        hover:shadow-[0_14px_40px_rgba(0,0,0,0.35)]
+        transition-all duration-200
+        focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60
+      "
+                                aria-label="Start testing"
+                            >
+                                {/* soft glow on hover */}
+                                <span
+                                    className="
+          pointer-events-none absolute inset-0 rounded-full
+          before:content-[''] before:absolute before:inset-0 before:rounded-full
+          before:bg-white/10 before:opacity-0 before:blur-md
+          before:transition-opacity before:duration-200
+          group-hover:before:opacity-100
+        "
+                                />
+                                <span className="relative">Start testing</span>
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    className="
+          relative h-4 w-4
+          transition-transform duration-200
+          group-hover:translate-x-1
+        "
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2.2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    aria-hidden
+                                >
+                                    <path d="M6 12h12" />
+                                    <path d="M12 6l6 6-6 6" />
+                                </svg>
+                            </a>
+                        </div>
                     </motion.div>
+
                 </div>
             </div>
 

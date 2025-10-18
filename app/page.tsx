@@ -8,9 +8,9 @@ import WhatsIncluded from "@/components/WhatsIncluded";
 import WhatWeTest from "@/components/WhatWeTest";
 import Footer from "@/components/Footer";
 import StartsWithLabs from "@/components/StartsWithLabs";
-import MembershipSticky from "@/components/MembershipSticky";
 import FAQSection from "@/components/FaqSection";
 import ParallaxTypeHero from "@/components/ParallaxTypeHero";
+import MembershipHero from "@/components/MembershipHero";
 
 export default function Page() {
   return (
@@ -22,7 +22,7 @@ export default function Page() {
       <HowItWorks />
       <Stories />
       <WhatsIncluded />
-      <MembershipSticky />
+      <MembershipHero />
       <FAQSection />
       <WhatWeTest />
       <ParallaxTypeHero />

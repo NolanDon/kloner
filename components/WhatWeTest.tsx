@@ -98,7 +98,7 @@ function IconPill({
 export default function WhatWeTest() {
   const activeIndex = 0; // visually emphasize the first row like the reference
   return (
-    <section id="test" className="relative bg-white text-neutral-900">
+    <section id="test" className="mt-40 relative bg-white text-neutral-900">
       {/* centered, non–full-width top rule */}
       <div className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 h-px w-[72%] md:w-[62%] bg-neutral-200 rounded-full" />
 

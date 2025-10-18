@@ -53,11 +53,11 @@ function Card({
         alt=""
         className="w-full h-40 md:h-56 object-cover rounded-2xl border border-black/10 shadow-md"
       />
-      <div className="flex items-center gap-3">
-        <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold border border-black/15 text-black/70">
+      <div className="flex items-center gap-3 mt-5 ">
+        <span className="inline-flex sm:flex-col items-center rounded-full px-2.5 py-1 text-[11px] font-semibold border border-black/15 text-black/70">
           {step}
         </span>
-        <h3 className="text-xl font-semibold text-black">{title}</h3>
+        <h3 className="text-2xl md:text-3xl whitespace-nowrap text-black my-5">{title}</h3>
       </div>
       <p className="text-black/70 text-sm leading-relaxed">{text}</p>
     </motion.div>
@@ -103,11 +103,12 @@ export default function HowItWorks() {
         <div ref={containerRef} className="relative h-[180vh]">
           <div className="sticky top-44">
             {/* Title stays in place */}
-            <h2 className="text-6xl mb-10 text-black/80">How it works</h2>
+            <h2 className="text-4xl md:text-6xl mb-10 text-black/80">How it works</h2>
 
             {/* Static row of cards; they DO NOT move, only reveal */}
             <div className="relative">
-              <div className="mx-auto flex w-full max-w-6xl items-start justify-between gap-8">
+              <div className="flex flex-col md:flex-row w-full max-w-6xl md:mx-auto items-stretch md:items-start justify-start md:justify-between gap-8">
+
                 <Card {...items[0]} opacity={c1Opacity} scale={c1Scale} />
                 <Card {...items[1]} opacity={c2Opacity} scale={c2Scale} />
                 <Card {...items[2]} opacity={c3Opacity} scale={c3Scale} />
