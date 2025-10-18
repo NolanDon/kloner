@@ -72,7 +72,7 @@ export default function ParallaxTypeHero({
             <motion.div aria-hidden className="absolute inset-0 z-0 overflow-hidden" style={{ y, scale }}>
                 <div className="absolute -inset-[6vh]">
                     <div className="relative h-full w-full">
-                        <Image src={holdup} alt="" fill priority sizes="100vw" className="object-contain" />
+                        <Image src={holdup} alt="" fill priority sizes="100vw" className="object-cover" />
                     </div>
                 </div>
                 <div

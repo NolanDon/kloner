@@ -1,5 +1,14 @@
+// components/Hero.tsx
 "use client";
+
 import { motion } from "framer-motion";
+import { Outfit } from "next/font/google";
+
+// Display font for the hero headline
+const display = Outfit({
+  subsets: ["latin"],
+  weight: ["700", "800", "900"],
+});
 
 export default function Hero() {
   return (
@@ -9,7 +18,7 @@ export default function Hero() {
         height: "calc(100dvh - var(--header-h, 0px))",
         minHeight: 560,
         ["--hero-gutter" as any]:
-          "max(env(safe-area-inset-left), clamp(12px, 4vw, 10px))", // a touch tighter on small screens
+          "max(env(safe-area-inset-left), clamp(12px, 4vw, 10px))",
       }}
     >
       {/* Video frame */}
@@ -36,13 +45,22 @@ export default function Hero() {
           transition={{ duration: 0.7 }}
           className="mx-auto max-w-2xl text-center"
         >
-          <h1 className="pt-20 leading-tight font-semibold text-white/90 text-[10vw] sm:text-5xl md:text-7xl">
+          <h1
+            className={`${display.className} pt-20 leading-[0.96] font-semibold text-white
+                        text-[clamp(2.6rem,8.2vw,5rem)] tracking-[-0.015em]`}
+            style={{
+              textWrap: "balance" as any, // nicer line breaks
+              WebkitFontSmoothing: "antialiased",
+              MozOsxFontSmoothing: "grayscale",
+            }}
+          >
             Unlock your new <br />
-            <span className="text-white/80">health intelligence</span>
+            <span className="text-white/85">health intelligence</span>
           </h1>
 
           <p className="mt-4 md:mt-5 text-white/80 text-base sm:text-lg px-2">
-            100+ lab tests. Every year. Detect early signs of 1,000+ conditions. <br />All for only $17/month.
+            100+ lab tests. Every year. Detect early signs of 1,000+ conditions. <br />
+            All for only $17/month.
           </p>
 
           {/* CTA */}
