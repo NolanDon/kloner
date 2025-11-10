@@ -34,3 +34,6 @@ body {
 .badge {
     @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold bg-black/5 border border-black/10 text-black/70;
 }
+
+/* #f55f2a */
+
