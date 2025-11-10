@@ -1,28 +1,32 @@
-// components/auth/RequireAuth.jsx
+// components/auth/RequireAuth.tsx
 "use client";
 
-import { useEffect, useState } from "react";
-import { auth } from "@/lib/firebase";
+import { useEffect, useState, type ReactNode } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { useRouter, usePathname } from "next/navigation";
+import { auth } from "@/lib/firebase";
 
-export default function RequireAuth({ children }) {
-    const [ready, setReady] = useState(false);
+type Props = {
+    children: ReactNode;
+};
+
+export default function RequireAuth({ children }: Props): JSX.Element | null {
+    const [ready, setReady] = useState<boolean>(false);
     const router = useRouter();
-    const path = usePathname();
+    const pathname = usePathname() ?? "/";
 
     useEffect(() => {
         const unsub = onAuthStateChanged(auth, (u) => {
             if (!u) {
-                const next = encodeURIComponent(path || "/");
+                const next = encodeURIComponent(pathname);
                 router.replace(`/login?next=${next}`);
             } else {
                 setReady(true);
             }
         });
         return () => unsub();
-    }, [router, path]);
+    }, [router, pathname]);
 
     if (!ready) return null;
-    return children;
+    return <>{children}</>;
 }
