@@ -1,10 +1,11 @@
-// app/login/page.jsx
+// app/login/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { auth } from "../../lib/firebase.js";
 import NavBar from "@/components/NavBar";
+import { auth } from "@/lib/firebase";
+
 import {
     GoogleAuthProvider,
     signInWithPopup,
@@ -14,13 +15,21 @@ import {
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword,
     sendPasswordResetEmail,
+    getIdToken,
+    type User,
 } from "firebase/auth";
-import { getIdToken } from "firebase/auth";
+import type { FirebaseError } from "firebase/app";
 
 const ACCENT = "#f55f2a";
 
-async function setSessionCookie() {
-    const u = auth.currentUser;
+type Mode = "signin" | "signup";
+
+function isFirebaseError(e: unknown): e is FirebaseError {
+    return typeof e === "object" && e !== null && "code" in e;
+}
+
+async function setSessionCookie(): Promise<void> {
+    const u: User | null = auth.currentUser;
     if (!u) return;
     const idToken = await getIdToken(u, true);
     await fetch("/api/auth/session", {
@@ -31,32 +40,9 @@ async function setSessionCookie() {
     });
 }
 
-export default function LoginPage() {
-    const router = useRouter();
-    const search = useSearchParams();
-
-    const [mode, setMode] = useState("signin"); // "signin" | "signup"
-    const [loading, setLoading] = useState(false);
-    const [err, setErr] = useState("");
-
-    const [email, setEmail] = useState("");
-    const [pw, setPw] = useState("");
-    const [showPw, setShowPw] = useState(false);
-
-    useEffect(() => {
-        const unsub = onAuthStateChanged(auth, async (u) => {
-            if (u) {
-                // ensure cookie exists (noop if already set)
-                await setSessionCookie();
-                const next = search.get("next") || "/dashboard";
-                router.replace(next);
-            }
-        });
-        return () => unsub();
-    }, [router, search]);
-
-    const normalizeError = (e) => {
-        const code = e?.code || "";
+function normalizeError(e: unknown): string {
+    if (isFirebaseError(e)) {
+        const code = e.code || "";
         if (code.includes("auth/popup-closed-by-user")) return "Sign-in popup closed.";
         if (code.includes("auth/cancelled-popup-request")) return "Popup already open.";
         if (code.includes("auth/popup-blocked")) return "Popup was blocked by the browser.";
@@ -66,10 +52,36 @@ export default function LoginPage() {
         if (code.includes("auth/user-not-found")) return "Account not found.";
         if (code.includes("auth/email-already-in-use")) return "Email already registered.";
         if (code.includes("auth/too-many-requests")) return "Too many attempts. Try again later.";
-        return e?.message || "Request failed.";
-    };
+        return e.message ?? "Request failed.";
+    }
+    if (e instanceof Error) return e.message;
+    return "Request failed.";
+}
 
-    const signInWithGoogle = async () => {
+export default function LoginPage(): JSX.Element {
+    const router = useRouter();
+    const search = useSearchParams();
+
+    const [mode, setMode] = useState<Mode>("signin");
+    const [loading, setLoading] = useState<boolean>(false);
+    const [err, setErr] = useState<string>("");
+
+    const [email, setEmail] = useState<string>("");
+    const [pw, setPw] = useState<string>("");
+    const [showPw, setShowPw] = useState<boolean>(false);
+
+    useEffect(() => {
+        const unsub = onAuthStateChanged(auth, async (u) => {
+            if (u) {
+                await setSessionCookie();
+                const next = search.get("next") || "/dashboard";
+                router.replace(next);
+            }
+        });
+        return () => unsub();
+    }, [router, search]);
+
+    const signInWithGoogle = async (): Promise<void> => {
         setErr("");
         setLoading(true);
         try {
@@ -77,15 +89,14 @@ export default function LoginPage() {
             const provider = new GoogleAuthProvider();
             provider.setCustomParameters({ prompt: "select_account" });
             await signInWithPopup(auth, provider);
-            await setSessionCookie(); // set __session immediately
-            // onAuthStateChanged will redirect
+            await setSessionCookie();
         } catch (e) {
             setErr(normalizeError(e));
             setLoading(false);
         }
     };
 
-    const submitEmail = async (e) => {
+    const submitEmail: React.FormEventHandler<HTMLFormElement> = async (e) => {
         e.preventDefault();
         setErr("");
         setLoading(true);
@@ -97,15 +108,14 @@ export default function LoginPage() {
             } else {
                 await createUserWithEmailAndPassword(auth, email.trim(), pw);
             }
-            await setSessionCookie(); // set __session immediately
-            // onAuthStateChanged will redirect
+            await setSessionCookie();
         } catch (e2) {
             setErr(normalizeError(e2));
             setLoading(false);
         }
     };
 
-    const doReset = async () => {
+    const doReset = async (): Promise<void> => {
         setErr("");
         if (!email) {
             setErr("Enter your email, then tap Reset.");
@@ -222,7 +232,7 @@ export default function LoginPage() {
                     </button>
                     <button
                         type="button"
-                        onClick={doReset}
+                        onClick={() => void doReset()}
                         className="text-neutral-500 hover:text-neutral-700"
                     >
                         Reset password
