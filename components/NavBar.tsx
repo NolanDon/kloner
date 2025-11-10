@@ -2,18 +2,23 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { brand } from "@/lib/config";
 import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X } from "lucide-react";
+import { useAuth } from "@/src/hooks/useAuth";
+import { signOut } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 
-type NavItem = { label: string; href: string };
+const ACCENT = "#f55f2a";
 
 export default function NavBar() {
   const [scrolled, setScrolled] = useState(false);
-  const [open, setOpen] = useState(false);          // desktop mega
-  const [active, setActive] = useState<NavItem | null>(null);
-  const [mOpen, setMOpen] = useState(false);         // mobile menu
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(null);
+  const [mOpen, setMOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const { user }: any = useAuth() ?? {};
 
   useEffect(() => {
     const on = () => setScrolled(window.scrollY > 8);
@@ -22,9 +27,31 @@ export default function NavBar() {
     return () => window.removeEventListener("scroll", on);
   }, []);
 
+  const initials = useMemo(() => {
+    if (!user) return "";
+    const name = user.displayName || user.email || "";
+    const parts = name
+      .replace(/@.*/, "")
+      .replace(/[_.\-]+/g, " ")
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2);
+    if (parts.length === 0) return "";
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }, [user]);
+
   const shellClasses = scrolled
     ? "bg-smoke/80 border-white/10 backdrop-blur"
     : "bg-smoke/60 border-white/10 backdrop-blur";
+
+  const onSignOut = async () => {
+    try {
+      await fetch('/api/auth/session', { method: 'DELETE', credentials: 'include' });
+      await signOut(auth);
+      setUserMenuOpen(false);
+    } catch { }
+  };
 
   return (
     <div
@@ -36,19 +63,30 @@ export default function NavBar() {
           className={`relative flex items-center px-2 py-2 gap-3 md:gap-4 rounded-pill shadow-pill ${shellClasses}`}
         >
           {/* Logo */}
-          <Link href="/" className="ml-4 font-black tracking-tight text-lg md:text-xl shrink-0">
-            <span className="bg-gradient-to-r from-white to-white/70 bg-clip-text text-transparent">kloner</span>
+          <Link
+            href="/"
+            className="ml-4 font-black tracking-tight text-lg md:text-xl shrink-0"
+          >
+            <span className="bg-gradient-to-r from-white to-white/70 bg-clip-text text-transparent">
+              kloner
+            </span>
             <span className="text-white/80">.ai</span>
           </Link>
 
           {/* Desktop nav (centered) */}
           <nav className="hidden md:flex flex-1 justify-center items-center gap-6 text-sm text-white/80">
-            {brand.nav.map((i: NavItem) => (
+            {brand.nav.map((i) => (
               <button
                 key={i.label}
                 className="relative hover:text-white transition"
-                onMouseEnter={() => { setActive(i); setOpen(true); }}
-                onFocus={() => { setActive(i); setOpen(true); }}
+                onMouseEnter={() => {
+                  setActive(i);
+                  setOpen(true);
+                }}
+                onFocus={() => {
+                  setActive(i);
+                  setOpen(true);
+                }}
                 aria-expanded={open && active?.label === i.label}
               >
                 {i.label}
@@ -62,31 +100,111 @@ export default function NavBar() {
             <button
               aria-label={mOpen ? "Close menu" : "Open menu"}
               aria-expanded={mOpen}
-              onClick={() => { setMOpen(v => !v); setOpen(false); }}
+              onClick={() => {
+                setMOpen((v) => !v);
+                setOpen(false);
+              }}
               className="md:hidden inline-flex h-10 w-10 items-center justify-center rounded-full ring-1 ring-white/15 text-white/85 hover:bg-white/10 transition"
             >
               {mOpen ? <X size={18} strokeWidth={2.2} /> : <Menu size={18} strokeWidth={2.2} />}
             </button>
 
-            {/* Login (desktop) */}
-            <a href="#login" className="hidden md:inline hover:text-white text-white/80 transition">
-              Log in
-            </a>
+            {/* Auth area (desktop) */}
+            {!user ? (
+              <>
+                <a href="/login" className="hidden md:inline hover:text-white text-white/80 transition">
+                  Log in
+                </a>
+                <a
+                  href={brand.cta.href}
+                  className="
+                    group relative hidden md:inline-flex items-center gap-2
+                    rounded-full h-12 px-6
+                    bg-accent hover:bg-accent2 text-white
+                    shadow-[0_6px_18px_rgba(0,0,0,0.25)]
+                    hover:shadow-[0_14px_40px_rgba(0,0,0,0.35)]
+                    transition-all duration-200
+                  "
+                >
+                  <span className="relative">Start cloning</span>
+                </a>
+              </>
+            ) : (
+              <>
+                <Link
+                  href="/dashboard"
+                  className="hidden md:inline hover:text-white text-white/80 transition"
+                >
+                  Dashboard
+                </Link>
 
-            {/* CTA (desktop) */}
-            <a
-              href={brand.cta.href}
-              className="
-                group relative hidden md:inline-flex items-center gap-2
-                rounded-full h-12 px-6
-                bg-accent hover:bg-accent2 text-white
-                shadow-[0_6px_18px_rgba(0,0,0,0.25)]
-                hover:shadow-[0_14px_40px_rgba(0,0,0,0.35)]
-                transition-all duration-200
-              "
-            >
-              <span className="relative">Start cloning</span>
-            </a>
+                {/* Avatar button */}
+                <div className="relative hidden md:block">
+                  <button
+                    onClick={() => setUserMenuOpen((v) => !v)}
+                    aria-haspopup="menu"
+                    aria-expanded={userMenuOpen}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full ring-1 ring-white/20 text-white/90 hover:bg-white/10 transition select-none"
+                    style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
+                  >
+                    <span
+                      className="font-semibold"
+                      style={{ color: "#fff" }}
+                    >
+                      {initials || "ME"}
+                    </span>
+                  </button>
+
+                  <AnimatePresence>
+                    {userMenuOpen && (
+                      <motion.div
+                        key="user-menu"
+                        initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                        transition={{ duration: 0.16, ease: "easeOut" }}
+                        className="absolute right-0 mt-2 w-56 rounded-2xl border border-white/10 bg-white/95 backdrop-blur shadow-2xl overflow-hidden"
+                        onMouseLeave={() => setUserMenuOpen(false)}
+                      >
+                        <div className="px-4 py-3">
+                          <div className="text-xs text-neutral-500">Signed in</div>
+                          <div className="text-sm text-neutral-900 truncate">
+                            {user.displayName || user.email}
+                          </div>
+                        </div>
+                        <div className="h-px bg-neutral-200/70" />
+                        <div className="py-1">
+                          <MenuLink href="/dashboard" label="Dashboard" />
+                          <MenuLink href="/settings" label="Settings" />
+                          <button
+                            onClick={onSignOut}
+                            className="w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100 transition"
+                          >
+                            Sign out
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                {/* CTA swaps to “New project” for authed users */}
+                <a
+                  href="/dashboard/new"
+                  className="
+                    group relative hidden md:inline-flex items-center gap-2
+                    rounded-full h-12 px-6
+                    text-white
+                    shadow-[0_6px_18px_rgba(0,0,0,0.25)]
+                    hover:shadow-[0_14px_40px_rgba(0,0,0,0.35)]
+                    transition-all duration-200
+                  "
+                  style={{ backgroundColor: ACCENT }}
+                >
+                  <span className="relative">New project</span>
+                </a>
+              </>
+            )}
           </div>
 
           {/* Desktop mega dropdown */}
@@ -119,7 +237,7 @@ export default function NavBar() {
               className="md:hidden mt-2 overflow-hidden rounded-2xl border border-white/10 bg-white/90 backdrop-blur shadow-2xl"
             >
               <div className="p-3">
-                {brand.nav.map((i: NavItem) => (
+                {brand.nav.map((i) => (
                   <a
                     key={i.label}
                     href={i.href}
@@ -129,30 +247,73 @@ export default function NavBar() {
                     {i.label}
                   </a>
                 ))}
-                <div className="my-2 h-px bg-neutral-200/70" />
-                <a
-                  href="#login"
-                  onClick={() => setMOpen(false)}
-                  className="block rounded-xl px-3 py-3 text-neutral-700 hover:bg-neutral-50 transition"
-                >
-                  Log in
-                </a>
 
-                <a
-                  href={brand.cta.href}
-                  onClick={() => setMOpen(false)}
-                  className="
-                    group relative mt-2 mb-1 inline-flex w-full items-center justify-center
-                    rounded-full h-12 px-5
-                    bg-accent hover:bg-accent2 text-white
-                    shadow-[0_6px_18px_rgba(0,0,0,0.20)]
-                    hover:shadow-[0_12px_28px_rgba(0,0,0,0.28)]
-                    transition-all duration-200
-                  "
-                >
-                  <span className="relative">Start cloning</span>
-                  <ChevronArrow className="relative ml-2 h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
-                </a>
+                <div className="my-2 h-px bg-neutral-200/70" />
+
+                {!user ? (
+                  <>
+                    <a
+                      href="/login"
+                      onClick={() => setMOpen(false)}
+                      className="block rounded-xl px-3 py-3 text-neutral-700 hover:bg-neutral-50 transition"
+                    >
+                      Log in
+                    </a>
+                    <a
+                      href={brand.cta.href}
+                      onClick={() => setMOpen(false)}
+                      className="
+                        group relative mt-2 mb-1 inline-flex w-full items-center justify-center
+                        rounded-full h-12 px-5
+                        bg-accent hover:bg-accent2 text-white
+                        shadow-[0_6px_18px_rgba(0,0,0,0.20)]
+                        hover:shadow-[0_12px_28px_rgba(0,0,0,0.28)]
+                        transition-all duration-200
+                      "
+                    >
+                      <span className="relative">Start cloning</span>
+                      <ChevronArrow className="relative ml-2 h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
+                    </a>
+                  </>
+                ) : (
+                  <>
+                    <a
+                      href="/dashboard"
+                      onClick={() => setMOpen(false)}
+                      className="block rounded-xl px-3 py-3 text-neutral-900 hover:bg-neutral-50 transition"
+                    >
+                      Dashboard
+                    </a>
+                    <a
+                      href="/settings"
+                      onClick={() => setMOpen(false)}
+                      className="block rounded-xl px-3 py-3 text-neutral-900 hover:bg-neutral-50 transition"
+                    >
+                      Settings
+                    </a>
+                    <button
+                      onClick={async () => {
+                        await onSignOut();
+                        setMOpen(false);
+                      }}
+                      className="w-full text-left rounded-xl px-3 py-3 text-neutral-900 hover:bg-neutral-50 transition"
+                    >
+                      Sign out
+                    </button>
+                    <a
+                      href="/dashboard/new"
+                      onClick={() => setMOpen(false)}
+                      className="
+                        group relative mt-2 mb-1 inline-flex w-full items-center justify-center
+                        rounded-full h-12 px-5 text-white transition-all duration-200
+                      "
+                      style={{ backgroundColor: ACCENT }}
+                    >
+                      <span className="relative">New project</span>
+                      <ChevronArrow className="relative ml-2 h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
+                    </a>
+                  </>
+                )}
               </div>
             </motion.div>
           )}
@@ -164,7 +325,7 @@ export default function NavBar() {
 
 /* ---------- pieces ---------- */
 
-function ChevronArrow({ className = "" }: { className?: string }) {
+function ChevronArrow({ className = "" }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -182,11 +343,10 @@ function ChevronArrow({ className = "" }: { className?: string }) {
   );
 }
 
-function MegaPanel({ active }: { active: NavItem | null }) {
+function MegaPanel({ active }: any) {
   return (
     <div className="rounded-3xl border border-white/10 bg-white/90 backdrop-blur shadow-2xl overflow-hidden">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 p-6 md:p-8 text-neutral-900">
-        {/* Left animated promo card */}
         <Link
           href={active?.href || "#"}
           className="hidden md:block rounded-2xl overflow-hidden ring-1 ring-black/10 bg-white shadow-sm"
@@ -199,7 +359,6 @@ function MegaPanel({ active }: { active: NavItem | null }) {
           </div>
         </Link>
 
-        {/* Product links */}
         <div className="space-y-4">
           <div className="text-xs text-neutral-500 tracking-wider">PRODUCT</div>
           <SimpleLink href="#how" label="How it Works" />
@@ -208,7 +367,6 @@ function MegaPanel({ active }: { active: NavItem | null }) {
           <SimpleLink href="#docs" label="Docs" />
         </div>
 
-        {/* Learn more / Other */}
         <div className="grid grid-cols-2 gap-8">
           <div className="space-y-3">
             <div className="text-xs text-neutral-500 tracking-wider">LEARN</div>
@@ -229,7 +387,7 @@ function MegaPanel({ active }: { active: NavItem | null }) {
   );
 }
 
-function SimpleLink({ href, label }: { href: string; label: string }) {
+function SimpleLink({ href, label }: any) {
   return (
     <a href={href} className="block hover:text-neutral-900 text-neutral-700 rounded-pill transition">
       {label}
@@ -237,71 +395,31 @@ function SimpleLink({ href, label }: { href: string; label: string }) {
   );
 }
 
-/* ---------- animated placeholder card ---------- */
-
 function AnimatedPromoCard() {
   return (
     <div className="relative aspect-[4/3] bg-gradient-to-br from-orange-50/60 via-white to-white">
-      {/* top subtle sheen */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute -inset-x-1/2 -top-1/3 h-1/2 rotate-12 bg-white/40 blur-2xl animate-[sheen_5s_linear_infinite]" />
       </div>
 
-      {/* rotating progress ring + %
-      <div className="absolute right-5 top-5 h-24 w-24">
-        <div className="absolute inset-0 rounded-full bg-neutral-100" />
-        <div className="absolute inset-0 rounded-full [mask:radial-gradient(circle_52%_at_50%_50%,transparent_56%,#000_56%)]">
-          <div className="absolute inset-0 rounded-full bg-[conic-gradient(#111827_0deg,#111827_300deg,transparent_300deg)] animate-[spin_9s_linear_infinite]" />
-        </div>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <motion.span
-            className="text-sm font-semibold text-neutral-800"
-            initial={{ opacity: 0.6 }}
-            animate={{ opacity: [0.6, 1, 0.6] }}
-            transition={{ duration: 2.2, repeat: Infinity }}
-          >
-            Live
-          </motion.span>
-        </div>
-      </div> */}
-
-      {/* metric pills */}
       <div className="absolute left-5 top-5 space-y-2 w-40">
         <MetricPill label="Crawl" delay={0} />
         <MetricPill label="Preview" delay={0.4} />
         <MetricPill label="Deploy" delay={0.8} />
       </div>
 
-      {/* sparkline bars */}
-      {/* <div className="absolute left-5 right-5 bottom-6 h-10 flex items-end gap-1.5">
-        {[6, 9, 5, 8, 7, 10, 4, 9, 6, 8, 7].map((h, i) => (
-          <div
-            key={i}
-            className="w-2 rounded-t bg-neutral-900/80"
-            style={{
-              height: `${h * 6}px`,
-              animation: `barPulse 1.8s ease-in-out ${i * 0.12}s infinite`,
-            }}
-          />
-        ))}
-      </div> */}
-
       <style jsx>{`
         @keyframes sheen {
-          0%   { transform: translateX(-20%) translateY(0) rotate(12deg); opacity: .6; }
-          50%  { transform: translateX(40%) translateY(0) rotate(12deg); opacity: .2; }
-          100% { transform: translateX(100%) translateY(0) rotate(12deg); opacity: .6; }
-        }
-        @keyframes barPulse {
-          0%, 100% { transform: scaleY(0.86); opacity: .9; }
-          50%      { transform: scaleY(1.06); opacity: 1; }
+          0% { transform: translateX(-20%) rotate(12deg); opacity: .6; }
+          50% { transform: translateX(40%) rotate(12deg); opacity: .2; }
+          100% { transform: translateX(100%) rotate(12deg); opacity: .6; }
         }
       `}</style>
     </div>
   );
 }
 
-function MetricPill({ label, delay = 0 }: { label: string; delay?: number }) {
+function MetricPill({ label, delay = 0 }: any) {
   return (
     <motion.div
       className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/90 px-3 py-1.5 shadow-sm"
@@ -309,8 +427,19 @@ function MetricPill({ label, delay = 0 }: { label: string; delay?: number }) {
       animate={{ y: [8, 0, 8], opacity: [0.0, 1, 0.0] }}
       transition={{ duration: 4.2, delay, ease: "easeIn" }}
     >
-      <span className="inline-block h-2 w-2 rounded-full bg-neutral-900" />
+      <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: ACCENT }} />
       <span className="text-xs font-medium text-neutral-700">{label}</span>
     </motion.div>
+  );
+}
+
+function MenuLink({ href, label }: any) {
+  return (
+    <a
+      href={href}
+      className="block px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100 transition"
+    >
+      {label}
+    </a>
   );
 }

@@ -1,6 +1,8 @@
 
+import { AuthProvider } from "@/components/auth/auth-provider";
 import "./globals.css";
 import type { Metadata } from "next";
+import AuthProviderServer from "@/components/auth/auth-provider.server";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://kloner.app"),
@@ -64,7 +66,20 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <head>
+      </head>
+      <body>
+        <noscript>
+          <img
+            height="1"
+            width="1"
+            style={{ display: "none" }}
+            src="https://www.facebook.com/tr?id=1826990364582878&ev=PageView&noscript=1"
+            alt=""
+          />
+        </noscript>
+        <AuthProviderServer>{children}</AuthProviderServer>
+      </body>
     </html>
   );
 }
