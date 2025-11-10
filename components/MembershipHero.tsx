@@ -1,3 +1,4 @@
+// components/MembershipHero.tsx
 'use client';
 
 import Image from 'next/image';
@@ -6,40 +7,22 @@ import { Check, Shield, Clock4, CreditCard } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { AnimatedCreditCard } from './AnimatedCreditCard';
 
-type Doctor = {
-    name: string;
-    role: string;
-    src: string;
-    alt: string;
-};
-
-const DOCTORS: Doctor[] = [
-    { name: 'Dr Anant Vinjamoori', role: 'Overdrive Chief Longevity Officer, Harvard MD & MBA', src: '/images/doctors/anant.jpg', alt: 'Dr Anant Vinjamoori' },
-    { name: 'Dr Leigh Erin Connealy', role: 'Clinician & Founder of The Centre for New Medicine', src: '/images/doctors/leigh.jpg', alt: 'Dr Leigh Erin Connealy' },
-    { name: 'Dr Abe Malkin', role: 'Founder & Medical Director of Concierge MD', src: '/images/doctors/abe.jpg', alt: 'Dr Abe Malkin' },
-    { name: 'Dr Robert Lufkin', role: 'UCLA Medical Professor, NYT Bestselling Author', src: '/images/doctors/robert.jpg', alt: 'Dr Robert Lufkin' },
-];
-
 const BULLETS = [
-    'One appointment, one draw for your annual panel.',
-    '100+ labs tested per year',
-    'A personalized plan that evolves with you',
-    'Get your biological age and track your health over a lifetime',
+    'Unlimited previews on your domain',
+    'Clean Next.js export with assets captured',
+    'One-click deploy to Vercel or Netlify',
+    'Edit text, images, and meta before export',
 ];
 
-/** ----------------------- Auto-rotating cards (left) ----------------------- */
-/** ----------------------- Auto-rotating animated cards (left) ----------------------- */
 function RotatingCards() {
     const reduce = useReducedMotion();
     const [i, setI] = useState(0);
 
-    // mini cards (each loops on its own)
     const CardShell = ({ children }: { children: React.ReactNode }) => (
         <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-neutral-100">
             {children}
-            {/* $17 chip */}
             <div className="absolute bottom-3 left-3 md:bottom-4 md:left-4 rounded-xl px-2.5 py-1 bg-white/90 text-neutral-900 text-xs md:text-sm font-semibold shadow">
-                $17<span className="font-normal"> /month</span>
+                $29<span className="font-normal"> /month</span>
             </div>
         </div>
     );
@@ -52,14 +35,14 @@ function RotatingCards() {
                     animate={{ scale: [1, 1.06, 1] }}
                     transition={{ duration: 1.8, repeat: Infinity, repeatDelay: 0.4 }}
                 >
-                    Annual panel included
+                    One-click deploy
                 </motion.div>
             </div>
         </CardShell>
     );
 
     const AddonsMarquee = () => {
-        const items = ['Gut Microbiome', 'Toxins', 'Cancer Screens', 'Sleep', 'Hormones'];
+        const items = ['HTML → React', 'Image optimization', 'Route mapping', 'SEO tags', 'Font capture'];
         return (
             <CardShell>
                 <div className="absolute inset-0 overflow-hidden">
@@ -87,25 +70,18 @@ function RotatingCards() {
         <CardShell>
             <div className="absolute inset-0 flex flex-col justify-end gap-2 p-4">
                 <motion.div
-                    className="mb-1 inline-flex w-16 items-center justify-center gap-1 self-start rounded-full border border-neutral-200 bg-white/90 px-2 py-1"
+                    className="mb-1 inline-flex w-28 items-center justify-center gap-1 self-start rounded-full border border-neutral-200 bg-white/90 px-2 py-1"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.1 }}
                 >
-                    {[0, 1, 2].map((d) => (
-                        <motion.span
-                            key={d}
-                            className="h-1.5 w-1.5 rounded-full bg-neutral-500"
-                            animate={{ y: [0, -3, 0] }}
-                            transition={{ duration: 0.9, repeat: Infinity, delay: d * 0.12 }}
-                        />
-                    ))}
+                    <span className="text-[11px] text-neutral-700">Preview ready…</span>
                 </motion.div>
                 <div className="max-w-[72%] rounded-2xl px-3 py-2 text-sm shadow-sm bg-white text-neutral-800 border border-neutral-200">
-                    Is magnesium OK with vitamin D?
+                    Swap headline and images before export
                 </div>
                 <div className="max-w-[72%] ml-auto rounded-2xl px-3 py-2 text-sm shadow-sm bg-neutral-900 text-white">
-                    Yes, and I’ll add a reminder to your plan.
+                    Done. Rebuilding preview.
                 </div>
             </div>
         </CardShell>
@@ -134,10 +110,10 @@ function RotatingCards() {
         return (
             <CardShell>
                 <div className="absolute inset-0 flex flex-col justify-center gap-3 p-5">
-                    <Row text="Diet" delay={0.05} />
-                    <Row text="Lifestyle" delay={0.25} />
-                    <Row text="Supplements" delay={0.45} />
-                    <Row text="Rx" delay={0.65} />
+                    <Row text="Unlimited previews" delay={0.05} />
+                    <Row text="Clean export" delay={0.25} />
+                    <Row text="One-click deploy" delay={0.45} />
+                    <Row text="Keep full control" delay={0.65} />
                 </div>
             </CardShell>
         );
@@ -145,10 +121,10 @@ function RotatingCards() {
 
     const slides = useMemo(
         () => [
-            { key: 'price', label: 'Membership', node: <PricePulse /> },
-            { key: 'addons', label: 'Add-ons', node: <AddonsMarquee /> },
-            { key: 'concierge', label: 'Concierge', node: <ConciergeTyping /> },
-            { key: 'plan', label: 'Plan', node: <PlanChecks /> },
+            { key: 'price', label: 'Deploy', node: <PricePulse /> },
+            { key: 'addons', label: 'Features', node: <AddonsMarquee /> },
+            { key: 'concierge', label: 'Preview', node: <ConciergeTyping /> },
+            { key: 'plan', label: 'Export', node: <PlanChecks /> },
         ],
         []
     );
@@ -161,7 +137,6 @@ function RotatingCards() {
 
     return (
         <div className="rounded-3xl border border-neutral-200 bg-white p-3 md:p-4 shadow-sm">
-            {/* stage */}
             <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-neutral-100">
                 <AnimatePresence initial={false} mode="popLayout">
                     <motion.div
@@ -177,7 +152,6 @@ function RotatingCards() {
                 </AnimatePresence>
             </div>
 
-            {/* thumbnails — small pills you can tap to jump */}
             <div className="mt-3 flex items-center gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {slides.map((s, idx) => (
                     <button
@@ -205,54 +179,20 @@ export default function MembershipHero() {
         pt-[calc(var(--header-h,56px)+20px)]
         md:pt-60
       "
+            id="pricing"
         >
             <div className="container-soft space-y-8 md:space-y-14">
-                {/* Top: heading + logos + doctors */}
+                {/* Top: heading */}
                 <div className="space-y-6">
                     <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 md:gap-4">
                         <div>
                             <h2 className="text-2xl sm:text-3xl md:text-4xl">
-                                Developed by world-class medical
-                                <br className="hidden sm:block" /> professionals
+                                Built for instant cloning, <br className="hidden sm:block" /> live preview, and one-click deploy
                             </h2>
                             <p className="text-neutral-600 my-3 md:my-4">
-                                Supported by the world’s top longevity clinicians and MDs.
+                                Skip boilerplate and guesswork. Turn any public site into your project in minutes.
                             </p>
                         </div>
-                        {/* logos */}
-                        {/* <div className="flex flex-wrap items-center gap-x-5 gap-y-2 opacity-70">
-                            <span className="text-lg md:text-2xl font-semibold">Stanford</span>
-                            <span className="text-lg md:text-2xl font-semibold">Harvard</span>
-                            <span className="text-lg md:text-2xl font-semibold">UCLA</span>
-                        </div> */}
-                    </div>
-
-                    {/* Doctors grid — 2 cols on mobile, 4 cols on md+ */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-                        {/* {DOCTORS.map((d, i) => (
-                            <motion.div
-                                key={d.name}
-                                initial={{ opacity: 0, y: 8 }}
-                                whileInView={{ opacity: 1, y: 0 }}
-                                viewport={{ once: true, amount: 0.4 }}
-                                transition={{ duration: 0.4, delay: i * 0.05 }}
-                                className="rounded-2xl border border-neutral-200 overflow-hidden bg-white shadow-sm"
-                            >
-                                <div className="relative aspect-square">
-                                    <Image
-                                        src={d.src}
-                                        alt={d.alt}
-                                        fill
-                                        className="object-cover"
-                                        sizes="(min-width:768px) 25vw, 50vw"
-                                    />
-                                </div>
-                                <div className="p-3">
-                                    <div className="font-semibold text-sm md:text-base">{d.name}</div>
-                                    <div className="text-[11px] md:text-xs text-neutral-600 mt-1">{d.role}</div>
-                                </div>
-                            </motion.div>
-                        ))} */}
                     </div>
                 </div>
 
@@ -266,15 +206,13 @@ export default function MembershipHero() {
                     {/* Right: copy + price + CTA */}
                     <div className="lg:col-span-7">
                         <div className="text-xs md:text-sm text-neutral-500">
-                            What could cost you $15,000 is $199
+                            Preview free, pay when you export
                         </div>
                         <h3 className="text-3xl sm:text-4xl md:text-5xl mt-1 leading-tight">
-                            Overdrive
-                            <br className="hidden sm:block" /> Membership
+                            Pro Membership
                         </h3>
                         <p className="text-neutral-600 mt-3 max-w-prose text-[15px] md:text-base">
-                            Your membership includes one comprehensive blood draw each year, covering
-                            100+ biomarkers in a single collection
+                            Everything you need to clone, preview, and deploy. Keep full control of your code and hosting.
                         </p>
 
                         <ul className="mt-4 md:mt-5 space-y-2">
@@ -288,7 +226,7 @@ export default function MembershipHero() {
 
                         {/* Price block */}
                         <div className="mt-5 md:mt-6 flex items-baseline gap-2">
-                            <div className="text-5xl md:text-6xl text-neutral-900">$17</div>
+                            <div className="text-5xl md:text-6xl text-neutral-900">$29</div>
                             <div className="text-neutral-600 text-sm md:text-base">
                                 /month · billed annually
                             </div>
@@ -297,7 +235,7 @@ export default function MembershipHero() {
                         {/* Payment options */}
                         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-neutral-600">
                             <span>Flexible payment options</span>
-                            {['AMEX', 'VISA', 'Mastercard', 'HSA/FSA'].map((label) => (
+                            {['AMEX', 'VISA', 'Mastercard'].map((label) => (
                                 <span
                                     key={label}
                                     className="inline-flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 bg-white"
@@ -308,13 +246,13 @@ export default function MembershipHero() {
                             ))}
                         </div>
 
-                        {/* CTA — full-width on mobile, auto on sm+ */}
+                        {/* CTA */}
                         <div className="mt-5 md:mt-6">
                             <a
                                 href="#start"
                                 className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-full px-6 py-3 text-white bg-accent hover:bg-accent2 transition"
                             >
-                                Start testing
+                                Start free preview
                             </a>
                         </div>
 
@@ -324,15 +262,15 @@ export default function MembershipHero() {
                                 <Shield className="h-4 w-4" /> Cancel anytime
                             </span>
                             <span className="inline-flex items-center gap-1.5">
-                                <CreditCard className="h-4 w-4" /> HSA/FSA eligible
+                                <CreditCard className="h-4 w-4" /> No card for preview
                             </span>
                             <span className="inline-flex items-center gap-1.5">
-                                <Clock4 className="h-4 w-4" /> Results in a week
+                                <Clock4 className="h-4 w-4" /> Deploy in seconds
                             </span>
                         </div>
 
                         <div className="mt-2 text-xs text-neutral-500">
-                            Pricing may vary for members in New York and New Jersey **
+                            Export includes code, assets, and routes. Keep or self-host anytime.
                         </div>
                     </div>
                 </div>

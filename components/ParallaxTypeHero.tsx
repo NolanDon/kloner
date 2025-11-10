@@ -14,13 +14,13 @@ type Props = {
     subcopy?: string;
     parallaxStrength?: number;
     vignette?: number;
-    typingStart?: number; // section progress where typing begins
-    typingEnd?: number;   // section progress where typing ends
+    typingStart?: number;
+    typingEnd?: number;
 };
 
 export default function ParallaxTypeHero({
-    headline = "Health is your greatest overdrive. It's time to unlock it.",
-    subcopy = 'Start testing',
+    headline = 'Clone any website in minutes.',
+    subcopy = 'Start free preview',
     parallaxStrength = 0,
     vignette = 0.35,
     typingStart = -0.005,
@@ -32,24 +32,18 @@ export default function ParallaxTypeHero({
         offset: ['start start', 'end start'],
     });
 
-    // parallax bg
     const y = useTransform(scrollYProgress, [0, 1], [0, -parallaxStrength]);
     const scale = useTransform(scrollYProgress, [0, 1], [1.15, 1.05]);
 
-    // --- smoother typing ---
-    // map scroll -> [0..1] within typing window, with easing
     const norm = useTransform(scrollYProgress, (v) =>
         clamp((v - typingStart) / (typingEnd - typingStart), 0, 1)
     );
     const eased = useTransform(norm, (v) => easeOutCubic(v));
-    // spring smooth the eased progress for buttery typing
     const smooth = useSpring(eased, { stiffness: 120, damping: 20, mass: 0.25 });
-    // convert to character count
-    const charIndex = useTransform(smooth, (v) => Math.round(v * headline.length));
+    const charIndex = useTransform(smooth, (v) => Math.round(v * (headline?.length ?? 0)));
 
     const [typed, setTyped] = useState('');
 
-    // initialize on mount to avoid flicker
     useEffect(() => {
         setTyped(headline.slice(0, Math.round(smooth.get() * headline.length)));
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -63,12 +57,10 @@ export default function ParallaxTypeHero({
 
     return (
         <section ref={sectionRef} className="relative w-full" style={{ height: '100vh' }}>
-            {/* Top rounded cap */}
             <div className="pointer-events-none absolute inset-x-0 -top-20 z-20 h-20">
                 <div className="h-full rounded-b-[28px] border border-neutral-200 border-t-0 bg-white" />
             </div>
 
-            {/* Background image */}
             <motion.div aria-hidden className="absolute inset-0 z-0 overflow-hidden" style={{ y, scale }}>
                 <div className="absolute -inset-[6vh]">
                     <div className="relative h-full w-full">
@@ -92,7 +84,6 @@ export default function ParallaxTypeHero({
                 />
             </motion.div>
 
-            {/* Foreground */}
             <div className="relative z-10 sticky top-0 flex h-screen items-center">
                 <div className="mx-auto w-full max-w-6xl px-6">
                     <h1 className="max-w-2xl text-5xl font-semibold leading-tight tracking-tight text-white md:text-6xl">
@@ -105,35 +96,30 @@ export default function ParallaxTypeHero({
                             <a
                                 href="#start"
                                 className="
-                                    group relative inline-flex items-center gap-3 whitespace-nowrap
-                                    h-12 px-7 rounded-full shrink-0
-                                    text-white text-[15px]
-                                    bg-accent hover:bg-accent2
-                                    shadow-[0_6px_18px_rgba(0,0,0,0.25)]
-                                    hover:shadow-[0_14px_40px_rgba(0,0,0,0.35)]
-                                    transition-all duration-200
-                                    focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60
-                                "
-                                aria-label="Start testing"
+                  group relative inline-flex items-center gap-3 whitespace-nowrap
+                  h-12 px-7 rounded-full shrink-0
+                  text-white text-[15px]
+                  bg-accent hover:bg-accent2
+                  shadow-[0_6px_18px_rgba(0,0,0,0.25)]
+                  hover:shadow-[0_14px_40px_rgba(0,0,0,0.35)]
+                  transition-all duration-200
+                  focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60
+                "
+                                aria-label={subcopy}
                             >
-                                {/* soft glow on hover */}
                                 <span
                                     className="
-                                        pointer-events-none absolute inset-0 rounded-full
-                                        before:content-[''] before:absolute before:inset-0 before:rounded-full
-                                        before:bg-white/10 before:opacity-0 before:blur-md
-                                        before:transition-opacity before:duration-200
-                                        group-hover:before:opacity-100
-                                        "
+                    pointer-events-none absolute inset-0 rounded-full
+                    before:content-[''] before:absolute before:inset-0 before:rounded-full
+                    before:bg-white/10 before:opacity-0 before:blur-md
+                    before:transition-opacity before:duration-200
+                    group-hover:before:opacity-100
+                  "
                                 />
-                                <span className="relative px-2 py-5">Start testing</span>
+                                <span className="relative px-2 py-5">{subcopy}</span>
                                 <svg
                                     viewBox="0 0 24 24"
-                                    className="
-          relative h-4 w-4
-          transition-transform duration-200
-          group-hover:translate-x-1
-        "
+                                    className="relative h-4 w-4 transition-transform duration-200 group-hover:translate-x-1"
                                     fill="none"
                                     stroke="currentColor"
                                     strokeWidth="2.2"
@@ -147,11 +133,9 @@ export default function ParallaxTypeHero({
                             </a>
                         </div>
                     </motion.div>
-
                 </div>
             </div>
 
-            {/* Bottom curve */}
             <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-10 rounded-t-[24px] bg-white" />
 
             <style jsx global>{`

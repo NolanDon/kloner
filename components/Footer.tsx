@@ -7,7 +7,6 @@ export default function Footer() {
   return (
     <footer className="relative bg-white text-neutral-900 overflow-visible">
       <div className="container-soft pt-10 md:pt-16 pb-8">
-        {/* Big wordmark — centered with safe gutters */}
         <div className="relative">
           <div className="flex justify-center">
             <h2
@@ -24,53 +23,50 @@ export default function Footer() {
                 backgroundRepeat: 'no-repeat',
               }}
             >
-              overdrive
+              kloner
             </h2>
           </div>
         </div>
 
-        {/* Link columns */}
         <div className="mt-6 md:mt-8 grid gap-4 md:gap-10 md:grid-cols-5 text-sm">
           <Column
-            title="Overdrive"
-            items={['How it Works', 'What’s Included', 'Membership Login', 'Gift Overdrive']}
+            title="Product"
+            items={['How it Works', 'What’s Included', 'Live Preview', 'Changelog']}
           />
           <Column
             title="Company"
-            items={['Our Why', 'Join the Team', 'Overdrive Labs', 'Contact Us', 'FAQs']}
+            items={['About', 'Careers', 'Labs', 'Contact', 'FAQs']}
             noteIndex={1}
             note="We’re hiring!"
           />
           <Column
             title="Compare"
-            items={['Function Health', 'Mito Health', 'Marek Health', 'InsideTracker', 'Others']}
+            items={['Cloning vs Rebuild', 'Vercel vs Netlify', 'Static vs SSR', 'Export Options', 'Pricing']}
           />
           <Column
             title="Library"
             items={[
-              `Immune System \n Biomarker`,
-              `Energy \n Biomarkers`,
-              `Kidney Health \n Biomarkers`,
-              `Liver Health \n Biomarkers`,
-              `Body Composition \n Biomarkers`,
+              'Routing Guides',
+              'SEO Templates',
+              'Font Subsetting',
+              'Image Optimization',
+              'Deploy Checklists',
             ]}
           />
           <Column
             title="Partnerships"
-            items={['For Creators', 'For Partners', 'For Business']}
+            items={['For Creators', 'Affiliates', 'For Business']}
             extraGroup={{ heading: 'Connect', items: ['X/Twitter', 'Instagram', 'LinkedIn'] }}
           />
         </div>
 
         <div className="mt-8 md:mt-10 text-xs text-neutral-500">
-          © 2025 Overdrive Health, Inc. All rights reserved.
+          © 2025 Kloner, Inc. All rights reserved.
         </div>
       </div>
     </footer>
   );
 }
-
-/* ---------- Pieces ---------- */
 
 function Column({
   title,
@@ -86,8 +82,6 @@ function Column({
   extraGroup?: { heading: string; items: string[] };
 }) {
   const sectionId = useId();
-
-  // Mobile accordion state; forced open on md+.
   const [open, setOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
 
@@ -105,7 +99,6 @@ function Column({
 
   return (
     <div className="border-b border-neutral-200/70 py-50 md:border-none">
-      {/* Header row: acts as accordion trigger on mobile, static label on desktop */}
       <button
         type="button"
         className="
@@ -119,7 +112,6 @@ function Column({
         onClick={() => !isDesktop && setOpen((v) => !v)}
       >
         <span className="text-base md:text-[inherit]">{title}</span>
-        {/* Caret only on mobile */}
         <svg
           viewBox="0 0 24 24"
           className={`h-5 w-5 md:hidden transition-transform ${open ? 'rotate-180' : 'rotate-0'}`}
@@ -134,7 +126,6 @@ function Column({
         </svg>
       </button>
 
-      {/* Collapsible content on mobile; always open on desktop */}
       <div
         id={sectionId}
         className={`
@@ -152,7 +143,6 @@ function Column({
                 className="
                   hover:text-neutral-900 text-neutral-800
                   text-[15px] md:text-[inherit]
-                  
                 "
               >
                 {label}

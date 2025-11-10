@@ -28,7 +28,7 @@ export default function NavBar() {
 
   return (
     <div
-      className="fixed left-0 right-0 z-50 top-2 md:top-4"
+      className="fixed left-0 right-0 z-50 top-5 md:top-5"
       onMouseLeave={() => setOpen(false)}
     >
       <div className="container-soft">
@@ -37,8 +37,8 @@ export default function NavBar() {
         >
           {/* Logo */}
           <Link href="/" className="ml-4 font-black tracking-tight text-lg md:text-xl shrink-0">
-            <span className="bg-gradient-to-r from-white to-white/70 bg-clip-text text-transparent">over</span>
-            <span className="text-white/80">drive</span>
+            <span className="bg-gradient-to-r from-white to-white/70 bg-clip-text text-transparent">kloner</span>
+            <span className="text-white/80">.ai</span>
           </Link>
 
           {/* Desktop nav (centered) */}
@@ -70,7 +70,7 @@ export default function NavBar() {
 
             {/* Login (desktop) */}
             <a href="#login" className="hidden md:inline hover:text-white text-white/80 transition">
-              Login
+              Log in
             </a>
 
             {/* CTA (desktop) */}
@@ -85,7 +85,7 @@ export default function NavBar() {
                 transition-all duration-200
               "
             >
-              <span className="relative">{brand.cta.label}</span>
+              <span className="relative">Start cloning</span>
             </a>
           </div>
 
@@ -135,7 +135,7 @@ export default function NavBar() {
                   onClick={() => setMOpen(false)}
                   className="block rounded-xl px-3 py-3 text-neutral-700 hover:bg-neutral-50 transition"
                 >
-                  Login
+                  Log in
                 </a>
 
                 <a
@@ -150,7 +150,7 @@ export default function NavBar() {
                     transition-all duration-200
                   "
                 >
-                  <span className="relative">{brand.cta.label}</span>
+                  <span className="relative">Start cloning</span>
                   <ChevronArrow className="relative ml-2 h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
                 </a>
               </div>
@@ -186,16 +186,16 @@ function MegaPanel({ active }: { active: NavItem | null }) {
   return (
     <div className="rounded-3xl border border-white/10 bg-white/90 backdrop-blur shadow-2xl overflow-hidden">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 p-6 md:p-8 text-neutral-900">
-        {/* Left animated promo card (looping, no image) */}
+        {/* Left animated promo card */}
         <Link
           href={active?.href || "#"}
           className="hidden md:block rounded-2xl overflow-hidden ring-1 ring-black/10 bg-white shadow-sm"
-          aria-label="Learn more"
+          aria-label="Explore"
         >
           <AnimatedPromoCard />
           <div className="p-4">
-            <div className="text-xs text-neutral-500">Learn more about your body</div>
-            <div className="mt-1">Unlock Your Biological Age Today</div>
+            <div className="text-xs text-neutral-500">Clone any site</div>
+            <div className="mt-1">Paste a URL. Preview. Deploy.</div>
           </div>
         </Link>
 
@@ -203,24 +203,25 @@ function MegaPanel({ active }: { active: NavItem | null }) {
         <div className="space-y-4">
           <div className="text-xs text-neutral-500 tracking-wider">PRODUCT</div>
           <SimpleLink href="#how" label="How it Works" />
-          <SimpleLink href="#test" label="What We Test" />
-          <SimpleLink href="#business" label="Overdrive for Business" />
+          <SimpleLink href="#templates" label="Templates" />
+          <SimpleLink href="#pricing" label="Pricing" />
+          <SimpleLink href="#docs" label="Docs" />
         </div>
 
         {/* Learn more / Other */}
         <div className="grid grid-cols-2 gap-8">
           <div className="space-y-3">
-            <div className="text-xs text-neutral-500 tracking-wider">LEARN MORE</div>
-            <SimpleLink href="#reviews" label="Reviews" />
+            <div className="text-xs text-neutral-500 tracking-wider">LEARN</div>
+            <SimpleLink href="#stories" label="Customer Stories" />
             <SimpleLink href="#faq" label="FAQs" />
-            <SimpleLink href="#why" label="Our Why" />
+            <SimpleLink href="#changelog" label="Changelog" />
             <SimpleLink href="#blog" label="Blog" />
           </div>
           <div className="space-y-3">
             <div className="text-xs text-neutral-500 tracking-wider">OTHER</div>
             <SimpleLink href="#privacy" label="Privacy Policy" />
-            <SimpleLink href="#consent" label="Informed Medical Consent" />
             <SimpleLink href="#terms" label="Terms & Conditions" />
+            <SimpleLink href="#security" label="Security" />
           </div>
         </div>
       </div>
@@ -246,11 +247,11 @@ function AnimatedPromoCard() {
         <div className="absolute -inset-x-1/2 -top-1/3 h-1/2 rotate-12 bg-white/40 blur-2xl animate-[sheen_5s_linear_infinite]" />
       </div>
 
-      {/* rotating progress ring + % */}
+      {/* rotating progress ring + %
       <div className="absolute right-5 top-5 h-24 w-24">
         <div className="absolute inset-0 rounded-full bg-neutral-100" />
         <div className="absolute inset-0 rounded-full [mask:radial-gradient(circle_52%_at_50%_50%,transparent_56%,#000_56%)]">
-          <div className="absolute inset-0 rounded-full bg-[conic-gradient(#F55F2A_0deg,#F55F2A_220deg,transparent_220deg)] animate-[spin_9s_linear_infinite]" />
+          <div className="absolute inset-0 rounded-full bg-[conic-gradient(#111827_0deg,#111827_300deg,transparent_300deg)] animate-[spin_9s_linear_infinite]" />
         </div>
         <div className="absolute inset-0 flex items-center justify-center">
           <motion.span
@@ -259,31 +260,31 @@ function AnimatedPromoCard() {
             animate={{ opacity: [0.6, 1, 0.6] }}
             transition={{ duration: 2.2, repeat: Infinity }}
           >
-            78%
+            Live
           </motion.span>
         </div>
-      </div>
+      </div> */}
 
-      {/* metric pills (cycle up) */}
+      {/* metric pills */}
       <div className="absolute left-5 top-5 space-y-2 w-40">
-        <MetricPill label="Heart" delay={0} />
-        <MetricPill label="Hormones" delay={0.4} />
-        <MetricPill label="Thyroid" delay={0.8} />
+        <MetricPill label="Crawl" delay={0} />
+        <MetricPill label="Preview" delay={0.4} />
+        <MetricPill label="Deploy" delay={0.8} />
       </div>
 
       {/* sparkline bars */}
-      <div className="absolute left-5 right-5 bottom-6 h-10 flex items-end gap-1.5">
+      {/* <div className="absolute left-5 right-5 bottom-6 h-10 flex items-end gap-1.5">
         {[6, 9, 5, 8, 7, 10, 4, 9, 6, 8, 7].map((h, i) => (
           <div
             key={i}
-            className="w-2 rounded-t bg-[#F55F2A]/80"
+            className="w-2 rounded-t bg-neutral-900/80"
             style={{
               height: `${h * 6}px`,
               animation: `barPulse 1.8s ease-in-out ${i * 0.12}s infinite`,
             }}
           />
         ))}
-      </div>
+      </div> */}
 
       <style jsx>{`
         @keyframes sheen {
@@ -306,9 +307,9 @@ function MetricPill({ label, delay = 0 }: { label: string; delay?: number }) {
       className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/90 px-3 py-1.5 shadow-sm"
       initial={{ y: 8, opacity: 0.0 }}
       animate={{ y: [8, 0, 8], opacity: [0.0, 1, 0.0] }}
-      transition={{ duration: 4.2, delay, repeat: Infinity, ease: "easeInOut" }}
+      transition={{ duration: 4.2, delay, ease: "easeIn" }}
     >
-      <span className="inline-block h-2 w-2 rounded-full bg-[#F55F2A]" />
+      <span className="inline-block h-2 w-2 rounded-full bg-neutral-900" />
       <span className="text-xs font-medium text-neutral-700">{label}</span>
     </motion.div>
   );

@@ -49,8 +49,8 @@ function FeatureFrame({
 }
 
 /* ----------------------------------------------------------------
-   1) All your data in one place
-   - Unique: staggered stack-in + metric counters pulsing
+   1) Your data, captured cleanly
+   - Metrics pulse to imply successful capture
 ------------------------------------------------------------------*/
 function MiniData() {
   const Stat = ({ label, value, delay }: { label: string; value: string; delay: number }) => (
@@ -77,29 +77,22 @@ function MiniData() {
   return (
     <CardShell>
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-        <Stat label="Biological Age" value="31.8" delay={0.05} />
-        <Stat label="ApoB (mg/dL)" value="78" delay={0.15} />
-        <Stat label="VO₂ est." value="44" delay={0.25} />
+        <Stat label="Pages captured" value="18" delay={0.05} />
+        <Stat label="Assets saved" value="142" delay={0.15} />
+        <Stat label="Fonts subset" value="3" delay={0.25} />
       </div>
     </CardShell>
   );
 }
 
 /* ----------------------------------------------------------------
-   2) Upload past lab data
-   - Unique: file flies in → progress bar fills → sparkline draws
+   2) Import + map routes
+   - Progress bar + sparkline for link graph
 ------------------------------------------------------------------*/
 function MiniUpload() {
   return (
     <CardShell>
       <div className="absolute inset-0 p-4">
-        {/* upload icon flying to a tray */}
-        <motion.div
-          initial={{ x: -40, y: -20, rotate: -8, opacity: 0 }}
-          whileInView={{ x: 0, y: 0, rotate: 0, opacity: 1 }}
-          viewport={{ once: true }}
-          transition={{ ...spring, delay: 0.05 }}
-        />
         {/* progress bar */}
         <div className="mx-auto mb-4 h-2 w-3/4 overflow-hidden rounded bg-neutral-200">
           <motion.div
@@ -113,7 +106,7 @@ function MiniUpload() {
         {/* sparkline drawing */}
         <svg viewBox="0 0 320 120" className="mx-auto block h-24 w-3/4">
           <motion.path
-            d="M8,90 C38,76 58,66 88,74 C118,82 132,50 168,56 C198,60 212,44 240,50 C268,56 292,32 312,36"
+            d="M8,92 C38,70 62,64 92,72 C118,80 140,46 172,54 C198,60 214,40 242,50 C270,58 292,36 312,40"
             fill="none"
             stroke="#10b981"
             strokeWidth="3"
@@ -123,14 +116,15 @@ function MiniUpload() {
             transition={{ duration: 1.1, delay: 0.35, ease: 'easeOut' }}
           />
         </svg>
+        <div className="mx-auto mt-2 w-3/4 text-center text-xs text-neutral-600">Route mapping and link rewriting</div>
       </div>
     </CardShell>
   );
 }
 
 /* ----------------------------------------------------------------
-   3) Your personalized health plan
-   - Unique: cards swipe-in + checkmark path draws
+   3) Ready-to-export project
+   - Checklist rows with drawn ticks
 ------------------------------------------------------------------*/
 function MiniPlan() {
   const Row = ({ text, d, delay }: { text: string; d: string; delay: number }) => (
@@ -162,18 +156,18 @@ function MiniPlan() {
   return (
     <CardShell>
       <div className="absolute inset-0 flex flex-col justify-center gap-3 p-5">
-        <Row text="Diet" d="M20 6 9 17l-5-5" delay={0.05} />
-        <Row text="Lifestyle" d="M20 6 9 17l-5-5" delay={0.15} />
-        <Row text="Supplements" d="M20 6 9 17l-5-5" delay={0.25} />
-        <Row text="Rx" d="M20 6 9 17l-5-5" delay={0.35} />
+        <Row text="SEO tags extracted" d="M20 6 9 17l-5-5" delay={0.05} />
+        <Row text="Responsive images generated" d="M20 6 9 17l-5-5" delay={0.15} />
+        <Row text="Fonts subset + preloaded" d="M20 6 9 17l-5-5" delay={0.25} />
+        <Row text="Pages scaffolded in Next.js" d="M20 6 9 17l-5-5" delay={0.35} />
       </div>
     </CardShell>
   );
 }
 
 /* ----------------------------------------------------------------
-   4) Unlimited concierge messaging
-   - Unique: typing indicator → agent reply → user reply
+   4) Live preview edits
+   - Typing indicator + system confirmations
 ------------------------------------------------------------------*/
 function MiniConcierge() {
   const Bubble = ({
@@ -200,9 +194,8 @@ function MiniConcierge() {
   return (
     <CardShell>
       <div className="absolute inset-0 flex flex-col justify-end gap-2 p-4">
-        {/* typing dots */}
         <motion.div
-          className="mb-1 inline-flex w-16 items-center justify-center gap-1 self-start rounded-full border border-neutral-200 bg-white/90 px-2 py-1"
+          className="mb-1 inline-flex w-24 items-center justify-center gap-1 self-start rounded-full border border-neutral-200 bg-white/90 px-2 py-1"
           initial={{ opacity: 0 }}
           whileInView={{ opacity: 1 }}
           viewport={{ once: true }}
@@ -218,20 +211,20 @@ function MiniConcierge() {
           ))}
         </motion.div>
 
-        <Bubble delay={0.45}>Is magnesium OK with vitamin D?</Bubble>
-        <Bubble me delay={0.8}>Yes — and I’ll add a reminder to your plan.</Bubble>
-        <Bubble delay={1.1}>Perfect, thanks!</Bubble>
+        <Bubble delay={0.45}>Swap headline and hero image</Bubble>
+        <Bubble me delay={0.8}>Done. Preview rebuilding…</Bubble>
+        <Bubble delay={1.1}>Looks good. Export next.</Bubble>
       </div>
     </CardShell>
   );
 }
 
 /* ----------------------------------------------------------------
-   5) Add-on testing anytime
-   - Unique: auto-scrolling carousel + card tilt on hover
+   5) Add-ons marketplace
+   - Horizontal auto-scroll with hover tilt
 ------------------------------------------------------------------*/
 function MiniAddons() {
-  const kits = ['Gut Microbiome', 'Toxins', 'Cancer Screens', 'Sleep', 'Hormones'];
+  const kits = ['HTML → React', 'Form helpers', 'Image CDN', 'A/B flags', 'Analytics'];
   return (
     <CardShell>
       <div className="absolute inset-0 overflow-hidden">
@@ -256,35 +249,32 @@ function MiniAddons() {
 }
 
 /* ----------------------------------------------------------------
-   6) Access to Overdrive Clinic
-   - Unique: liquid fill animation + glow pulse
+   6) One-click deploy
+   - Three bars filling to imply providers
 ------------------------------------------------------------------*/
 function MiniClinic() {
-  const Bottle = ({ delay, height }: { delay: number; height: number }) => (
-    <div className="relative h-20 w-10">
-      <div className="absolute inset-0 rounded-md border border-amber-600/50 bg-amber-200/60 shadow-[0_8px_30px_rgba(245,158,11,0.25)]" />
-      <motion.div
-        className="absolute bottom-0 left-0 right-0 rounded-b-md bg-amber-500/80"
-        initial={{ height: 0 }}
-        whileInView={{ height }}
-        viewport={{ once: true }}
-        transition={{ duration: 1, delay, ease: 'easeOut' }}
-      />
-      <motion.div
-        className="absolute inset-0 rounded-md"
-        animate={{ boxShadow: ['0 0 0 rgba(245,158,11,0)', '0 0 24px rgba(245,158,11,0.35)', '0 0 0 rgba(245,158,11,0)'] }}
-        transition={{ duration: 2.4, repeat: Infinity, delay }}
-      />
+  const Bar = ({ label, delay, pct }: { label: string; delay: number; pct: number }) => (
+    <div className="mx-auto mb-3 w-4/5">
+      <div className="mb-1 text-xs text-neutral-600">{label}</div>
+      <div className="h-2 w-full overflow-hidden rounded bg-neutral-200">
+        <motion.div
+          className="h-full bg-amber-500/90"
+          initial={{ width: '0%' }}
+          whileInView={{ width: `${pct}%` }}
+          viewport={{ once: true }}
+          transition={{ duration: 1, delay, ease: 'easeOut' }}
+        />
+      </div>
     </div>
   );
 
   return (
     <CardShell>
       <div className="absolute inset-0 grid place-content-center">
-        <div className="flex items-end gap-5">
-          <Bottle delay={0.1} height={40} />
-          <Bottle delay={0.35} height={60} />
-          <Bottle delay={0.6} height={52} />
+        <div className="w-full">
+          <Bar label="Vercel" delay={0.1} pct={100} />
+          <Bar label="Netlify" delay={0.35} pct={100} />
+          <Bar label="S3/CloudFront" delay={0.6} pct={80} />
         </div>
       </div>
     </CardShell>
@@ -301,12 +291,11 @@ type CardData = {
 };
 
 const CARDS: CardData[] = [
-  { title: 'All your data in one place', sub: '100+ labs, your biological age & health report.', Mini: MiniData },
-  { title: 'Upload past lab data', sub: 'Visualize past Quest or Labcorp results.', Mini: MiniUpload },
-  { title: 'Your personalized health plan', sub: 'Lifestyle, diet, supplement & Rx recommendations.', Mini: MiniPlan },
-  { title: 'Unlimited concierge messaging', sub: 'Ask questions and get answers from our care team.', Mini: MiniConcierge },
-  { title: 'Add-on testing anytime', sub: 'Advanced gut microbiome, toxins & cancer screens.', Mini: MiniAddons },
-  { title: 'Access to Overdrive Clinic', sub: 'Curated solutions available after medical evaluation.', Mini: MiniClinic },
+  { title: 'Clean capture', sub: 'Pages, assets, and fonts pulled into a tidy project.', Mini: MiniData },
+  { title: 'Export-ready', sub: 'SEO, images, and fonts set up for Next.js.', Mini: MiniPlan },
+  // { title: 'Live preview edits', sub: 'Change copy and media before export.', Mini: MiniConcierge },
+  { title: 'Add-ons', sub: 'Enable extras like HTML→React, form helpers, and analytics.', Mini: MiniAddons },
+  { title: 'One-click deploy', sub: 'Ship to Vercel, Netlify, or your S3 in seconds.', Mini: MiniClinic },
 ];
 
 /* ----------------------------------------------------------------
@@ -320,16 +309,15 @@ export default function MembershipSticky() {
           {/* LEFT (sticky) */}
           <div className="lg:col-span-4">
             <div className="sticky top-24">
-              <h2 className="text-3xl md:text-4xl leading-tight">What’s included in your membership</h2>
+              <h2 className="text-3xl md:text-4xl leading-tight">What’s included in Pro</h2>
               <p className="mt-3 max-w-md text-neutral-600">
-                Overdrive is more than a blood test. Access an ecosystem of diagnostics and
-                doctor-trusted solutions personalized to you.
+                Capture any public site, edit in a live preview, export a clean Next.js project, and deploy with one click.
               </p>
               <a
                 href="#join"
                 className="mt-6 inline-flex bg-accent hover:bg-accent2 items-center gap-2 rounded-full px-6 py-4 text-white"
               >
-                Join Today <span aria-hidden>›</span>
+                Start free preview <span aria-hidden>›</span>
               </a>
             </div>
           </div>

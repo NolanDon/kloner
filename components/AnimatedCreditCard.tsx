@@ -145,7 +145,7 @@ export function AnimatedCreditCard() {
                         <div className="h-6 w-10 rounded-full bg-white/60" />
                     </div>
                     <div className="text-white/90 text-xs tracking-[0.18em] uppercase">
-                        Overdrive
+                        Kloner
                     </div>
                 </div>
 

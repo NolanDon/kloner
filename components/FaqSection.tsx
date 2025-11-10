@@ -12,20 +12,68 @@ const GROUPS: Group[] = [
     {
         heading: 'How it works',
         items: [
-            { q: 'What should I expect during a blood draw?', a: 'A licensed phlebotomist collects your sample in a quick appointment (typically under 15 minutes). Hydrate, bring ID, and wear sleeves you can roll up.' },
-            { q: 'How do I prepare for a blood draw?', a: 'Unless your order specifies fasting, eat normally and stay hydrated. Avoid heavy exercise 24 hours prior and follow any kit-specific instructions.' },
-            { q: 'What should I do after my blood draw?', a: 'Apply gentle pressure for a few minutes, keep the bandage on for several hours, and avoid strenuous arm activity for the rest of the day.' },
-            { q: 'How do I book a blood draw with Overdrive?', a: 'Choose a nearby partner location during checkout or from your dashboard. You’ll receive a confirmation with directions and prep notes.' },
-            { q: 'Where can I take my blood test?', a: 'We partner with 2,000+ locations nationwide. Enter your ZIP code during booking to find the closest site.' },
+            {
+                q: 'What does the preview do?',
+                a: 'We crawl the target URL, capture HTML, CSS, JS, images, and fonts, then render a sandboxed preview so you can edit copy and images before exporting.'
+            },
+            {
+                q: 'What exactly gets exported?',
+                a: 'A clean Next.js project with pages or app routes, componentized layouts, optimized images, subset fonts, and extracted SEO tags (title, meta, Open Graph, Twitter).'
+            },
+            {
+                q: 'Will forms and client scripts work?',
+                a: 'We preserve markup and isolate scripts. Forms are kept but may require hooking to your backend. Third-party widgets are bridged where possible or flagged if manual wiring is needed.'
+            },
+            {
+                q: 'Do internal links keep working?',
+                a: 'Links are rewritten to local routes. External links stay external. We warn on dead links and provide a mapping file so you can review any edge cases.'
+            },
+            {
+                q: 'Can I run the exported project anywhere?',
+                a: 'Yes. The output is standard Next.js. It runs on Vercel, Netlify, or any Node/Edge host. You can also export static and serve on S3/CloudFront.'
+            },
         ],
     },
     {
-        heading: 'Our testing',
+        heading: 'Membership & billing',
         items: [
-            { q: 'Does Overdrive replace my primary care provider?', a: 'No. We provide advanced testing and insights that complement your PCP’s care. Bring your report to your clinician for ongoing management.' },
-            { q: 'How fast are blood test results and how do I read them?', a: 'Most panels return within 3–7 business days. Your dashboard highlights out-of-range markers and includes plain-language explanations.' },
-            { q: 'Does Overdrive accept health insurance?', a: 'Membership is cash-pay. Some members use HSA/FSA funds; check with your plan administrator for eligibility.' },
-            { q: 'What if I want more than 1 blood test per year?', a: 'You can add additional panels at member pricing anytime from your dashboard.' },
+            {
+                q: 'Do I need a card to try the preview?',
+                a: 'No. Preview is free without a card. You pay only when you export.'
+            },
+            {
+                q: 'What’s included in Pro?',
+                a: 'Unlimited previews on your domain, clean Next.js export, image/SEO/route setup, font subsetting, and one-click deploy integrations.'
+            },
+            {
+                q: 'Can I cancel anytime?',
+                a: 'Yes. Billing is month-to-month (or annually with savings). Cancel from your account dashboard and your plan ends at the current period.'
+            },
+            {
+                q: 'Is there a team plan?',
+                a: 'Yes. Team seats support shared previews, export approvals, and environment-specific deploys. Contact us if you need SSO or custom limits.'
+            },
+        ],
+    },
+    {
+        heading: 'Limits & compatibility',
+        items: [
+            {
+                q: 'Are there site size limits?',
+                a: 'Pro handles most marketing sites. We show a page and asset count before export. Very large or app-heavy sites may need targeted capture.'
+            },
+            {
+                q: 'Does it support App Router?',
+                a: 'Yes. You can choose pages/ or app/ output. We scaffold layout.tsx and route groups where appropriate.'
+            },
+            {
+                q: 'What about frameworks other than Next.js?',
+                a: 'Exporters for Remix, SvelteKit, and Astro are in beta as add-ons. You can still export raw assets and wire your framework of choice.'
+            },
+            {
+                q: 'SEO fidelity guarantees?',
+                a: 'We extract titles, descriptions, canonical, robots, OG/Twitter, and JSON-LD blocks when present. A diff report highlights anything missing.'
+            },
         ],
     },
 ];
@@ -44,7 +92,6 @@ function QAItem({ item, groupKey }: { item: QA; groupKey: string }) {
                 onClick={() => setOpen((v) => !v)}
             >
                 <span className="text-neutral-800">{item.q}</span>
-                {/* small + at far right, no circle */}
                 <Plus
                     aria-hidden
                     className={`h-4 w-4 shrink-0 transition-transform text-neutral-400 ${open ? 'rotate-45' : ''}`}
@@ -77,9 +124,7 @@ export default function FAQSection() {
             <div className="container-soft">
                 {/* Header */}
                 <div className="mb-10 md:mb-12 flex items-start justify-between md:px-40">
-                    <h2 className="text-5xl mb-12 tracking-tight">
-                        Frequently Asked Questions
-                    </h2>
+                    <h2 className="text-5xl mb-12 tracking-tight">Frequently Asked Questions</h2>
                     <a
                         href="#faq-all"
                         className="hidden md:inline-flex items-center rounded-full border border-neutral-200 px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
@@ -88,7 +133,7 @@ export default function FAQSection() {
                     </a>
                 </div>
 
-                {/* Layout: left labels, right list (no card borders) */}
+                {/* Layout */}
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12">
                     {/* Left labels */}
                     <div className="hidden sm:block md:col-span-3">

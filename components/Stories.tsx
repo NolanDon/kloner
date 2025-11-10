@@ -8,7 +8,7 @@ type Reel = {
   src: string;
   handle: string;
   followers: string;
-  avatar?: string; // optional avatar under /public
+  avatar?: string;
   alt?: string;
 };
 
@@ -38,7 +38,6 @@ function ReelCard({ r, i }: { r: Reel; i: number }) {
   return (
     <SectionReveal delay={i * 0.04}>
       <div className="relative aspect-[9/16] w-full overflow-hidden rounded-2xl border border-black/10 shadow-sm bg-black">
-        {/* video */}
         <video
           className="absolute inset-0 h-full w-full object-cover"
           src={r.src}
@@ -46,13 +45,9 @@ function ReelCard({ r, i }: { r: Reel; i: number }) {
           loop
           muted
           playsInline
-        // poster could be added if you have a jpg
         />
-
-        {/* subtle edge gradient for readability */}
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/40" />
 
-        {/* top overlay: avatar, handle, check, followers */}
         <div className="absolute left-3 right-3 top-3 flex items-center gap-2">
           <div className="relative h-8 w-8 overflow-hidden rounded-full bg-white/20 ring-1 ring-white/40">
             {r.avatar ? (
@@ -71,11 +66,6 @@ function ReelCard({ r, i }: { r: Reel; i: number }) {
 
           <span className="ml-auto text-xs text-white/80">{r.followers}</span>
         </div>
-
-        {/* optional bottom caption space (keep for future subtitles) */}
-        {/* <div className="absolute bottom-3 left-3 right-3 text-center text-white text-sm font-medium drop-shadow">
-          your subtitle here
-        </div> */}
       </div>
     </SectionReveal>
   );
@@ -86,20 +76,18 @@ export default function Stories() {
     <section className="section bg-white mt-20 text-black" id="reviews">
       <div className="container-soft">
         <div className="mb-6 flex items-end justify-between gap-4">
-          <h2 className="text-4xl md:text-4xl leading-tight">
-            Overdrive is changing thousands of lives
+          <h2 className="text-3xl md:text-3xl leading-tight">
+            Teams ship faster with <strong className="text-accent text-4xl tracking-[-1.5px]">kloner</strong>
           </h2>
           <a
             href="#all-reviews"
             className="hidden md:inline-flex items-center rounded-full border border-black/10 bg-white px-4 py-2 text-sm text-black/70 hover:text-black hover:shadow-sm"
           >
-            See more reviews
+            See more stories
           </a>
         </div>
 
-        {/* Mobile: horizontal snap scroller; Desktop: 4-up grid */}
         <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4 md:gap-6 md:[overflow:visible]">
-          {/* On mobile we fake the grid as a horizontal scroller by spanning each card full width and enabling snaps */}
           <div className="col-span-2 -mx-4 md:mx-0 md:col-span-4">
             <div className="flex gap-3 sm:gap-4 md:grid md:grid-cols-4 md:gap-6 overflow-x-auto snap-x snap-mandatory px-4 md:px-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {reels.map((r, i) => (
@@ -114,13 +102,12 @@ export default function Stories() {
           </div>
         </div>
 
-        {/* Mobile "See more reviews" button */}
         <div className="mt-6 md:hidden">
           <a
             href="#all-reviews"
             className="inline-flex items-center rounded-full border border-black/10 bg-white px-4 py-2 text-sm text-black/70 hover:text-black hover:shadow-sm"
           >
-            See more reviews
+            See more stories
           </a>
         </div>
       </div>

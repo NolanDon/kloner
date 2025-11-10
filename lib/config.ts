@@ -1,6 +1,6 @@
 
 export const brand = {
-  name: "overdrive",
+  name: "kloner",
   nav: [
     { label: "How it Works", href: "#how" },
     { label: "What We Test", href: "#test" },
@@ -8,5 +8,5 @@ export const brand = {
     { label: "FAQs", href: "#faq" },
     { label: "Our Why", href: "#why" }
   ],
-  cta: { label: "Try Overdrive", href: "#cta" }
+  cta: { label: "Try Kloner", href: "#cta" }
 } as const;
