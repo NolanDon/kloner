@@ -23,12 +23,10 @@ type CallOpts = {
      */
     acceptOnTimeout?: boolean;
     /**
-     * When true, DO NOT prepend BACKEND_PREFIX. Use this for root-mounted routes like '/generate-screenshots'.
+     * When true, DO NOT prepend BACKEND_PREFIX. Use this for root-mounted routes.
      */
     noPrefix?: boolean;
 };
-
-// src/lib/callBackend.ts (unchanged imports/types above)
 
 const BACKEND_ORIGIN =
     process.env.BACKEND_ORIGIN ||
@@ -36,14 +34,22 @@ const BACKEND_ORIGIN =
     process.env.PUBLIC_ORIGIN ||
     `http://127.0.0.1:${process.env.PORT || 8080}`;
 
-const BACKEND_PREFIX = (process.env.BACKEND_PREFIX ?? '/api/v1').replace(/^\/+|\/+$/g, '');
-const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || '';
+const BACKEND_PREFIX = (process.env.BACKEND_PREFIX ?? "/api/v1").replace(
+    /^\/+|\/+$/g,
+    ""
+);
+const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || "";
 
-function buildUrl(path: string, qp?: Record<string, any>): string {
+function buildUrl(
+    path: string,
+    qp?: Record<string, any>,
+    noPrefix?: boolean
+): string {
     const absolute = /^https?:\/\//i.test(path);
-    const p = path.startsWith('/') ? path : `/${path}`;
-    const base = BACKEND_ORIGIN.replace(/\/+$/, '');
-    const prefix = p.startsWith('/internal/') ? '' : (BACKEND_PREFIX ? `/${BACKEND_PREFIX}` : '');
+    const p = path.startsWith("/") ? path : `/${path}`;
+    const base = BACKEND_ORIGIN.replace(/\/+$/, "");
+    const prefix =
+        noPrefix || p.startsWith("/internal/") ? "" : BACKEND_PREFIX ? `/${BACKEND_PREFIX}` : "";
     const urlStr = absolute ? path : `${base}${prefix}${p}`;
     const url = new URL(urlStr);
     Object.entries(qp || {}).forEach(([k, v]) => {
@@ -52,39 +58,44 @@ function buildUrl(path: string, qp?: Record<string, any>): string {
     return url.toString();
 }
 
-function signUserCtx(userCtx: NonNullable<CallOpts['userCtx']>) {
-    const payload = Buffer.from(JSON.stringify(userCtx)).toString('base64');
-    const sig = crypto.createHmac('sha256', INTERNAL_API_KEY).update(payload).digest('hex');
+function signUserCtx(userCtx: NonNullable<CallOpts["userCtx"]>) {
+    const payload = Buffer.from(JSON.stringify(userCtx), "utf8").toString("base64");
+    const sig = crypto.createHmac("sha256", INTERNAL_API_KEY).update(payload).digest("hex");
     return { payload, sig };
 }
 
 function readHeader(req: Reqish, name: string): string {
-    if (!req) return '';
-    // Express-style
-    if (typeof (req as any).get === 'function') return ((req as any).get(name) as string) || '';
-    // NextRequest (Headers)
+    if (!req) return "";
+    if (typeof (req as any).get === "function") return ((req as any).get(name) as string) || "";
     const h = (req as any).headers;
-    if (h?.get) return h.get(name) || '';
-    if (h && typeof h === 'object') {
+    if (h?.get) return h.get(name) || "";
+    if (h && typeof h === "object") {
         const n = name.toLowerCase();
-        return (h[n] || h[name]) ?? '';
+        return (h[n] || h[name]) ?? "";
     }
-    return '';
+    return "";
 }
 
 export async function callBackend(req: Reqish, opts: CallOpts) {
-    if (!INTERNAL_API_KEY) throw new Error('INTERNAL_API_KEY not set');
+    if (!INTERNAL_API_KEY) throw new Error("INTERNAL_API_KEY not set");
 
-    const method = (opts.method || 'POST').toUpperCase() as NonNullable<CallOpts['method']>;
-    const url = buildUrl(opts.path, opts.query);
+    const method = (opts.method || "POST").toUpperCase() as NonNullable<CallOpts["method"]>;
+    const url = buildUrl(opts.path, opts.query, opts.noPrefix === true);
 
-    const inboundId = readHeader(req, 'x-request-id');
-    const reqId = inboundId || crypto.randomBytes(8).toString('hex');
+    const inboundId = readHeader(req, "x-request-id");
+    const reqId =
+        inboundId ||
+        (typeof crypto.randomUUID === "function"
+            ? crypto.randomUUID()
+            : crypto.randomBytes(8).toString("hex"));
 
     const signed = opts.userCtx ? signUserCtx(opts.userCtx) : null;
 
     const controller = new AbortController();
-    const timeoutHandle = setTimeout(() => controller.abort(), opts.timeoutMs ?? 15_000);
+    const timeoutHandle = setTimeout(
+        () => controller.abort(),
+        opts.timeoutMs ?? 15_000
+    );
 
     let upstream: Response;
     try {
@@ -92,37 +103,64 @@ export async function callBackend(req: Reqish, opts: CallOpts) {
             method,
             headers: {
                 ...(opts.headers || {}),
-                'content-type': 'application/json',
-                'cache-control': 'no-store',
-                'x-request-id': reqId,
-                'x-internal-key': INTERNAL_API_KEY,
+                "content-type": "application/json",
+                "cache-control": "no-store",
+                "x-request-id": reqId,
+                "x-internal-key": INTERNAL_API_KEY,
                 ...(signed
-                    ? { 'x-user-ctx': signed.payload, 'x-user-ctx-sig': signed.sig }
+                    ? { "x-user-ctx": signed.payload, "x-user-ctx-sig": signed.sig }
                     : {}),
-                ...(opts.idempotencyKey ? { 'idempotency-key': opts.idempotencyKey } : {}),
+                ...(opts.idempotencyKey ? { "idempotency-key": opts.idempotencyKey } : {}),
             },
-            body: ['GET', 'HEAD', 'OPTIONS'].includes(method) ? undefined : JSON.stringify(opts.body ?? {}),
+            body:
+                method === "GET" || method === "HEAD" || method === "OPTIONS"
+                    ? undefined
+                    : JSON.stringify(opts.body ?? {}),
             signal: controller.signal,
+            // keepalive could help in edge cases, but avoid on Node fetch < 18.3 issues
         });
     } catch (err: any) {
         clearTimeout(timeoutHandle);
-        const aborted = err?.name === 'AbortError';
+        const aborted = err?.name === "AbortError";
         if (aborted && opts.acceptOnTimeout) {
-            const json = { started: true, code: 'TIMEOUT_ACCEPTED' };
-            const fake = new Response(JSON.stringify(json), { status: 202 });
-            return { upstream: fake as any, status: 202, json, raw: JSON.stringify(json), reqId, url };
+            const json = { ok: true, queued: true, code: "TIMEOUT_ACCEPTED" };
+            const fake = new Response(JSON.stringify(json), {
+                status: 202,
+                headers: { "content-type": "application/json" },
+            });
+            return {
+                upstream: fake as any,
+                status: 202,
+                json,
+                raw: JSON.stringify(json),
+                reqId,
+                url,
+            };
         }
         const status = aborted ? 504 : 502;
-        const json = { error: aborted ? 'Backend timeout' : 'Backend fetch failed' };
-        return { upstream: new Response(JSON.stringify(json), { status }) as any, status, json, raw: JSON.stringify(json), reqId, url };
+        const json = { error: aborted ? "Backend timeout" : "Backend fetch failed" };
+        return {
+            upstream: new Response(JSON.stringify(json), {
+                status,
+                headers: { "content-type": "application/json" },
+            }) as any,
+            status,
+            json,
+            raw: JSON.stringify(json),
+            reqId,
+            url,
+        };
+    } finally {
+        clearTimeout(timeoutHandle);
     }
-
-    clearTimeout(timeoutHandle);
 
     const raw = await upstream.text();
     let json: any;
-    try { json = JSON.parse(raw); } catch { json = { ok: upstream.ok, data: raw }; }
+    try {
+        json = JSON.parse(raw);
+    } catch {
+        json = { ok: upstream.ok, data: raw };
+    }
 
     return { upstream, status: upstream.status, json, raw, reqId, url };
 }
-

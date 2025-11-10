@@ -18,6 +18,9 @@ import {
     doc,
     deleteDoc,
     updateDoc,
+    getDocs,
+    where,
+    writeBatch,
     type Unsubscribe,
 } from "firebase/firestore";
 import {
@@ -184,9 +187,8 @@ function UrlForm({ uid, onAdded }: UrlFormProps) {
         }
         setBusy(true);
         try {
-            // Firestore record
             const col = collection(db, "kloner_users", uid, "kloner_urls");
-            const docRef = await addDoc(col, {
+            await addDoc(col, {
                 url: cleaned,
                 urlHash: hash64(cleaned),
                 createdAt: serverTimestamp(),
@@ -196,7 +198,6 @@ function UrlForm({ uid, onAdded }: UrlFormProps) {
                 screenshotPaths: [],
             } satisfies UrlDoc);
 
-            // Kick backend
             const r = await fetch("/api/private/generate", {
                 method: "POST",
                 headers: { "content-type": "application/json" },
@@ -205,13 +206,7 @@ function UrlForm({ uid, onAdded }: UrlFormProps) {
             const j: any = await r.json().catch(() => ({}));
             if (!r.ok) {
                 setErr(j?.error || "Failed to queue screenshot job.");
-                await updateDoc(docRef, {
-                    status: "error",
-                    updatedAt: serverTimestamp(),
-                    error: j?.error || "queue_failed",
-                } as any);
             } else {
-                await updateDoc(docRef, { status: "queued", updatedAt: serverTimestamp() } as any);
                 onAdded?.();
                 setUrl("");
             }
@@ -262,7 +257,13 @@ function UrlRow({ uid, r }: UrlRowProps) {
     const [busy, setBusy] = useState<boolean>(false);
     const [err, setErr] = useState<string>("");
 
+    // Lock the entire card while the initial capture is in progress.
+    const locked =
+        (r.status ?? "unknown") === "queued" &&
+        (!Array.isArray(r.screenshotPaths) || r.screenshotPaths.length === 0);
+
     async function rescan() {
+        if (locked) return;
         setErr("");
         setBusy(true);
         try {
@@ -291,13 +292,14 @@ function UrlRow({ uid, r }: UrlRowProps) {
     }
 
     async function remove() {
+        if (locked) return;
         setErr("");
         setBusy(true);
         try {
-            const prefix =
-                r.screenshotsPrefix || `screenshots/${uid}/${r.urlHash || hash64(r.url)}`;
+            const urlHash = r.urlHash || hash64(r.url);
+            const prefix = r.screenshotsPrefix || `screenshots/${uid}/${urlHash}`;
 
-            if (Array.isArray(r.screenshotPaths) && r.screenshotPaths.length) {
+            if (Array.isArray(r.screenshotPaths) && r.screenshotPaths.length > 0) {
                 await Promise.allSettled(
                     r.screenshotPaths.map((p) => deleteObject(sRef(storage, p)))
                 );
@@ -315,6 +317,22 @@ function UrlRow({ uid, r }: UrlRowProps) {
                 }
             }
 
+            // cleanup kloner_renders tied to this URL
+            const rendersCol = collection(db, "kloner_users", uid, "kloner_renders");
+            const qHash = query(rendersCol, where("urlHash", "==", urlHash));
+            const qUrl = query(rendersCol, where("url", "==", r.url));
+            const [snapHash, snapUrl] = await Promise.all([getDocs(qHash), getDocs(qUrl)]);
+            const toDeleteIds = new Set<string>();
+            snapHash.forEach((d) => toDeleteIds.add(d.id));
+            snapUrl.forEach((d) => toDeleteIds.add(d.id));
+            if (toDeleteIds.size > 0) {
+                const batch = writeBatch(db);
+                for (const id of toDeleteIds) {
+                    batch.delete(doc(db, "kloner_users", uid, "kloner_renders", id));
+                }
+                await batch.commit();
+            }
+
             await deleteDoc(doc(db, "kloner_users", uid, "kloner_urls", r.id));
         } catch (e: any) {
             setErr(e?.message || "Delete failed.");
@@ -324,7 +342,25 @@ function UrlRow({ uid, r }: UrlRowProps) {
     }
 
     return (
-        <div className="rounded-xl border border-neutral-200 bg-white p-4 sm:p-5 shadow-sm">
+        <div
+            className={`rounded-xl border border-neutral-200 bg-white p-4 sm:p-5 shadow-sm relative ${locked ? "opacity-60" : ""
+                }`}
+            aria-busy={locked}
+            aria-disabled={locked}
+        >
+            {locked && (
+                <div className="absolute inset-0 grid place-items-center pointer-events-none">
+                    <div className="flex items-center gap-2 rounded border px-3 py-1.5 text-xs text-neutral-800 bg-white">
+                        <span
+                            className="inline-block h-4 w-4 rounded-full border-2 border-neutral-300"
+                            style={{ borderTopColor: ACCENT, animation: "spin 0.8s linear infinite" }}
+                            aria-hidden
+                        />
+                        Capturing…
+                    </div>
+                </div>
+            )}
+
             <div className="flex items-start gap-3">
                 <div
                     className="h-9 w-9 rounded-lg grid place-items-center text-white font-semibold shrink-0"
@@ -335,10 +371,13 @@ function UrlRow({ uid, r }: UrlRowProps) {
                 <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                         <a
-                            href={r.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="truncate font-medium text-neutral-900 hover:underline"
+                            href={locked ? undefined : r.url}
+                            target={locked ? undefined : "_blank"}
+                            rel={locked ? undefined : "noreferrer"}
+                            className={`truncate font-medium ${locked ? "text-neutral-400" : "text-neutral-900 hover:underline"
+                                } ${locked ? "pointer-events-none" : ""}`}
+                            aria-disabled={locked}
+                            tabIndex={locked ? -1 : 0}
                         >
                             {r.url}
                         </a>
@@ -347,10 +386,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
                         </span>
                     </div>
                     <div className="mt-1 text-xs text-neutral-500">
-                        Prefix:{" "}
-                        <span className="font-mono">
-                            {r.screenshotsPrefix || `screenshots/${uid}/${r.urlHash}`}
-                        </span>
+                        Prefix: <span className="font-mono">{r.screenshotsPrefix || `screenshots/${uid}/${r.urlHash}`}</span>
                     </div>
 
                     {err ? <div className="mt-2 text-sm text-red-600">{err}</div> : null}
@@ -358,21 +394,26 @@ function UrlRow({ uid, r }: UrlRowProps) {
                     <div className="mt-3 flex flex-wrap gap-2">
                         <button
                             onClick={() => void rescan()}
-                            disabled={busy}
-                            className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-60"
+                            disabled={busy || locked}
+                            className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
                         >
                             {busy ? "Working…" : "Rescan"}
                         </button>
+
                         <a
-                            href={`/dashboard/view?u=${encodeURIComponent(r.url)}`}
-                            className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
+                            href={locked ? undefined : `/dashboard/view?u=${encodeURIComponent(r.url)}`}
+                            className={`rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm ${locked ? "text-neutral-400 pointer-events-none" : "text-neutral-700 hover:bg-neutral-50"
+                                }`}
+                            aria-disabled={locked}
+                            tabIndex={locked ? -1 : 0}
                         >
                             Open
                         </a>
+
                         <button
                             onClick={() => void remove()}
-                            disabled={busy}
-                            className="rounded-lg px-3 py-2 text-sm text-white disabled:opacity-60"
+                            disabled={busy || locked}
+                            className="rounded-lg px-3 py-2 text-sm text-white disabled:opacity-50"
                             style={{ backgroundColor: ACCENT }}
                         >
                             Delete
@@ -380,6 +421,8 @@ function UrlRow({ uid, r }: UrlRowProps) {
                     </div>
                 </div>
             </div>
+
+            <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
         </div>
     );
 }
@@ -426,7 +469,6 @@ export default function DashboardPage() {
                 <Sidebar user={user} onSignOut={handleSignOut} />
 
                 <section className="min-h-screen">
-                    {/* top bar (mobile) */}
                     <div className="md:hidden sticky top-0 z-10 bg-white border-b border-neutral-200">
                         <div className="flex items-center justify-between px-4 py-3">
                             <a href="/" className="inline-flex items-center gap-2">
@@ -455,9 +497,7 @@ export default function DashboardPage() {
                             Add a URL to capture. We’ll queue screenshots and keep them under your account.
                         </p>
 
-                        <div className="mt-6">
-                            {user ? <UrlForm uid={user.uid} onAdded={() => { }} /> : null}
-                        </div>
+                        <div className="mt-6">{user ? <UrlForm uid={user.uid} onAdded={() => { }} /> : null}</div>
 
                         <div className="mt-8">
                             <h2 className="text-sm font-semibold text-neutral-700">Tracked URLs</h2>
