@@ -1,8 +1,8 @@
 // components/HowItWorks.tsx
 'use client';
 
-import { motion, useScroll, useTransform, AnimatePresence, MotionValue } from 'framer-motion';
-import React, { useRef } from 'react';
+import { motion, useScroll, useTransform, MotionValue } from 'framer-motion';
+import React, { useRef, useState } from 'react';
 import { CheckCircle2 } from 'lucide-react';
 
 /* ----------------------------- Mini “modals” ----------------------------- */
@@ -63,7 +63,7 @@ function PreviewGridModal() {
             aria-disabled
             className="pointer-events-none inline-flex items-center gap-2 rounded-full bg-accent px-4 py-2 text-xs text-white"
           >
-            Deploy
+            Continue
           </button>
         </div>
       </div>
@@ -71,25 +71,27 @@ function PreviewGridModal() {
   );
 }
 
-/**
- * Deploy modal that morphs from loader -> success based on scroll progress.
- * When progress crosses "doneAt", the spinner fades to a check + "Deployed".
- */
-function DeployModal({ progress, doneAt = 0.78 }: { progress: MotionValue<number>; doneAt?: number }) {
-  const doneOpacity = useTransform(progress, [doneAt - 0.02, doneAt], [0, 1]);
-  const spinOpacity = useTransform(progress, [doneAt - 0.02, doneAt], [1, 0]);
+/* ---------------------------- Deploy modal ---------------------------- */
+
+function DeployModal({
+  progress,
+  doneAt = 0.9,
+}: {
+  progress: MotionValue<number>;
+  doneAt?: number;
+}) {
+  const start = Math.max(0, doneAt - 0.02);
+  const doneOpacity = useTransform(progress, [start, doneAt] as const, [0, 1] as const);
+  const spinOpacity = useTransform(progress, [start, doneAt] as const, [1, 0] as const);
 
   return (
     <div className="w-full h-40 md:h-56 rounded-2xl border border-black/10 bg-white shadow-md p-4 md:p-5 grid place-items-center">
       <div className="relative w-full h-full grid place-items-center">
-        {/* loader */}
         <motion.div style={{ opacity: spinOpacity }} className="text-center absolute">
           <div className="mx-auto mb-3 h-8 w-8 rounded-full border-2 border-neutral-200 border-t-neutral-900 animate-spin" />
           <div className="text-sm font-medium text-neutral-900">Deploying to Vercel…</div>
           <div className="text-xs text-neutral-500 mt-1">Building, optimizing, shipping</div>
         </motion.div>
-
-        {/* success */}
         <motion.div style={{ opacity: doneOpacity }} className="text-center absolute">
           <CheckCircle2 className="h-8 w-8 text-emerald-600 mx-auto mb-2" />
           <div className="text-sm font-medium text-neutral-900">Deployed</div>
@@ -100,45 +102,71 @@ function DeployModal({ progress, doneAt = 0.78 }: { progress: MotionValue<number
   );
 }
 
-/** Final “deployed” preview — a finished site card with confirmation. */
-function DeployedModal() {
+/* ------------------------- EditBlocksModal (simple) ------------------------- */
+
+function EditBlocksModal() {
+  type Block = { id: string; title: string; a: string; b: string };
+  const [blocks] = useState<Block[]>([
+    { id: 'hero', title: 'Hero', a: 'Headline', b: 'CTA buttons' },
+    { id: 'features', title: 'Features', a: 'Grid cards', b: 'Icons' },
+  ]);
+
   return (
-    <div className="w-full h-40 md:h-56 rounded-2xl border border-black/10 bg-white shadow-md p-4 md:p-5">
+    <div className="w-full min-w-[260px] md:min-w-[400px] rounded-2xl border border-black/10 bg-white shadow-md p-4 md:p-5">
       <div className="flex items-center justify-between mb-3">
-        <div className="text-xs text-neutral-500">Production</div>
+        <div className="text-xs text-neutral-500">Editor</div>
         <div className="inline-flex items-center gap-1 text-emerald-700 text-xs font-medium">
           <CheckCircle2 className="h-4 w-4" />
-          Live
+          Changes auto-preview
         </div>
       </div>
-      <div className="grid grid-cols-3 gap-2">
-        <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-2">
-          <div className="h-4 w-5/6 rounded-md bg-neutral-100 mb-2 ring-1 ring-neutral-200" />
-          <div className="grid grid-cols-2 gap-1">
-            <div className="h-8 rounded-md bg-neutral-100 ring-1 ring-neutral-200" />
-            <div className="h-8 rounded-md bg-neutral-100 ring-1 ring-neutral-200" />
+
+      <div className="grid grid-cols-2 gap-3">
+        {blocks.map((b) => (
+          <div
+            key={b.id}
+            className="rounded-xl border border-neutral-200 bg-neutral-50 p-3 shrink-0"
+          >
+            <div className="mb-2">
+              <div className="inline-flex items-center h-6 px-2 rounded-md bg-neutral-100 text-[11px] text-neutral-700 ring-1 ring-neutral-200">
+                {b.title}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-1 mb-3">
+              <div className="h-9 rounded-md bg-neutral-100 ring-1 ring-neutral-200 grid place-items-center text-[11px] text-neutral-600">
+                {b.a}
+              </div>
+              <div className="h-9 rounded-md bg-neutral-100 ring-1 ring-neutral-200 grid place-items-center text-[11px] text-neutral-600">
+                {b.b}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2 border-t border-neutral-200">
+              <button
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium bg-amber-50 text-amber-700 ring-1 ring-amber-200 hover:bg-amber-100"
+                aria-label="Edit block"
+              >
+                <span>✏️</span>
+                <span>Edit</span>
+              </button>
+              <button
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium bg-rose-50 text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100"
+                aria-label="Delete block"
+              >
+                <span>🗑️</span>
+                <span>Delete</span>
+              </button>
+            </div>
           </div>
-        </div>
-        <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-2">
-          <div className="h-4 w-5/6 rounded-md bg-neutral-100 mb-2 ring-1 ring-neutral-200" />
-          <div className="grid grid-cols-2 gap-1">
-            <div className="h-8 rounded-md bg-neutral-100 ring-1 ring-neutral-200" />
-            <div className="h-8 rounded-md bg-neutral-100 ring-1 ring-neutral-200" />
-          </div>
-        </div>
-        <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-2">
-          <div className="h-4 w-5/6 rounded-md bg-neutral-100 mb-2 ring-1 ring-neutral-200" />
-          <div className="grid grid-cols-2 gap-1">
-            <div className="h-8 rounded-md bg-neutral-100 ring-1 ring-neutral-200" />
-            <div className="h-8 rounded-md bg-neutral-100 ring-1 ring-neutral-200" />
-          </div>
-        </div>
+        ))}
       </div>
+
       <div className="mt-3 flex items-center justify-between">
-        <div className="text-xs text-neutral-500">Deployment complete</div>
+        <div className="text-xs text-neutral-500">Edit pass complete</div>
         <div className="inline-flex items-center gap-2 text-xs text-neutral-600">
           <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
-          <span>Healthy</span>
+          Preview updated
         </div>
       </div>
     </div>
@@ -153,31 +181,31 @@ type ModalPlain = React.ComponentType;
 const items = [
   {
     title: 'Paste a URL',
-    text: 'Point us at any public site. We fetch pages, assets, and structure without touching the original.',
+    text: 'Point us at any public site. We fetch the page, and structure without touching the original.',
     step: 1,
     Modal: UrlInputModal as ModalPlain,
     needsProgress: false,
   },
   {
-    title: 'Preview pages',
-    text: 'See a live preview in seconds. Inspect pages and routes before you export.',
+    title: 'Preview',
+    text: 'See a live cloned preview in minutes. Inspect pages and routes or rescan a new url.',
     step: 2,
     Modal: PreviewGridModal as ModalPlain,
     needsProgress: false,
   },
   {
-    title: 'Deploy project',
-    text: 'Export a clean project or deploy with one click to Vercel or Netlify.',
+    title: 'Make edits',
+    text: 'Edit blocks in-place with simple controls below each card, or if you prefer code, edit the html directly inside our code-editor.',
     step: 3,
-    Modal: DeployModal as ModalWithProgress,
-    needsProgress: true,
+    Modal: EditBlocksModal as ModalPlain,
+    needsProgress: false,
   },
   {
-    title: 'Deployed & live',
-    text: 'Your site is live. Share the link or continue editing and redeploying.',
+    title: 'Deploy project',
+    text: 'Export a clean project or deploy with one click to Vercel or Netlify.',
     step: 4,
-    Modal: DeployedModal as ModalPlain,
-    needsProgress: false,
+    Modal: DeployModal as ModalWithProgress,
+    needsProgress: true,
   },
 ] as const;
 
@@ -204,7 +232,7 @@ function Card({
 }) {
   return (
     <motion.div style={{ opacity, scale }} className="w-full max-w-[520px] space-y-4">
-      {/* @ts-expect-error: conditional prop forwarding */}
+      {/* @ts-expect-error conditional prop forwarding */}
       {needsProgress ? <Modal progress={progress} /> : <Modal />}
       <div className="flex items-center gap-3 mt-5">
         <span className="inline-flex sm:flex-col items-center rounded-full px-2.5 py-1 text-[11px] font-semibold border border-black/15 text-black/70">
@@ -227,7 +255,6 @@ export default function HowItWorks() {
     offset: ['start start', 'end end'],
   });
 
-  // timeline breakpoints (4 steps)
   const T1 = 0.0;
   const T2 = 0.25;
   const T3 = 0.5;
@@ -286,9 +313,9 @@ export default function HowItWorks() {
                   text={items[2].text}
                   opacity={c3Opacity}
                   scale={c3Scale}
-                  Modal={items[2].Modal as ModalWithProgress}
+                  Modal={items[2].Modal}
                   progress={scrollYProgress}
-                  needsProgress
+                  needsProgress={false}
                 />
                 <Card
                   step={items[3].step}
@@ -298,7 +325,7 @@ export default function HowItWorks() {
                   scale={c4Scale}
                   Modal={items[3].Modal}
                   progress={scrollYProgress}
-                  needsProgress={false}
+                  needsProgress={true}
                 />
               </div>
             </div>
