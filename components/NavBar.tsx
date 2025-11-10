@@ -2,32 +2,49 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { brand } from "@/lib/config";
 import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X } from "lucide-react";
 import { useAuth } from "@/src/hooks/useAuth";
-import { signOut } from "firebase/auth";
+import { signOut, type User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 
 const ACCENT = "#f55f2a";
 
-export default function NavBar() {
-  const [scrolled, setScrolled] = useState(false);
-  const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(null);
-  const [mOpen, setMOpen] = useState(false);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const { user }: any = useAuth() ?? {};
+/* ------------------------------- types ------------------------------- */
 
-  useEffect(() => {
+type NavItem = { label: string; href: string };
+type BrandShape = {
+  nav: NavItem[];
+  cta: { href: string };
+};
+
+type ChevronArrowProps = { className?: string };
+type SimpleLinkProps = { href: string; label: string };
+type MetricPillProps = { label: string; delay?: number };
+type MegaPanelProps = { active: NavItem | null };
+
+/* ------------------------------ component ---------------------------- */
+
+export default function NavBar(): JSX.Element {
+  const [scrolled, setScrolled] = useState<boolean>(false);
+  const [open, setOpen] = useState<boolean>(false);
+  const [active, setActive] = useState<NavItem | null>(null);
+  const [mOpen, setMOpen] = useState<boolean>(false);
+  const [userMenuOpen, setUserMenuOpen] = useState<boolean>(false);
+
+  // Assume useAuth returns { user: User | null }
+  const { user } = (useAuth() ?? {}) as { user: User | null };
+
+  useEffect((): (() => void) => {
     const on = () => setScrolled(window.scrollY > 8);
     on();
     window.addEventListener("scroll", on);
     return () => window.removeEventListener("scroll", on);
   }, []);
 
-  const initials = useMemo(() => {
+  const initials = useMemo<string>(() => {
     if (!user) return "";
     const name = user.displayName || user.email || "";
     const parts = name
@@ -37,21 +54,25 @@ export default function NavBar() {
       .split(/\s+/)
       .slice(0, 2);
     if (parts.length === 0) return "";
-    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-    return (parts[0][0] + parts[1][0]).toUpperCase();
+    if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+    return (parts[0]![0]! + parts[1]![0]!).toUpperCase();
   }, [user]);
 
   const shellClasses = scrolled
     ? "bg-smoke/80 border-white/10 backdrop-blur"
     : "bg-smoke/60 border-white/10 backdrop-blur";
 
-  const onSignOut = async () => {
+  const onSignOut = async (): Promise<void> => {
     try {
-      await fetch('/api/auth/session', { method: 'DELETE', credentials: 'include' });
+      await fetch("/api/auth/session", { method: "DELETE", credentials: "include" });
       await signOut(auth);
       setUserMenuOpen(false);
-    } catch { }
+    } catch {
+      // no-op
+    }
   };
+
+  const br = brand as unknown as BrandShape;
 
   return (
     <div
@@ -75,7 +96,7 @@ export default function NavBar() {
 
           {/* Desktop nav (centered) */}
           <nav className="hidden md:flex flex-1 justify-center items-center gap-6 text-sm text-white/80">
-            {brand.nav.map((i) => (
+            {br.nav.map((i) => (
               <button
                 key={i.label}
                 className="relative hover:text-white transition"
@@ -87,7 +108,7 @@ export default function NavBar() {
                   setActive(i);
                   setOpen(true);
                 }}
-                aria-expanded={open && active?.label === i.label}
+                aria-expanded={Boolean(open && active?.label === i.label)}
               >
                 {i.label}
               </button>
@@ -116,7 +137,7 @@ export default function NavBar() {
                   Log in
                 </a>
                 <a
-                  href={brand.cta.href}
+                  href={br.cta.href}
                   className="
                     group relative hidden md:inline-flex items-center gap-2
                     rounded-full h-12 px-6
@@ -147,10 +168,7 @@ export default function NavBar() {
                     className="inline-flex h-10 w-10 items-center justify-center rounded-full ring-1 ring-white/20 text-white/90 hover:bg-white/10 transition select-none"
                     style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
                   >
-                    <span
-                      className="font-semibold"
-                      style={{ color: "#fff" }}
-                    >
+                    <span className="font-semibold" style={{ color: "#fff" }}>
                       {initials || "ME"}
                     </span>
                   </button>
@@ -177,7 +195,7 @@ export default function NavBar() {
                           <MenuLink href="/dashboard" label="Dashboard" />
                           <MenuLink href="/settings" label="Settings" />
                           <button
-                            onClick={onSignOut}
+                            onClick={() => void onSignOut()}
                             className="w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100 transition"
                           >
                             Sign out
@@ -237,7 +255,7 @@ export default function NavBar() {
               className="md:hidden mt-2 overflow-hidden rounded-2xl border border-white/10 bg-white/90 backdrop-blur shadow-2xl"
             >
               <div className="p-3">
-                {brand.nav.map((i) => (
+                {br.nav.map((i) => (
                   <a
                     key={i.label}
                     href={i.href}
@@ -260,7 +278,7 @@ export default function NavBar() {
                       Log in
                     </a>
                     <a
-                      href={brand.cta.href}
+                      href={br.cta.href}
                       onClick={() => setMOpen(false)}
                       className="
                         group relative mt-2 mb-1 inline-flex w-full items-center justify-center
@@ -323,9 +341,9 @@ export default function NavBar() {
   );
 }
 
-/* ---------- pieces ---------- */
+/* ------------------------------- pieces -------------------------------- */
 
-function ChevronArrow({ className = "" }) {
+function ChevronArrow({ className = "" }: ChevronArrowProps): JSX.Element {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -343,7 +361,7 @@ function ChevronArrow({ className = "" }) {
   );
 }
 
-function MegaPanel({ active }: any) {
+function MegaPanel({ active }: MegaPanelProps): JSX.Element {
   return (
     <div className="rounded-3xl border border-white/10 bg-white/90 backdrop-blur shadow-2xl overflow-hidden">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 p-6 md:p-8 text-neutral-900">
@@ -387,7 +405,7 @@ function MegaPanel({ active }: any) {
   );
 }
 
-function SimpleLink({ href, label }: any) {
+function SimpleLink({ href, label }: SimpleLinkProps): JSX.Element {
   return (
     <a href={href} className="block hover:text-neutral-900 text-neutral-700 rounded-pill transition">
       {label}
@@ -395,7 +413,7 @@ function SimpleLink({ href, label }: any) {
   );
 }
 
-function AnimatedPromoCard() {
+function AnimatedPromoCard(): JSX.Element {
   return (
     <div className="relative aspect-[4/3] bg-gradient-to-br from-orange-50/60 via-white to-white">
       <div className="absolute inset-0 overflow-hidden">
@@ -419,7 +437,7 @@ function AnimatedPromoCard() {
   );
 }
 
-function MetricPill({ label, delay = 0 }: any) {
+function MetricPill({ label, delay = 0 }: MetricPillProps): JSX.Element {
   return (
     <motion.div
       className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/90 px-3 py-1.5 shadow-sm"
@@ -433,7 +451,7 @@ function MetricPill({ label, delay = 0 }: any) {
   );
 }
 
-function MenuLink({ href, label }: any) {
+function MenuLink({ href, label }: SimpleLinkProps): JSX.Element {
   return (
     <a
       href={href}
