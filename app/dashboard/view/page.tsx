@@ -741,10 +741,9 @@ export default function PreviewPage(): JSX.Element {
                                 // After
                                 <iframe
                                     title={`r-${r.id}`}
-                                    srcDoc={`<base target="_blank" rel="noopener noreferrer">${r.html}`}
+                                    srcDoc={`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob: https: http:; style-src 'unsafe-inline'; font-src data: https:; script-src 'unsafe-inline'; connect-src 'none'; frame-ancestors 'none';"><base target="_blank" rel="noopener noreferrer">${r.html}`}
                                     className="w-full h-full"
                                     sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms allow-pointer-lock" // ✅ no same-origin
-                                    csp="default-src 'none'; img-src data: blob: https: http:; style-src 'unsafe-inline'; font-src data: https:; script-src 'unsafe-inline'; connect-src 'none'; frame-ancestors 'none';"
                                     referrerPolicy="no-referrer"
                                     allow="clipboard-read; clipboard-write"
                                     onLoad={() => setFrameLoading(false)}
