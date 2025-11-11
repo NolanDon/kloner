@@ -145,14 +145,20 @@ function Toasts({ toasts }: { toasts: ToastMsg[] }) {
     );
 }
 
-/* ───────── cooldown helper ───────── */
+/* ───────── cooldown helper (interval only when active) ───────── */
 function useCooldown(initialUntil = 0) {
     const [until, setUntil] = useState<number>(initialUntil);
     const [now, setNow] = useState<number>(Date.now());
+
     useEffect(() => {
-        const t = setInterval(() => setNow(Date.now()), 500);
+        if (until <= Date.now()) return;
+        const t = setInterval(() => {
+            setNow(Date.now());
+            if (Date.now() >= until) clearInterval(t);
+        }, 500);
         return () => clearInterval(t);
-    }, []);
+    }, [until]);
+
     const remaining = Math.max(0, Math.ceil((until - now) / 1000));
     const start = useCallback((ms: number) => setUntil(Date.now() + ms), []);
     const clear = useCallback(() => setUntil(0), []);
@@ -183,7 +189,7 @@ const CenterSpinner = memo(function CenterSpinner({
     );
 });
 
-/* ───────── shallow equality ───────── */
+/* ───────── shallow equality for renders list ───────── */
 function rendersEqual(a: Array<{ id: string } & RenderDoc>, b: Array<{ id: string } & RenderDoc>): boolean {
     if (a === b) return true;
     if (a.length !== b.length) return false;
@@ -233,17 +239,32 @@ export default function PreviewPage(): JSX.Element {
 
     const [lockUntilByKey, setLockUntilByKey] = useState<Record<string, number>>({});
     const [lockUntilByRender, setLockUntilByRender] = useState<Record<string, number>>({});
-    const [, forceTick] = useState(0);
+
+    async function resolveStorageUrl(pathOrUrl: string): Promise<string> {
+        if (!pathOrUrl) return "";
+        if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+        try { return await getDownloadURL(sRef(storage, pathOrUrl)); } catch { return ""; }
+    }
+
+    function useResolvedImg(pathOrUrl: string) {
+        const [src, setSrc] = React.useState("");
+        const retriedRef = React.useRef(false);
+        const refresh = React.useCallback(async () => {
+            const u = await resolveStorageUrl(pathOrUrl);
+            if (u) setSrc(u);
+        }, [pathOrUrl]);
+        React.useEffect(() => { refresh(); }, [refresh]);
+        const onError = React.useCallback(() => {
+            if (!retriedRef.current) { retriedRef.current = true; refresh(); }
+        }, [refresh]);
+        return { src, onError };
+    }
+
 
     const startHardLock = useCallback((key: string, renderId?: string, ms = 60_000) => {
         const until = Date.now() + ms;
         setLockUntilByKey((m) => ({ ...m, [key]: Math.max(m[key] || 0, until) }));
         if (renderId) setLockUntilByRender((m) => ({ ...m, [renderId]: Math.max(m[renderId] || 0, until) }));
-    }, []);
-
-    useEffect(() => {
-        const t = setInterval(() => forceTick((n) => (n + 1) & 0xff), 1000);
-        return () => clearInterval(t);
     }, []);
 
     const rescanCooldown = useCooldown(0);
@@ -623,7 +644,6 @@ export default function PreviewPage(): JSX.Element {
     );
 
     async function exportToVercel(html: string, name?: string) {
-        // direct user-scoped deploy
         const r = await fetch("/api/user-deploy", {
             method: "POST",
             headers: { "content-type": "application/json" },
@@ -716,8 +736,7 @@ export default function PreviewPage(): JSX.Element {
     }, [targetUrl, push, rescanCooldown]);
 
     /* ───────── cards ───────── */
-    // Replace your RenderCard useMemo with this iframe-free version.
-    // Keeps badges, actions, statuses. The preview area is a styled placeholder.
+    // IFRAME VERSION — locked to only update when r.html changes, never on parent ticks
 
     const RenderCard = useMemo(
         () =>
@@ -725,17 +744,24 @@ export default function PreviewPage(): JSX.Element {
                 function RenderCardInner({ r }: { r: { id: string } & RenderDoc }) {
                     const isQueued = r.status === "queued";
                     const isFailed = r.status === "failed";
-                    const hardLocked = (lockUntilByRender[r.id] || 0) > Date.now();
-                    const disableOpen = isQueued || isFailed || hardLocked;
+                    const isDeleting = !!deletingRender[r.id];
 
-                    const prevHtmlRef = useRef<string | undefined>(r.html);
+                    const prevHtmlRef = useRef<string | undefined>(undefined);
+                    const [srcDoc, setSrcDoc] = useState<string>("");
                     useEffect(() => {
-                        if (prevHtmlRef.current !== r.html) prevHtmlRef.current = r.html;
+                        if (prevHtmlRef.current === r.html) return;
+                        prevHtmlRef.current = r.html;
+                        const safeHtml = (r.html || "").trim();
+                        const csp =
+                            `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob: https: http:; style-src 'unsafe-inline'; font-src data: https:; script-src 'unsafe-inline'; connect-src 'none';">`;
+                        const base = r.html ? `<base target="_blank" rel="noopener noreferrer">` : "";
+                        setSrcDoc(`${csp}${base}${safeHtml}`);
                     }, [r.html]);
 
-                    const ageMs = Date.now() - tsToMs(r.createdAt);
-                    const isStaleQueued = isQueued && ageMs > 6 * 60 * 1000;
-                    const isDeleting = !!deletingRender[r.id];
+                    const hardLocked = !!lockUntilByRender[r.id] && lockUntilByRender[r.id] > Date.now();
+                    const disableOpen = isQueued || isFailed || hardLocked;
+
+                    const { src: refImgUrl, onError: refImgErr } = useResolvedImg(r.key || "");
                     const versionLabel = shortVersionFromShotPath(
                         r.key ?? "",
                         (docData?.urlHash as string | undefined) ?? null
@@ -751,143 +777,110 @@ export default function PreviewPage(): JSX.Element {
                     };
 
                     return (
-                        <div className="relative flex min-w-[300px] flex-col rounded-xl border border-neutral-200 bg-white p-3 shadow-sm">
-                            {r.referenceImage && (<a target="_blank" rel="noreferrer" className="block">
-                                <div className="w-full aspect-[4/3] bg-neutral-50 flex items-center justify-center rounded-t-xl relative">
-                                    <img
-                                        src={r.referenceImage ?? ""}
-                                        // alt={s.fileName}
-                                        className={`h-full w-full object-cover`}
-                                        loading="lazy"
-                                    />
-                                </div>
-                            </a>
-                            )}
+                        // NOTE: overflow-visible so the corner X can sit exactly on the rounded corner
+                        <div className="relative flex min-w-[300px] flex-col overflow-visible rounded-xl border border-neutral-200 bg-white shadow-sm">
+                            {/* Version & controller badges */}
                             <span
-                                className="absolute right-20 top-2 z-10 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow"
+                                className="absolute left-2 top-2 z-30 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow"
                                 style={{ backgroundColor: "#1d4ed8" }}
                                 title={`Version ${versionLabel}`}
                             >
                                 {versionLabel}
                             </span>
-
-                            {(r.controllerVersion || docData?.controllerVersion) && (
+                            {/* {(r.controllerVersion || docData?.controllerVersion) && (
                                 <span
-                                    className="absolute right-2 top-2 z-10 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow"
+                                    className="absolute left-2 top-7 z-30 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow"
                                     style={{ backgroundColor: "#059669" }}
                                     title={`Controller ${r.controllerVersion || docData?.controllerVersion}`}
                                 >
                                     {`ctrl ${(r.controllerVersion || docData?.controllerVersion) as string}`}
                                 </span>
-                            )}
+                            )} */}
 
-                            {isDeleting && <CenterSpinner label="Deleting…" />}
+                            {/* Tiny discard X — overlaid EXACTLY on the top-right corner */}
+                            <button
+                                onClick={() => discardRender(r.id)}
+                                disabled={isDeleting}
+                                aria-label="Discard"
+                                title="Discard this preview"
+                                className="
+                                    absolute top-0 right-0 z-40
+                                    grid h-5 w-5 place-items-center
+                                    -translate-y-1/2 translate-x-1/2
+                                    rounded-full bg-white text-red-600
+                                    shadow-md ring-1 ring-red-200
+                                    hover:bg-red-50 hover:ring-red-300
+                                    disabled:opacity-50
+                                "
+                            >
+                                <span className="text-lg mb-0.5 leading-none">×</span>
+                            </button>
 
-                            {/* Preview placeholder (no iframe) */}
-                            <div className="relative h-44 flex-1 overflow-hidden rounded border bg-neutral-50">
-                                {(isQueued || hardLocked) && (
-                                    <CenterSpinner
-                                        label={
-                                            isQueued
-                                                ? isStaleQueued
-                                                    ? "Still queued… Retry available"
-                                                    : "Rendering…"
-                                                : "Locked…"
-                                        }
-                                    />
-                                )}
-
-                                {!isQueued && !hardLocked && (
-                                    <div className="absolute inset-0">
-                                        {/* Fake browser chrome */}
-                                        <div className="flex items-center gap-1 border-b border-neutral-200 bg-white/90 px-3 py-1.5">
-                                            <span className="h-2.5 w-2.5 rounded-full bg-red-300" />
-                                            <span className="h-2.5 w-2.5 rounded-full bg-yellow-300" />
-                                            <span className="h-2.5 w-2.5 rounded-full bg-green-300" />
-                                            <div className="ml-2 h-5 flex-1 rounded bg-neutral-100" />
-                                        </div>
-
-                                        {/* Composed skeleton preview */}
-                                        <div className="grid h-[calc(100%-28px)] grid-cols-12 gap-0">
-                                            <div className="col-span-3 hidden h-full border-r border-neutral-200 bg-neutral-100/60 p-3 md:block">
-                                                <div className="mb-2 h-3 w-24 rounded bg-neutral-200" />
-                                                <div className="space-y-2">
-                                                    {Array.from({ length: 6 }).map((_, i) => (
-                                                        <div key={i} className="h-2.5 w-5/6 rounded bg-neutral-200" />
-                                                    ))}
-                                                </div>
-                                            </div>
-                                            <div className="col-span-12 h-full bg-gradient-to-b from-neutral-100 to-neutral-200 p-3 md:col-span-9">
-                                                <div className="mb-3 h-6 w-3/4 rounded bg-neutral-300" />
-                                                <div className="mb-4 h-3 w-1/2 rounded bg-neutral-300" />
-                                                <div className="grid grid-cols-3 gap-3">
-                                                    {Array.from({ length: 6 }).map((_, i) => (
-                                                        <div key={i} className="h-16 rounded-lg bg-white shadow-[0_1px_2px_rgba(0,0,0,0.06)] ring-1 ring-neutral-200" />
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Status ribbon */}
-                                        <div className="pointer-events-none absolute bottom-2 left-2 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-neutral-600 ring-1 ring-neutral-200">
-                                            {isFailed ? "Failed" : r.html?.trim() ? "Preview placeholder" : "No HTML yet"}
-                                        </div>
+                            {/* Image with dim + centered actions */}
+                            <div className="relative">
+                                {!refImgUrl ? (
+                                    <div className="aspect-[4/3] w-full grid place-items-center text-xs text-neutral-500">
+                                        No snapshot available
                                     </div>
+                                ) : (
+                                    <a href={refImgUrl} target="_blank" rel="noreferrer" className="block">
+                                        <img
+                                            src={refImgUrl}
+                                            alt={r.nameHint || "preview"}
+                                            loading="lazy"
+                                            onError={refImgErr}
+                                            className="h-full w-full max-h-[260px] object-cover opacity-[0.55] select-none pointer-events-none"
+                                            draggable={false}
+                                        />
+                                    </a>
                                 )}
 
-                                {isFailed && !isQueued && (
-                                    <div className="absolute inset-0 grid place-items-center">
-                                        <div className="rounded border border-red-200 bg-white/90 px-3 py-1.5 text-xs text-red-600">
-                                            Failed
-                                        </div>
+                                {/* Center overlay buttons */}
+                                <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
+                                    <div className="pointer-events-auto flex items-center gap-2 rounded-xl bg-white/90 p-2 ring-1 ring-neutral-200 backdrop-blur">
+                                        <button
+                                            onClick={() => continueRender(r.id)}
+                                            disabled={disableOpen || isDeleting}
+                                            className="rounded-md px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                                            style={{ backgroundColor: ACCENT }}
+                                            title={isQueued ? "Still rendering" : isFailed ? "Rendering failed" : "Open editor"}
+                                        >
+                                            {isQueued ? "Queued" : isFailed ? "Retry Edit" : "Edit"}
+                                        </button>
+                                        <button
+                                            onClick={deployThis}
+                                            disabled={!r.html || isDeleting || isQueued}
+                                            className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 disabled:opacity-50"
+                                            title="Deploy this preview to Vercel"
+                                        >
+                                            Deploy
+                                        </button>
                                     </div>
-                                )}
+                                </div>
+
+                                {/* Status ribbons */}
+                                <span className="absolute bottom-2 left-2 z-20 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-neutral-600 ring-1 ring-neutral-200">
+                                    {isFailed ? "Failed" : r.html?.trim() ? "Preview" : "No HTML yet"}
+                                </span>
+                                <span className="absolute bottom-2 right-2 z-20 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-neutral-600 ring-1 ring-neutral-200">
+                                    {r.status}
+                                </span>
+
+                                {isDeleting && <CenterSpinner label="Deleting…" />}
+                                {(isQueued || hardLocked) && <CenterSpinner label={isQueued ? "Rendering…" : "Locked…"} />}
                             </div>
 
-                            {/* Actions */}
-                            <div className="mt-2 flex items-center gap-2">
-                                <button
-                                    onClick={() => continueRender(r.id)}
-                                    className="rounded-md px-2 py-1 text-[11px] text-white disabled:opacity-50"
-                                    style={{ backgroundColor: ACCENT }}
-                                    disabled={disableOpen || isDeleting}
-                                    title={isQueued ? "Still rendering" : isFailed ? "Rendering failed" : "Open editor"}
-                                >
-                                    {isQueued ? "Queued" : isFailed ? "Retry" : "Preview / Edit"}
-                                </button>
-
-                                {isStaleQueued && r.key ? (
-                                    <button
-                                        onClick={() => buildFromKey(r.key!)}
-                                        className="rounded-md border border-amber-300 px-2 py-1 text-[11px] text-amber-700"
-                                        title="Retry this render"
-                                        disabled={isDeleting}
-                                    >
-                                        Retry render
-                                    </button>
-                                ) : null}
-
-                                <button
-                                    onClick={() => discardRender(r.id)}
-                                    className="rounded-md border border-red-200 px-2 py-1 text-[11px] text-red-600 disabled:opacity-50"
-                                    disabled={isDeleting}
-                                    title="Discard this preview"
-                                >
-                                    {isDeleting ? "Deleting…" : "Discard"}
-                                </button>
-
-                                <button
-                                    onClick={deployThis}
-                                    className="rounded-md border border-neutral-200 px-2 py-1 text-[11px] text-neutral-700"
-                                    disabled={!r.html || isDeleting || isQueued}
-                                    title="Deploy this preview to Vercel"
-                                >
-                                    Deploy
-                                </button>
-
-                                <span className="ml-auto text-[11px] text-neutral-500">
-                                    {isStaleQueued ? "stale" : r.status}
-                                </span>
+                            {/* Hidden iframe (stable) */}
+                            <div className="relative h-0 overflow-hidden">
+                                <iframe
+                                    title={`r-${r.id}`}
+                                    className="w-full h-0"
+                                    sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms allow-pointer-lock"
+                                    referrerPolicy="no-referrer"
+                                    allow="clipboard-read; clipboard-write"
+                                    key={`frame-${r.id}`}
+                                    srcDoc={srcDoc}
+                                />
                             </div>
                         </div>
                     );
@@ -904,14 +897,7 @@ export default function PreviewPage(): JSX.Element {
                     );
                 }
             ),
-        [
-            continueRender,
-            buildFromKey,
-            discardRender,
-            deletingRender,
-            docData?.controllerVersion,
-            exportToVercel,
-        ]
+        [continueRender, discardRender, deletingRender, docData?.controllerVersion, exportToVercel]
     );
 
 
@@ -941,7 +927,7 @@ export default function PreviewPage(): JSX.Element {
                                     <img
                                         src={s.url}
                                         alt={s.fileName}
-                                        className={`h-full w-full object-contain ${locked ? "opacity-60" : ""}`}
+                                        className={`h-full w-full object-cover ${locked ? "opacity-60" : ""}`}
                                         loading="lazy"
                                         onLoad={() => setImgLoading(false)}
                                         onError={() => setImgLoading(false)}
@@ -1009,7 +995,9 @@ export default function PreviewPage(): JSX.Element {
                         {urlsLoading ? (
                             <div className="h-10 rounded-xl bg-neutral-100 animate-pulse" />
                         ) : urls.length === 0 ? (
-                            <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-600">Add a URL from Dashboard to get started.</div>
+                            <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-600">
+                                Add a URL from Dashboard to get started.
+                            </div>
                         ) : (
                             <div className="flex gap-2 overflow-x-auto py-1">
                                 {urls.map((u) => {
@@ -1034,7 +1022,9 @@ export default function PreviewPage(): JSX.Element {
                         <div className="mt-3 flex items-center gap-2">
                             <span className="text-sm text-neutral-600 break-all">{targetUrl}</span>
                             {docData?.status && (
-                                <span className="ml-2 rounded-full border border-neutral-200 px-2 py-0.5 text-xs text-neutral-600">{docData.status.toUpperCase()}</span>
+                                <span className="ml-2 rounded-full border border-neutral-200 px-2 py-0.5 text-xs text-neutral-600">
+                                    {docData.status.toUpperCase()}
+                                </span>
                             )}
                             <button
                                 onClick={rescan}
@@ -1061,7 +1051,9 @@ export default function PreviewPage(): JSX.Element {
                             ))}
                         </div>
                     ) : shots.length === 0 ? (
-                        <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center text-neutral-500">No screenshots found for this URL yet.</div>
+                        <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center text-neutral-500">
+                            No screenshots found for this URL yet.
+                        </div>
                     ) : (
                         <>
                             <div className="mb-3 text-sm text-neutral-600">{shots.length} screenshot(s)</div>
@@ -1081,7 +1073,9 @@ export default function PreviewPage(): JSX.Element {
                         {loadingRenders && <span className="text-xs text-neutral-500">Loading…</span>}
                     </div>
                     {renders.length === 0 ? (
-                        <div className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-600">Nothing yet. Start one from a screenshot above.</div>
+                        <div className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-600">
+                            Nothing yet. Start one from a screenshot above.
+                        </div>
                     ) : (
                         <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {renders.map((r) => (

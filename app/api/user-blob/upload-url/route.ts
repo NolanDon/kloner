@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
     const token = req.cookies.get("vercel_access")?.value;
-    if (!token) return NextResponse.json({ error: "not_connected" }, { status: 401 });
+    if (!token) return NextResponse.json({ error: "Please connect your account to Vercel before deploying." }, { status: 401 });
 
     const { filename, contentType, teamId } = await req.json().catch(() => ({}));
     if (!filename || typeof filename !== "string") return NextResponse.json({ error: "bad_filename" }, { status: 400 });
