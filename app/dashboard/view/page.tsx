@@ -36,6 +36,7 @@ import PreviewEditor from "@/components/PreviewEditor";
 const ACCENT = "#f55f2a";
 
 /* ───────── types ───────── */
+// types
 type UrlDoc = {
     url: string;
     urlHash?: string;
@@ -43,6 +44,7 @@ type UrlDoc = {
     screenshotPaths?: string[];
     status?: string;
     createdAt?: any;
+    controllerVersion?: string; // +++
 };
 type Shot = { path: string; url: string; fileName: string; createdAt?: Date };
 type RenderDoc = {
@@ -58,7 +60,9 @@ type RenderDoc = {
     updatedAt?: any;
     model?: string | null;
     version?: number;
+    controllerVersion?: string | null; // +++
 };
+
 
 /* ───────── utils ───────── */
 function isHttpUrl(s?: string): s is string {
@@ -87,6 +91,10 @@ function hash64(s: string): string {
     }
     return Math.abs(h).toString(36);
 }
+function ensureHttp(u: string): string {
+    if (!u) return "";
+    return /^https?:\/\//i.test(u) ? u : `https://${u.replace(/^\/+/, "")}`;
+}
 async function listAllDeep(root: StorageReference): Promise<StorageReference[]> {
     const out: StorageReference[] = [];
     async function walk(ref: StorageReference) {
@@ -113,6 +121,12 @@ function extractHashFromKey(key?: string | null): string | null {
     const file = parts[parts.length - 1] || "";
     const maybe = file.split("-")[0];
     return maybe && maybe.length >= 8 ? maybe : null;
+}
+/** Short, human-friendly version derived from filename timestamp suffix */
+// replace shortVersionFromFileName with a hash-based label
+function shortVersionFromShotPath(path: string, fallbackHash?: string | null): string {
+    const h = extractHashFromKey(path) || fallbackHash || "";
+    return (h || "").slice(0, 6) || "v";
 }
 
 /* ───────── tiny toast ───────── */
@@ -236,6 +250,24 @@ export default function PreviewPage(): JSX.Element {
     const [renders, setRenders] = useState<Array<{ id: string } & RenderDoc>>([]);
     const [loadingRenders, setLoadingRenders] = useState(false);
 
+    // top-level state (with the other useStates)
+    const [lockUntilByKey, setLockUntilByKey] = useState<Record<string, number>>({});
+    const [lockUntilByRender, setLockUntilByRender] = useState<Record<string, number>>({});
+    const [, forceTick] = useState(0);
+
+    // helper
+    const startHardLock = useCallback((key: string, renderId?: string, ms = 60_000) => {
+        const until = Date.now() + ms;
+        setLockUntilByKey((m) => ({ ...m, [key]: Math.max(m[key] || 0, until) }));
+        if (renderId) setLockUntilByRender((m) => ({ ...m, [renderId]: Math.max(m[renderId] || 0, until) }));
+    }, []);
+
+    // keep time moving so locks expire without interaction
+    useEffect(() => {
+        const t = setInterval(() => forceTick((n) => (n + 1) & 0xff), 1000);
+        return () => clearInterval(t);
+    }, []);
+
     const rescanCooldown = useCooldown(0);
 
     const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -245,11 +277,13 @@ export default function PreviewPage(): JSX.Element {
         const raw = search.get("u");
         if (!raw) return "";
         try {
-            return normUrl(decodeURIComponent(raw));
+            const dec = decodeURIComponent(raw);
+            return normUrl(ensureHttp(dec));
         } catch {
-            return normUrl(raw);
+            return normUrl(ensureHttp(raw));
         }
     }, [search]);
+
 
     const targetHash = useMemo(() => (isHttpUrl(targetUrl) ? hash64(targetUrl) : null), [targetUrl]);
 
@@ -369,6 +403,15 @@ export default function PreviewPage(): JSX.Element {
                 return byUrl || byHash || byKeyHash;
             });
 
+            const now = Date.now();
+
+            for (const r of filtered) {
+                const key = r.key || "";
+                if (key && lockUntilByKey[key] && lockUntilByKey[key] > now) {
+                    setLockUntilByRender((m) => ({ ...m, [r.id]: Math.max(m[r.id] || 0, lockUntilByKey[key]) }));
+                }
+            }
+
             setRenders((prev) => (rendersEqual(prev, filtered) ? prev : filtered));
 
             if (targetHash) {
@@ -395,7 +438,6 @@ export default function PreviewPage(): JSX.Element {
             }
 
             const anyQueued = filtered.some((r) => r.status === "queued");
-            const now = Date.now();
 
             if (anyQueued) {
                 if (!pollTimer.current) {
@@ -442,14 +484,16 @@ export default function PreviewPage(): JSX.Element {
         };
     }, [refreshRenders]);
 
-    /* change selected URL */
+    // replace selectUrl
     const selectUrl = useCallback(
         (u: string) => {
-            if (!isHttpUrl(u)) return;
-            router.push(`/dashboard/view?u=${encodeURIComponent(u)}`);
+            const next = ensureHttp(u.trim());
+            if (!next) return;
+            router.push(`/dashboard/view?u=${encodeURIComponent(next)}`, { scroll: false });
         },
         [router]
     );
+
 
     /* start render from screenshot key */
     const buildFromKey = useCallback(
@@ -475,6 +519,8 @@ export default function PreviewPage(): JSX.Element {
                 createdAt: new Date(),
                 updatedAt: new Date(),
             } as any;
+
+            startHardLock(storageKey, optimisticId, 60_000);
 
             setRenders((prev) => [optimistic, ...prev]);
             setPendingByKey((m) => ({ ...m, [storageKey]: true }));
@@ -698,7 +744,8 @@ export default function PreviewPage(): JSX.Element {
                 function RenderCardInner({ r }: { r: { id: string } & RenderDoc }) {
                     const isQueued = r.status === "queued";
                     const isFailed = r.status === "failed";
-                    const disableOpen = isQueued || isFailed;
+                    const hardLocked = (lockUntilByRender[r.id] || 0) > Date.now();
+                    const disableOpen = isQueued || isFailed || hardLocked;
 
                     // latch "loaded" per render-id; never flip back to true unless html identity changes
                     const prevHtmlRef = useRef<string | undefined>(r.html);
@@ -722,13 +769,34 @@ export default function PreviewPage(): JSX.Element {
                     const ageMs = Date.now() - tsToMs(r.createdAt);
                     const isStaleQueued = isQueued && ageMs > 6 * 60 * 1000;
                     const isDeleting = !!deletingRender[r.id];
+                    const versionLabel = shortVersionFromShotPath(r.key ?? "", (docData?.urlHash as string | undefined) ?? null);
 
                     return (
                         <div className="relative rounded-xl border border-neutral-200 bg-white p-3 shadow-sm flex flex-col min-w-[300px]">
+                            {/* controller version badge (top-right) */}
+
+                            <span
+                                className="absolute top-2 right-20 z-10 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow"
+                                style={{ backgroundColor: "#1d4ed8" }}
+                                title={`Version ${versionLabel}`}
+                            >
+                                {versionLabel}
+                            </span>
+
+                            {(r.controllerVersion || docData?.controllerVersion) && (
+                                <span
+                                    className="absolute top-2 right-2 z-10 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow"
+                                    style={{ backgroundColor: "#059669" }}
+                                    title={`Controller ${r.controllerVersion || docData?.controllerVersion}`}
+                                >
+                                    {`ctrl ${(r.controllerVersion || docData?.controllerVersion) as string}`}
+                                </span>
+                            )}
+
                             {isDeleting && <CenterSpinner label="Deleting…" />}
-                            <div className="text-xs truncate text-neutral-500 mb-2">{r.nameHint || r.key || r.id}</div>
+                            {/* <div className="text-xs truncate text-neutral-500 mb-2">{r.nameHint || r.key || r.id}</div> */}
                             <div className="flex-1 overflow-hidden rounded border bg-neutral-50 h-44 relative">
-                                {(isQueued || frameLoading) && (
+                                {(isQueued || frameLoading || hardLocked) && (
                                     <CenterSpinner
                                         label={isQueued ? (isStaleQueued ? "Still queued… Retry available" : "Rendering…") : "Loading…"}
                                     />
@@ -740,10 +808,8 @@ export default function PreviewPage(): JSX.Element {
                                 ) : (
                                     <iframe
                                         title={`r-${r.id}`}
-                                        // Drop frame-ancestors from meta CSP (ineffective in meta; reduces console churn).
                                         srcDoc={`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob: https: http:; style-src 'unsafe-inline'; font-src data: https:; script-src 'unsafe-inline'; connect-src 'none';"><base target="_blank" rel="noopener noreferrer">${r.html || ""}`}
                                         className="w-full h-full"
-                                        // Keep strict, no same-origin to prevent DOM escapes; flicker fix is handled by not mutating srcDoc per keystroke.
                                         sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms allow-pointer-lock"
                                         referrerPolicy="no-referrer"
                                         allow="clipboard-read; clipboard-write"
@@ -791,7 +857,6 @@ export default function PreviewPage(): JSX.Element {
                         </div>
                     );
                 },
-                // props equality: prevent useless re-renders of the card
                 (prev, next) => {
                     const a = prev.r;
                     const b = next.r;
@@ -804,7 +869,8 @@ export default function PreviewPage(): JSX.Element {
                     );
                 }
             ),
-        [continueRender, buildFromKey, discardRender, rescan, rescanning, rescanCooldown.active, rescanCooldown.remaining, targetUrl, deletingRender]
+        // re-memo if controller version changes so the badge updates
+        [continueRender, buildFromKey, discardRender, rescan, rescanning, rescanCooldown.active, rescanCooldown.remaining, targetUrl, deletingRender, docData?.controllerVersion]
     );
 
     const ShotCard = useMemo(
@@ -813,9 +879,22 @@ export default function PreviewPage(): JSX.Element {
                 function ShotCardInner({ s, locked }: { s: Shot; locked: boolean }) {
                     const [imgLoading, setImgLoading] = useState<boolean>(true);
                     const isDeleting = !!deletingByKey[s.path];
+                    const hardLocked = (lockUntilByKey[s.path] || 0) > Date.now();
                     const showOverlay = locked || imgLoading || isDeleting;
+
+                    const versionLabel = shortVersionFromShotPath(s.path, (docData?.urlHash as string | undefined) ?? null);
+
                     return (
                         <figure className="relative rounded-xl border border-neutral-200 bg-white shadow-sm flex flex-col">
+                            {/* screenshot version badge (top-left) */}
+                            <span
+                                className="absolute top-2 left-2 z-10 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow"
+                                style={{ backgroundColor: "#1d4ed8" }}
+                                title={`Version ${versionLabel}`}
+                            >
+                                {versionLabel}
+                            </span>
+
                             {isDeleting && <CenterSpinner label="Deleting…" />}
                             <a href={s.url} target="_blank" rel="noreferrer" className="block">
                                 <div className="w-full aspect-[4/3] bg-neutral-50 flex items-center justify-center rounded-t-xl relative">
@@ -832,9 +911,6 @@ export default function PreviewPage(): JSX.Element {
                             </a>
                             <figcaption className="px-3 py-2 text-xs text-neutral-700 rounded-b-xl">
                                 <div className="flex items-center justify-between gap-2 flex-wrap">
-                                    <span className="truncate max-w-[55%]" title={s.fileName}>
-                                        {s.fileName}
-                                    </span>
                                     <div className="ml-auto flex items-center gap-2">
                                         <button
                                             onClick={() => buildFromKey(s.path)}

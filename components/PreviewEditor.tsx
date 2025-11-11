@@ -22,7 +22,6 @@ type Props = {
 };
 
 const ACCENT = "#f55f2a";
-
 const STORAGE_KEY = (id?: string) => `kloner:draft:${id || "default"}`;
 
 function stripScripts(html: string) {
@@ -62,7 +61,13 @@ export default function PreviewEditor({
     const [device, setDevice] = useState<Device>("desktop");
     const [dirty, setDirty] = useState(false);
 
-    const [closing, setClosing] = useState(false); // visual "saving/closing" state
+    // New UI feedback states
+    const [savingDraft, setSavingDraft] = useState(false);
+    const [exporting, setExporting] = useState(false);
+    const [applyingPreview, setApplyingPreview] = useState(false);
+
+    // visual "saving/closing" state
+    const [closing, setClosing] = useState(false);
 
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -71,6 +76,32 @@ export default function PreviewEditor({
 
     const devicePx = device === "desktop" ? 1440 : device === "tablet" ? 768 : 390;
     const renderHtml = useMemo(() => stripScripts(previewHtml), [previewHtml]);
+
+    // UI scale (kept)
+    const [uiScale, setUiScale] = useState<number>(() => {
+        const v = typeof window !== "undefined" ? Number(localStorage.getItem("kloner:uiScale")) : NaN;
+        return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : 0.85;
+    });
+    useEffect(() => {
+        localStorage.setItem("kloner:uiScale", String(uiScale));
+    }, [uiScale]);
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (!(e.metaKey || e.ctrlKey)) return;
+            if (e.key === "-" || e.key === "_") {
+                e.preventDefault();
+                setUiScale((s) => Math.max(0.5, +(s - 0.05).toFixed(2)));
+            } else if (e.key === "=" || e.key === "+") {
+                e.preventDefault();
+                setUiScale((s) => Math.min(1.25, +(s + 0.05).toFixed(2)));
+            } else if (e.key === "0") {
+                e.preventDefault();
+                setUiScale(1);
+            }
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, []);
 
     useEffect(() => {
         localStorage.setItem(STORAGE_KEY(draftId), htmlDraft);
@@ -114,213 +145,250 @@ export default function PreviewEditor({
     const emitLive = useCallback((html: string) => onLiveHtml?.(html), [onLiveHtml]);
 
     function applyDraftToPreview() {
+        setApplyingPreview(true);
         setPreviewHtml(htmlDraft);
         setDirty(false);
+        // quick visual confirmation pulse
+        window.setTimeout(() => setApplyingPreview(false), 450);
     }
 
     async function doSave() {
-        if (!saveDraft) {
-            setPreviewHtml(htmlDraft);
+        if (savingDraft) return;
+        setSavingDraft(true);
+        try {
+            if (!saveDraft) {
+                setPreviewHtml(htmlDraft);
+                setDirty(false);
+                return;
+            }
+            await saveDraft({
+                draftId,
+                html: htmlDraft,
+                meta: { nameHint: nameHint || undefined, device, mode },
+                version: version + 1,
+            });
+            setVersion((v) => v + 1);
             setDirty(false);
-            return;
+        } finally {
+            setSavingDraft(false);
         }
-        await saveDraft({
-            draftId,
-            html: htmlDraft,
-            meta: { nameHint: nameHint || undefined, device, mode },
-            version: version + 1,
-        });
-        setVersion((v) => v + 1);
-        setDirty(false);
     }
 
     async function doExport() {
-        await onExport((previewHtml || "").trim(), nameHint || undefined);
+        if (exporting) return;
+        setExporting(true);
+        try {
+            await onExport((previewHtml || "").trim(), nameHint || undefined);
+        } finally {
+            setExporting(false);
+        }
     }
 
-    // Handle "Close" with visible saving state.
+    // Close now auto-saves before calling onClose. Shows blocking overlay.
     const handleClose = useCallback(async () => {
         if (closing) return;
         setClosing(true);
         tryClearIframeSelection();
         try {
+            if (dirty) {
+                await doSave();
+            }
             await onClose?.();
         } finally {
-            // If parent unmounts this component, this setState is harmless; otherwise it resets the UI.
             setClosing(false);
         }
-    }, [closing, onClose, tryClearIframeSelection]);
+    }, [closing, dirty, onClose, tryClearIframeSelection]);
 
     return (
         <div ref={containerRef} tabIndex={-1} className="fixed inset-0 z-[9999] bg-black/50">
-            <div className="absolute inset-4 bg-white rounded-xl shadow-xl grid grid-cols-[minmax(320px,360px),1fr] gap-4 p-4">
-                {/* Left: Controls */}
-                <aside ref={asideRef} className="flex flex-col min-w-0 overflow-auto pr-1">
-                    {/* Name */}
-                    <div className="mb-3">
-                        <label className="block text-[11px] font-semibold text-neutral-500 mb-1">Export name</label>
-                        <input
-                            className="border rounded px-2 py-1 text-sm w-full outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-60"
-                            placeholder="Optional"
-                            value={nameHint}
-                            onChange={(e) => setNameHint(e.target.value)}
-                            disabled={closing}
-                        />
-                    </div>
-
-                    {/* Mode */}
-                    <div className="mb-3">
-                        <div className="text-[11px] font-semibold text-neutral-500 mb-1">Mode</div>
-                        <div className="flex flex-wrap gap-1">
-                            <UiBtn pressed={mode === "code"} onClick={() => !closing && (setMode("code"), tryClearIframeSelection())} disabled={closing}>
-                                Code
-                            </UiBtn>
-                            <UiBtn pressed={mode === "preview"} onClick={() => !closing && (setMode("preview"), tryClearIframeSelection())} disabled={closing}>
-                                Preview (editable)
-                            </UiBtn>
-                            <UiBtn pressed={mode === "screenshot"} onClick={() => !closing && (setMode("screenshot"), tryClearIframeSelection())} disabled={closing}>
-                                Screenshot
-                            </UiBtn>
-                        </div>
-                    </div>
-
-                    {/* Device */}
-                    <div className="mb-3">
-                        <div className="text-[11px] font-semibold text-neutral-500 mb-1">Device</div>
-                        <div className="flex flex-wrap gap-1">
-                            <UiBtn pressed={device === "desktop"} onClick={() => setDevice("desktop")} disabled={closing}>
-                                Desktop
-                            </UiBtn>
-                            <UiBtn pressed={device === "tablet"} onClick={() => setDevice("tablet")} disabled={closing}>
-                                Tablet
-                            </UiBtn>
-                            <UiBtn pressed={device === "mobile"} onClick={() => setDevice("mobile")} disabled={closing}>
-                                Mobile
-                            </UiBtn>
-                        </div>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="mb-3">
-                        <div className="text-[11px] font-semibold text-neutral-500 mb-1">Actions</div>
-                        <div className="flex flex-wrap gap-2">
-                            <UiBtn variant="outline" onClick={doSave} disabled={closing}>
-                                Save Draft
-                            </UiBtn>
-                            <UiBtn variant="filled" onClick={doExport} disabled={closing}>
-                                Export to Vercel
-                            </UiBtn>
-                            <UiBtn variant="outline" onClick={handleClose} disabled={closing} ariaBusy={closing}>
-                                {closing ? (
-                                    <span className="inline-flex items-center gap-2">
-                                        <Spinner size={14} /> Saving…
-                                    </span>
-                                ) : (
-                                    "Close"
-                                )}
-                            </UiBtn>
-                            <span className="ml-auto text-xs text-slate-500 self-center">v{version}</span>
-                        </div>
-                    </div>
-
-                    {/* Preview control */}
-                    <div className="mb-3">
-                        <div className="text-[11px] font-semibold text-neutral-500 mb-1">Preview control</div>
-                        <button
-                            onClick={applyDraftToPreview}
-                            disabled={closing}
-                            className={`rounded px-3 py-1 text-sm w-full transition disabled:opacity-60 ${dirty ? "bg-emerald-600 text-white hover:brightness-95 active:brightness-90" : "bg-emerald-100 text-emerald-700"
-                                }`}
-                            title="Apply draft to preview"
-                        >
-                            {dirty ? "Update Preview" : "Preview is up to date"}
-                        </button>
-                    </div>
-
-                    {/* Code editor */}
-                    {mode === "code" && (
-                        <div className="min-h-0 flex-1">
-                            <textarea
-                                className="h-full w-full border rounded p-2 font-mono text-xs leading-5 outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-60"
-                                value={htmlDraft}
-                                onChange={(e) => setHtmlDraft(e.target.value)}
-                                spellCheck={false}
+            <div className="absolute inset-4 overflow-auto">
+                <div
+                    className="bg-white rounded-xl shadow-xl grid grid-cols-[minmax(320px,360px),1fr] gap-4 p-4"
+                    style={{
+                        transform: `scale(${uiScale})`,
+                        transformOrigin: "top left",
+                        width: `${100 / uiScale}%`,
+                        height: `${100 / uiScale}%`,
+                    }}
+                >
+                    {/* Left: Controls */}
+                    <aside ref={asideRef} className="flex flex-col min-w-0 overflow-auto pr-1">
+                        {/* Name */}
+                        <div className="mb-3">
+                            <label className="block text-[11px] font-semibold text-neutral-500 mb-1">Export name</label>
+                            <input
+                                className="border rounded px-2 py-1 text-sm w-full outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-60"
+                                placeholder="Optional"
+                                value={nameHint}
+                                onChange={(e) => setNameHint(e.target.value)}
                                 disabled={closing}
                             />
                         </div>
-                    )}
 
-                    {mode === "screenshot" && (
-                        <div className="text-xs text-slate-600">Use Preview to edit directly or Code to edit markup. Apply with “Update Preview”, then Save.</div>
-                    )}
-                </aside>
+                        {/* Mode */}
+                        <div className="mb-3">
+                            <div className="text-[11px] font-semibold text-neutral-500 mb-1">Mode</div>
+                            <div className="flex flex-wrap gap-1">
+                                <UiBtn pressed={mode === "code"} onClick={() => !closing && (setMode("code"), tryClearIframeSelection())} disabled={closing}>
+                                    Code
+                                </UiBtn>
+                                <UiBtn pressed={mode === "preview"} onClick={() => !closing && (setMode("preview"), tryClearIframeSelection())} disabled={closing}>
+                                    Preview (editable)
+                                </UiBtn>
+                                <UiBtn pressed={mode === "screenshot"} onClick={() => !closing && (setMode("screenshot"), tryClearIframeSelection())} disabled={closing}>
+                                    Screenshot
+                                </UiBtn>
+                            </div>
+                        </div>
 
-                {/* Right: Canvas */}
-                <section
-                    className="relative bg-slate-50 rounded-lg border overflow-hidden flex flex-col"
-                    onPointerDown={(e) => {
-                        if (!(e.target as HTMLElement).closest("iframe")) tryClearIframeSelection();
-                    }}
-                >
-                    {sourceImage && mode !== "screenshot" && (
-                        <img src={sourceImage} alt="reference" className="absolute right-3 top-3 h-28 w-auto rounded border shadow pointer-events-none" />
-                    )}
+                        {/* Device */}
+                        <div className="mb-3">
+                            <div className="text-[11px] font-semibold text-neutral-500 mb-1">Device</div>
+                            <div className="flex flex-wrap gap-1">
+                                <UiBtn pressed={device === "desktop"} onClick={() => setDevice("desktop")} disabled={closing}>
+                                    Desktop
+                                </UiBtn>
+                                <UiBtn pressed={device === "tablet"} onClick={() => setDevice("tablet")} disabled={closing}>
+                                    Tablet
+                                </UiBtn>
+                                <UiBtn pressed={device === "mobile"} onClick={() => setDevice("mobile")} disabled={closing}>
+                                    Mobile
+                                </UiBtn>
+                            </div>
+                        </div>
 
-                    {(mode === "preview" || mode === "code") && (
-                        <div className="flex-1 overflow-auto p-6">
-                            <div className="mx-auto bg-white border rounded-lg shadow-sm" style={{ width: devicePx, minWidth: 320 }}>
-                                <iframe
-                                    key={iframeKey}
-                                    ref={iframeRef}
-                                    className="w-full h-[80vh] border-0 rounded"
-                                    title="KlonerPreview"
-                                    sandbox="allow-same-origin"
-                                    srcDoc={renderHtml || "<!doctype html><html><head><meta charset='utf-8'></head><body></body></html>"}
-                                    onLoad={() => {
-                                        const doc = iframeRef.current?.contentDocument;
-                                        if (!doc) return;
-                                        // purge persisted overlays from saved HTML (defensive)
-                                        doc.querySelectorAll(".kloner-toolbar").forEach((n) => n.remove());
-                                        if (mode === "preview") {
-                                            injectEditableOverlay(doc, (updated) => {
-                                                setHtmlDraft(updated);
-                                                emitLive(updated);
-                                            });
-                                            iframeRef.current?.contentWindow?.focus();
-                                        }
-                                    }}
+                        {/* Actions */}
+                        <div className="mb-3">
+                            <div className="text-[11px] font-semibold text-neutral-500 mb-1">Actions</div>
+                            <div className="flex flex-wrap gap-2 items-center">
+                                <UiBtn variant="outline" onClick={doSave} disabled={closing || savingDraft} ariaBusy={savingDraft}>
+                                    {savingDraft ? "Saving…" : "Save Draft"}
+                                </UiBtn>
+                                <UiBtn variant="filled" onClick={doExport} disabled={closing || exporting} ariaBusy={exporting}>
+                                    {exporting ? "Exporting…" : "Export to Vercel"}
+                                </UiBtn>
+                                <UiBtn variant="outline" onClick={handleClose} disabled={closing} ariaBusy={closing}>
+                                    {closing ? "Saving…" : "Close"}
+                                </UiBtn>
+                                <span className="ml-auto text-xs text-slate-500 self-center">v{version}</span>
+                                <div className="flex items-center gap-1 text-[11px] text-slate-500">
+                                    <button
+                                        className="px-1.5 py-0.5 border rounded hover:bg-neutral-50 active:scale-[.99] focus:outline-none focus:ring-2 focus:ring-neutral-300"
+                                        onClick={() => setUiScale((s) => Math.max(0.5, +(s - 0.05).toFixed(2)))}
+                                        disabled={closing}
+                                    >
+                                        -
+                                    </button>
+                                    <span className="w-10 text-center">{Math.round(uiScale * 100)}%</span>
+                                    <button
+                                        className="px-1.5 py-0.5 border rounded hover:bg-neutral-50 active:scale-[.99] focus:outline-none focus:ring-2 focus:ring-neutral-300"
+                                        onClick={() => setUiScale((s) => Math.min(1.25, +(s + 0.05).toFixed(2)))}
+                                        disabled={closing}
+                                    >
+                                        +
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Preview control */}
+                        <div className="mb-3">
+                            <div className="text-[11px] font-semibold text-neutral-500 mb-1">Preview control</div>
+                            <button
+                                onClick={applyDraftToPreview}
+                                disabled={closing || !dirty}
+                                aria-busy={applyingPreview}
+                                className={`rounded px-3 py-1 text-sm w-full transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${dirty ? "bg-emerald-600 text-white hover:brightness-95" : "bg-emerald-100 text-emerald-700"
+                                    }`}
+                                title="Apply draft to preview"
+                            >
+                                {applyingPreview ? "Updating…" : dirty ? "Update Preview" : "Preview is up to date"}
+                            </button>
+                        </div>
+
+                        {/* Code editor */}
+                        {mode === "code" && (
+                            <div className="min-h-0 flex-1">
+                                <textarea
+                                    className="h-full w-full border rounded p-2 font-mono text-xs leading-5 outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-60"
+                                    value={htmlDraft}
+                                    onChange={(e) => setHtmlDraft(e.target.value)}
+                                    spellCheck={false}
+                                    disabled={closing}
                                 />
                             </div>
-                        </div>
-                    )}
+                        )}
 
-                    {mode === "screenshot" && (
-                        <div className="flex-1 overflow-auto p-6">
-                            <div className="mx-auto" style={{ width: devicePx, minWidth: 320 }}>
-                                {sourceImage ? (
-                                    <img src={sourceImage} alt="Reference" className="w-full h-auto rounded border bg-white" />
-                                ) : (
-                                    <div className="h-[60vh] grid place-items-center text-slate-500 text-sm">No reference screenshot</div>
-                                )}
-                            </div>
-                        </div>
-                    )}
+                        {mode === "screenshot" && (
+                            <div className="text-xs text-slate-600">Use Preview to edit directly or Code to edit markup. Apply with “Update Preview”, then Save.</div>
+                        )}
+                    </aside>
 
-                    {/* Full-canvas saving overlay while closing */}
-                    {closing && (
-                        <div className="absolute inset-0 bg-white/80 grid place-items-center">
-                            <div className="flex items-center gap-3 rounded border px-3 py-2 bg-white text-sm text-neutral-800">
-                                <Spinner /> Saving & closing…
+                    {/* Right: Canvas */}
+                    <section
+                        className="relative bg-slate-50 rounded-lg border overflow-hidden flex flex-col"
+                        onPointerDown={(e) => {
+                            if (!(e.target as HTMLElement).closest("iframe")) tryClearIframeSelection();
+                        }}
+                    >
+                        {sourceImage && mode !== "screenshot" && (
+                            <img src={sourceImage} alt="reference" className="absolute right-3 top-3 h-28 w-auto rounded border shadow pointer-events-none" />
+                        )}
+
+                        {(mode === "preview" || mode === "code") && (
+                            <div className="flex-1 overflow-auto p-6">
+                                <div className="mx-auto bg-white border rounded-lg shadow-sm" style={{ width: devicePx, minWidth: 320 }}>
+                                    <iframe
+                                        key={iframeKey}
+                                        ref={iframeRef}
+                                        className="w-full h-[80vh] border-0 rounded"
+                                        title="KlonerPreview"
+                                        sandbox="allow-same-origin"
+                                        srcDoc={renderHtml || "<!doctype html><html><head><meta charset='utf-8'></head><body></body></html>"}
+                                        onLoad={() => {
+                                            const doc = iframeRef.current?.contentDocument;
+                                            if (!doc) return;
+                                            // purge persisted overlays from saved HTML (defensive)
+                                            doc.querySelectorAll(".kloner-toolbar").forEach((n) => n.remove());
+                                            if (mode === "preview") {
+                                                injectEditableOverlay(doc, (updated) => {
+                                                    setHtmlDraft(updated);
+                                                    emitLive(updated);
+                                                });
+                                                iframeRef.current?.contentWindow?.focus();
+                                            }
+                                        }}
+                                    />
+                                </div>
                             </div>
-                        </div>
-                    )}
-                </section>
+                        )}
+
+                        {mode === "screenshot" && (
+                            <div className="flex-1 overflow-auto p-6">
+                                <div className="mx-auto" style={{ width: devicePx, minWidth: 320 }}>
+                                    {sourceImage ? (
+                                        <img src={sourceImage} alt="Reference" className="w-full h-auto rounded border bg-white" />
+                                    ) : (
+                                        <div className="h-[60vh] grid place-items-center text-slate-500 text-sm">No reference screenshot</div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Full-canvas saving overlay while closing */}
+                        {closing && (
+                            <div className="absolute inset-0 bg-white/80 grid place-items-center">
+                                <div className="flex items-center gap-3 rounded border px-3 py-2 bg-white text-sm text-neutral-800">
+                                    <Spinner /> Saving & closing…
+                                </div>
+                            </div>
+                        )}
+                    </section>
+                </div>
+
+                {/* local spinner keyframes */}
+                <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
             </div>
-
-            {/* local spinner keyframes */}
-            <style>
-                {`@keyframes spin{to{transform:rotate(360deg)}}`}
-            </style>
         </div>
     );
 }
@@ -350,18 +418,26 @@ function UiBtn({
     disabled?: boolean;
     ariaBusy?: boolean;
 }) {
-    const common =
-        "px-2 py-1 text-xs rounded border transition active:scale-[.99] focus:outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-60 disabled:cursor-not-allowed";
+    // unified interactive + feedback styling
+    const base =
+        "inline-flex items-center justify-center gap-2 transition active:scale-[.99] focus:outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-60 disabled:cursor-not-allowed";
+    const withBusy = (
+        <>
+            {ariaBusy && <Spinner size={14} />}
+            <span>{children}</span>
+        </>
+    );
+
     if (variant === "filled") {
         return (
             <button
                 onClick={onClick}
                 disabled={disabled}
                 aria-busy={ariaBusy}
-                className="rounded px-3 py-1 text-sm text-white transition hover:brightness-95 active:scale-[.99] focus:outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-60 disabled:cursor-not-allowed"
+                className={`${base} rounded px-3 py-1 text-sm text-white hover:brightness-95`}
                 style={{ backgroundColor: ACCENT }}
             >
-                {children}
+                {withBusy}
             </button>
         );
     }
@@ -371,9 +447,9 @@ function UiBtn({
                 onClick={onClick}
                 disabled={disabled}
                 aria-busy={ariaBusy}
-                className="rounded px-3 py-1 text-sm border transition hover:bg-neutral-50 active:scale-[.99] focus:outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-60 disabled:cursor-not-allowed"
+                className={`${base} rounded px-3 py-1 text-sm border hover:bg-neutral-50`}
             >
-                {children}
+                {withBusy}
             </button>
         );
     }
@@ -382,18 +458,15 @@ function UiBtn({
             onClick={onClick}
             disabled={disabled}
             aria-busy={ariaBusy}
-            className={`${common} ${pressed ? "bg-slate-900 text-white border-slate-900" : "bg-white hover:bg-neutral-50"}`}
+            className={`${base} px-2 py-1 text-xs rounded border ${pressed ? "bg-slate-900 text-white border-slate-900" : "bg-white hover:bg-neutral-50"
+                }`}
         >
-            {children}
+            {withBusy}
         </button>
     );
 }
 
 /* ------------------------ in-iframe edit layer ------------------------ */
-/** Adds selection toolbar with Edit/Duplicate, Delete, Undo, Redo, Close (×).
- *  Keyboard: Cmd/Ctrl+Z (undo), Shift+Cmd/Ctrl+Z (redo), Esc (clear).
- *  Click-away inside the document clears selection.
- */
 function injectEditableOverlay(doc: Document, onChange: (updatedHtml: string) => void) {
     // purge any persisted toolbars defensively
     doc.querySelectorAll(".kloner-toolbar").forEach((n) => n.remove());
@@ -425,7 +498,7 @@ function injectEditableOverlay(doc: Document, onChange: (updatedHtml: string) =>
     const toolbar = doc.createElement("div");
     toolbar.className = "kloner-toolbar";
     toolbar.innerHTML = `
-    <button class="kbtn kbtn-close" data-act="close">close</button>
+<button class="kbtn kbtn-close" data-act="close">close</button>
 <button class="kbtn kbtn-edit" data-act="dup">✏️ Duplicate</button>
 <button class="kbtn kbtn-del"  data-act="del">🗑️ Delete</button>
 <button class="kbtn kbtn-undo" data-act="undo">↩ Undo</button>
