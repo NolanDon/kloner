@@ -133,7 +133,7 @@ export default function NavBar(): JSX.Element {
             {!user ? (
               <>
                 <a href="/login" className="hidden text-sm md:inline hover:text-white text-white/80 transition">
-                  Log in
+                  Login
                 </a>
                 <a
                   href={br.cta.href}
@@ -274,7 +274,7 @@ export default function NavBar(): JSX.Element {
                       onClick={() => setMOpen(false)}
                       className="block rounded-xl px-3 py-3 text-neutral-700 hover:bg-neutral-50 transition"
                     >
-                      Log in
+                      Login
                     </a>
                     <a
                       href={br.cta.href}
