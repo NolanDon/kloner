@@ -426,7 +426,7 @@ function injectEditableOverlay(doc: Document, onChange: (updatedHtml: string) =>
     toolbar.className = "kloner-toolbar";
     toolbar.innerHTML = `
     <button class="kbtn kbtn-close" data-act="close">close</button>
-<button class="kbtn kbtn-edit" data-act="dup">✏️ Edit / Duplicate</button>
+<button class="kbtn kbtn-edit" data-act="dup">✏️ Duplicate</button>
 <button class="kbtn kbtn-del"  data-act="del">🗑️ Delete</button>
 <button class="kbtn kbtn-undo" data-act="undo">↩ Undo</button>
 <button class="kbtn kbtn-redo" data-act="redo">↪ Redo</button>
