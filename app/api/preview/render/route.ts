@@ -12,7 +12,8 @@ type Body = {
     key?: string;
     keys?: string[];
     nameHint?: string;
-    url?: string; // optional: trigger generation if no keys
+    url?: string;                // optional: trigger generation if no keys
+    controllerVersion?: string;  // optional: forwarded
 };
 
 function isNonEmptyString(s: unknown): s is string {
@@ -23,33 +24,61 @@ function isHttpUrl(s?: string): s is string {
     try { const u = new URL(s); return u.protocol === "http:" || u.protocol === "https:"; }
     catch { return false; }
 }
+function normUrl(s: string): string {
+    try { const u = new URL(s); u.hash = ""; return u.toString(); }
+    catch { return s.trim(); }
+}
+function hash64(s: string): string {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) { h = (h << 5) - h + s.charCodeAt(i); h |= 0; }
+    return Math.abs(h).toString(36);
+}
+/** kloner-screenshots/<uid>/url-scans/<urlHash>/<urlHash>-<ts>.jpeg */
+function extractHashFromKey(key?: string | null): string | null {
+    if (!key) return null;
+    const parts = key.split("/");
+    const i = parts.indexOf("url-scans");
+    if (i >= 0 && parts[i + 1]) return parts[i + 1];
+    const file = parts[parts.length - 1] || "";
+    const maybe = file.split("-")[0];
+    return maybe && maybe.length >= 6 ? maybe : null;
+}
+/** Ensure the storage key lives under this user's namespace */
+function keyBelongsToUser(key: string, uid: string) {
+    return key.startsWith(`kloner-screenshots/${uid}/`);
+}
 
 export async function POST(req: NextRequest) {
-    let decoded;
+    let decoded: any;
     try {
-        decoded = await verifySession(req);
+        decoded = await verifySession(req); // { uid, email, claims?: { userTier? } }
     } catch (e: any) {
         return NextResponse.json({ error: e?.message || "Unauthorized" }, { status: 401 });
     }
 
     const json = (await req.json().catch(() => ({}))) as Body;
 
-    let key = isNonEmptyString(json.key) ? json.key.trim() : undefined;
-    let keys = Array.isArray(json.keys) ? json.keys.filter(isNonEmptyString) : undefined;
+    // Normalize inputs
+    const controllerVersion = isNonEmptyString(json.controllerVersion) ? json.controllerVersion.trim() : undefined;
+    const incomingUrl = isHttpUrl(json.url) ? normUrl(json.url!) : undefined;
+    const incomingNameHint = isNonEmptyString(json.nameHint) ? json.nameHint!.trim() : undefined;
 
-    // If no keys but a URL is present, generate first (increase timeout here).
-    if (!key && !(keys && keys.length) && isHttpUrl(json.url)) {
+    let key = isNonEmptyString(json.key) ? json.key.trim() : undefined;
+    let keys = Array.isArray(json.keys) ? json.keys.filter(isNonEmptyString).map(k => k.trim()) : undefined;
+
+    // If no keys but a URL is present, generate first (longer preflight)
+    if (!key && !(keys && keys.length) && incomingUrl) {
         try {
             const gen = await callBackend(req, {
                 path: "/generate-screenshots",
                 method: "POST",
-                body: { url: json.url },
-                timeoutMs: 180_000,          // ← was 60_000; longer preflight
-                acceptOnTimeout: true,       // surface 202 if it runs long
+                body: { url: incomingUrl },
+                timeoutMs: 180_000,
+                acceptOnTimeout: true,
                 userCtx: {
                     uid: decoded.uid,
                     email: decoded?.email || "",
-                    tier: (decoded as any)?.userTier ?? (decoded as any)?.claims?.userTier ?? null,
+                    tier: decoded?.userTier ?? decoded?.claims?.userTier ?? null,
                 },
             });
 
@@ -70,26 +99,50 @@ export async function POST(req: NextRequest) {
         }
     }
 
-    const outKeys = (keys && keys.length) ? keys : (key ? [key] : []);
+    // Consolidate keys
+    const outKeys = (keys && keys.length ? keys : (key ? [key] : []))
+        .map(k => k.trim())
+        .filter(Boolean)
+        .slice(0, 25); // hard cap to avoid abuse
+
     if (!outKeys.length) {
         return NextResponse.json({ error: "Missing storage key(s); provide key/keys or a valid url" }, { status: 400 });
     }
+
+    // Namespace check: keys must belong to this user
+    for (const k of outKeys) {
+        if (!keyBelongsToUser(k, decoded.uid)) {
+            return NextResponse.json({ error: "Forbidden key namespace" }, { status: 403 });
+        }
+    }
+
+    // Infer urlHash and nameHint if possible
+    const urlHash =
+        incomingUrl ? hash64(incomingUrl) :
+            extractHashFromKey(outKeys[0]) || undefined;
+
+    const nameHint =
+        incomingNameHint ||
+        (incomingUrl ? new URL(incomingUrl).hostname : undefined);
 
     try {
         const r = await callBackend(req, {
             path: "/preview-render",
             method: "POST",
             body: {
+                url: incomingUrl,
                 keys: outKeys,
-                nameHint: json.nameHint ?? null,
-                urlHint: isHttpUrl(json.url) ? json.url : undefined,
+                nameHint: nameHint ?? null,
+                urlHint: incomingUrl,             // allows backend to persist url
+                urlHash: urlHash,             // allows backend to persist urlHash
+                controllerVersion,                // transparent forward if provided
             },
-            timeoutMs: 240_000,            // render path cap
-            acceptOnTimeout: true,         // surface 202 to client
+            timeoutMs: 240_000,
+            acceptOnTimeout: true,
             userCtx: {
                 uid: decoded.uid,
                 email: decoded?.email || "",
-                tier: (decoded as any)?.userTier ?? (decoded as any)?.claims?.userTier ?? null,
+                tier: decoded?.userTier ?? decoded?.claims?.userTier ?? null,
             },
         });
 

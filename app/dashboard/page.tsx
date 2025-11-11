@@ -1,11 +1,10 @@
 // app/dashboard/page.tsx
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
     onAuthStateChanged,
-    signOut as fbSignOut,
     type User as FirebaseUser,
 } from "firebase/auth";
 import {
@@ -32,7 +31,7 @@ import {
 import { auth, db, storage } from "@/lib/firebase";
 
 /* -------------------------------- theme -------------------------------- */
-const ACCENT: string = "#f55f2a";
+const ACCENT = "#f55f2a";
 
 /* -------------------------------- types -------------------------------- */
 type UrlStatus = "queued" | "error" | "done" | "unknown";
@@ -48,16 +47,10 @@ interface UrlDoc {
     id?: string; // added at read time
 }
 
-interface SidebarProps {
-    user: FirebaseUser | null;
-    onSignOut: () => Promise<void> | void;
-}
-
 interface UrlFormProps {
     uid: string;
     onAdded?: () => void;
 }
-
 interface UrlRowProps {
     uid: string;
     r: UrlDoc & { id: string };
@@ -89,86 +82,6 @@ function hash64(s: string): string {
         h |= 0;
     }
     return Math.abs(h).toString(36);
-}
-
-/* ---------------------------- sidebar + layout ---------------------------- */
-function Sidebar({ user, onSignOut }: SidebarProps) {
-    const initials = useMemo(() => {
-        if (!user) return "";
-        const name = user.displayName || user.email || "";
-        const parts = name
-            .replace(/@.*/, "")
-            .replace(/[_.\-]+/g, " ")
-            .trim()
-            .split(/\s+/)
-            .slice(0, 2);
-        if (parts.length === 0) return "";
-        if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
-        return (parts[0]![0]! + parts[1]![0]!).toUpperCase();
-    }, [user]);
-
-    return (
-        <aside className="hidden md:flex md:w-64 lg:w-72 shrink-0 border-r border-neutral-200 bg-white">
-            <div className="flex h-screen flex-col">
-                <div className="px-5 py-5 border-b border-neutral-200">
-                    <a href="/" className="inline-flex items-center gap-2">
-                        <div
-                            className="h-9 w-9 grid place-items-center rounded-xl font-black text-white"
-                            style={{ backgroundColor: ACCENT }}
-                            aria-label="kloner"
-                        >
-                            K
-                        </div>
-                        <div className="font-semibold tracking-tight">Kloner</div>
-                    </a>
-                </div>
-
-                <nav className="flex-1 p-4 space-y-1 text-sm">
-                    <a
-                        href="/dashboard"
-                        className="block rounded-lg px-3 py-2 bg-neutral-50 text-neutral-900 ring-1 ring-neutral-200"
-                    >
-                        Dashboard
-                    </a>
-                    <a
-                        href="/settings"
-                        className="block rounded-lg px-3 py-2 text-neutral-700 hover:bg-neutral-50"
-                    >
-                        Settings
-                    </a>
-                    <a
-                        href="/docs"
-                        className="block rounded-lg px-3 py-2 text-neutral-700 hover:bg-neutral-50"
-                    >
-                        Docs
-                    </a>
-                </nav>
-
-                <div className="mt-auto p-4 border-t border-neutral-200">
-                    <div className="flex items-center gap-3">
-                        <div
-                            className="h-10 w-10 rounded-full grid place-items-center font-semibold text-white"
-                            style={{ backgroundColor: ACCENT }}
-                        >
-                            {initials || "ME"}
-                        </div>
-                        <div className="min-w-0">
-                            <div className="text-sm font-medium text-neutral-900 truncate">
-                                {user?.displayName || user?.email}
-                            </div>
-                            <div className="text-xs text-neutral-500 truncate">Signed in</div>
-                        </div>
-                    </div>
-                    <button
-                        onClick={() => void onSignOut()}
-                        className="mt-3 w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
-                    >
-                        Sign out
-                    </button>
-                </div>
-            </div>
-        </aside>
-    );
 }
 
 /* ---------------------------------- form --------------------------------- */
@@ -257,7 +170,6 @@ function UrlRow({ uid, r }: UrlRowProps) {
     const [busy, setBusy] = useState<boolean>(false);
     const [err, setErr] = useState<string>("");
 
-    // Lock the entire card while the initial capture is in progress.
     const locked =
         (r.status ?? "unknown") === "queued" &&
         (!Array.isArray(r.screenshotPaths) || r.screenshotPaths.length === 0);
@@ -356,7 +268,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
                             style={{ borderTopColor: ACCENT, animation: "spin 0.8s linear infinite" }}
                             aria-hidden
                         />
-                        Capturing…
+                        Capturing… This process may take a few mins..
                     </div>
                 </div>
             )}
@@ -384,9 +296,6 @@ function UrlRow({ uid, r }: UrlRowProps) {
                         <span className="inline-flex items-center rounded-full border border-neutral-200 px-2 py-0.5 text-xs text-neutral-600">
                             {(r.status ?? "unknown").toUpperCase()}
                         </span>
-                    </div>
-                    <div className="mt-1 text-xs text-neutral-500">
-                        Prefix: <span className="font-mono">{r.screenshotsPrefix || `screenshots/${uid}/${r.urlHash}`}</span>
                     </div>
 
                     {err ? <div className="mt-2 text-sm text-red-600">{err}</div> : null}
@@ -458,62 +367,31 @@ export default function DashboardPage() {
         };
     }, [router]);
 
-    async function handleSignOut() {
-        await fbSignOut(auth);
-        router.replace("/login");
-    }
-
     return (
-        <main className="bg-white">
-            <div className="mx-auto max-w-[1400px] grid grid-cols-1 md:grid-cols-[auto,1fr] pt-100">
-                <Sidebar user={user} onSignOut={handleSignOut} />
+        <div className="px-4 sm:px-6 lg:px-10 py-6">
+            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-900">
+                Dashboard
+            </h1>
+            <p className="mt-1 text-sm text-neutral-600">
+                Add a URL to capture. We’ll queue screenshots and keep them under your account.
+            </p>
 
-                <section className="min-h-screen">
-                    <div className="md:hidden sticky top-0 z-10 bg-white border-b border-neutral-200">
-                        <div className="flex items-center justify-between px-4 py-3">
-                            <a href="/" className="inline-flex items-center gap-2">
-                                <div
-                                    className="h-8 w-8 grid place-items-center rounded-lg text-white font-black"
-                                    style={{ backgroundColor: ACCENT }}
-                                >
-                                    K
-                                </div>
-                                <div className="font-semibold">Kloner</div>
-                            </a>
-                            <a
-                                href="/settings"
-                                className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700"
-                            >
-                                Settings
-                            </a>
-                        </div>
-                    </div>
-
-                    <div className="px-4 sm:px-6 lg:px-10 py-6">
-                        <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-900">
-                            Dashboard
-                        </h1>
-                        <p className="mt-1 text-sm text-neutral-600">
-                            Add a URL to capture. We’ll queue screenshots and keep them under your account.
-                        </p>
-
-                        <div className="mt-6">{user ? <UrlForm uid={user.uid} onAdded={() => { }} /> : null}</div>
-
-                        <div className="mt-8">
-                            <h2 className="text-sm font-semibold text-neutral-700">Tracked URLs</h2>
-                            <div className="mt-3 grid grid-cols-1 gap-4">
-                                {rows.length === 0 ? (
-                                    <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center text-neutral-500">
-                                        No URLs yet. Add one above to get started.
-                                    </div>
-                                ) : (
-                                    rows.map((r) => <UrlRow key={r.id} uid={user!.uid} r={r} />)
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                </section>
+            <div className="mt-6">
+                {user ? <UrlForm uid={user.uid} onAdded={() => { }} /> : null}
             </div>
-        </main>
+
+            <div className="mt-8">
+                <h2 className="text-sm font-semibold text-neutral-700">Tracked URLs</h2>
+                <div className="mt-3 grid grid-cols-1 gap-4">
+                    {rows.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center text-neutral-500">
+                            No URLs yet. Add one above to get started.
+                        </div>
+                    ) : (
+                        rows.map((r) => <UrlRow key={r.id} uid={user!.uid} r={r} />)
+                    )}
+                </div>
+            </div>
+        </div>
     );
 }

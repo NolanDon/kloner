@@ -133,7 +133,7 @@ export default function NavBar(): JSX.Element {
             {/* Auth area (desktop) */}
             {!user ? (
               <>
-                <a href="/login" className="hidden md:inline hover:text-white text-white/80 transition">
+                <a href="/login" className="hidden text-sm md:inline hover:text-white text-white/80 transition">
                   Log in
                 </a>
                 <a
@@ -154,7 +154,7 @@ export default function NavBar(): JSX.Element {
               <>
                 <Link
                   href="/dashboard"
-                  className="hidden md:inline hover:text-white text-white/80 transition"
+                  className="hidden text-sm md:inline hover:text-white text-white/80 transition"
                 >
                   Dashboard
                 </Link>
@@ -165,10 +165,10 @@ export default function NavBar(): JSX.Element {
                     onClick={() => setUserMenuOpen((v) => !v)}
                     aria-haspopup="menu"
                     aria-expanded={userMenuOpen}
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-full ring-1 ring-white/20 text-white/90 hover:bg-white/10 transition select-none"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-full ring-1 ring-white/20 text-white/90 hover:bg-white/10 transition select-none"
                     style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
                   >
-                    <span className="font-semibold" style={{ color: "#fff" }}>
+                    <span className="text-sm" style={{ color: "#fff" }}>
                       {initials || "ME"}
                     </span>
                   </button>
@@ -185,13 +185,13 @@ export default function NavBar(): JSX.Element {
                         onMouseLeave={() => setUserMenuOpen(false)}
                       >
                         <div className="px-4 py-3">
-                          <div className="text-xs text-neutral-500">Signed in</div>
+                          <div className="text-sm text-neutral-500">Signed in</div>
                           <div className="text-sm text-neutral-900 truncate">
                             {user.displayName || user.email}
                           </div>
                         </div>
                         <div className="h-px bg-neutral-200/70" />
-                        <div className="py-1">
+                        <div className="py-1 text-sm">
                           <MenuLink href="/dashboard" label="Dashboard" />
                           <MenuLink href="/settings" label="Settings" />
                           <button
@@ -372,13 +372,13 @@ function MegaPanel({ active }: MegaPanelProps): JSX.Element {
         >
           <AnimatedPromoCard />
           <div className="p-4">
-            <div className="text-xs text-neutral-500">Clone any site</div>
+            <div className="text-sm text-neutral-500">Clone any site</div>
             <div className="mt-1">Paste a URL. Preview. Deploy.</div>
           </div>
         </Link>
 
         <div className="space-y-4">
-          <div className="text-xs text-neutral-500 tracking-wider">PRODUCT</div>
+          <div className="text-sm text-neutral-500 tracking-wider">PRODUCT</div>
           <SimpleLink href="#how" label="How it Works" />
           <SimpleLink href="#templates" label="Templates" />
           <SimpleLink href="#pricing" label="Pricing" />
@@ -387,14 +387,14 @@ function MegaPanel({ active }: MegaPanelProps): JSX.Element {
 
         <div className="grid grid-cols-2 gap-8">
           <div className="space-y-3">
-            <div className="text-xs text-neutral-500 tracking-wider">LEARN</div>
+            <div className="text-sm text-neutral-500 tracking-wider">LEARN</div>
             <SimpleLink href="#stories" label="Customer Stories" />
             <SimpleLink href="#faq" label="FAQs" />
             <SimpleLink href="#changelog" label="Changelog" />
             <SimpleLink href="#blog" label="Blog" />
           </div>
           <div className="space-y-3">
-            <div className="text-xs text-neutral-500 tracking-wider">OTHER</div>
+            <div className="text-sm text-neutral-500 tracking-wider">OTHER</div>
             <SimpleLink href="#privacy" label="Privacy Policy" />
             <SimpleLink href="#terms" label="Terms & Conditions" />
             <SimpleLink href="#security" label="Security" />
@@ -446,7 +446,7 @@ function MetricPill({ label, delay = 0 }: MetricPillProps): JSX.Element {
       transition={{ duration: 4.2, delay, ease: "easeIn" }}
     >
       <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: ACCENT }} />
-      <span className="text-xs font-medium text-neutral-700">{label}</span>
+      <span className="text-sm font-medium text-neutral-700">{label}</span>
     </motion.div>
   );
 }

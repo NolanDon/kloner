@@ -69,15 +69,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
       </head>
       <body>
-        <noscript>
-          <img
-            height="1"
-            width="1"
-            style={{ display: "none" }}
-            src="https://www.facebook.com/tr?id=1826990364582878&ev=PageView&noscript=1"
-            alt=""
-          />
-        </noscript>
         <AuthProviderServer>{children}</AuthProviderServer>
       </body>
     </html>
