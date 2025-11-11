@@ -309,7 +309,7 @@ export default function MembershipSticky() {
           {/* LEFT (sticky) */}
           <div className="lg:col-span-4">
             <div className="sticky top-24">
-              <h2 className="text-3xl md:text-4xl leading-tight">What’s included in Pro</h2>
+              <h2 className="text-3xl md:text-4xl leading-tight">What’s included</h2>
               <p className="mt-3 max-w-md text-neutral-600">
                 Capture any public site, edit in a live preview, export a clean Next.js project, and deploy with one click.
               </p>

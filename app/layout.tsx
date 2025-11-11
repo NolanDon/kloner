@@ -1,5 +1,3 @@
-
-import { AuthProvider } from "@/components/auth/auth-provider";
 import "./globals.css";
 import type { Metadata } from "next";
 import AuthProviderServer from "@/components/auth/auth-provider.server";

@@ -91,7 +91,6 @@ export default function NavBar(): JSX.Element {
             <span className="bg-gradient-to-r from-white to-white/70 bg-clip-text text-transparent">
               kloner
             </span>
-            <span className="text-white/80">.ai</span>
           </Link>
 
           {/* Desktop nav (centered) */}
@@ -407,7 +406,7 @@ function MegaPanel({ active }: MegaPanelProps): JSX.Element {
 
 function SimpleLink({ href, label }: SimpleLinkProps): JSX.Element {
   return (
-    <a href={href} className="block hover:text-neutral-900 text-neutral-700 rounded-pill transition">
+    <a href={href} className="block hover:text-neutral-900 text-neutral-700 rounded-pill transition text-[13px]">
       {label}
     </a>
   );
