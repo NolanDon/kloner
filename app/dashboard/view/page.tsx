@@ -755,7 +755,7 @@ export default function PreviewPage(): JSX.Element {
                             {r.referenceImage && (<a target="_blank" rel="noreferrer" className="block">
                                 <div className="w-full aspect-[4/3] bg-neutral-50 flex items-center justify-center rounded-t-xl relative">
                                     <img
-                                        src={r.referenceImage}
+                                        src={r.referenceImage ?? ""}
                                         // alt={s.fileName}
                                         className={`h-full w-full object-cover`}
                                         loading="lazy"
