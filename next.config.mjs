@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import crypto from 'node:crypto';
 
-export function middleware(req: Request) {
+export function middleware(req) {
     const nonce = crypto.randomBytes(16).toString('base64');
 
     const csp = [
