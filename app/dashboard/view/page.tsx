@@ -918,7 +918,7 @@ export default function PreviewPage(): JSX.Element {
     const ShotCard = useMemo(
         () =>
             memo(
-                async function ShotCardInner({ s, locked }: { s: Shot; locked: boolean }) {
+                function ShotCardInner({ s, locked }: { s: Shot; locked: boolean }) {
                     const [imgLoading, setImgLoading] = useState<boolean>(true);
                     const isDeleting = !!deletingByKey[s.path];
                     const hardLocked = (lockUntilByKey[s.path] || 0) > Date.now();
