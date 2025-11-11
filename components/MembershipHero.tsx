@@ -228,7 +228,7 @@ export default function MembershipHero() {
                         <div className="mt-5 md:mt-6 flex items-baseline gap-2">
                             <div className="text-5xl md:text-6xl text-neutral-900">$29</div>
                             <div className="text-neutral-600 text-sm md:text-base">
-                                /month · billed annually
+                                /month · billed monthly or annually
                             </div>
                         </div>
 

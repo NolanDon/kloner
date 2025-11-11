@@ -78,7 +78,7 @@ function MiniData() {
     <CardShell>
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
         <Stat label="Pages captured" value="18" delay={0.05} />
-        <Stat label="Assets saved" value="142" delay={0.15} />
+        <Stat label="Templates saved" value="142" delay={0.15} />
         <Stat label="Fonts subset" value="3" delay={0.25} />
       </div>
     </CardShell>
