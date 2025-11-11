@@ -23,20 +23,13 @@ import {
     arrayRemove,
     Timestamp,
 } from "firebase/firestore";
-import {
-    ref as sRef,
-    listAll,
-    getDownloadURL,
-    deleteObject,
-    type StorageReference,
-} from "firebase/storage";
+import { ref as sRef, listAll, getDownloadURL, deleteObject, type StorageReference } from "firebase/storage";
 import { auth, db, storage } from "@/lib/firebase";
 import PreviewEditor from "@/components/PreviewEditor";
 
 const ACCENT = "#f55f2a";
 
 /* ───────── types ───────── */
-// types
 type UrlDoc = {
     url: string;
     urlHash?: string;
@@ -44,7 +37,7 @@ type UrlDoc = {
     screenshotPaths?: string[];
     status?: string;
     createdAt?: any;
-    controllerVersion?: string; // +++
+    controllerVersion?: string;
 };
 type Shot = { path: string; url: string; fileName: string; createdAt?: Date };
 type RenderDoc = {
@@ -60,9 +53,8 @@ type RenderDoc = {
     updatedAt?: any;
     model?: string | null;
     version?: number;
-    controllerVersion?: string | null; // +++
+    controllerVersion?: string | null;
 };
-
 
 /* ───────── utils ───────── */
 function isHttpUrl(s?: string): s is string {
@@ -112,7 +104,6 @@ function tsToMs(v: any): number {
     if (typeof v === "number") return v;
     return 0;
 }
-/** Extract <urlHash> from key like kloner-screenshots/<uid>/url-scans/<urlHash>/<urlHash>-<ts>.jpeg */
 function extractHashFromKey(key?: string | null): string | null {
     if (!key) return null;
     const parts = key.split("/");
@@ -122,8 +113,6 @@ function extractHashFromKey(key?: string | null): string | null {
     const maybe = file.split("-")[0];
     return maybe && maybe.length >= 8 ? maybe : null;
 }
-/** Short, human-friendly version derived from filename timestamp suffix */
-// replace shortVersionFromFileName with a hash-based label
 function shortVersionFromShotPath(path: string, fallbackHash?: string | null): string {
     const h = extractHashFromKey(path) || fallbackHash || "";
     return (h || "").slice(0, 6) || "v";
@@ -146,11 +135,7 @@ function Toasts({ toasts }: { toasts: ToastMsg[] }) {
             {toasts.map((t) => (
                 <div
                     key={t.id}
-                    className={`rounded-lg border px-3 py-2 text-sm shadow-sm bg-white ${t.tone === "ok"
-                        ? "border-emerald-200 text-emerald-700"
-                        : t.tone === "warn"
-                            ? "border-amber-200 text-amber-700"
-                            : "border-red-200 text-red-700"
+                    className={`rounded-lg border px-3 py-2 text-sm shadow-sm bg-white ${t.tone === "ok" ? "border-emerald-200 text-emerald-700" : t.tone === "warn" ? "border-amber-200 text-amber-700" : "border-red-200 text-red-700"
                         }`}
                 >
                     {t.text}
@@ -186,11 +171,7 @@ const CenterSpinner = memo(function CenterSpinner({
 }) {
     return (
         <div className={`absolute inset-0 grid place-items-center ${dim ? "bg-white/85" : ""}`}>
-            <div
-                className="flex items-center gap-2 rounded border px-3 py-1.5 text-xs text-neutral-800 bg-white"
-                role="status"
-                aria-live="polite"
-            >
+            <div className="flex items-center gap-2 rounded border px-3 py-1.5 text-xs text-neutral-800 bg-white" role="status" aria-live="polite">
                 <span
                     className="inline-block rounded-full border-2 border-neutral-300"
                     style={{ width: size, height: size, borderTopColor: ACCENT, animation: "spin 0.8s linear infinite" }}
@@ -202,7 +183,7 @@ const CenterSpinner = memo(function CenterSpinner({
     );
 });
 
-/* ───────── shallow equality for renders list ───────── */
+/* ───────── shallow equality ───────── */
 function rendersEqual(a: Array<{ id: string } & RenderDoc>, b: Array<{ id: string } & RenderDoc>): boolean {
     if (a === b) return true;
     if (a.length !== b.length) return false;
@@ -250,19 +231,16 @@ export default function PreviewPage(): JSX.Element {
     const [renders, setRenders] = useState<Array<{ id: string } & RenderDoc>>([]);
     const [loadingRenders, setLoadingRenders] = useState(false);
 
-    // top-level state (with the other useStates)
     const [lockUntilByKey, setLockUntilByKey] = useState<Record<string, number>>({});
     const [lockUntilByRender, setLockUntilByRender] = useState<Record<string, number>>({});
     const [, forceTick] = useState(0);
 
-    // helper
     const startHardLock = useCallback((key: string, renderId?: string, ms = 60_000) => {
         const until = Date.now() + ms;
         setLockUntilByKey((m) => ({ ...m, [key]: Math.max(m[key] || 0, until) }));
         if (renderId) setLockUntilByRender((m) => ({ ...m, [renderId]: Math.max(m[renderId] || 0, until) }));
     }, []);
 
-    // keep time moving so locks expire without interaction
     useEffect(() => {
         const t = setInterval(() => forceTick((n) => (n + 1) & 0xff), 1000);
         return () => clearInterval(t);
@@ -283,7 +261,6 @@ export default function PreviewPage(): JSX.Element {
             return normUrl(ensureHttp(raw));
         }
     }, [search]);
-
 
     const targetHash = useMemo(() => (isHttpUrl(targetUrl) ? hash64(targetUrl) : null), [targetUrl]);
 
@@ -383,6 +360,7 @@ export default function PreviewPage(): JSX.Element {
     }, [user, targetUrl]);
 
     /* renders list filtered to selected URL */
+    const [lockUntilByKeyState] = [lockUntilByKey];
     const refreshRenders = useCallback(async () => {
         if (!user) return;
         if (!targetUrl || !isHttpUrl(targetUrl)) {
@@ -404,11 +382,10 @@ export default function PreviewPage(): JSX.Element {
             });
 
             const now = Date.now();
-
             for (const r of filtered) {
                 const key = r.key || "";
-                if (key && lockUntilByKey[key] && lockUntilByKey[key] > now) {
-                    setLockUntilByRender((m) => ({ ...m, [r.id]: Math.max(m[r.id] || 0, lockUntilByKey[key]) }));
+                if (key && lockUntilByKeyState[key] && lockUntilByKeyState[key] > now) {
+                    setLockUntilByRender((m) => ({ ...m, [r.id]: Math.max(m[r.id] || 0, lockUntilByKeyState[key]) }));
                 }
             }
 
@@ -467,7 +444,7 @@ export default function PreviewPage(): JSX.Element {
         } finally {
             setLoadingRenders(false);
         }
-    }, [user, targetUrl, targetHash]);
+    }, [user, targetUrl, targetHash, lockUntilByKeyState]);
 
     useEffect(() => {
         refreshRenders();
@@ -484,7 +461,6 @@ export default function PreviewPage(): JSX.Element {
         };
     }, [refreshRenders]);
 
-    // replace selectUrl
     const selectUrl = useCallback(
         (u: string) => {
             const next = ensureHttp(u.trim());
@@ -494,14 +470,15 @@ export default function PreviewPage(): JSX.Element {
         [router]
     );
 
-
     /* start render from screenshot key */
     const buildFromKey = useCallback(
         async (storageKey: string) => {
             if (!user) return;
-
             const alreadyQueued = renders.find((r) => r.key === storageKey && r.status === "queued" && !r.archived);
             if (alreadyQueued) return;
+
+            const confirmStart = window.confirm("Generate a new preview from this screenshot?");
+            if (!confirmStart) return;
 
             const optimisticId = `local_${hash64(`${user.uid}|${storageKey}|${Date.now()}`)}`;
             const optimistic: { id: string } & RenderDoc = {
@@ -521,7 +498,6 @@ export default function PreviewPage(): JSX.Element {
             } as any;
 
             startHardLock(storageKey, optimisticId, 60_000);
-
             setRenders((prev) => [optimistic, ...prev]);
             setPendingByKey((m) => ({ ...m, [storageKey]: true }));
             setErr("");
@@ -555,7 +531,7 @@ export default function PreviewPage(): JSX.Element {
                 push("Preview failed to start", "err");
             }
         },
-        [user, targetUrl, renders, refreshRenders, push]
+        [user, targetUrl, renders, refreshRenders, push, startHardLock]
     );
 
     /* editor */
@@ -582,6 +558,8 @@ export default function PreviewPage(): JSX.Element {
     const discardRender = useCallback(
         async (renderId: string) => {
             if (!user) return;
+            const ok = window.confirm("Discard this preview?");
+            if (!ok) return;
             setDeletingRender((m) => ({ ...m, [renderId]: true }));
             try {
                 await deleteDoc(doc(db, "kloner_users", user.uid, "kloner_renders", renderId));
@@ -601,10 +579,12 @@ export default function PreviewPage(): JSX.Element {
         [user, push]
     );
 
-    /* discard a screenshot file + any renders tied to it */
     const discardShot = useCallback(
         async (shot: Shot) => {
             if (!user || !docSnap) return;
+            const ok = window.confirm("Delete this screenshot and all associated previews?");
+            if (!ok) return;
+
             setErr("");
             setDeletingByKey((m) => ({ ...m, [shot.path]: true }));
             try {
@@ -643,33 +623,30 @@ export default function PreviewPage(): JSX.Element {
     );
 
     async function exportToVercel(html: string, name?: string) {
-        const r = await fetch("/api/export/vercel", {
+        // direct user-scoped deploy
+        const r = await fetch("/api/user-deploy", {
             method: "POST",
             headers: { "content-type": "application/json" },
             credentials: "include",
-            body: JSON.stringify({ html, name }),
+            body: JSON.stringify({ html, projectName: name }),
         });
-        const j = await r.json();
-        if (!r.ok || !j?.ok) {
-            push("Export failed", "err");
-            throw new Error(j?.error || "Vercel export failed");
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j?.url) {
+            push(j?.error || "Vercel deploy failed", "err");
+            throw new Error(j?.error || "Vercel deploy failed");
         }
         if (user && activeRenderId) {
             await updateDoc(doc(db, "kloner_users", user.uid, "kloner_renders", activeRenderId), {
                 lastExportedAt: serverTimestamp(),
             });
         }
-        push("Exported to Vercel", "ok");
+        navigator.clipboard?.writeText(j.url).catch(() => void 0);
+        push("Deployed. URL copied.", "ok");
         await refreshRenders();
     }
 
     const saveDraft = useCallback(
-        async (payload: {
-            draftId?: string;
-            html: string;
-            meta: { nameHint?: string; device: string; mode: string };
-            version: number;
-        }) => {
+        async (payload: { draftId?: string; html: string; meta: { nameHint?: string; device: string; mode: string }; version: number }) => {
             if (!user) return;
             const rid = payload.draftId || activeRenderId;
             if (!rid) {
@@ -709,9 +686,10 @@ export default function PreviewPage(): JSX.Element {
         [user, activeRenderId, targetUrl, editorRefImg, refreshRenders, push]
     );
 
-    /* rescan current URL (with 60s cooldown + label countdown) */
     const rescan = useCallback(async () => {
         if (!isHttpUrl(targetUrl) || rescanCooldown.active) return;
+        const ok = window.confirm("Start a fresh screenshot capture?");
+        if (!ok) return;
         setRescanning(true);
         setErr("");
         try {
@@ -735,9 +713,12 @@ export default function PreviewPage(): JSX.Element {
         } finally {
             setRescanning(false);
         }
-    }, [targetUrl, push]);
+    }, [targetUrl, push, rescanCooldown]);
 
-    /* ───────── memoized cards ───────── */
+    /* ───────── cards ───────── */
+    // Replace your RenderCard useMemo with this iframe-free version.
+    // Keeps badges, actions, statuses. The preview area is a styled placeholder.
+
     const RenderCard = useMemo(
         () =>
             memo(
@@ -747,36 +728,43 @@ export default function PreviewPage(): JSX.Element {
                     const hardLocked = (lockUntilByRender[r.id] || 0) > Date.now();
                     const disableOpen = isQueued || isFailed || hardLocked;
 
-                    // latch "loaded" per render-id; never flip back to true unless html identity changes
                     const prevHtmlRef = useRef<string | undefined>(r.html);
-                    const [frameLoading, setFrameLoading] = useState<boolean>(() => {
-                        return !isQueued && !isFailed && !(r.html && r.html.trim().length > 0);
-                    });
-
                     useEffect(() => {
-                        if (prevHtmlRef.current !== r.html) {
-                            prevHtmlRef.current = r.html;
-                            // do not set back to true; onLoad will clear if needed
-                        }
+                        if (prevHtmlRef.current !== r.html) prevHtmlRef.current = r.html;
                     }, [r.html]);
-
-                    useEffect(() => {
-                        if (isQueued || isFailed) return;
-                        const t = setTimeout(() => setFrameLoading(false), 10000);
-                        return () => clearTimeout(t);
-                    }, [isQueued, isFailed, r.id]);
 
                     const ageMs = Date.now() - tsToMs(r.createdAt);
                     const isStaleQueued = isQueued && ageMs > 6 * 60 * 1000;
                     const isDeleting = !!deletingRender[r.id];
-                    const versionLabel = shortVersionFromShotPath(r.key ?? "", (docData?.urlHash as string | undefined) ?? null);
+                    const versionLabel = shortVersionFromShotPath(
+                        r.key ?? "",
+                        (docData?.urlHash as string | undefined) ?? null
+                    );
+
+                    const deployThis = async () => {
+                        if (!r.html?.trim()) return;
+                        const ok = window.confirm("Deploy this preview to Vercel?");
+                        if (!ok) return;
+                        try {
+                            await exportToVercel(r.html!, r.nameHint || undefined);
+                        } catch { }
+                    };
 
                     return (
-                        <div className="relative rounded-xl border border-neutral-200 bg-white p-3 shadow-sm flex flex-col min-w-[300px]">
-                            {/* controller version badge (top-right) */}
-
+                        <div className="relative flex min-w-[300px] flex-col rounded-xl border border-neutral-200 bg-white p-3 shadow-sm">
+                            {r.referenceImage && (<a target="_blank" rel="noreferrer" className="block">
+                                <div className="w-full aspect-[4/3] bg-neutral-50 flex items-center justify-center rounded-t-xl relative">
+                                    <img
+                                        src={r.referenceImage}
+                                        // alt={s.fileName}
+                                        className={`h-full w-full object-cover`}
+                                        loading="lazy"
+                                    />
+                                </div>
+                            </a>
+                            )}
                             <span
-                                className="absolute top-2 right-20 z-10 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow"
+                                className="absolute right-20 top-2 z-10 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow"
                                 style={{ backgroundColor: "#1d4ed8" }}
                                 title={`Version ${versionLabel}`}
                             >
@@ -785,7 +773,7 @@ export default function PreviewPage(): JSX.Element {
 
                             {(r.controllerVersion || docData?.controllerVersion) && (
                                 <span
-                                    className="absolute top-2 right-2 z-10 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow"
+                                    className="absolute right-2 top-2 z-10 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow"
                                     style={{ backgroundColor: "#059669" }}
                                     title={`Controller ${r.controllerVersion || docData?.controllerVersion}`}
                                 >
@@ -794,29 +782,69 @@ export default function PreviewPage(): JSX.Element {
                             )}
 
                             {isDeleting && <CenterSpinner label="Deleting…" />}
-                            {/* <div className="text-xs truncate text-neutral-500 mb-2">{r.nameHint || r.key || r.id}</div> */}
-                            <div className="flex-1 overflow-hidden rounded border bg-neutral-50 h-44 relative">
-                                {(isQueued || frameLoading || hardLocked) && (
+
+                            {/* Preview placeholder (no iframe) */}
+                            <div className="relative h-44 flex-1 overflow-hidden rounded border bg-neutral-50">
+                                {(isQueued || hardLocked) && (
                                     <CenterSpinner
-                                        label={isQueued ? (isStaleQueued ? "Still queued… Retry available" : "Rendering…") : "Loading…"}
+                                        label={
+                                            isQueued
+                                                ? isStaleQueued
+                                                    ? "Still queued… Retry available"
+                                                    : "Rendering…"
+                                                : "Locked…"
+                                        }
                                     />
                                 )}
-                                {isFailed ? (
-                                    <div className="absolute inset-0 grid place-items-center">
-                                        <div className="text-xs text-red-600 bg-white/90 px-3 py-1.5 rounded border border-red-200">Failed</div>
+
+                                {!isQueued && !hardLocked && (
+                                    <div className="absolute inset-0">
+                                        {/* Fake browser chrome */}
+                                        <div className="flex items-center gap-1 border-b border-neutral-200 bg-white/90 px-3 py-1.5">
+                                            <span className="h-2.5 w-2.5 rounded-full bg-red-300" />
+                                            <span className="h-2.5 w-2.5 rounded-full bg-yellow-300" />
+                                            <span className="h-2.5 w-2.5 rounded-full bg-green-300" />
+                                            <div className="ml-2 h-5 flex-1 rounded bg-neutral-100" />
+                                        </div>
+
+                                        {/* Composed skeleton preview */}
+                                        <div className="grid h-[calc(100%-28px)] grid-cols-12 gap-0">
+                                            <div className="col-span-3 hidden h-full border-r border-neutral-200 bg-neutral-100/60 p-3 md:block">
+                                                <div className="mb-2 h-3 w-24 rounded bg-neutral-200" />
+                                                <div className="space-y-2">
+                                                    {Array.from({ length: 6 }).map((_, i) => (
+                                                        <div key={i} className="h-2.5 w-5/6 rounded bg-neutral-200" />
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div className="col-span-12 h-full bg-gradient-to-b from-neutral-100 to-neutral-200 p-3 md:col-span-9">
+                                                <div className="mb-3 h-6 w-3/4 rounded bg-neutral-300" />
+                                                <div className="mb-4 h-3 w-1/2 rounded bg-neutral-300" />
+                                                <div className="grid grid-cols-3 gap-3">
+                                                    {Array.from({ length: 6 }).map((_, i) => (
+                                                        <div key={i} className="h-16 rounded-lg bg-white shadow-[0_1px_2px_rgba(0,0,0,0.06)] ring-1 ring-neutral-200" />
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Status ribbon */}
+                                        <div className="pointer-events-none absolute bottom-2 left-2 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-neutral-600 ring-1 ring-neutral-200">
+                                            {isFailed ? "Failed" : r.html?.trim() ? "Preview placeholder" : "No HTML yet"}
+                                        </div>
                                     </div>
-                                ) : (
-                                    <iframe
-                                        title={`r-${r.id}`}
-                                        srcDoc={`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob: https: http:; style-src 'unsafe-inline'; font-src data: https:; script-src 'unsafe-inline'; connect-src 'none';"><base target="_blank" rel="noopener noreferrer">${r.html || ""}`}
-                                        className="w-full h-full"
-                                        sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms allow-pointer-lock"
-                                        referrerPolicy="no-referrer"
-                                        allow="clipboard-read; clipboard-write"
-                                        onLoad={() => setFrameLoading(false)}
-                                    />
+                                )}
+
+                                {isFailed && !isQueued && (
+                                    <div className="absolute inset-0 grid place-items-center">
+                                        <div className="rounded border border-red-200 bg-white/90 px-3 py-1.5 text-xs text-red-600">
+                                            Failed
+                                        </div>
+                                    </div>
                                 )}
                             </div>
+
+                            {/* Actions */}
                             <div className="mt-2 flex items-center gap-2">
                                 <button
                                     onClick={() => continueRender(r.id)}
@@ -827,32 +855,39 @@ export default function PreviewPage(): JSX.Element {
                                 >
                                     {isQueued ? "Queued" : isFailed ? "Retry" : "Preview / Edit"}
                                 </button>
+
                                 {isStaleQueued && r.key ? (
                                     <button
                                         onClick={() => buildFromKey(r.key!)}
-                                        className="rounded-md px-2 py-1 text-[11px] border border-amber-300 text-amber-700"
+                                        className="rounded-md border border-amber-300 px-2 py-1 text-[11px] text-amber-700"
                                         title="Retry this render"
                                         disabled={isDeleting}
                                     >
                                         Retry render
                                     </button>
                                 ) : null}
+
                                 <button
                                     onClick={() => discardRender(r.id)}
-                                    className="rounded-md px-2 py-1 text-[11px] border text-red-600 border-red-200 disabled:opacity-50"
+                                    className="rounded-md border border-red-200 px-2 py-1 text-[11px] text-red-600 disabled:opacity-50"
                                     disabled={isDeleting}
+                                    title="Discard this preview"
                                 >
                                     {isDeleting ? "Deleting…" : "Discard"}
                                 </button>
+
                                 <button
-                                    onClick={rescan}
-                                    className="rounded-md px-2 py-1 text-[11px] border disabled:opacity-60"
-                                    disabled={rescanning || rescanCooldown.active || !isHttpUrl(targetUrl) || isDeleting}
-                                    title="Capture a fresh screenshot"
+                                    onClick={deployThis}
+                                    className="rounded-md border border-neutral-200 px-2 py-1 text-[11px] text-neutral-700"
+                                    disabled={!r.html || isDeleting || isQueued}
+                                    title="Deploy this preview to Vercel"
                                 >
-                                    {rescanning ? "Starting…" : rescanCooldown.active ? `Rescan (${rescanCooldown.remaining}s)` : "Rescan"}
+                                    Deploy
                                 </button>
-                                <span className="ml-auto text-[11px] text-neutral-500">{isStaleQueued ? "stale" : r.status}</span>
+
+                                <span className="ml-auto text-[11px] text-neutral-500">
+                                    {isStaleQueued ? "stale" : r.status}
+                                </span>
                             </div>
                         </div>
                     );
@@ -869,9 +904,16 @@ export default function PreviewPage(): JSX.Element {
                     );
                 }
             ),
-        // re-memo if controller version changes so the badge updates
-        [continueRender, buildFromKey, discardRender, rescan, rescanning, rescanCooldown.active, rescanCooldown.remaining, targetUrl, deletingRender, docData?.controllerVersion]
+        [
+            continueRender,
+            buildFromKey,
+            discardRender,
+            deletingRender,
+            docData?.controllerVersion,
+            exportToVercel,
+        ]
     );
+
 
     const ShotCard = useMemo(
         () =>
@@ -880,13 +922,11 @@ export default function PreviewPage(): JSX.Element {
                     const [imgLoading, setImgLoading] = useState<boolean>(true);
                     const isDeleting = !!deletingByKey[s.path];
                     const hardLocked = (lockUntilByKey[s.path] || 0) > Date.now();
-                    const showOverlay = locked || imgLoading || isDeleting;
-
+                    const showOverlay = locked || imgLoading || hardLocked || isDeleting;
                     const versionLabel = shortVersionFromShotPath(s.path, (docData?.urlHash as string | undefined) ?? null);
 
                     return (
                         <figure className="relative rounded-xl border border-neutral-200 bg-white shadow-sm flex flex-col">
-                            {/* screenshot version badge (top-left) */}
                             <span
                                 className="absolute top-2 left-2 z-10 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow"
                                 style={{ backgroundColor: "#1d4ed8" }}
@@ -938,32 +978,38 @@ export default function PreviewPage(): JSX.Element {
                 },
                 (prev, next) => prev.locked === next.locked && prev.s.path === next.s.path && prev.s.url === next.s.url && prev.s.fileName === next.s.fileName
             ),
-        [buildFromKey, discardShot, deletingByKey]
+        [buildFromKey, discardShot, deletingByKey, lockUntilByKey, docData?.urlHash]
     );
 
     /* ───────── render ───────── */
     return (
         <main className="min-h-screen bg-white">
             <div className="mx-auto max-w-[1200px] px-4 sm:px-6 lg:px-10 py-8">
-                {/* URL selector row */}
                 <div className="mb-5">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
                         <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-900">Preview</h1>
-                        <a
-                            href="/dashboard"
-                            className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
-                        >
-                            Dashboard
-                        </a>
+                        <div className="flex items-center gap-2">
+                            <a
+                                href="/api/vercel/oauth/start"
+                                className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
+                                title="Connect your Vercel account"
+                            >
+                                Connect Vercel
+                            </a>
+                            <a
+                                href="/dashboard"
+                                className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
+                            >
+                                Dashboard
+                            </a>
+                        </div>
                     </div>
 
                     <div className="mt-3">
                         {urlsLoading ? (
                             <div className="h-10 rounded-xl bg-neutral-100 animate-pulse" />
                         ) : urls.length === 0 ? (
-                            <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-600">
-                                Add a URL from Dashboard to get started.
-                            </div>
+                            <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-600">Add a URL from Dashboard to get started.</div>
                         ) : (
                             <div className="flex gap-2 overflow-x-auto py-1">
                                 {urls.map((u) => {
@@ -984,14 +1030,11 @@ export default function PreviewPage(): JSX.Element {
                         )}
                     </div>
 
-                    {/* URL meta + actions */}
                     {targetUrl && (
                         <div className="mt-3 flex items-center gap-2">
                             <span className="text-sm text-neutral-600 break-all">{targetUrl}</span>
                             {docData?.status && (
-                                <span className="ml-2 rounded-full border border-neutral-200 px-2 py-0.5 text-xs text-neutral-600">
-                                    {docData.status.toUpperCase()}
-                                </span>
+                                <span className="ml-2 rounded-full border border-neutral-200 px-2 py-0.5 text-xs text-neutral-600">{docData.status.toUpperCase()}</span>
                             )}
                             <button
                                 onClick={rescan}
@@ -1005,19 +1048,12 @@ export default function PreviewPage(): JSX.Element {
                     )}
                 </div>
 
-                {err ? (
-                    <div className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>
-                ) : null}
-                {info ? (
-                    <div className="mt-2 rounded-lg border border-neutral-300 bg-neutral-50 px-3 py-2 text-sm text-neutral-800">{info}</div>
-                ) : null}
+                {err ? <div className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div> : null}
+                {info ? <div className="mt-2 rounded-lg border border-neutral-300 bg-neutral-50 px-3 py-2 text-sm text-neutral-800">{info}</div> : null}
 
-                {/* Screenshots grid */}
                 <div className="mt-6">
                     {!targetUrl ? (
-                        <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-6 text-sm text-neutral-700">
-                            Choose a URL above to view its screenshots and AI previews.
-                        </div>
+                        <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-6 text-sm text-neutral-700">Choose a URL above to view its screenshots and AI previews.</div>
                     ) : loading ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                             {Array.from({ length: 6 }).map((_, i) => (
@@ -1025,16 +1061,13 @@ export default function PreviewPage(): JSX.Element {
                             ))}
                         </div>
                     ) : shots.length === 0 ? (
-                        <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center text-neutral-500">
-                            No screenshots found for this URL yet.
-                        </div>
+                        <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center text-neutral-500">No screenshots found for this URL yet.</div>
                     ) : (
                         <>
                             <div className="mb-3 text-sm text-neutral-600">{shots.length} screenshot(s)</div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                 {shots.map((s) => {
-                                    const locked =
-                                        !!pendingByKey[s.path] || renders.some((r) => r.key === s.path && r.status === "queued" && !r.archived);
+                                    const locked = !!pendingByKey[s.path] || renders.some((r) => r.key === s.path && r.status === "queued" && !r.archived);
                                     return <ShotCard key={s.path} s={s} locked={locked} />;
                                 })}
                             </div>
@@ -1042,16 +1075,13 @@ export default function PreviewPage(): JSX.Element {
                     )}
                 </div>
 
-                {/* Renders grid */}
                 <div className="mt-10">
                     <div className="flex items-center justify-between">
                         <h2 className="text-lg font-semibold text-neutral-900">Render Sandbox</h2>
                         {loadingRenders && <span className="text-xs text-neutral-500">Loading…</span>}
                     </div>
                     {renders.length === 0 ? (
-                        <div className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-600">
-                            Nothing yet. Start one from a screenshot above.
-                        </div>
+                        <div className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-600">Nothing yet. Start one from a screenshot above.</div>
                     ) : (
                         <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {renders.map((r) => (
@@ -1081,7 +1111,6 @@ export default function PreviewPage(): JSX.Element {
             )}
 
             <Toasts toasts={toasts} />
-
             <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
         </main>
     );

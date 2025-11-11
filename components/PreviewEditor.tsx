@@ -152,6 +152,7 @@ export default function PreviewEditor({
         window.setTimeout(() => setApplyingPreview(false), 450);
     }
 
+
     async function doSave() {
         if (savingDraft) return;
         setSavingDraft(true);
@@ -183,6 +184,65 @@ export default function PreviewEditor({
             setExporting(false);
         }
     }
+
+    async function getClientUploadUrl(filename: string, type: string): Promise<{ uploadUrl: string; url: string }> {
+        const res = await fetch("/api/user-blob/upload-url", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ filename, contentType: type /*, teamId: optional */ }),
+        });
+        const j = await res.json();
+        if (!res.ok) throw new Error(j?.error || "upload_url_failed");
+        return j;
+    }
+
+    async function uploadDirect(uploadUrl: string, file: File) {
+        const r = await fetch(uploadUrl, { method: "PUT", body: file });
+        if (!r.ok) throw new Error("upload_failed");
+    }
+
+    function sanitizeName(name: string) {
+        const base = name.toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
+        return base.slice(-64) || "image";
+    }
+
+    async function replaceImage(el: HTMLImageElement) {
+        return new Promise<void>((resolve, reject) => {
+            fileInput.onchange = async () => {
+                const f = (fileInput.files && fileInput.files[0]) || null;
+                fileInput.value = "";
+                if (!f) return resolve();
+                if (f.size > 8 * 1024 * 1024) { showHint("Image too large (8MB max).", el); return reject(new Error("too_large")); }
+                if (!/^image\//.test(f.type)) { showHint("Unsupported type.", el); return reject(new Error("bad_type")); }
+
+                try {
+                    const box = cssBox(el);
+                    const { uploadUrl, url } = await getClientUploadUrl(sanitizeName(f.name), f.type);
+                    await uploadDirect(uploadUrl, f);
+
+                    // keep exact rendered size by fixing width/height style if not set
+                    if (!el.getAttribute("width") && !el.style.width) el.setAttribute("width", `${Math.round(box.w)}`);
+                    if (!el.getAttribute("height") && !el.style.height) el.setAttribute("height", `${Math.round(box.h)}`);
+
+                    // preserve object-fit / object-position
+                    if (box.objFit && box.objFit !== "fill") el.style.objectFit = box.objFit as any;
+                    if (box.objPos && box.objPos !== "50% 50%") el.style.objectPosition = box.objPos as any;
+
+                    el.src = url; // swap to user-hosted Blob URL
+                    saveHistory();
+                    notify();
+                    showHint("Image replaced.", el);
+                    resolve();
+                } catch (e) {
+                    showHint("Upload failed.", el);
+                    reject(e as any);
+                }
+            };
+            fileInput.click();
+        });
+    }
+
 
     // Close now auto-saves before calling onClose. Shows blocking overlay.
     const handleClose = useCallback(async () => {
@@ -471,18 +531,58 @@ function injectEditableOverlay(doc: Document, onChange: (updatedHtml: string) =>
     // purge any persisted toolbars defensively
     doc.querySelectorAll(".kloner-toolbar").forEach((n) => n.remove());
 
+
     const style = doc.createElement("style");
     style.textContent = `
-:root { --amber-50:#FFFBEB; --amber-200:#FDE68A; --amber-700:#B45309; --rose-50:#FFF1F2; --rose-200:#FECDD3; --rose-700:#BE123C; --slate-700:#334155; --slate-300:#cbd5e1; }
-[data-kloner-sel]{ outline:2px dashed #10b981 !important; outline-offset:2px !important; }
-.kloner-toolbar{ position:fixed; z-index:2147483647; display:none; gap:8px; padding:6px 8px; background:#111827; color:#fff; border-radius:10px; font:12px/1.2 system-ui,-apple-system,Segoe UI,Roboto; box-shadow:0 10px 30px rgba(0,0,0,.25) }
-.kbtn{ display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:8px; border:1px solid transparent; cursor:pointer; font-weight:600; }
-.kbtn-close{ background:#0f172a; color:#fff; border-color:#0f172a; }
-.kbtn-edit{ background:var(--amber-50); color:var(--amber-700); border-color:var(--amber-200); }
-.kbtn-del{  background:var(--rose-50);  color:var(--rose-700);  border-color:var(--rose-200); }
-.kbtn-undo{ background:#e2e8f0; color:#111827; border-color:var(--slate-300); }
-.kbtn-redo{ background:#e2e8f0; color:#111827; border-color:var(--slate-300); }
-`;
+        :root { --amber-50:#FFFBEB; --amber-200:#FDE68A; --amber-700:#B45309; --rose-50:#FFF1F2; --rose-200:#FECDD3; --rose-700:#BE123C; --slate-700:#334155; --slate-300:#cbd5e1; }
+        [data-kloner-sel]{ outline:2px dashed #10b981 !important; outline-offset:2px !important; }
+        .kloner-toolbar{ position:fixed; z-index:2147483647; display:none; gap:8px; padding:6px 8px; background:#111827; color:#fff; border-radius:10px; font:12px/1.2 system-ui,-apple-system,Segoe UI,Roboto; box-shadow:0 10px 30px rgba(0,0,0,.25) }
+        .kbtn{ display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:8px; border:1px solid transparent; cursor:pointer; font-weight:600; }
+        .kbtn-close{ background:#0f172a; color:#fff; border-color:#0f172a; }
+        .kbtn-edit{ background:var(--amber-50); color:var(--amber-700); border-color:var(--amber-200); }
+        .kbtn-del{  background:var(--rose-50);  color:var(--rose-700);  border-color:var(--rose-200); }
+        .kbtn-undo{ background:#e2e8f0; color:#111827; border-color:var(--slate-300); }
+        .kbtn-redo{ background:#e2e8f0; color:#111827; border-color:var(--slate-300); }
+        `;
+    // Extend toolbar styles
+    style.textContent += `
+        .kbtn-img { background:#ecfeff; color:#155e75; border-color:#a5f3fc; }
+        .khint { position:fixed; z-index:2147483646; padding:6px 8px; background:#111827; color:#fff; border-radius:8px; font:12px/1.2 system-ui; max-width:320px; }
+        `;
+
+    // Hidden file input once per document
+    const fileInput = doc.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = "image/*";
+    fileInput.style.display = "none";
+    doc.body.appendChild(fileInput);
+
+    // Lightweight hint tooltip
+    const hint = doc.createElement("div");
+    hint.className = "khint";
+    hint.style.display = "none";
+    doc.body.appendChild(hint);
+
+    function showHint(text: string, near: HTMLElement) {
+        hint.textContent = text;
+        const r = near.getBoundingClientRect();
+        hint.style.left = `${Math.min(r.left, doc.defaultView!.innerWidth - 340)}px`;
+        hint.style.top = `${r.bottom + 8}px`;
+        hint.style.display = "block";
+        setTimeout(() => (hint.style.display = "none"), 2200);
+    }
+
+    function cssBox(el: HTMLElement) {
+        const cs = doc.defaultView!.getComputedStyle(el);
+        return {
+            w: el.getBoundingClientRect().width,
+            h: el.getBoundingClientRect().height,
+            disp: cs.display,
+            objFit: cs.objectFit,
+            objPos: cs.objectPosition,
+        };
+    }
+
     doc.head.appendChild(style);
 
     const texty = new Set(["P", "SPAN", "H1", "H2", "H3", "H4", "H5", "H6", "LI", "SMALL", "STRONG", "EM", "LABEL", "BUTTON", "A", "DIV"]);
@@ -503,6 +603,8 @@ function injectEditableOverlay(doc: Document, onChange: (updatedHtml: string) =>
 <button class="kbtn kbtn-del"  data-act="del">🗑️ Delete</button>
 <button class="kbtn kbtn-undo" data-act="undo">↩ Undo</button>
 <button class="kbtn kbtn-redo" data-act="redo">↪ Redo</button>
+<button class="kbtn kbtn-img"  data-act="img-replace">🖼 Replace image</button>
+<button class="kbtn kbtn-img"  data-act="img-alt">ALT</button>
 `;
     doc.body.appendChild(toolbar);
 
