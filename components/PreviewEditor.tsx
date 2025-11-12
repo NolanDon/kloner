@@ -608,7 +608,7 @@ function injectEditableOverlay(doc: Document, onChange: (updatedHtml: string) =>
         hint.style.left = `${Math.min(r.left, doc.defaultView!.innerWidth - 340)}px`;
         hint.style.top = `${r.bottom + 8}px`;
         hint.style.display = "block";
-        setTimeout(() => (hint.style.display = "none"), 2200);
+        setTimeout(() => (hint.style.display = "none"), 4000);
     }
 
     function cssBox(el: HTMLElement) {

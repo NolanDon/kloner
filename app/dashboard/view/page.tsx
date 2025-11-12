@@ -107,17 +107,42 @@ function tsToMs(v: any): number {
 }
 function extractHashFromKey(key?: string | null): string | null {
     if (!key) return null;
-    const parts = key.split("/");
-    const i = parts.indexOf("url-scans");
-    if (i >= 0 && parts[i + 1]) return parts[i + 1];
-    const file = parts[parts.length - 1] || "";
-    const maybe = file.split("-")[0];
-    return maybe && maybe.length >= 8 ? maybe : null;
+
+    // Strip query and get filename
+    const file = (key.split("?")[0] || "").split("/").pop() || "";
+
+    // Remove extension
+    const stem = file.replace(/\.(jpe?g|png|webp|gif|bmp|tiff)$/i, "");
+
+    // Prefer trailing digits (timestamp). If none, use trailing alphanum.
+    const m = stem.match(/(\d+)$/) || stem.match(/([A-Za-z0-9]+)$/);
+    return m ? m[1] || m[0] : null;
 }
-function shortVersionFromShotPath(path: string, fallbackHash?: string | null): string {
-    const h = extractHashFromKey(path) || fallbackHash || "";
-    return (h || "").slice(0, 6) || "v";
+
+function shortVersionFromShotPath(
+    path: string,
+    fallbackHash?: string | null,
+    minChars = 4
+): string {
+    const base = extractHashFromKey(path) || fallbackHash || "";
+    if (!base) return "v";
+
+    // First try trailing digits (e.g., ...-1762904505972 -> "05972" -> take last >=4)
+    const digitTail = (base.match(/(\d+)$/) || [])[1] || "";
+    if (digitTail.length >= minChars) {
+        return digitTail.slice(-minChars);
+    }
+
+    // If not enough digits, fall back to last >=4 of the entire token
+    const token = base.replace(/[^A-Za-z0-9]/g, "");
+    if (token.length >= minChars) {
+        return token.slice(-minChars);
+    }
+
+    // If still shorter than 4, return what's available
+    return token || "v";
 }
+
 
 /* ───────── tiny toast ───────── */
 type ToastMsg = { id: string; text: string; tone?: "ok" | "warn" | "err" };
@@ -269,6 +294,43 @@ export default function PreviewPage(): JSX.Element {
 
     const [lockUntilByKey, setLockUntilByKey] = useState<Record<string, number>>({});
     const [lockUntilByRender, setLockUntilByRender] = useState<Record<string, number>>({});
+    // viewer state
+    const [viewerOpen, setViewerOpen] = useState(false);
+    const [viewerIdx, setViewerIdx] = useState(0);
+
+    const openViewer = useCallback((i: number) => {
+        setViewerIdx(i);
+        setViewerOpen(true);
+        try { document.documentElement.style.overflow = "hidden"; } catch { }
+    }, []);
+
+    const closeViewer = useCallback(() => {
+        setViewerOpen(false);
+        try { document.documentElement.style.overflow = ""; } catch { }
+    }, []);
+
+    const nextShot = useCallback(() => {
+        if (!shots.length) return;
+        setViewerIdx(i => (i + 1) % shots.length);
+    }, [shots.length]);
+
+    const prevShot = useCallback(() => {
+        if (!shots.length) return;
+        setViewerIdx(i => (i - 1 + shots.length) % shots.length);
+    }, [shots.length]);
+
+    // keyboard nav for the viewer
+    useEffect(() => {
+        if (!viewerOpen) return;
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === "Escape") closeViewer();
+            else if (e.key === "ArrowRight") nextShot();
+            else if (e.key === "ArrowLeft") prevShot();
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [viewerOpen, closeViewer, nextShot, prevShot]);
+
 
 
     async function resolveStorageUrl(pathOrUrl: string): Promise<string> {
@@ -939,7 +1001,10 @@ export default function PreviewPage(): JSX.Element {
     const ShotCard = useMemo(
         () =>
             memo(
-                function ShotCardInner({ s, locked }: { s: Shot; locked: boolean }) {
+                // update memo signature
+                function ShotCardInner({
+                    s, locked, index, onView
+                }: { s: Shot; locked: boolean; index: number; onView: (i: number) => void }) {
                     const [imgLoading, setImgLoading] = useState<boolean>(true);
                     const isDeleting = !!deletingByKey[s.path];
                     const hardLocked = (lockUntilByKey[s.path] || 0) > Date.now();
@@ -948,7 +1013,9 @@ export default function PreviewPage(): JSX.Element {
 
                     return (
                         <figure className="relative rounded-xl border border-neutral-200 bg-white shadow-sm flex flex-col">
-                            <span className="absolute top-2 left-2 z-10 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow" style={{ backgroundColor: "#1d4ed8" }} title={`Version ${versionLabel}`}>
+                            <span className="absolute top-2 left-2 z-10 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow"
+                                style={{ backgroundColor: "#1d4ed8" }}
+                                title={`Version ${versionLabel}`}>
                                 {versionLabel}
                             </span>
 
@@ -968,6 +1035,14 @@ export default function PreviewPage(): JSX.Element {
                             </a>
                             <figcaption className="px-3 py-2 text-xs text-neutral-700 rounded-b-xl">
                                 <div className="flex items-center justify-between gap-2 flex-wrap">
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => onView(index)}
+                                            className="shrink-0 rounded-md px-2 py-1 text-[11px] border border-neutral-200 text-neutral-800 hover:bg-neutral-50"
+                                            title="View large">
+                                            View
+                                        </button>
+                                    </div>
                                     <div className="ml-auto flex items-center gap-2">
                                         <button
                                             onClick={() => buildFromKey(s.path)}
@@ -975,16 +1050,14 @@ export default function PreviewPage(): JSX.Element {
                                             aria-busy={locked}
                                             className="shrink-0 rounded-md px-2 py-1 text-[11px] text-white disabled:opacity-50 disabled:cursor-not-allowed"
                                             style={{ backgroundColor: ACCENT }}
-                                            title="Generate editable preview from this screenshot"
-                                        >
+                                            title="Generate editable preview from this screenshot">
                                             {locked ? "In progress" : "Generate preview"}
                                         </button>
                                         <button
                                             onClick={() => discardShot(s)}
                                             disabled={locked || isDeleting}
                                             className="shrink-0 rounded-md px-2 py-1 text-[11px] border border-red-200 text-red-600 disabled:opacity-50"
-                                            title="Delete screenshot and all associated previews"
-                                        >
+                                            title="Delete screenshot and all associated previews">
                                             {isDeleting ? "Deleting…" : "Discard"}
                                         </button>
                                     </div>
@@ -1005,8 +1078,8 @@ export default function PreviewPage(): JSX.Element {
                 <div className="mb-5">
                     <div className="flex items-center justify-between gap-3 flex-wrap">
                         <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-900">Preview</h1>
-                               <div className="flex items-center gap-2">
-                            <a href="/api/vercel/oauth/start" className="rounded-lg border border-neutral-200 bg-accent px-3 py-2 text-sm text-white hover:bg-neutral-50" title="Connect your Vercel account">
+                        <div className="flex items-center gap-2">
+                            <a href="/api/vercel/oauth/start" className="rounded-lg border border-neutral-200 bg-accent px-3 py-2 text-sm text-white" title="Connect your Vercel account">
                                 Connect Vercel
                             </a>
                         </div>
@@ -1099,23 +1172,24 @@ export default function PreviewPage(): JSX.Element {
                                 title={rescanning ? "Starting…" : rescanCooldown.active ? `Rescan (${rescanCooldown.remaining}s)` : "Generate new base image"}
                                 subtitle="Capture a fresh screenshot for this URL"
                                 onClick={rescan}
-                                disabled={rescanning || rescanCooldown.active || !isHttpUrl(targetUrl)}
+                                disabled={rescanning || rescanning || rescanCooldown.active || !isHttpUrl(targetUrl)}
                             />
                         </div>
                     ) : (
                         <>
                             <div className="mb-3 text-sm text-neutral-600">{shots.length} screenshot(s)</div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {shots.map((s) => {
+                                {shots.map((s, i) => {
                                     const locked = !!pendingByKey[s.path] || renders.some((r) => r.key === s.path && r.status === "queued" && !r.archived);
-                                    return <ShotCard key={s.path} s={s} locked={locked} />;
+                                    return <ShotCard key={s.path} s={s} locked={locked} index={i} onView={openViewer} />;
                                 })}
+
                                 {/* Ghost card appended at the end of the screenshots grid */}
                                 <GhostActionCard
                                     title={rescanning ? "Starting…" : rescanCooldown.active ? `Rescan (${rescanCooldown.remaining}s)` : "Add / Rescan"}
                                     subtitle="Generate a new base image for this page"
                                     onClick={rescan}
-                                    disabled={rescanning || rescanCooldown.active || !isHttpUrl(targetUrl)}
+                                    disabled={rescanning || rescanning || rescanCooldown.active || !isHttpUrl(targetUrl)}
                                 />
                             </div>
                         </>
@@ -1125,7 +1199,6 @@ export default function PreviewPage(): JSX.Element {
                 <div className="mt-10">
                     <div className="flex items-center justify-between">
                         <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-900">Render Sandbox</h2>
-                        {loadingRenders && <span className="text-xs text-neutral-500">Loading…</span>}
                     </div>
                     {renders.length === 0 ? (
                         <div className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-600">Nothing yet. Start one from a screenshot above.</div>
@@ -1159,6 +1232,61 @@ export default function PreviewPage(): JSX.Element {
 
             <Toasts toasts={toasts} />
             <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+            {viewerOpen && shots[viewerIdx] && (
+                <div className="fixed inset-0 z-[10000]">
+                    {/* backdrop */}
+                    <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={closeViewer} />
+
+                    {/* content */}
+                    <div className="absolute inset-0 p-4 sm:p-6 md:p-8 grid place-items-center">
+                        <div className="relative w-full h-full max-w-[min(95vw,1400px)]">
+                            {/* top bar */}
+
+
+
+                            <div className="absolute top-0 bg-black/70 h-20 left-0 right-0 z-10 flex items-center justify-between gap-2 p-2 sm:p-3">
+
+                                {/* <div className="flex items-center gap-2"> */}
+                                    <div className="text-[11px] sm:text-xs text-white/80 truncate">
+                                        {shots[viewerIdx].fileName}
+                                    </div>
+                                    <button
+                                        onClick={closeViewer}
+                                        className="rounded-md bg-accent text-white text-xs px-2.5 py-1.5 shadow">
+                                        Close
+                                    </button>
+                                {/* </div> */}
+
+                            </div>
+
+                            {/* image scroller */}
+                            <div className="absolute inset-0 mt-8 mb-8 overflow-auto rounded-lg ring-1 ring-white/10 bg-black/40">
+                                <div className="min-h-full w-full grid place-items-center p-4">
+                                    <img
+                                        src={shots[viewerIdx].url}
+                                        alt={shots[viewerIdx].fileName}
+                                        className="max-w-none"
+                                        style={{ width: "auto", height: "auto", maxWidth: "none" }}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* nav controls */}
+                            <button
+                                onClick={prevShot}
+                                className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-accent text-white h-9 w-9 grid place-items-center shadow ring-1 ring-neutral-200">
+                                ‹
+                            </button>
+                            <button
+                                onClick={nextShot}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-accent text-white h-9 w-9 grid place-items-center shadow ring-1 ring-neutral-200">
+                                ›
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
         </main>
     );
 }
