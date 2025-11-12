@@ -26,6 +26,7 @@ import {
 import { ref as sRef, listAll, getDownloadURL, deleteObject, type StorageReference } from "firebase/storage";
 import { auth, db, storage } from "@/lib/firebase";
 import PreviewEditor from "@/components/PreviewEditor";
+import { Rocket, Plus, ChevronDown } from "lucide-react";
 
 const ACCENT = "#f55f2a";
 
@@ -145,7 +146,7 @@ function Toasts({ toasts }: { toasts: ToastMsg[] }) {
     );
 }
 
-/* ───────── cooldown helper (interval only when active) ───────── */
+/* ───────── cooldown helper ───────── */
 function useCooldown(initialUntil = 0) {
     const [until, setUntil] = useState<number>(initialUntil);
     const [now, setNow] = useState<number>(Date.now());
@@ -178,18 +179,14 @@ const CenterSpinner = memo(function CenterSpinner({
     return (
         <div className={`absolute inset-0 grid place-items-center ${dim ? "bg-white/85" : ""}`}>
             <div className="flex items-center gap-2 rounded border px-3 py-1.5 text-xs text-neutral-800 bg-white" role="status" aria-live="polite">
-                <span
-                    className="inline-block rounded-full border-2 border-neutral-300"
-                    style={{ width: size, height: size, borderTopColor: ACCENT, animation: "spin 0.8s linear infinite" }}
-                    aria-hidden
-                />
+                <span className="inline-block rounded-full border-2 border-neutral-300" style={{ width: size, height: size, borderTopColor: ACCENT, animation: "spin 0.8s linear infinite" }} aria-hidden />
                 {label}
             </div>
         </div>
     );
 });
 
-/* ───────── shallow equality for renders list ───────── */
+/* ───────── shallow equality ───────── */
 function rendersEqual(a: Array<{ id: string } & RenderDoc>, b: Array<{ id: string } & RenderDoc>): boolean {
     if (a === b) return true;
     if (a.length !== b.length) return false;
@@ -204,6 +201,39 @@ function rendersEqual(a: Array<{ id: string } & RenderDoc>, b: Array<{ id: strin
     }
     return true;
 }
+
+/* ───────── ghost action card ───────── */
+const GhostActionCard = memo(function GhostActionCard({
+    title,
+    subtitle,
+    onClick,
+    disabled,
+}: {
+    title: string;
+    subtitle?: string;
+    onClick: () => void;
+    disabled?: boolean;
+}) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            disabled={disabled}
+            className={`group relative flex aspect-[4/3] w-full items-center justify-center rounded-xl border-2 border-dashed bg-white text-center transition ${disabled ? "opacity-60 cursor-not-allowed" : "hover:border-neutral-400"
+                }`}
+            title={title}
+            aria-disabled={disabled}
+        >
+            <div className="pointer-events-none flex flex-col items-center">
+                <div className="grid h-14 w-14 place-items-center rounded-full border border-neutral-200 bg-neutral-50 transition group-hover:scale-105">
+                    <Plus className="h-7 w-7 text-neutral-600" />
+                </div>
+                <div className="mt-3 text-sm font-semibold text-neutral-800">{title}</div>
+                {subtitle ? <div className="mt-1 text-xs text-neutral-500">{subtitle}</div> : null}
+            </div>
+        </button>
+    );
+});
 
 /* ───────── main ───────── */
 export default function PreviewPage(): JSX.Element {
@@ -240,12 +270,16 @@ export default function PreviewPage(): JSX.Element {
     const [lockUntilByKey, setLockUntilByKey] = useState<Record<string, number>>({});
     const [lockUntilByRender, setLockUntilByRender] = useState<Record<string, number>>({});
 
+
     async function resolveStorageUrl(pathOrUrl: string): Promise<string> {
         if (!pathOrUrl) return "";
         if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
-        try { return await getDownloadURL(sRef(storage, pathOrUrl)); } catch { return ""; }
+        try {
+            return await getDownloadURL(sRef(storage, pathOrUrl));
+        } catch {
+            return "";
+        }
     }
-
     function useResolvedImg(pathOrUrl: string) {
         const [src, setSrc] = React.useState("");
         const retriedRef = React.useRef(false);
@@ -253,13 +287,17 @@ export default function PreviewPage(): JSX.Element {
             const u = await resolveStorageUrl(pathOrUrl);
             if (u) setSrc(u);
         }, [pathOrUrl]);
-        React.useEffect(() => { refresh(); }, [refresh]);
+        React.useEffect(() => {
+            refresh();
+        }, [refresh]);
         const onError = React.useCallback(() => {
-            if (!retriedRef.current) { retriedRef.current = true; refresh(); }
+            if (!retriedRef.current) {
+                retriedRef.current = true;
+                refresh();
+            }
         }, [refresh]);
         return { src, onError };
     }
-
 
     const startHardLock = useCallback((key: string, renderId?: string, ms = 60_000) => {
         const until = Date.now() + ms;
@@ -282,6 +320,39 @@ export default function PreviewPage(): JSX.Element {
             return normUrl(ensureHttp(raw));
         }
     }, [search]);
+
+    // 1) Add this import with your other lucide-react imports
+
+
+    // 2) Add these state + refs near your other state hooks in PreviewPage()
+    const [urlMenuOpen, setUrlMenuOpen] = useState(false);
+    const urlMenuRef = useRef<HTMLDivElement | null>(null);
+
+    // Close dropdown on outside click
+    useEffect(() => {
+        function onDocClick(e: MouseEvent) {
+            if (!urlMenuRef.current) return;
+            if (!urlMenuRef.current.contains(e.target as Node)) setUrlMenuOpen(false);
+        }
+        document.addEventListener("click", onDocClick);
+        return () => document.removeEventListener("click", onDocClick);
+    }, []);
+
+    // Compute active item: prefer targetUrl; fallback to first url
+    const activeUrlDoc = useMemo(() => {
+        if (!urls.length) return null;
+        const match = targetUrl ? urls.find((u) => normUrl(u.url) === normUrl(targetUrl)) : null;
+        return match ?? urls[0];
+    }, [urls, targetUrl]);
+
+    // Ensure active is first in the dropdown list (deduped)
+    const orderedUrls = useMemo(() => {
+        if (!activeUrlDoc) return [];
+        const rest = urls.filter((u) => u.id !== activeUrlDoc.id);
+        return [activeUrlDoc, ...rest];
+    }, [urls, activeUrlDoc]);
+
+    // 3) REPLACE your entire <div className="mt-3">...</div> block with this
 
     const targetHash = useMemo(() => (isHttpUrl(targetUrl) ? hash64(targetUrl) : null), [targetUrl]);
 
@@ -560,6 +631,7 @@ export default function PreviewPage(): JSX.Element {
         async (renderId: string) => {
             if (!user) return;
             setErr("");
+
             const dref = doc(db, "kloner_users", user.uid, "kloner_renders", renderId);
             const snap = await getDoc(dref);
             if (!snap.exists()) {
@@ -567,13 +639,24 @@ export default function PreviewPage(): JSX.Element {
                 push("Preview not found", "err");
                 return;
             }
+
             const data = snap.data() as RenderDoc;
+
+            let refSrc =
+                (data.referenceImage && (await resolveStorageUrl(data.referenceImage))) ||
+                (data.key && (await resolveStorageUrl(data.key))) ||
+                "";
+            if (!refSrc) {
+                const byKey = data.key ? shots.find((s) => s.path === data.key) : undefined;
+                refSrc = byKey?.url || shots[0]?.url || "";
+            }
+
             setEditorHtml(data.html || "");
-            setEditorRefImg(data.referenceImage || "");
+            setEditorRefImg(refSrc);
             setActiveRenderId(renderId);
             setEditorOpen(true);
         },
-        [user, push]
+        [user, push, shots]
     );
 
     const discardRender = useCallback(
@@ -612,7 +695,7 @@ export default function PreviewPage(): JSX.Element {
                 await deleteObject(sRef(storage, shot.path)).catch(() => { });
                 const rCol = collection(db, "kloner_users", user.uid, "kloner_renders");
                 const rSnap = await getDocs(query(rCol, where("key", "==", shot.path)));
-                if (!rSnap.empty) {
+                if (rSnap.empty === false) {
                     await Promise.all(rSnap.docs.map((d) => deleteDoc(d.ref)));
                 }
                 try {
@@ -694,6 +777,7 @@ export default function PreviewPage(): JSX.Element {
                     url: targetUrl || null,
                     urlHash: targetUrl ? hash64(targetUrl) : null,
                     html: payload.html,
+                    referenceImage: editorRefImg || null,
                     nameHint: payload.meta?.nameHint || (targetUrl ? new URL(targetUrl).hostname : null),
                     version: payload.version || 1,
                     updatedAt: serverTimestamp(),
@@ -736,8 +820,6 @@ export default function PreviewPage(): JSX.Element {
     }, [targetUrl, push, rescanCooldown]);
 
     /* ───────── cards ───────── */
-    // IFRAME VERSION — locked to only update when r.html changes, never on parent ticks
-
     const RenderCard = useMemo(
         () =>
             memo(
@@ -752,8 +834,7 @@ export default function PreviewPage(): JSX.Element {
                         if (prevHtmlRef.current === r.html) return;
                         prevHtmlRef.current = r.html;
                         const safeHtml = (r.html || "").trim();
-                        const csp =
-                            `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob: https: http:; style-src 'unsafe-inline'; font-src data: https:; script-src 'unsafe-inline'; connect-src 'none';">`;
+                        const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob: https: http:; style-src 'unsafe-inline'; font-src data: https:; script-src 'unsafe-inline'; connect-src 'none';">`;
                         const base = r.html ? `<base target="_blank" rel="noopener noreferrer">` : "";
                         setSrcDoc(`${csp}${base}${safeHtml}`);
                     }, [r.html]);
@@ -762,10 +843,7 @@ export default function PreviewPage(): JSX.Element {
                     const disableOpen = isQueued || isFailed || hardLocked;
 
                     const { src: refImgUrl, onError: refImgErr } = useResolvedImg(r.key || "");
-                    const versionLabel = shortVersionFromShotPath(
-                        r.key ?? "",
-                        (docData?.urlHash as string | undefined) ?? null
-                    );
+                    const versionLabel = shortVersionFromShotPath(r.key ?? "", (docData?.urlHash as string | undefined) ?? null);
 
                     const deployThis = async () => {
                         if (!r.html?.trim()) return;
@@ -777,51 +855,24 @@ export default function PreviewPage(): JSX.Element {
                     };
 
                     return (
-                        // NOTE: overflow-visible so the corner X can sit exactly on the rounded corner
                         <div className="relative flex min-w-[300px] flex-col overflow-visible rounded-xl border border-neutral-200 bg-white shadow-sm">
-                            {/* Version & controller badges */}
-                            <span
-                                className="absolute left-2 top-2 z-30 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow"
-                                style={{ backgroundColor: "#1d4ed8" }}
-                                title={`Version ${versionLabel}`}
-                            >
+                            <span className="absolute left-2 top-2 z-30 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow" style={{ backgroundColor: "#1d4ed8" }} title={`Version ${versionLabel}`}>
                                 {versionLabel}
                             </span>
-                            {/* {(r.controllerVersion || docData?.controllerVersion) && (
-                                <span
-                                    className="absolute left-2 top-7 z-30 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow"
-                                    style={{ backgroundColor: "#059669" }}
-                                    title={`Controller ${r.controllerVersion || docData?.controllerVersion}`}
-                                >
-                                    {`ctrl ${(r.controllerVersion || docData?.controllerVersion) as string}`}
-                                </span>
-                            )} */}
 
-                            {/* Tiny discard X — overlaid EXACTLY on the top-right corner */}
                             <button
                                 onClick={() => discardRender(r.id)}
                                 disabled={isDeleting}
                                 aria-label="Discard"
                                 title="Discard this preview"
-                                className="
-                                    absolute top-0 right-0 z-40
-                                    grid h-5 w-5 place-items-center
-                                    -translate-y-1/2 translate-x-1/2
-                                    rounded-full bg-white text-red-600
-                                    shadow-md ring-1 ring-red-200
-                                    hover:bg-red-50 hover:ring-red-300
-                                    disabled:opacity-50
-                                "
+                                className="absolute top-0 right-0 z-40 grid h-5 w-5 place-items-center -translate-y-1/2 translate-x-1/2 rounded-full bg-white text-red-600 shadow-md ring-1 ring-red-200 hover:bg-red-50 hover:ring-red-300 disabled:opacity-50"
                             >
                                 <span className="text-lg mb-0.5 leading-none">×</span>
                             </button>
 
-                            {/* Image with dim + centered actions */}
                             <div className="relative">
                                 {!refImgUrl ? (
-                                    <div className="aspect-[4/3] w-full grid place-items-center text-xs text-neutral-500">
-                                        No snapshot available
-                                    </div>
+                                    <div className="aspect-[4/3] w-full grid place-items-center text-xs text-neutral-500">No snapshot available</div>
                                 ) : (
                                     <a href={refImgUrl} target="_blank" rel="noreferrer" className="block">
                                         <img
@@ -829,13 +880,12 @@ export default function PreviewPage(): JSX.Element {
                                             alt={r.nameHint || "preview"}
                                             loading="lazy"
                                             onError={refImgErr}
-                                            className="h-full w-full max-h-[260px] object-cover opacity-[0.55] select-none pointer-events-none"
+                                            className="h-full w-full max-h-[260px] object-cover opacity-[0.25] select-none pointer-events-none"
                                             draggable={false}
                                         />
                                     </a>
                                 )}
 
-                                {/* Center overlay buttons */}
                                 <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
                                     <div className="pointer-events-auto flex items-center gap-2 rounded-xl bg-white/90 p-2 ring-1 ring-neutral-200 backdrop-blur">
                                         <button
@@ -847,18 +897,19 @@ export default function PreviewPage(): JSX.Element {
                                         >
                                             {isQueued ? "Queued" : isFailed ? "Retry Edit" : "Edit"}
                                         </button>
+
                                         <button
                                             onClick={deployThis}
                                             disabled={!r.html || isDeleting || isQueued}
-                                            className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 disabled:opacity-50"
+                                            className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 disabled:opacity-50 relative inline-flex items-center gap-2"
                                             title="Deploy this preview to Vercel"
                                         >
                                             Deploy
+                                            <Rocket className="h-3 w-3" />
                                         </button>
                                     </div>
                                 </div>
 
-                                {/* Status ribbons */}
                                 <span className="absolute bottom-2 left-2 z-20 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-neutral-600 ring-1 ring-neutral-200">
                                     {isFailed ? "Failed" : r.html?.trim() ? "Preview" : "No HTML yet"}
                                 </span>
@@ -870,17 +921,8 @@ export default function PreviewPage(): JSX.Element {
                                 {(isQueued || hardLocked) && <CenterSpinner label={isQueued ? "Rendering…" : "Locked…"} />}
                             </div>
 
-                            {/* Hidden iframe (stable) */}
                             <div className="relative h-0 overflow-hidden">
-                                <iframe
-                                    title={`r-${r.id}`}
-                                    className="w-full h-0"
-                                    sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms allow-pointer-lock"
-                                    referrerPolicy="no-referrer"
-                                    allow="clipboard-read; clipboard-write"
-                                    key={`frame-${r.id}`}
-                                    srcDoc={srcDoc}
-                                />
+                                <iframe title={`r-${r.id}`} className="w-full h-0" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms allow-pointer-lock" referrerPolicy="no-referrer" allow="clipboard-read; clipboard-write" key={`frame-${r.id}`} srcDoc={srcDoc} />
                             </div>
                         </div>
                     );
@@ -888,18 +930,11 @@ export default function PreviewPage(): JSX.Element {
                 (prev, next) => {
                     const a = prev.r;
                     const b = next.r;
-                    return (
-                        a.id === b.id &&
-                        a.status === b.status &&
-                        (a.html || "") === (b.html || "") &&
-                        (a.key || "") === (b.key || "") &&
-                        (a.nameHint || "") === (b.nameHint || "")
-                    );
+                    return a.id === b.id && a.status === b.status && (a.html || "") === (b.html || "") && (a.key || "") === (b.key || "") && (a.nameHint || "") === (b.nameHint || "");
                 }
             ),
         [continueRender, discardRender, deletingRender, docData?.controllerVersion, exportToVercel]
     );
-
 
     const ShotCard = useMemo(
         () =>
@@ -913,11 +948,7 @@ export default function PreviewPage(): JSX.Element {
 
                     return (
                         <figure className="relative rounded-xl border border-neutral-200 bg-white shadow-sm flex flex-col">
-                            <span
-                                className="absolute top-2 left-2 z-10 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow"
-                                style={{ backgroundColor: "#1d4ed8" }}
-                                title={`Version ${versionLabel}`}
-                            >
+                            <span className="absolute top-2 left-2 z-10 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow" style={{ backgroundColor: "#1d4ed8" }} title={`Version ${versionLabel}`}>
                                 {versionLabel}
                             </span>
 
@@ -974,19 +1005,9 @@ export default function PreviewPage(): JSX.Element {
                 <div className="mb-5">
                     <div className="flex items-center justify-between gap-3 flex-wrap">
                         <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-900">Preview</h1>
-                        <div className="flex items-center gap-2">
-                            <a
-                                href="/api/vercel/oauth/start"
-                                className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
-                                title="Connect your Vercel account"
-                            >
+                               <div className="flex items-center gap-2">
+                            <a href="/api/vercel/oauth/start" className="rounded-lg border border-neutral-200 bg-accent px-3 py-2 text-sm text-white hover:bg-neutral-50" title="Connect your Vercel account">
                                 Connect Vercel
-                            </a>
-                            <a
-                                href="/dashboard"
-                                className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
-                            >
-                                Dashboard
                             </a>
                         </div>
                     </div>
@@ -999,47 +1020,69 @@ export default function PreviewPage(): JSX.Element {
                                 Add a URL from Dashboard to get started.
                             </div>
                         ) : (
-                            <div className="flex gap-2 overflow-x-auto py-1">
-                                {urls.map((u) => {
-                                    const active = targetUrl && normUrl(u.url) === normUrl(targetUrl);
-                                    return (
-                                        <button
-                                            key={u.id}
-                                            onClick={() => selectUrl(u.url)}
-                                            className={`shrink-0 max-w-[360px] truncate rounded-lg px-3 py-2 text-sm ring-1 ${active ? "bg-neutral-900 text-white ring-neutral-900" : "bg-white text-neutral-800 ring-neutral-200 hover:bg-neutral-50"
-                                                }`}
-                                            title={u.url}
-                                        >
-                                            {u.url}
-                                        </button>
-                                    );
-                                })}
+                            <div className="relative inline-block" ref={urlMenuRef}>
+                                <button
+                                    type="button"
+                                    onClick={() => setUrlMenuOpen((v) => !v)}
+                                    className="inline-flex max-w-[540px] items-center gap-2 truncate rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-800 hover:bg-neutral-50"
+                                    title={activeUrlDoc?.url}
+                                    aria-haspopup="listbox"
+                                    aria-expanded={urlMenuOpen}
+                                >
+                                    <span className="truncate">{activeUrlDoc?.url}</span>
+                                    <ChevronDown className="h-4 w-4 shrink-0 text-neutral-500" />
+                                </button>
+
+                                {urlMenuOpen && (
+                                    <div
+                                        role="listbox"
+                                        aria-activedescendant={activeUrlDoc?.id}
+                                        className="absolute z-40 mt-2 w-[min(640px,90vw)] overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-lg"
+                                    >
+                                        <ul className="max-h-[280px] overflow-auto py-1">
+                                            {orderedUrls.map((u) => {
+                                                const isActive = activeUrlDoc?.id === u.id;
+                                                return (
+                                                    <li key={u.id}>
+                                                        <button
+                                                            role="option"
+                                                            aria-selected={isActive}
+                                                            onClick={() => {
+                                                                setUrlMenuOpen(false);
+                                                                selectUrl(u.url);
+                                                            }}
+                                                            title={u.url}
+                                                            className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm ${isActive
+                                                                ? "bg-neutral-100 text-neutral-900"
+                                                                : "text-neutral-800 hover:bg-neutral-50"
+                                                                }`}
+                                                        >
+                                                            <span
+                                                                className={`inline-block h-2.5 w-2.5 rounded-full ${isActive ? "bg-neutral-800" : "bg-neutral-300"
+                                                                    }`}
+                                                            />
+                                                            <span className="truncate">{u.url}</span>
+                                                        </button>
+                                                    </li>
+                                                );
+                                            })}
+                                        </ul>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
 
-                    {targetUrl && (
-                        <div className="mt-3 flex items-center gap-2">
-                            <span className="text-sm text-neutral-600 break-all">{targetUrl}</span>
-                            {docData?.status && (
-                                <span className="ml-2 rounded-full border border-neutral-200 px-2 py-0.5 text-xs text-neutral-600">
-                                    {docData.status.toUpperCase()}
-                                </span>
-                            )}
-                            <button
-                                onClick={rescan}
-                                disabled={rescanning || rescanCooldown.active || !isHttpUrl(targetUrl)}
-                                className="ml-auto rounded-lg px-3 py-2 text-sm text-white disabled:opacity-60"
-                                style={{ backgroundColor: ACCENT }}
-                            >
-                                {rescanning ? "Starting…" : rescanCooldown.active ? `Rescan (${rescanCooldown.remaining}s)` : "Rescan"}
-                            </button>
-                        </div>
-                    )}
+
+                    {/* Rescan button removed. Ghost card added in screenshots grid below. */}
                 </div>
 
                 {err ? <div className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div> : null}
-                {info ? <div className="mt-2 rounded-lg border border-neutral-300 bg-neutral-50 px-3 py-2 text-sm text-neutral-800">{info}</div> : null}
+                {info ? (
+                    <div className="mt-2 rounded-lg border border-neutral-300 bg-neutral-50 px-3 py-2 text-sm text-neutral-800">
+                        {info}
+                    </div>
+                ) : null}
 
                 <div className="mt-6">
                     {!targetUrl ? (
@@ -1051,8 +1094,13 @@ export default function PreviewPage(): JSX.Element {
                             ))}
                         </div>
                     ) : shots.length === 0 ? (
-                        <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center text-neutral-500">
-                            No screenshots found for this URL yet.
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <GhostActionCard
+                                title={rescanning ? "Starting…" : rescanCooldown.active ? `Rescan (${rescanCooldown.remaining}s)` : "Generate new base image"}
+                                subtitle="Capture a fresh screenshot for this URL"
+                                onClick={rescan}
+                                disabled={rescanning || rescanCooldown.active || !isHttpUrl(targetUrl)}
+                            />
                         </div>
                     ) : (
                         <>
@@ -1062,6 +1110,13 @@ export default function PreviewPage(): JSX.Element {
                                     const locked = !!pendingByKey[s.path] || renders.some((r) => r.key === s.path && r.status === "queued" && !r.archived);
                                     return <ShotCard key={s.path} s={s} locked={locked} />;
                                 })}
+                                {/* Ghost card appended at the end of the screenshots grid */}
+                                <GhostActionCard
+                                    title={rescanning ? "Starting…" : rescanCooldown.active ? `Rescan (${rescanCooldown.remaining}s)` : "Add / Rescan"}
+                                    subtitle="Generate a new base image for this page"
+                                    onClick={rescan}
+                                    disabled={rescanning || rescanCooldown.active || !isHttpUrl(targetUrl)}
+                                />
                             </div>
                         </>
                     )}
@@ -1069,13 +1124,11 @@ export default function PreviewPage(): JSX.Element {
 
                 <div className="mt-10">
                     <div className="flex items-center justify-between">
-                        <h2 className="text-lg font-semibold text-neutral-900">Render Sandbox</h2>
+                        <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-900">Render Sandbox</h2>
                         {loadingRenders && <span className="text-xs text-neutral-500">Loading…</span>}
                     </div>
                     {renders.length === 0 ? (
-                        <div className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-600">
-                            Nothing yet. Start one from a screenshot above.
-                        </div>
+                        <div className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-600">Nothing yet. Start one from a screenshot above.</div>
                     ) : (
                         <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {renders.map((r) => (

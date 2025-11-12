@@ -26,25 +26,36 @@ import {
     ref as sRef,
     listAll,
     deleteObject,
+    getDownloadURL,
     type ListResult,
 } from "firebase/storage";
 import { auth, db, storage } from "@/lib/firebase";
+import { CheckCircle2, Clock3, AlertTriangle, Loader2 } from "lucide-react";
 
 /* -------------------------------- theme -------------------------------- */
 const ACCENT = "#f55f2a";
 
 /* -------------------------------- types -------------------------------- */
-type UrlStatus = "queued" | "error" | "done" | "unknown";
+type UrlStatusRaw =
+    | "queued"
+    | "uploaded"
+    | "done"
+    | "ready"
+    | "in_progress"
+    | "error"
+    | "unknown";
+
+type UrlStatusUi = "queued" | "processing" | "ready" | "error" | "unknown";
 
 interface UrlDoc {
     url: string;
     urlHash?: string;
     createdAt?: any;
     updatedAt?: any;
-    status?: UrlStatus;
+    status?: UrlStatusRaw | UrlStatusUi;
     screenshotsPrefix?: string;
     screenshotPaths?: string[];
-    id?: string; // added at read time
+    id?: string;
 }
 
 interface UrlFormProps {
@@ -74,7 +85,6 @@ function normUrl(s: string): string {
         return s.trim();
     }
 }
-/** short non-crypto hash for display/use in prefixes */
 function hash64(s: string): string {
     let h = 0;
     for (let i = 0; i < s.length; i++) {
@@ -82,6 +92,88 @@ function hash64(s: string): string {
         h |= 0;
     }
     return Math.abs(h).toString(36);
+}
+
+function normalizeUrlStatus(
+    raw?: UrlStatusRaw | UrlStatusUi,
+    shotCount?: number
+): UrlStatusUi {
+    const s = (raw || "unknown").toLowerCase() as UrlStatusRaw | UrlStatusUi;
+
+    if (s === "error") return "error";
+    if (s === "uploaded" || s === "done" || s === "ready") return "ready";
+    if (s === "queued") return (shotCount || 0) > 0 ? "processing" : "queued";
+    if (s === "in_progress" || s === "processing") return "processing";
+    return "unknown";
+}
+
+function StatusBadge({ status }: { status: UrlStatusUi }) {
+    const base =
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium";
+    switch (status) {
+        case "ready":
+            return (
+                <span
+                    className={`${base} bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200`}
+                    title="Screenshots captured and ready to view"
+                >
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Ready to view
+                </span>
+            );
+        case "processing":
+            return (
+                <span
+                    className={`${base} bg-amber-50 text-amber-700 ring-1 ring-amber-200`}
+                    title="Capture is running"
+                >
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Processing
+                </span>
+            );
+        case "queued":
+            return (
+                <span
+                    className={`${base} bg-sky-50 text-sky-700 ring-1 ring-sky-200`}
+                    title="Queued for capture"
+                >
+                    <Clock3 className="h-3.5 w-3.5" />
+                    Queued
+                </span>
+            );
+        case "error":
+            return (
+                <span
+                    className={`${base} bg-rose-50 text-rose-700 ring-1 ring-rose-200`}
+                    title="Capture failed"
+                >
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    Failed
+                </span>
+            );
+        default:
+            return (
+                <span
+                    className={`${base} bg-neutral-100 text-neutral-700 ring-1 ring-neutral-200`}
+                    title="Unknown status"
+                >
+                    Unknown
+                </span>
+            );
+    }
+}
+
+/* pick the newest-looking path (filename includes a timestamp suffix) */
+function pickLatestPath(paths: string[]): string | null {
+    if (!paths || paths.length === 0) return null;
+    const scored = paths.map((p) => {
+        // try to pull the trailing digits before extension
+        const m = p.match(/(\d{10,})\.(?:jpe?g|png|webp)$/i);
+        const ts = m ? Number(m[1]) : Number.NaN;
+        return { p, ts: Number.isFinite(ts) ? ts : -1 };
+    });
+    scored.sort((a, b) => b.ts - a.ts);
+    return (scored[0]?.p as string) || paths[paths.length - 1] || null;
 }
 
 /* ---------------------------------- form --------------------------------- */
@@ -170,9 +262,52 @@ function UrlRow({ uid, r }: UrlRowProps) {
     const [busy, setBusy] = useState<boolean>(false);
     const [err, setErr] = useState<string>("");
 
-    const locked =
-        (r.status ?? "unknown") === "queued" &&
-        (!Array.isArray(r.screenshotPaths) || r.screenshotPaths.length === 0);
+    const uiStatus = normalizeUrlStatus(
+        r.status as UrlStatusRaw | UrlStatusUi | undefined,
+        r.screenshotPaths?.length
+    );
+    const locked = uiStatus === "queued" || uiStatus === "processing";
+
+    // thumbnail
+    const [thumbUrl, setThumbUrl] = useState<string | null>(null);
+    const [thumbLoading, setThumbLoading] = useState<boolean>(false);
+    useEffect(() => {
+        let alive = true;
+        (async () => {
+            setThumbLoading(true);
+            try {
+                // try from explicit paths first
+                let key: string | null = pickLatestPath(r.screenshotPaths || []);
+                // fallback: list by prefix if no paths yet but prefix exists
+                if (!key && r.screenshotsPrefix) {
+                    const folderRef = sRef(storage, r.screenshotsPrefix);
+                    const listed: ListResult | null = await listAll(folderRef).catch(
+                        () => null
+                    );
+                    if (listed && listed.items.length > 0) {
+                        // pick most recent by item.name (has timestamp)
+                        const items = listed.items.slice().sort((a, b) =>
+                            a.name < b.name ? 1 : -1
+                        );
+                        key = `${r.screenshotsPrefix}/${items[0].name}`;
+                    }
+                }
+                if (!key) {
+                    if (alive) setThumbUrl(null);
+                    return;
+                }
+                const url = await getDownloadURL(sRef(storage, key));
+                if (alive) setThumbUrl(url);
+            } catch {
+                if (alive) setThumbUrl(null);
+            } finally {
+                if (alive) setThumbLoading(false);
+            }
+        })();
+        return () => {
+            alive = false;
+        };
+    }, [r.screenshotPaths, r.screenshotsPrefix]);
 
     async function rescan() {
         if (locked) return;
@@ -217,19 +352,22 @@ function UrlRow({ uid, r }: UrlRowProps) {
                 );
             } else {
                 const folderRef = sRef(storage, prefix);
-                const listed: ListResult | null = await listAll(folderRef).catch(() => null);
+                const listed: ListResult | null = await listAll(folderRef).catch(
+                    () => null
+                );
                 if (listed) {
                     await Promise.allSettled(listed.items.map((it) => deleteObject(it)));
                     await Promise.allSettled(
                         listed.prefixes.map(async (sub) => {
                             const sublist = await listAll(sub);
-                            await Promise.allSettled(sublist.items.map((it) => deleteObject(it)));
+                            await Promise.allSettled(
+                                sublist.items.map((it) => deleteObject(it))
+                            );
                         })
                     );
                 }
             }
 
-            // cleanup kloner_renders tied to this URL
             const rendersCol = collection(db, "kloner_users", uid, "kloner_renders");
             const qHash = query(rendersCol, where("urlHash", "==", urlHash));
             const qUrl = query(rendersCol, where("url", "==", r.url));
@@ -268,18 +406,32 @@ function UrlRow({ uid, r }: UrlRowProps) {
                             style={{ borderTopColor: ACCENT, animation: "spin 0.8s linear infinite" }}
                             aria-hidden
                         />
-                        Capturing… This process may take a few mins..
+                        Working…
                     </div>
                 </div>
             )}
 
             <div className="flex items-start gap-3">
-                <div
-                    className="h-9 w-9 rounded-lg grid place-items-center text-white font-semibold shrink-0"
-                    style={{ backgroundColor: ACCENT }}
-                >
-                    {(r.urlHash ?? hash64(r.url)).slice(0, 2).toUpperCase()}
-                </div>
+                {/* Left: thumbnail or fallback badge */}
+                {thumbUrl ? (
+                    <div className="h-14 w-14 rounded-lg overflow-hidden border border-neutral-200 bg-neutral-100 shrink-0">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                            src={thumbUrl}
+                            alt=""
+                            className="h-full w-full object-cover"
+                            draggable={false}
+                        />
+                    </div>
+                ) : (
+                    <div
+                        className="h-14 w-14 rounded-lg grid place-items-center text-white font-semibold shrink-0"
+                        style={{ backgroundColor: ACCENT }}
+                    >
+                        {(r.urlHash ?? hash64(r.url)).slice(0, 2).toUpperCase()}
+                    </div>
+                )}
+
                 <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                         <a
@@ -293,9 +445,8 @@ function UrlRow({ uid, r }: UrlRowProps) {
                         >
                             {r.url}
                         </a>
-                        <span className="inline-flex items-center rounded-full border border-neutral-200 px-2 py-0.5 text-xs text-neutral-600">
-                            {(r.status ?? "unknown").toUpperCase()}
-                        </span>
+
+                        <StatusBadge status={uiStatus} />
                     </div>
 
                     {err ? <div className="mt-2 text-sm text-red-600">{err}</div> : null}
@@ -304,14 +455,18 @@ function UrlRow({ uid, r }: UrlRowProps) {
                         <button
                             onClick={() => void rescan()}
                             disabled={busy || locked}
-                            className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                            className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
                         >
                             {busy ? "Working…" : "Rescan"}
                         </button>
 
                         <a
-                            href={locked ? undefined : `/dashboard/view?u=${encodeURIComponent(r.url)}`}
-                            className={`rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm ${locked ? "text-neutral-400 pointer-events-none" : "text-neutral-700 hover:bg-neutral-50"
+                            href={
+                                locked ? undefined : `/dashboard/view?u=${encodeURIComponent(r.url)}`
+                            }
+                            className={`rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs ${locked
+                                    ? "text-neutral-400 pointer-events-none"
+                                    : "text-neutral-700 hover:bg-neutral-50"
                                 }`}
                             aria-disabled={locked}
                             tabIndex={locked ? -1 : 0}
@@ -322,7 +477,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
                         <button
                             onClick={() => void remove()}
                             disabled={busy || locked}
-                            className="rounded-lg px-3 py-2 text-sm text-white disabled:opacity-50"
+                            className="rounded-lg px-3 py-2 text-xs text-white disabled:opacity-50"
                             style={{ backgroundColor: ACCENT }}
                         >
                             Delete
@@ -385,7 +540,7 @@ export default function DashboardPage() {
                 <div className="mt-3 grid grid-cols-1 gap-4">
                     {rows.length === 0 ? (
                         <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center text-neutral-500">
-                            No URLs yet. Add one above to get started.
+                            No URLs yet. Add one above.
                         </div>
                     ) : (
                         rows.map((r) => <UrlRow key={r.id} uid={user!.uid} r={r} />)

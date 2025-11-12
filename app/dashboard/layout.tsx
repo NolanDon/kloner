@@ -7,6 +7,8 @@ import { onAuthStateChanged, signOut as fbSignOut, type User as FirebaseUser } f
 import { auth } from "@/lib/firebase";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
+import logo from '@/public/images/logo.png';
 
 const ACCENT = "#f55f2a";
 
@@ -145,12 +147,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 {/* Brand */}
                 <div className="px-5 py-5 border-b border-neutral-200">
                     <Link href="/" className="inline-flex items-center gap-2">
-                        <div
-                            className="h-9 w-9 grid place-items-center rounded-xl font-black text-white"
-                            style={{ backgroundColor: ACCENT }}
-                            aria-label="kloner"
-                        >
-                            K
+
+                        <div className="relative h-8 w-8 overflow-hidden rounded-full bg-white/20 ring-1 ring-white/40">
+                            <Image src={logo} alt="" fill priority className="object-cover" />
                         </div>
                         <div className="font-semibold tracking-tight">Kloner</div>
                     </Link>
@@ -175,14 +174,14 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                     {/* General group */}
                     <SectionLabel>General</SectionLabel>
                     <div className="space-y-1">
-                        <NavItem 
-                        href="/dashboard"
-                         active={pathname === "/settings"}>
+                        <NavItem
+                            href="/dashboard"
+                            active={pathname === "/settings"}>
                             Settings
                         </NavItem>
-                        <NavItem 
-                        href="/dashboard" 
-                        active={pathname === "/docs"}>
+                        <NavItem
+                            href="/dashboard"
+                            active={pathname === "/docs"}>
                             Docs
                         </NavItem>
                     </div>
