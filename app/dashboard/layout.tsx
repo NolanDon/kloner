@@ -147,7 +147,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 {/* Brand */}
                 <div className="px-5 py-5 border-b border-neutral-200">
                     <Link href="/" className="inline-flex items-center gap-2">
-
                         <div className="relative h-8 w-8 overflow-hidden rounded-full bg-white/20 ring-1 ring-white/40">
                             <Image src={logo} alt="" fill priority className="object-cover" />
                         </div>
@@ -158,6 +157,14 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 {/* Nav */}
                 <nav className="flex-1 p-3 text-sm overflow-y-auto">
                     {/* Preview group */}
+                    <SectionLabel>General</SectionLabel>
+                    <div className="space-y-1">
+                        {/* Dashboard lives under Preview */}
+                        <NavItem href="/" active={false}>
+                            Home
+                        </NavItem>
+                    </div>
+
                     <SectionLabel>Preview</SectionLabel>
                     <div className="space-y-1">
                         {/* Dashboard lives under Preview */}
