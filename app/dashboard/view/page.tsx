@@ -28,7 +28,7 @@ import {
 import { ref as sRef, listAll, getDownloadURL, deleteObject, type StorageReference } from "firebase/storage";
 import { auth, db, storage } from "@/lib/firebase";
 import PreviewEditor from "@/components/PreviewEditor";
-import { Rocket, Plus, ChevronDown } from "lucide-react";
+import { Rocket, Plus, ChevronDown, AlertTriangle, Maximize2, Hammer, Eye } from "lucide-react";
 
 const ACCENT = "#f55f2a";
 
@@ -62,28 +62,14 @@ type RenderDoc = {
 /* ───────── utils ───────── */
 function isHttpUrl(s?: string): s is string {
     if (!s) return false;
-    try {
-        const u = new URL(s);
-        return u.protocol === "http:" || u.protocol === "https:";
-    } catch {
-        return false;
-    }
+    try { const u = new URL(s); return u.protocol === "http:" || u.protocol === "https:"; } catch { return false; }
 }
 function normUrl(s: string): string {
-    try {
-        const u = new URL(s);
-        u.hash = "";
-        return u.toString();
-    } catch {
-        return s.trim();
-    }
+    try { const u = new URL(s); u.hash = ""; return u.toString(); } catch { return s.trim(); }
 }
 function hash64(s: string): string {
     let h = 0;
-    for (let i = 0; i < s.length; i++) {
-        h = (h << 5) - h + s.charCodeAt(i);
-        h |= 0;
-    }
+    for (let i = 0; i < s.length; i++) { h = (h << 5) - h + s.charCodeAt(i); h |= 0; }
     return Math.abs(h).toString(36);
 }
 function ensureHttp(u: string): string {
@@ -109,18 +95,11 @@ function tsToMs(v: any): number {
 }
 function extractHashFromKey(key?: string | null): string | null {
     if (!key) return null;
-
-    // Strip query and get filename
     const file = (key.split("?")[0] || "").split("/").pop() || "";
-
-    // Remove extension
     const stem = file.replace(/\.(jpe?g|png|webp|gif|bmp|tiff)$/i, "");
-
-    // Prefer trailing digits (timestamp). If none, use trailing alphanum.
     const m = stem.match(/(\d+)$/) || stem.match(/([A-Za-z0-9]+)$/);
     return m ? m[1] || m[0] : null;
 }
-
 function shortVersionFromShotPath(
     path: string,
     fallbackHash?: string | null,
@@ -128,23 +107,12 @@ function shortVersionFromShotPath(
 ): string {
     const base = extractHashFromKey(path) || fallbackHash || "";
     if (!base) return "v";
-
-    // First try trailing digits (e.g., ...-1762904505972 -> "05972" -> take last >=4)
     const digitTail = (base.match(/(\d+)$/) || [])[1] || "";
-    if (digitTail.length >= minChars) {
-        return digitTail.slice(-minChars);
-    }
-
-    // If not enough digits, fall back to last >=4 of the entire token
+    if (digitTail.length >= minChars) return digitTail.slice(-minChars);
     const token = base.replace(/[^A-Za-z0-9]/g, "");
-    if (token.length >= minChars) {
-        return token.slice(-minChars);
-    }
-
-    // If still shorter than 4, return what's available
+    if (token.length >= minChars) return token.slice(-minChars);
     return token || "v";
 }
-
 
 /* ───────── tiny toast ───────── */
 type ToastMsg = { id: string; text: string; tone?: "ok" | "warn" | "err" };
@@ -163,7 +131,11 @@ function Toasts({ toasts }: { toasts: ToastMsg[] }) {
             {toasts.map((t) => (
                 <div
                     key={t.id}
-                    className={`rounded-lg border px-3 py-2 text-sm shadow-sm bg-white ${t.tone === "ok" ? "border-emerald-200 text-emerald-700" : t.tone === "warn" ? "border-amber-200 text-amber-700" : "border-red-200 text-red-700"
+                    className={`rounded-lg border px-3 py-2 text-sm shadow-sm bg-white ${t.tone === "ok"
+                        ? "border-emerald-200 text-emerald-700"
+                        : t.tone === "warn"
+                            ? "border-amber-200 text-amber-700"
+                            : "border-red-200 text-red-700"
                         }`}
                 >
                     {t.text}
@@ -177,7 +149,6 @@ function Toasts({ toasts }: { toasts: ToastMsg[] }) {
 function useCooldown(initialUntil = 0) {
     const [until, setUntil] = useState<number>(initialUntil);
     const [now, setNow] = useState<number>(Date.now());
-
     useEffect(() => {
         if (until <= Date.now()) return;
         const t = setInterval(() => {
@@ -186,7 +157,6 @@ function useCooldown(initialUntil = 0) {
         }, 500);
         return () => clearInterval(t);
     }, [until]);
-
     const remaining = Math.max(0, Math.ceil((until - now) / 1000));
     const start = useCallback((ms: number) => setUntil(Date.now() + ms), []);
     const clear = useCallback(() => setUntil(0), []);
@@ -206,7 +176,11 @@ const CenterSpinner = memo(function CenterSpinner({
     return (
         <div className={`absolute inset-0 grid place-items-center ${dim ? "bg-white/85" : ""}`}>
             <div className="flex items-center gap-2 rounded border px-3 py-1.5 text-xs text-neutral-800 bg-white" role="status" aria-live="polite">
-                <span className="inline-block rounded-full border-2 border-neutral-300" style={{ width: size, height: size, borderTopColor: ACCENT, animation: "spin 0.8s linear infinite" }} aria-hidden />
+                <span
+                    className="inline-block rounded-full border-2 border-neutral-300"
+                    style={{ width: size, height: size, borderTopColor: ACCENT, animation: "spin 0.8s linear infinite" }}
+                    aria-hidden
+                />
                 {label}
             </div>
         </div>
@@ -246,7 +220,7 @@ const GhostActionCard = memo(function GhostActionCard({
             type="button"
             onClick={onClick}
             disabled={disabled}
-            className={`group relative flex aspect-[4/3] w-full items-center justify-center rounded-xl border-2 border-dashed bg-white text-center transition ${disabled ? "opacity-60 cursor-not-allowed" : "hover:border-neutral-400"
+            className={`group relative px-6 flex aspect-[4/3] w-full items-center justify-center rounded-xl border-2 border-dashed bg-white text-center transition ${disabled ? "opacity-60 cursor-not-allowed" : "hover:border-neutral-400"
                 }`}
             title={title}
             aria-disabled={disabled}
@@ -296,12 +270,12 @@ export default function PreviewPage(): JSX.Element {
 
     const [lockUntilByKey, setLockUntilByKey] = useState<Record<string, number>>({});
     const [lockUntilByRender, setLockUntilByRender] = useState<Record<string, number>>({});
-    // viewer state
     const [viewerOpen, setViewerOpen] = useState(false);
     const [viewerIdx, setViewerIdx] = useState(0);
 
-    // optimistic load - generate preview
     const [optimisticByKey, setOptimisticByKey] = useState<Record<string, ({ id: string } & RenderDoc)>>({});
+
+    const didAutoSelectRef = useRef(false);
 
     async function loadShotsForDoc(u: FirebaseUser, targetUrl: string, data: UrlDoc) {
         const prefix = data.screenshotsPrefix || `kloner-screenshots/${u.uid}/${data.urlHash || hash64(targetUrl)}`;
@@ -322,29 +296,17 @@ export default function PreviewPage(): JSX.Element {
         setShots(entries);
     }
 
-
     const openViewer = useCallback((i: number) => {
         setViewerIdx(i);
         setViewerOpen(true);
         try { document.documentElement.style.overflow = "hidden"; } catch { }
     }, []);
-
     const closeViewer = useCallback(() => {
         setViewerOpen(false);
         try { document.documentElement.style.overflow = ""; } catch { }
     }, []);
-
-    const nextShot = useCallback(() => {
-        if (!shots.length) return;
-        setViewerIdx(i => (i + 1) % shots.length);
-    }, [shots.length]);
-
-    const prevShot = useCallback(() => {
-        if (!shots.length) return;
-        setViewerIdx(i => (i - 1 + shots.length) % shots.length);
-    }, [shots.length]);
-
-    // keyboard nav for the viewer
+    const nextShot = useCallback(() => { if (!shots.length) return; setViewerIdx((i) => (i + 1) % shots.length); }, [shots.length]);
+    const prevShot = useCallback(() => { if (!shots.length) return; setViewerIdx((i) => (i - 1 + shots.length) % shots.length); }, [shots.length]);
     useEffect(() => {
         if (!viewerOpen) return;
         const onKey = (e: KeyboardEvent) => {
@@ -356,16 +318,10 @@ export default function PreviewPage(): JSX.Element {
         return () => window.removeEventListener("keydown", onKey);
     }, [viewerOpen, closeViewer, nextShot, prevShot]);
 
-
-
     async function resolveStorageUrl(pathOrUrl: string): Promise<string> {
         if (!pathOrUrl) return "";
         if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
-        try {
-            return await getDownloadURL(sRef(storage, pathOrUrl));
-        } catch {
-            return "";
-        }
+        try { return await getDownloadURL(sRef(storage, pathOrUrl)); } catch { return ""; }
     }
     function useResolvedImg(pathOrUrl: string) {
         const [src, setSrc] = React.useState("");
@@ -374,14 +330,9 @@ export default function PreviewPage(): JSX.Element {
             const u = await resolveStorageUrl(pathOrUrl);
             if (u) setSrc(u);
         }, [pathOrUrl]);
-        React.useEffect(() => {
-            refresh();
-        }, [refresh]);
+        React.useEffect(() => { refresh(); }, [refresh]);
         const onError = React.useCallback(() => {
-            if (!retriedRef.current) {
-                retriedRef.current = true;
-                refresh();
-            }
+            if (!retriedRef.current) { retriedRef.current = true; refresh(); }
         }, [refresh]);
         return { src, onError };
     }
@@ -400,22 +351,11 @@ export default function PreviewPage(): JSX.Element {
     const targetUrl = useMemo(() => {
         const raw = search.get("u");
         if (!raw) return "";
-        try {
-            const dec = decodeURIComponent(raw);
-            return normUrl(ensureHttp(dec));
-        } catch {
-            return normUrl(ensureHttp(raw));
-        }
+        try { const dec = decodeURIComponent(raw); return normUrl(ensureHttp(dec)); } catch { return normUrl(ensureHttp(raw)); }
     }, [search]);
 
-    // 1) Add this import with your other lucide-react imports
-
-
-    // 2) Add these state + refs near your other state hooks in PreviewPage()
     const [urlMenuOpen, setUrlMenuOpen] = useState(false);
     const urlMenuRef = useRef<HTMLDivElement | null>(null);
-
-    // Close dropdown on outside click
     useEffect(() => {
         function onDocClick(e: MouseEvent) {
             if (!urlMenuRef.current) return;
@@ -425,21 +365,17 @@ export default function PreviewPage(): JSX.Element {
         return () => document.removeEventListener("click", onDocClick);
     }, []);
 
-    // Compute active item: prefer targetUrl; fallback to first url
     const activeUrlDoc = useMemo(() => {
         if (!urls.length) return null;
         const match = targetUrl ? urls.find((u) => normUrl(u.url) === normUrl(targetUrl)) : null;
         return match ?? urls[0];
     }, [urls, targetUrl]);
 
-    // Ensure active is first in the dropdown list (deduped)
     const orderedUrls = useMemo(() => {
         if (!activeUrlDoc) return [];
         const rest = urls.filter((u) => u.id !== activeUrlDoc.id);
         return [activeUrlDoc, ...rest];
     }, [urls, activeUrlDoc]);
-
-    // 3) REPLACE your entire <div className="mt-3">...</div> block with this
 
     const targetHash = useMemo(() => (isHttpUrl(targetUrl) ? hash64(targetUrl) : null), [targetUrl]);
 
@@ -459,11 +395,7 @@ export default function PreviewPage(): JSX.Element {
     /* fetch user's URL list */
     useEffect(() => {
         (async () => {
-            if (!user) {
-                setUrls([]);
-                setUrlsLoading(false);
-                return;
-            }
+            if (!user) { setUrls([]); setUrlsLoading(false); return; }
             setUrlsLoading(true);
             try {
                 const qy = query(collection(db, "kloner_users", user.uid, "kloner_urls"), orderBy("createdAt", "desc"), limit(50));
@@ -499,7 +431,6 @@ export default function PreviewPage(): JSX.Element {
                 setDocData(initial);
                 await loadShotsForDoc(user, targetUrl, initial);
 
-                // Realtime: update shots immediately when backend appends screenshotPaths or bumps updatedAt
                 unsubUrlDoc = onSnapshot(first.ref, async (fresh) => {
                     const data = (fresh.data() || {}) as UrlDoc;
                     setDocData(data);
@@ -514,15 +445,10 @@ export default function PreviewPage(): JSX.Element {
         return () => { unsubUrlDoc?.(); };
     }, [user, targetUrl]);
 
-
     /* renders list filtered to selected URL */
-    const [lockUntilByKeyState] = [lockUntilByKey];
     const refreshRenders = useCallback(async () => {
         if (!user) return;
-        if (!targetUrl || !isHttpUrl(targetUrl)) {
-            setRenders((prev) => (prev.length ? [] : prev));
-            return;
-        }
+        if (!targetUrl || !isHttpUrl(targetUrl)) { setRenders((prev) => (prev.length ? [] : prev)); return; }
         setLoadingRenders(true);
         try {
             const base = collection(db, "kloner_users", user.uid, "kloner_renders");
@@ -530,98 +456,6 @@ export default function PreviewPage(): JSX.Element {
             const snap = await getDocs(qs);
             const all = snap.docs.map((d) => ({ id: d.id, ...(d.data() as RenderDoc) }));
 
-            const filtered = all.filter((r) => {
-                const byUrl = (r.url || "") === targetUrl;
-                const byHash = !!targetHash && r.urlHash === targetHash;
-                const byKeyHash = !!targetHash && extractHashFromKey(r.key) === targetHash;
-                return byUrl || byHash || byKeyHash;
-            });
-
-            // bind locks from keys
-            const now = Date.now();
-            for (const r of filtered) {
-                const key = r.key || "";
-                if (key && lockUntilByKey[key] && lockUntilByKey[key] > now) {
-                    setLockUntilByRender((m) => ({ ...m, [r.id]: Math.max(m[r.id] || 0, lockUntilByKey[key]) }));
-                }
-            }
-
-            // —— merge optimistic locals not yet materialized on the server ——
-            const withOptimistic = [...filtered];
-            for (const [k, opt] of Object.entries(optimisticByKey)) {
-                const exists = filtered.some((r) => r.key === k);
-                if (!exists) withOptimistic.unshift(opt);
-                else {
-                    // server has taken over this key → drop optimistic shadow
-                    setOptimisticByKey((m) => {
-                        const n = { ...m };
-                        delete n[k];
-                        return n;
-                    });
-                }
-            }
-
-            // before setRenders(... withOptimistic)
-            if (filtered.length === 0 && Object.keys(optimisticByKey).length > 0) {
-                setRenders((prev) => {
-                    // keep showing previous list if it contains optimistic items
-                    const hasLocal = prev.some((r) => r.id.startsWith("local_"));
-                    return hasLocal ? prev : prev.concat(Object.values(optimisticByKey));
-                });
-                setLoadingRenders(false);
-                return;
-            }
-
-            setRenders((prev) => (rendersEqual(prev, withOptimistic) ? prev : withOptimistic));
-
-            const anyQueued = withOptimistic.some((r) => r.status === "queued");
-            if (anyQueued) {
-                if (!pollTimer.current) {
-                    pollStopAt.current = now + 10 * 60 * 1000;
-                    pollTimer.current = setInterval(async () => {
-                        await refreshRenders();
-                        if (Date.now() > pollStopAt.current && pollTimer.current) {
-                            clearInterval(pollTimer.current);
-                            pollTimer.current = null;
-                        }
-                    }, 5000);
-                } else {
-                    pollStopAt.current = Math.max(pollStopAt.current, now + 5 * 60 * 1000);
-                }
-            } else if (pollTimer.current) {
-                clearInterval(pollTimer.current);
-                pollTimer.current = null;
-            }
-
-            // when a server render finishes, clear pending + optimistic shadow for its key
-            setPendingByKey((prev) => {
-                const next = { ...prev };
-                withOptimistic.forEach((r) => {
-                    if (r.key && (r.status === "ready" || r.status === "failed")) {
-                        delete next[r.key];
-                        setOptimisticByKey((m) => {
-                            if (!m[r.key!]) return m;
-                            const n = { ...m };
-                            delete n[r.key!];
-                            return n;
-                        });
-                    }
-                });
-                return next;
-            });
-        } finally {
-            setLoadingRenders(false);
-        }
-    }, [user, targetUrl, targetHash, optimisticByKey, lockUntilByKey]);
-
-    useEffect(() => {
-        if (!user || !targetUrl || !isHttpUrl(targetUrl)) { setRenders([]); return; }
-
-        const base = collection(db, "kloner_users", user.uid, "kloner_renders");
-        const qs = query(base, where("archived", "in", [false, null]), orderBy("createdAt", "desc"), limit(100));
-
-        const unsub = onSnapshot(qs, (snap) => {
-            const all = snap.docs.map((d) => ({ id: d.id, ...(d.data() as RenderDoc) }));
             const filtered = all.filter((r) => {
                 const byUrl = (r.url || "") === targetUrl;
                 const byHash = !!targetHash && r.urlHash === targetHash;
@@ -648,6 +482,73 @@ export default function PreviewPage(): JSX.Element {
 
             setRenders((prev) => (rendersEqual(prev, withOptimistic) ? prev : withOptimistic));
 
+            const anyQueued = withOptimistic.some((r) => r.status === "queued");
+            if (anyQueued) {
+                if (!pollTimer.current) {
+                    pollStopAt.current = now + 10 * 60 * 1000;
+                    pollTimer.current = setInterval(async () => {
+                        await refreshRenders();
+                        if (Date.now() > pollStopAt.current && pollTimer.current) {
+                            clearInterval(pollTimer.current);
+                            pollTimer.current = null;
+                        }
+                    }, 5000);
+                } else {
+                    pollStopAt.current = Math.max(pollStopAt.current, now + 5 * 60 * 1000);
+                }
+            } else if (pollTimer.current) {
+                clearInterval(pollTimer.current);
+                pollTimer.current = null;
+            }
+
+            setPendingByKey((prev) => {
+                const next = { ...prev };
+                withOptimistic.forEach((r) => {
+                    if (r.key && (r.status === "ready" || r.status === "failed")) {
+                        delete next[r.key];
+                        setOptimisticByKey((m) => {
+                            if (!m[r.key!]) return m;
+                            const n = { ...m };
+                            delete n[r.key!];
+                            return n;
+                        });
+                    }
+                });
+                return next;
+            });
+        } finally {
+            setLoadingRenders(false);
+        }
+    }, [user, targetUrl, targetHash, optimisticByKey, lockUntilByKey]);
+
+    useEffect(() => {
+        if (!user || !targetUrl || !isHttpUrl(targetUrl)) { setRenders([]); return; }
+        const base = collection(db, "kloner_users", user.uid, "kloner_renders");
+        const qs = query(base, where("archived", "in", [false, null]), orderBy("createdAt", "desc"), limit(100));
+        const unsub = onSnapshot(qs, (snap) => {
+            const all = snap.docs.map((d) => ({ id: d.id, ...(d.data() as RenderDoc) }));
+            const filtered = all.filter((r) => {
+                const byUrl = (r.url || "") === targetUrl;
+                const byHash = !!targetHash && r.urlHash === targetHash;
+                const byKeyHash = !!targetHash && extractHashFromKey(r.key) === targetHash;
+                return byUrl || byHash || byKeyHash;
+            });
+            const now = Date.now();
+            for (const r of filtered) {
+                const key = r.key || "";
+                if (key && lockUntilByKey[key] && lockUntilByKey[key] > now) {
+                    setLockUntilByRender((m) => ({ ...m, [r.id]: Math.max(m[r.id] || 0, lockUntilByKey[key]) }));
+                }
+            }
+            const withOptimistic = [...filtered];
+            for (const [k, opt] of Object.entries(optimisticByKey)) {
+                const exists = filtered.some((r) => r.key === k);
+                if (!exists) withOptimistic.unshift(opt);
+                else {
+                    setOptimisticByKey((m) => { const n = { ...m }; delete n[k]; return n; });
+                }
+            }
+            setRenders((prev) => (rendersEqual(prev, withOptimistic) ? prev : withOptimistic));
             setPendingByKey((prev) => {
                 const next = { ...prev };
                 withOptimistic.forEach((r) => {
@@ -664,10 +565,8 @@ export default function PreviewPage(): JSX.Element {
                 return next;
             });
         });
-
         return () => unsub();
     }, [user, targetUrl, targetHash, optimisticByKey, lockUntilByKey]);
-
 
     const selectUrl = useCallback(
         (u: string) => {
@@ -678,14 +577,12 @@ export default function PreviewPage(): JSX.Element {
         [router]
     );
 
-    /* start render from screenshot key */
     const buildFromKey = useCallback(
         async (storageKey: string) => {
             if (!user) return;
             const alreadyQueued = renders.find((r) => r.key === storageKey && r.status === "queued" && !r.archived);
             if (alreadyQueued || pendingByKey[storageKey]) return;
-
-            if (!window.confirm("Generate a new preview from this screenshot?")) return;
+            if (!window.confirm("Generate an editable preview from this screenshot?")) return;
 
             const optimisticId = `local_${hash64(`${user.uid}|${storageKey}|${Date.now()}`)}`;
             const optimistic: { id: string } & RenderDoc = {
@@ -706,13 +603,11 @@ export default function PreviewPage(): JSX.Element {
             } as any;
 
             startHardLock(storageKey, optimisticId, 60_000);
-            // keep it in both lists so memoized children get mounted
             setRenders((prev) => [optimistic, ...prev]);
             setOptimisticByKey((m) => ({ ...m, [storageKey]: optimistic }));
             setPendingByKey((m) => ({ ...m, [storageKey]: true }));
             setErr("");
-            setInfo("Rendering started.");
-            push("Preview generation queued", "ok");
+            setInfo("Preview queued.");
 
             try {
                 const body: any = { key: storageKey };
@@ -729,7 +624,7 @@ export default function PreviewPage(): JSX.Element {
                 });
                 const j = await r.json().catch(() => ({} as any));
                 if (r.status === 202) {
-                    push("Preview queued on server", "ok");
+                    push("Server accepted preview job", "ok");
                     await refreshRenders();
                     return;
                 }
@@ -737,36 +632,27 @@ export default function PreviewPage(): JSX.Element {
                 await refreshRenders();
             } catch (e: any) {
                 setRenders((prev) => prev.map((r) => (r.id === optimisticId ? { ...r, status: "failed" } : r)));
-                // keep the optimistic card visible but marked failed
                 setOptimisticByKey((m) => {
                     const v = m[storageKey];
                     if (!v) return m;
                     return { ...m, [storageKey]: { ...v, status: "failed" } };
                 });
-                setErr(e?.message || "Failed to start rendering.");
+                setErr(e?.message || "Failed to start preview.");
                 push("Preview failed to start", "err");
             }
         },
         [user, targetUrl, renders, refreshRenders, push, startHardLock, pendingByKey]
     );
 
-    /* editor */
     const continueRender = useCallback(
         async (renderId: string) => {
             if (!user) return;
             setErr("");
-            setLoading(true)
-
+            setLoading(true);
             const dref = doc(db, "kloner_users", user.uid, "kloner_renders", renderId);
             const snap = await getDoc(dref);
-            if (!snap.exists()) {
-                setErr("Rendering not found");
-                push("Preview not found", "err");
-                return;
-            }
-
+            if (!snap.exists()) { setErr("Preview not found."); push("Preview not found", "err"); return; }
             const data = snap.data() as RenderDoc;
-
             let refSrc =
                 (data.referenceImage && (await resolveStorageUrl(data.referenceImage))) ||
                 (data.key && (await resolveStorageUrl(data.key))) ||
@@ -775,12 +661,11 @@ export default function PreviewPage(): JSX.Element {
                 const byKey = data.key ? shots.find((s) => s.path === data.key) : undefined;
                 refSrc = byKey?.url || shots[0]?.url || "";
             }
-
             setEditorHtml(data.html || "");
             setEditorRefImg(refSrc);
             setActiveRenderId(renderId);
             setEditorOpen(true);
-            setLoading(false)
+            setLoading(false);
         },
         [user, push, shots]
     );
@@ -788,7 +673,7 @@ export default function PreviewPage(): JSX.Element {
     const discardRender = useCallback(
         async (renderId: string) => {
             if (!user) return;
-            const ok = window.confirm("Discard this preview?");
+            const ok = window.confirm("Discard this editable preview?");
             if (!ok) return;
             setDeletingRender((m) => ({ ...m, [renderId]: true }));
             try {
@@ -799,11 +684,7 @@ export default function PreviewPage(): JSX.Element {
                 setErr(e?.message || "Failed to discard preview.");
                 push("Failed to discard preview", "err");
             } finally {
-                setDeletingRender((m) => {
-                    const n = { ...m };
-                    delete n[renderId];
-                    return n;
-                });
+                setDeletingRender((m) => { const n = { ...m }; delete n[renderId]; return n; });
             }
         },
         [user, push]
@@ -812,46 +693,28 @@ export default function PreviewPage(): JSX.Element {
     const discardShot = useCallback(
         async (shot: Shot) => {
             if (!user || !docSnap) return;
-            const ok = window.confirm("Delete this screenshot and all associated previews?");
+            const ok = window.confirm("Delete this screenshot and all its previews?");
             if (!ok) return;
-
             setErr("");
             setDeletingByKey((m) => ({ ...m, [shot.path]: true }));
             try {
                 await deleteObject(sRef(storage, shot.path)).catch(() => { });
                 const rCol = collection(db, "kloner_users", user.uid, "kloner_renders");
                 const rSnap = await getDocs(query(rCol, where("key", "==", shot.path)));
-                if (rSnap.empty === false) {
-                    await Promise.all(rSnap.docs.map((d) => deleteDoc(d.ref)));
-                }
+                if (rSnap.empty === false) await Promise.all(rSnap.docs.map((d) => deleteDoc(d.ref)));
                 try {
-                    await updateDoc(docSnap.ref, {
-                        screenshotPaths: arrayRemove(shot.path),
-                        updatedAt: serverTimestamp(),
-                    } as any);
+                    await updateDoc(docSnap.ref, { screenshotPaths: arrayRemove(shot.path), updatedAt: serverTimestamp() } as any);
                 } catch { }
                 setShots((prev) => prev.filter((s) => s.path !== shot.path));
                 setRenders((prev) => prev.filter((r) => r.key !== shot.path));
-                setPendingByKey((m) => {
-                    const n = { ...m };
-                    delete n[shot.path];
-                    return n;
-                });
-                setOptimisticByKey((m) => {
-                    const n = { ...m };
-                    delete n[shot.path];
-                    return n;
-                });
-                push("Screenshot discarded", "ok");
+                setPendingByKey((m) => { const n = { ...m }; delete n[shot.path]; return n; });
+                setOptimisticByKey((m) => { const n = { ...m }; delete n[shot.path]; return n; });
+                push("Screenshot deleted", "ok");
             } catch (e: any) {
-                setErr(e?.message || "Failed to discard screenshot.");
-                push("Failed to discard screenshot", "err");
+                setErr(e?.message || "Failed to delete screenshot.");
+                push("Failed to delete screenshot", "err");
             } finally {
-                setDeletingByKey((m) => {
-                    const n = { ...m };
-                    delete n[shot.path];
-                    return n;
-                });
+                setDeletingByKey((m) => { const n = { ...m }; delete n[shot.path]; return n; });
             }
         },
         [user, docSnap, push]
@@ -922,7 +785,6 @@ export default function PreviewPage(): JSX.Element {
     );
 
     const shotsPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
     function beginShortShotsPoll(prefix: string) {
         if (shotsPollRef.current) { clearInterval(shotsPollRef.current); shotsPollRef.current = null; }
         const deadline = Date.now() + 60_000;
@@ -948,13 +810,11 @@ export default function PreviewPage(): JSX.Element {
             }
         }, 3000);
     }
-
     useEffect(() => () => { if (shotsPollRef.current) clearInterval(shotsPollRef.current); }, []);
-
 
     const rescan = useCallback(async () => {
         if (!isHttpUrl(targetUrl) || rescanCooldown.active || !user || !docData) return;
-        if (!window.confirm("Start a fresh screenshot capture?")) return;
+        if (!window.confirm("Rescan this URL now? This queues a fresh screenshot.")) return;
         setRescanning(true); setErr("");
         try {
             const r = await fetch("/api/private/generate", { method: "POST", headers: { "content-type": "application/json" }, credentials: "include", body: JSON.stringify({ url: targetUrl }) });
@@ -973,6 +833,15 @@ export default function PreviewPage(): JSX.Element {
             setRescanning(false);
         }
     }, [targetUrl, user, docData, push, rescanCooldown]);
+
+    useEffect(() => {
+        if (didAutoSelectRef.current) return;
+        if (!urlsLoading && !targetUrl && urls.length > 0) {
+            didAutoSelectRef.current = true;
+            const first = ensureHttp(urls[0].url);
+            router.replace(`/dashboard/view?u=${encodeURIComponent(first)}`, { scroll: false });
+        }
+    }, [urlsLoading, targetUrl, urls, router]);
 
 
     /* ───────── cards ───────── */
@@ -1006,9 +875,7 @@ export default function PreviewPage(): JSX.Element {
                         if (!r.html?.trim()) return;
                         const ok = window.confirm("Deploy this preview to Vercel?");
                         if (!ok) return;
-                        try {
-                            await exportToVercel(r.html!, r.nameHint || undefined);
-                        } catch { }
+                        try { await exportToVercel(r.html!, r.nameHint || undefined); } catch { }
                     };
 
                     return (
@@ -1020,9 +887,9 @@ export default function PreviewPage(): JSX.Element {
                             <button
                                 onClick={() => discardRender(r.id)}
                                 disabled={isDeleting}
-                                aria-label="Discard"
-                                title="Discard this preview"
-                                className="absolute top-0 right-0 z-40 grid h-5 w-5 place-items-center -translate-y-1/2 translate-x-1/2 rounded-full bg-white text-red-600 shadow-md ring-1 ring-red-200 hover:bg-red-50 hover:ring-red-300 disabled:opacity-50"
+                                aria-label="Discard preview"
+                                title="Delete this editable preview"
+                                className="absolute top-0 right-0 z-40 grid h-5 w-5 place-items-center -translate-y-1/2 translate-x-1/2 rounded-full bg-red-600 text-white shadow-md ring-1 ring-white hover:bg-red-700 hover:ring-red-300 disabled:opacity-50"
                             >
                                 <span className="text-lg mb-0.5 leading-none">×</span>
                             </button>
@@ -1031,7 +898,7 @@ export default function PreviewPage(): JSX.Element {
                                 {!refImgUrl ? (
                                     <div className="aspect-[4/3] w-full grid place-items-center text-xs text-neutral-500">No snapshot available</div>
                                 ) : (
-                                    <a href={refImgUrl} target="_blank" rel="noreferrer" className="block">
+                                    <a href={refImgUrl} target="_blank" rel="noreferrer" className="block" title="Open the base screenshot">
                                         <img
                                             src={refImgUrl}
                                             alt={r.nameHint || "preview"}
@@ -1050,16 +917,16 @@ export default function PreviewPage(): JSX.Element {
                                             disabled={disableOpen || isDeleting}
                                             className="rounded-md px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
                                             style={{ backgroundColor: ACCENT }}
-                                            title={isQueued ? "Still rendering" : isFailed ? "Rendering failed" : "Open editor"}
+                                            title={isQueued ? "Still building preview" : isFailed ? "Open editor to fix" : "Open editor to customize"}
                                         >
-                                            {isQueued ? "Queued" : isFailed ? "Retry Edit" : "Customize"}
+                                            {isQueued ? "Queued" : isFailed ? "Customize (fix)" : "Customize"}
                                         </button>
 
                                         <button
                                             onClick={deployThis}
                                             disabled={!r.html || isDeleting || isQueued}
                                             className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 disabled:opacity-50 relative inline-flex items-center gap-2"
-                                            title="Deploy this preview to Vercel"
+                                            title="Deploy current HTML to Vercel"
                                         >
                                             Deploy
                                             <Rocket className="h-3 w-3" />
@@ -1067,8 +934,8 @@ export default function PreviewPage(): JSX.Element {
                                     </div>
                                 </div>
 
-                                <span className="absolute bottom-2 left-2 z-20 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-neutral-600 ring-1 ring-neutral-200">
-                                    {isFailed ? "Failed" : r.html?.trim() ? "Preview" : "No HTML yet"}
+                                <span className="absolute bottom-2 left-2 z-20 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-neutral-600 ring-1 ring-neutral-200" title="Preview status label">
+                                    {isFailed ? "Failed" : r.html?.trim() ? "Preview ready" : "Awaiting HTML"}
                                 </span>
                                 <span className="absolute bottom-2 right-2 z-20 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-neutral-600 ring-1 ring-neutral-200">
                                     {r.status}
@@ -1078,9 +945,14 @@ export default function PreviewPage(): JSX.Element {
                                 {(isQueued || hardLocked) && <CenterSpinner label={isQueued ? "Rendering…" : "Locked…"} />}
                             </div>
 
-                            <div className="relative h-0 overflow-hidden">
+                            <div className="relative h-0 overflow-hidden" aria-hidden>
                                 <iframe title={`r-${r.id}`} className="w-full h-0" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms allow-pointer-lock" referrerPolicy="no-referrer" allow="clipboard-read; clipboard-write" key={`frame-${r.id}`} srcDoc={srcDoc} />
                             </div>
+
+                            <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
+                                <strong className="text-accent">Step 4</strong> — Customize edits, then Deploy to publish. Discard removes this preview only.
+                            </div>
+
                         </div>
                     );
                 },
@@ -1096,7 +968,6 @@ export default function PreviewPage(): JSX.Element {
     const ShotCard = useMemo(
         () =>
             memo(
-                // update memo signature
                 function ShotCardInner({
                     s, locked, index, onView
                 }: { s: Shot; locked: boolean; index: number; onView: (i: number) => void }) {
@@ -1108,14 +979,29 @@ export default function PreviewPage(): JSX.Element {
 
                     return (
                         <figure className="relative rounded-xl border border-neutral-200 bg-white shadow-sm flex flex-col">
-                            <span className="absolute top-2 left-2 z-10 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow"
+                            {/* version badge */}
+                            <span
+                                className="absolute top-2 left-2 z-10 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow"
                                 style={{ backgroundColor: "#1d4ed8" }}
-                                title={`Version ${versionLabel}`}>
+                                title={`Version ${versionLabel}`}
+                            >
                                 {versionLabel}
                             </span>
 
+                            {/* NEW: top-right discard "X" */}
+                            <button
+                                onClick={() => discardShot(s)}
+                                disabled={locked || isDeleting}
+                                aria-label="Discard screenshot"
+                                title="Delete this screenshot and all previews from it"
+                                className="absolute top-0 right-0 z-40 grid h-5 w-5 place-items-center -translate-y-1/2 translate-x-1/2 rounded-full bg-red-600 text-white shadow-md ring-1 ring-white hover:bg-red-700 hover:ring-red-300 disabled:opacity-50"
+                            >
+                                <span className="text-lg mb-0.5 leading-none">×</span>
+                            </button>
+
                             {isDeleting && <CenterSpinner label="Deleting…" />}
-                            <a href={s.url} target="_blank" rel="noreferrer" className="block">
+
+                            <a href={s.url} target="_blank" rel="noreferrer" className="block" title="Open full-size screenshot">
                                 <div className="w-full aspect-[4/3] bg-neutral-50 flex items-center justify-center rounded-t-xl relative">
                                     <img
                                         src={s.url}
@@ -1125,43 +1011,50 @@ export default function PreviewPage(): JSX.Element {
                                         onLoad={() => setImgLoading(false)}
                                         onError={() => setImgLoading(false)}
                                     />
-                                    {showOverlay && <CenterSpinner label={locked ? "Queued Render…" : "Loading…"} />}
+                                    {showOverlay && <CenterSpinner label={locked ? "Queued preview…" : "Loading…"} />}
                                 </div>
                             </a>
+
                             <figcaption className="px-3 py-2 text-xs text-neutral-700 rounded-b-xl">
                                 <div className="flex items-center justify-between gap-2 flex-wrap">
                                     <div className="flex items-center gap-2">
                                         <button
                                             onClick={() => onView(index)}
-                                            className="shrink-0 rounded-md px-2 py-1 text-[11px] border border-neutral-200 text-neutral-800 hover:bg-neutral-50"
-                                            title="View large">
-                                            View
+                                            className="shrink-0 rounded-md px-2 py-1 text-[14px] border border-neutral-200 text-neutral-800 hover:bg-neutral-50 inline-flex items-center gap-1.5"
+                                            title="View full-screen"
+                                        >
+                                            <Eye className="h-3 w-3 opacity-90" aria-hidden />
+                                            <span>View</span>
                                         </button>
                                     </div>
+
                                     <div className="ml-auto flex items-center gap-2">
                                         <button
                                             onClick={() => buildFromKey(s.path)}
                                             disabled={locked || isDeleting}
                                             aria-busy={locked}
-                                            className="shrink-0 rounded-md px-2 py-1 text-[11px] text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="shrink-0 rounded-md px-2 py-1 text-[14px] text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
                                             style={{ backgroundColor: ACCENT }}
-                                            title="Generate editable preview from this screenshot">
-                                            {locked ? "In progress" : "Generate preview"}
-                                        </button>
-                                        <button
-                                            onClick={() => discardShot(s)}
-                                            disabled={locked || isDeleting}
-                                            className="shrink-0 rounded-md px-2 py-1 text-[11px] border border-red-200 text-red-600 disabled:opacity-50"
-                                            title="Delete screenshot and all associated previews">
-                                            {isDeleting ? "Deleting…" : "Discard"}
+                                            title="Create editable preview from this screenshot"
+                                        >
+                                            <span>{locked ? "In progress" : "Generate preview"}</span>
+                                            <Hammer className={`h-4 w-4 ${locked ? "animate-pulse" : ""}`} aria-hidden />
                                         </button>
                                     </div>
+                                </div>
+
+                                <div className="mt-1 text-[11px] text-neutral-500">
+                                    Step 3 — Pick a screenshot → Generate preview to get editable HTML.
                                 </div>
                             </figcaption>
                         </figure>
                     );
                 },
-                (prev, next) => prev.locked === next.locked && prev.s.path === next.s.path && prev.s.url === next.s.url && prev.s.fileName === next.s.fileName
+                (prev, next) =>
+                    prev.locked === next.locked &&
+                    prev.s.path === next.s.path &&
+                    prev.s.url === next.s.url &&
+                    prev.s.fileName === next.s.fileName
             ),
         [buildFromKey, discardShot, deletingByKey, lockUntilByKey, docData?.urlHash]
     );
@@ -1172,9 +1065,19 @@ export default function PreviewPage(): JSX.Element {
             <div className="mx-auto max-w-[1200px] px-4 sm:px-6 lg:px-10 py-8">
                 <div className="mb-5">
                     <div className="flex items-center justify-between gap-3 flex-wrap">
-                        <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-900">Preview</h1>
+                        <div>
+                            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-700">Preview Builder</h1>
+                            {/* <p className="mt-1 text-sm text-neutral-600">
+                                Flow: Step 1 — Select URL. Step 2 — Generate base screenshot. Step 3 — Generate editable preview. Step 4 — Customize and Deploy.
+                            </p> */}
+                        </div>
                         <div className="flex items-center gap-2">
-                            <a href="/api/vercel/oauth/start" className="rounded-lg border border-neutral-200 bg-accent px-3 py-2 text-sm text-white" title="Connect your Vercel account">
+                            <a
+                                href="/api/vercel/oauth/start"
+                                className="rounded-lg border border-neutral-200 bg-[--accent] px-3 py-2 text-sm text-white"
+                                style={{ background: ACCENT }}
+                                title="Connect your Vercel account to enable Deploy"
+                            >
                                 Connect Vercel
                             </a>
                         </div>
@@ -1184,11 +1087,14 @@ export default function PreviewPage(): JSX.Element {
                         {urlsLoading ? (
                             <div className="h-10 rounded-xl bg-neutral-100 animate-pulse" />
                         ) : urls.length === 0 ? (
-                            <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-600">
-                                Add a URL from Dashboard to get started.
+                            <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
+                                <strong className="text-accent">Step 1</strong> — Add a URL in Dashboard. Return here to capture screenshots and build previews.
                             </div>
                         ) : (
                             <div className="relative inline-block" ref={urlMenuRef}>
+                                <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
+                                    <strong className="text-accent">Step 1</strong> — Select a URL
+                                </div>
                                 <button
                                     type="button"
                                     onClick={() => setUrlMenuOpen((v) => !v)}
@@ -1220,15 +1126,10 @@ export default function PreviewPage(): JSX.Element {
                                                                 selectUrl(u.url);
                                                             }}
                                                             title={u.url}
-                                                            className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm ${isActive
-                                                                ? "bg-neutral-100 text-neutral-900"
-                                                                : "text-neutral-800 hover:bg-neutral-50"
+                                                            className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm ${isActive ? "bg-neutral-100 text-neutral-700" : "text-neutral-800 hover:bg-neutral-50"
                                                                 }`}
                                                         >
-                                                            <span
-                                                                className={`inline-block h-2.5 w-2.5 rounded-full ${isActive ? "bg-neutral-800" : "bg-neutral-300"
-                                                                    }`}
-                                                            />
+                                                            <span className={`inline-block h-2.5 w-2.5 rounded-full ${isActive ? "bg-neutral-800" : "bg-neutral-300"}`} />
                                                             <span className="truncate">{u.url}</span>
                                                         </button>
                                                     </li>
@@ -1237,54 +1138,70 @@ export default function PreviewPage(): JSX.Element {
                                         </ul>
                                     </div>
                                 )}
+                                <p className="mt-2 text-xs text-neutral-500">
+                                    After selecting, proceed to Step 2 below to capture a fresh screenshot if needed.
+                                </p>
                             </div>
                         )}
                     </div>
-
-
-                    {/* Rescan button removed. Ghost card added in screenshots grid below. */}
                 </div>
 
                 {err ? <div className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div> : null}
-                {info ? (
-                    <div className="mt-2 rounded-lg border border-neutral-300 bg-neutral-50 px-3 py-2 text-sm text-neutral-800">
-                        {info}
-                    </div>
-                ) : null}
+                {info ? <div className="mt-2 rounded-lg border border-neutral-300 bg-neutral-50 px-3 py-2 text-sm text-neutral-800">{info}</div> : null}
 
                 <div className="mt-6">
+                    <h2 className="text-1xl sm:text-3xl font-semibold tracking-tight text-neutral-700">
+                        Screenshots
+                    </h2>
+                    <p className="mt-2 text-xs text-neutral-500">
+                        These are the original screenshots captured directly from your entered URL.
+                    </p>
+
                     {!targetUrl ? (
-                        <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-6 text-sm text-neutral-700">Choose a URL above to view its screenshots and AI previews.</div>
+                        <>
+                            <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
+                                <strong className="text-accent">Step 2</strong> — Below will host your base images.
+                            </div>
+                            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-6 my-4 text-sm text-neutral-700">
+                                Select a URL above to manage its screenshots and previews.
+                            </div>
+                        </>
                     ) : loading ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {Array.from({ length: 6 }).map((_, i) => (
-                                <div key={i} className="h-64 rounded-xl bg-neutral-100 animate-pulse" />
-                            ))}
+                            {Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-64 rounded-xl bg-neutral-100 animate-pulse" />)}
                         </div>
                     ) : shots.length === 0 ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                            <GhostActionCard
-                                title={rescanning ? "Starting…" : rescanCooldown.active ? `Rescan (${rescanCooldown.remaining}s)` : "Generate new base image"}
-                                subtitle="Capture a fresh screenshot for this URL"
-                                onClick={rescan}
-                                disabled={rescanning || rescanning || rescanCooldown.active || !isHttpUrl(targetUrl)}
-                            />
-                        </div>
+                        <>
+                            <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
+                                <strong className="text-accent">Step 2</strong> — The section below will host your base images.
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <GhostActionCard
+                                    title={rescanning ? "Starting…" : rescanCooldown.active ? `Rescan (${rescanCooldown.remaining}s)` : "Generate new base image"}
+                                    subtitle="Captures a fresh screenshot for this URL. Safe; does not remove prior versions."
+                                    onClick={rescan}
+                                    disabled={rescanning || rescanCooldown.active || !isHttpUrl(targetUrl)}
+                                />
+                            </div>
+                        </>
+
                     ) : (
                         <>
-                            <div className="mb-3 text-sm text-neutral-600">{shots.length} screenshot(s)</div>
+                            <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
+                                <strong className="text-accent">Step 2</strong> — We’ve captured your initial base images. Review them carefully before generating a website preview.
+                                If any look incomplete or inaccurate, you can rescan or discard them to ensure the correct version of your webpage is used.
+                            </div>
+
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                 {shots.map((s, i) => {
                                     const locked = !!pendingByKey[s.path] || renders.some((r) => r.key === s.path && r.status === "queued" && !r.archived);
                                     return <ShotCard key={s.path} s={s} locked={locked} index={i} onView={openViewer} />;
                                 })}
-
-                                {/* Ghost card appended at the end of the screenshots grid */}
                                 <GhostActionCard
                                     title={rescanning ? "Starting…" : rescanCooldown.active ? `Rescan (${rescanCooldown.remaining}s)` : "Add / Rescan"}
-                                    subtitle="Generate a new base image for this page"
+                                    subtitle="Capture a fresh screenshot for this page."
                                     onClick={rescan}
-                                    disabled={rescanning || rescanning || rescanCooldown.active || !isHttpUrl(targetUrl)}
+                                    disabled={rescanning || rescanCooldown.active || !isHttpUrl(targetUrl)}
                                 />
                             </div>
                         </>
@@ -1293,16 +1210,28 @@ export default function PreviewPage(): JSX.Element {
 
                 <div className="mt-10">
                     <div className="flex items-center justify-between">
-                        <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-900">Render Sandbox</h2>
+                        <div>
+                            <h2 className="text-1xl sm:text-3xl font-semibold tracking-tight text-neutral-700">Website Previews</h2>
+                        </div>
                     </div>
                     {renders.length === 0 ? (
-                        <div className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-600">Nothing yet. Start one from a screenshot above.</div>
+                        <>
+                            <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
+                                <strong className="text-accent">Step 3</strong> — Website Previews. Customize to edit the HTML. Deploy publishes to Vercel.
+                            </div>
+                            <div className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
+                                No previews yet. Generate one from a base screenshot above.
+                            </div>
+                        </>
                     ) : (
-                        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {renders.map((r) => (
-                                <RenderCard key={r.id} r={r} />
-                            ))}
-                        </div>
+                        <>
+                            <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
+                                <strong className="text-accent">Step 3</strong> — Each card is an editable preview generated from a screenshot. Use Customize to edit HTML. Use Deploy to publish to Vercel.
+                            </div>
+                            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" aria-label="Editable previews list">
+                                {renders.map((r) => <RenderCard key={r.id} r={r} />)}
+                            </div>
+                        </>
                     )}
                 </div>
             </div>
@@ -1311,10 +1240,7 @@ export default function PreviewPage(): JSX.Element {
                 <PreviewEditor
                     initialHtml={editorHtml}
                     sourceImage={editorRefImg}
-                    onClose={() => {
-                        setEditorOpen(false);
-                        setActiveRenderId(undefined);
-                    }}
+                    onClose={() => { setEditorOpen(false); setActiveRenderId(undefined); }}
                     onExport={exportToVercel}
                     draftId={activeRenderId}
                     saveDraft={saveDraft}
@@ -1327,34 +1253,18 @@ export default function PreviewPage(): JSX.Element {
 
             <Toasts toasts={toasts} />
             <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+
             {viewerOpen && shots[viewerIdx] && (
                 <div className="fixed inset-0 z-[10000]">
-                    {/* backdrop */}
                     <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={closeViewer} />
-
-                    {/* content */}
                     <div className="absolute inset-0 p-4 sm:p-6 md:p-8 grid place-items-center">
                         <div className="relative w-full h-full max-w-[min(95vw,1400px)]">
-                            {/* top bar */}
-
-
-
                             <div className="absolute top-0 bg-black/70 h-20 left-0 right-0 z-10 flex items-center justify-between gap-2 p-2 sm:p-3">
-
-                                {/* <div className="flex items-center gap-2"> */}
-                                <div className="text-[11px] sm:text-xs text-white/80 truncate">
-                                    {shots[viewerIdx].fileName}
-                                </div>
-                                <button
-                                    onClick={closeViewer}
-                                    className="rounded-md bg-accent text-white text-xs px-2.5 py-1.5 shadow">
+                                <div className="text-[11px] sm:text-xs text-white/80 truncate">{shots[viewerIdx].fileName}</div>
+                                <button onClick={closeViewer} className="rounded-md" style={{ background: ACCENT, color: "#fff", padding: "6px 10px", fontSize: "12px" }}>
                                     Close
                                 </button>
-                                {/* </div> */}
-
                             </div>
-
-                            {/* image scroller */}
                             <div className="absolute inset-0 mt-8 mb-8 overflow-auto rounded-lg ring-1 ring-white/10 bg-black/40">
                                 <div className="min-h-full w-full grid place-items-center p-4">
                                     <img
@@ -1365,23 +1275,26 @@ export default function PreviewPage(): JSX.Element {
                                     />
                                 </div>
                             </div>
-
-                            {/* nav controls */}
                             <button
                                 onClick={prevShot}
-                                className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-accent text-white h-9 w-9 grid place-items-center shadow ring-1 ring-neutral-200">
+                                className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full text-white h-9 w-9 grid place-items-center shadow ring-1 ring-neutral-200"
+                                style={{ background: ACCENT }}
+                                aria-label="Previous screenshot"
+                            >
                                 ‹
                             </button>
                             <button
                                 onClick={nextShot}
-                                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-accent text-white h-9 w-9 grid place-items-center shadow ring-1 ring-neutral-200">
+                                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full text-white h-9 w-9 grid place-items-center shadow ring-1 ring-neutral-200"
+                                style={{ background: ACCENT }}
+                                aria-label="Next screenshot"
+                            >
                                 ›
                             </button>
                         </div>
                     </div>
                 </div>
             )}
-
         </main>
     );
 }

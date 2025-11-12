@@ -9,6 +9,7 @@ import { Menu, X } from "lucide-react";
 import { useAuth } from "@/src/hooks/useAuth";
 import { signOut, type User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { Globe, Camera, Hammer, Rocket, Wand2, Eye, ScanSearch } from "lucide-react";
 
 const ACCENT = "#f55f2a";
 
@@ -333,8 +334,8 @@ function MegaPanel({ active }: MegaPanelProps): JSX.Element {
         >
           <AnimatedPromoCard />
           <div className="p-4">
-            <div className="text-sm text-neutral-500">Clone any site</div>
-            <div className="mt-1">Paste a URL. Preview. Deploy.</div>
+            <div className="text-xs text-neutral-500">Clone any site</div>
+            <div className="mt-1 text-sm">Paste a URL. Customize. Deploy.</div>
           </div>
         </Link>
 
@@ -374,18 +375,43 @@ function SimpleLink({ href, label }: SimpleLinkProps): JSX.Element {
   );
 }
 
-function AnimatedPromoCard(): JSX.Element {
+/** Compact, icon-forward promo card */
+export function AnimatedPromoCard(): JSX.Element {
   return (
-    <div className="relative aspect-[4/3] bg-gradient-to-br from-orange-50/60 via-white to-white">
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -inset-x-1/2 -top-1/3 h-1/2 rotate-12 bg-white/40 blur-2xl animate-[sheen_5s_linear_infinite]" />
+    <div className="relative w-full max-w-sm rounded-2xl border border-neutral-200 bg-gradient-to-br from-orange-50/70 via-white to-white shadow-sm overflow-hidden  h-[220px]">
+      {/* sheen */}
+      <div className="pointer-events-none absolute -inset-x-1/2 -top-1/3 h-1/2 rotate-12 bg-white/50 blur-2xl animate-[sheen_5s_linear_infinite]" />
+
+      {/* header */}
+      <div className="flex items-center gap-2 px-4 pt-4">
+        <Wand2 className="h-4 w-4 text-[--accent]" />
+        <h3 className="text-sm font-semibold text-neutral-800 tracking-tight">
+          Kloner Workflow
+        </h3>
       </div>
 
-      <div className="absolute left-5 top-5 space-y-2 w-40">
-        <MetricPill label="Crawl" delay={0} />
-        <MetricPill label="Preview" delay={0.4} />
-        <MetricPill label="Deploy" delay={0.8} />
+      {/* left metric pills */}
+      <div className="absolute left-4 top-12 space-y-2 ">
+        <MetricPill icon={ScanSearch} label="Crawl" delay={0} />
+        <MetricPill icon={Camera} label="Screenshot" delay={0.25} />
+        <MetricPill icon={Hammer} label="Generate" delay={0.5} />
+        <MetricPill icon={Eye} label="Customize" delay={0.75} />
+        <MetricPill icon={Rocket} label="Deploy" delay={1.0} />
       </div>
+
+      {/* subtle illustration / anchor */}
+      {/* <div className="flex items-end justify-end pr-4 pb-4 h-[220px]">
+        <div className="relative grid place-items-center rounded-xl border border-neutral-200 bg-white/70 backdrop-blur px-4 py-3">
+          <div className="flex items-center gap-2">
+            <Globe className="h-4 w-4 text-neutral-700" />
+            <span className="text-xs font-medium text-neutral-700">example.com</span>
+          </div>
+          <span className="mt-2 inline-flex items-center gap-1 rounded-md bg-neutral-100 px-2 py-1 text-[10px] font-semibold text-neutral-700">
+            <Rocket className="h-3 w-3" />
+            Ready to Publish
+          </span>
+        </div>
+      </div> */}
 
       <style jsx>{`
         @keyframes sheen {
@@ -393,22 +419,32 @@ function AnimatedPromoCard(): JSX.Element {
           50% { transform: translateX(40%) rotate(12deg); opacity: .2; }
           100% { transform: translateX(100%) rotate(12deg); opacity: .6; }
         }
+        @keyframes popin {
+          0% { transform: translateY(6px) scale(.98); opacity: 0; }
+          100% { transform: translateY(0) scale(1); opacity: 1; }
+        }
       `}</style>
     </div>
   );
 }
 
-function MetricPill({ label, delay = 0 }: MetricPillProps): JSX.Element {
+function MetricPill({
+  icon: Icon,
+  label,
+  delay = 0,
+}: {
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+  label: string;
+  delay?: number;
+}) {
   return (
-    <motion.div
-      className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/90 px-3 py-1.5 shadow-sm"
-      initial={{ y: 8, opacity: 0.0 }}
-      animate={{ y: [8, 0, 8], opacity: [0.0, 1, 0.0] }}
-      transition={{ duration: 4.2, delay, ease: "easeIn" }}
+    <div
+      className="flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-neutral-700 shadow-sm backdrop-blur"
+      style={{ animation: "popin .4s ease forwards", animationDelay: `${delay}s`, opacity: 0 }}
     >
-      <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: ACCENT }} />
-      <span className="text-sm font-medium text-neutral-700">{label}</span>
-    </motion.div>
+      <Icon className="h-3.5 w-3.5" />
+      {label}
+    </div>
   );
 }
 
