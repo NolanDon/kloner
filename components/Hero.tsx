@@ -79,8 +79,8 @@ export default function Hero() {
           </h1>
 
           <p className="mt-4 md:mt-5 text-white/80 text-base sm:text-lg px-2 pb-10 md:pb-20">
-            Paste a URL. We crawl, clean, and generate a ready-to-ship Next.js codebase. <br />
-            Preview in seconds. Export and deploy anywhere.
+            Paste a URL. We generate a ready-to-ship project you can <br />
+            preview, customize, and deploy in minutes.
           </p>
 
           {/* Gigantic input CTA */}

@@ -95,22 +95,30 @@ export default function NavBar(): JSX.Element {
 
           {/* Desktop nav (centered) */}
           <nav className="hidden md:flex flex-1 justify-center items-center gap-6 text-sm text-white/80">
-            {br.nav.map((i) => (
-              <button
-                key={i.label}
-                className="relative hover:text-white transition"
-                onMouseEnter={() => {
-                  setActive(i);
-                  setOpen(true);
-                }}
-                onFocus={() => {
-                  setActive(i);
-                  setOpen(true);
-                }}
-                aria-expanded={Boolean(open && active?.label === i.label)}
-              >
-                {i.label}
-              </button>
+            {br.nav.map((i, idx) => (
+              <>
+                <button
+                  key={i.label}
+                  className="relative hover:text-white transition"
+                  onMouseEnter={() => {
+                    setActive(i);
+                    setOpen(true);
+                  }}
+                  onFocus={() => {
+                    setActive(i);
+                    setOpen(true);
+                  }}
+                  aria-expanded={Boolean(open && active?.label === i.label)}
+                >
+                  {i.label}
+                </button>
+                {idx === 2 && (
+                  <span
+                    aria-hidden
+                    className="mx-1 my-auto block h-5 w-px shrink-0 rounded-full bg-white"
+                  />
+                )}
+              </>
             ))}
           </nav>
 
@@ -160,7 +168,7 @@ export default function NavBar(): JSX.Element {
 
                 {/* Avatar button */}
                 <div className="relative hidden md:block">
-                  <button
+                  {/* <button
                     onClick={() => setUserMenuOpen((v) => !v)}
                     aria-haspopup="menu"
                     aria-expanded={userMenuOpen}
@@ -170,7 +178,7 @@ export default function NavBar(): JSX.Element {
                     <span className="text-sm" style={{ color: "#fff" }}>
                       {initials || "ME"}
                     </span>
-                  </button>
+                  </button> */}
 
                   <AnimatePresence>
                     {userMenuOpen && (
@@ -254,15 +262,24 @@ export default function NavBar(): JSX.Element {
               className="md:hidden mt-2 overflow-hidden rounded-2xl border border-white/10 bg-white/90 backdrop-blur shadow-2xl"
             >
               <div className="p-3">
-                {br.nav.map((i) => (
-                  <a
-                    key={i.label}
-                    href={i.href}
-                    onClick={() => setMOpen(false)}
-                    className="block rounded-xl px-3 py-3 text-neutral-900 hover:bg-neutral-50 transition"
-                  >
-                    {i.label}
-                  </a>
+                {br.nav.map((i, idx) => (
+                  <li key={i.label} className="flex items-center">
+                    <button
+                      className="relative hover:text-white transition"
+                      onMouseEnter={() => { setActive(i); setOpen(true); }}
+                      onFocus={() => { setActive(i); setOpen(true); }}
+                      aria-expanded={Boolean(open && active?.label === i.label)}
+                    >
+                      {i.label}
+                    </button>
+
+                    {idx === 2 && (
+                      <span
+                        aria-hidden
+                        className="mx-6 my-auto block h-5 w-px shrink-0 rounded-full bg-white"
+                      />
+                    )}
+                  </li>
                 ))}
 
                 <div className="my-2 h-px bg-neutral-200/70" />

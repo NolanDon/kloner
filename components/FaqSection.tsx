@@ -127,7 +127,7 @@ export default function FAQSection() {
                     <h2 className="text-5xl mb-12 tracking-tight">Frequently Asked Questions</h2>
                     <a
                         href="#faq-all"
-                        className="hidden md:inline-flex items-center rounded-full border border-neutral-200 px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
+                        className="hidden whitespace-nowrap md:inline-flex items-center rounded-full border border-neutral-200 px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
                     >
                         Read more
                     </a>

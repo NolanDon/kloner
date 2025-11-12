@@ -5,7 +5,7 @@ import { useEffect, useId, useState } from 'react';
 
 export default function Footer() {
   return (
-    <footer className="relative bg-white text-neutral-900 overflow-visible">
+    <footer className="relative bg-white text-neutral-900 rounded-t-[3rem] overflow-hidden">
       <div className="container-soft pt-10 md:pt-16 pb-8">
         <div className="relative">
           <div className="flex justify-center">

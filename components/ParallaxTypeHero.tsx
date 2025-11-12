@@ -56,11 +56,7 @@ export default function ParallaxTypeHero({
     const subOpacity = useTransform(scrollYProgress, [typingEnd - 0.10, typingEnd + 0.10], [0, 1]);
 
     return (
-        <section ref={sectionRef} className="relative w-full" style={{ height: '100vh' }}>
-            <div className="pointer-events-none absolute inset-x-0 -top-20 z-20 h-20">
-                <div className="h-full rounded-b-[28px] border border-neutral-200 border-t-0 bg-white" />
-            </div>
-
+        <section ref={sectionRef} className="relative w-full border-b rounded-xl" style={{ height: '100vh' }}>
             <motion.div aria-hidden className="absolute inset-0 z-0 overflow-hidden" style={{ y, scale }}>
                 <div className="absolute -inset-[6vh]">
                     <div className="relative h-full w-full">
@@ -135,9 +131,6 @@ export default function ParallaxTypeHero({
                     </motion.div>
                 </div>
             </div>
-
-            <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-10 rounded-t-[24px] bg-white" />
-
             <style jsx global>{`
         @keyframes blink { 50% { opacity: 0; } }
         h1 { text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }

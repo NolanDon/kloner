@@ -73,11 +73,11 @@ function ReelCard({ r, i }: { r: Reel; i: number }) {
 
 export default function Stories() {
   return (
-    <section className="section bg-white mt-20 text-black" id="reviews">
+    <section className="section bg-white mt-20 mb-20 text-black" id="reviews">
       <div className="container-soft">
         <div className="mb-6 flex items-end justify-between gap-4">
           <h2 className="text-3xl md:text-3xl leading-tight">
-            Teams ship faster with <strong className="text-accent text-4xl tracking-[-1.5px]">kloner</strong>
+            Teams ship faster with <strong className="text-accent/90 text-4xl tracking-[-1.5px]">kloner</strong>
           </h2>
           <a
             href="#all-reviews"

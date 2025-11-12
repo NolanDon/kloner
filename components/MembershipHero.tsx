@@ -9,8 +9,8 @@ import { AnimatedCreditCard } from './AnimatedCreditCard';
 
 const BULLETS = [
     'Unlimited previews on your domain',
-    'Clean Next.js export with assets captured',
-    'One-click deploy to Vercel or Netlify',
+    'Clean & Secure codebase with assets captured',
+    'One-click deploy to our trusted hosts',
     'Edit text, images, and meta before export',
 ];
 
@@ -252,7 +252,7 @@ export default function MembershipHero() {
                                 href="#start"
                                 className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-full px-6 py-3 text-white bg-accent hover:bg-accent2 transition"
                             >
-                                Start free preview
+                                Start for free today
                             </a>
                         </div>
 
