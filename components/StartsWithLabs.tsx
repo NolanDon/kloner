@@ -4,6 +4,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence, useAnimation } from 'framer-motion';
 import { Rocket, RefreshCw, Globe, CheckCircle2, Hand, ListChecks, TimerOff, MousePointer } from 'lucide-react';
+import { ClickyCursor } from './ClickyCursor';
 
 /**
  * Fixed-height canvas prevents reflow. Transitions shortened aggressively.
@@ -212,21 +213,35 @@ export default function PreviewDashboard({
                     transition={{ duration: 0.35 }}
                     className="text-center px-2 pb-8"
                 >
-                    <div className="inline-flex items-center gap-2">
+                    <div className="items-center gap-2">
                         <h2 className="text-4xl sm:text-5xl md:text-6xl text-neutral-950 mb-3 md:mb-5">
                             Generate your website in a few clicks
                         </h2>
-                        <MousePointer size={30} />
+                        <ClickyCursor size={30} />
                     </div>
+
+
                     <p className="text-neutral-600 mt-2 md:mt-3 max-w-2xl mx-auto text-base sm:text-lg">
                         Drop a link. We fetch assets, normalize code, and spin up a live preview you can deploy in one click.
                     </p>
                     <a
                         href="#how"
-                        className="inline-flex bg-accent py-1 px-2 rounded-md text-white items-center gap-2 text-sm mt-4"
+                        className="group inline-flex items-center rounded-full bg-accent px-4 py-2 text-sm text-white mt-4 whitespace-nowrap transition-[padding] duration-200 ease-out"
                     >
-                        Get started <span aria-hidden>›</span>
+                        <span>Get started</span>
+
+                        {/* Arrow container starts at zero width; grows on hover so the button expands */}
+                        <span
+                            className="ml-0 w-0 overflow-hidden inline-flex items-center transition-[width,margin] duration-200 ease-out
+               group-hover:w-4 group-hover:ml-1"
+                            aria-hidden="true"
+                        >
+                            <svg viewBox="0 0 20 20" className="h-4 w-4 -translate-x-1 opacity-0 transition-all duration-200 ease-out group-hover:translate-x-0 group-hover:opacity-100">
+                                <path d="M7 4l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                        </span>
                     </a>
+
                 </motion.div>
 
                 {/* Fixed-height canvas. All changing content is absolutely positioned in here. */}

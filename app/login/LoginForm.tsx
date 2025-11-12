@@ -1,11 +1,9 @@
-// app/login/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import NavBar from "@/components/NavBar";
-import { auth } from "@/lib/firebase";
-
+import { auth, db } from "@/lib/firebase";
 import {
     GoogleAuthProvider,
     signInWithPopup,
@@ -19,6 +17,16 @@ import {
     type User,
 } from "firebase/auth";
 import type { FirebaseError } from "firebase/app";
+import {
+    addDoc,
+    collection,
+    serverTimestamp,
+    getDocs,
+    query,
+    where,
+    writeBatch,
+    doc,
+} from "firebase/firestore";
 
 const ACCENT = "#f55f2a";
 
@@ -58,11 +66,76 @@ function normalizeError(e: unknown): string {
     return "Request failed.";
 }
 
+function normUrl(s: string): string {
+    try {
+        const u = new URL(s);
+        u.hash = "";
+        return u.toString();
+    } catch {
+        return s.trim();
+    }
+}
+function isHttpUrl(s: string): s is string {
+    try {
+        const u = new URL(s);
+        return u.protocol === "http:" || u.protocol === "https:";
+    } catch {
+        return false;
+    }
+}
+function hash64(s: string): string {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) {
+        h = (h << 5) - h + s.charCodeAt(i);
+        h |= 0;
+    }
+    return Math.abs(h).toString(36);
+}
+
+async function addAndStart(uid: string, url: string) {
+    const cleaned = normUrl(url);
+    if (!isHttpUrl(cleaned)) throw new Error("Invalid URL.");
+    const urlHash = hash64(cleaned);
+
+    // Dedup by urlHash OR url
+    const col = collection(db, "kloner_users", uid, "kloner_urls");
+    const [byHash, byUrl] = await Promise.all([
+        getDocs(query(col, where("urlHash", "==", urlHash))),
+        getDocs(query(col, where("url", "==", cleaned))),
+    ]);
+    const exists = !byHash.empty || !byUrl.empty;
+    if (!exists) {
+        await addDoc(col, {
+            url: cleaned,
+            urlHash,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            status: "queued",
+            screenshotsPrefix: `screenshots/${uid}/${urlHash}`,
+            screenshotPaths: [],
+        });
+    }
+
+    // Queue capture regardless (idempotent server)
+    const r = await fetch("/api/private/generate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ url: cleaned }),
+    });
+
+    if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j?.error || "Failed to queue capture.");
+    }
+    return cleaned;
+}
+
 export default function LoginPage(): JSX.Element {
     const router = useRouter();
     const search = useSearchParams();
 
-    const [mode, setMode] = useState<Mode>("signin");
+    const initialMode = (search.get("mode") as Mode) || "signin";
+    const [mode, setMode] = useState<Mode>(initialMode);
     const [loading, setLoading] = useState<boolean>(false);
     const [err, setErr] = useState<string>("");
 
@@ -70,16 +143,48 @@ export default function LoginPage(): JSX.Element {
     const [pw, setPw] = useState<string>("");
     const [showPw, setShowPw] = useState<boolean>(false);
 
+    // Read pending URL from query or localStorage for UI display + auto-add
+    const pendingUrl = useMemo(() => {
+        const q = search.get("u");
+        if (q) return q;
+        try {
+            return localStorage.getItem("kloner.pendingUrl") || "";
+        } catch {
+            return "";
+        }
+    }, [search]);
+
     useEffect(() => {
         const unsub = onAuthStateChanged(auth, async (u) => {
-            if (u) {
+            if (!u) return;
+            try {
                 await setSessionCookie();
+
+                const pending = pendingUrl?.trim();
+                if (pending) {
+                    // Once authenticated, auto-add + queue
+                    let cleaned = "";
+                    try {
+                        cleaned = await addAndStart(u.uid, pending);
+                        try {
+                            localStorage.removeItem("kloner.pendingUrl");
+                        } catch { }
+                        router.replace(`/dashboard?u=${encodeURIComponent(cleaned)}`);
+                        return;
+                    } catch {
+                        // Fall through to dashboard if add fails
+                    }
+                }
+
                 const next = search.get("next") || "/dashboard";
                 router.replace(next);
+            } catch {
+                router.replace("/dashboard");
             }
         });
         return () => unsub();
-    }, [router, search]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [router, search, pendingUrl]);
 
     const signInWithGoogle = async (): Promise<void> => {
         setErr("");
@@ -150,6 +255,14 @@ export default function LoginPage(): JSX.Element {
                     </p>
                 </div>
 
+                {/* Pending URL notice */}
+                {pendingUrl ? (
+                    <div className="mb-4 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-700">
+                        We’ll add this URL after you {mode === "signin" ? "sign in" : "sign up"}:{" "}
+                        <span className="font-medium break-all">{pendingUrl}</span>
+                    </div>
+                ) : null}
+
                 <form onSubmit={submitEmail} className="space-y-3">
                     <div className="space-y-1.5">
                         <label className="block text-xs font-medium text-neutral-600">Email</label>
@@ -191,7 +304,13 @@ export default function LoginPage(): JSX.Element {
                         className="w-full inline-flex items-center justify-center rounded-xl px-4 py-3 text-sm font-semibold text-white transition disabled:opacity-50"
                         style={{ backgroundColor: ACCENT }}
                     >
-                        {loading ? (mode === "signin" ? "Signing in…" : "Creating…") : mode === "signin" ? "Sign in" : "Create account"}
+                        {loading
+                            ? mode === "signin"
+                                ? "Signing in…"
+                                : "Creating…"
+                            : mode === "signin"
+                                ? "Sign in"
+                                : "Create account"}
                     </button>
                 </form>
 

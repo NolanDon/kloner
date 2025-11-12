@@ -1,34 +1,50 @@
-// components/Hero.tsx
 "use client";
 
 import { motion } from "framer-motion";
 import { Outfit } from "next/font/google";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { auth } from "@/lib/firebase";
 
 const display = Outfit({
   subsets: ["latin"],
   weight: ["700", "800", "900"],
 });
 
+function toAbsolute(u: string) {
+  const s = u.trim();
+  if (!s) return "";
+  try {
+    return new URL(s).toString();
+  } catch {
+    try {
+      return new URL(`https://${s}`).toString();
+    } catch {
+      return "";
+    }
+  }
+}
+
 export default function Hero() {
   const router = useRouter();
   const [url, setUrl] = useState("");
 
-  function toAbsolute(u: string) {
-    try {
-      return new URL(u).toString();
-    } catch {
-      // allow quick typing like "site.com"
-      return new URL(`https://${u}`).toString();
-    }
-  }
-
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!url.trim()) return;
-    const dest = `/start?u=${encodeURIComponent(toAbsolute(url.trim()))}`;
-    router.push(dest);
+    const abs = toAbsolute(url);
+    if (!abs) return;
+
+    const user = auth.currentUser;
+    if (user) {
+      router.push(`/dashboard?u=${encodeURIComponent(abs)}`);
+      return;
+    }
+
+    // Not signed in: stash and send to signup
+    try {
+      localStorage.setItem("kloner.pendingUrl", abs);
+    } catch { }
+    router.push(`/login?mode=signup&u=${encodeURIComponent(abs)}`);
   }
 
   return (
@@ -67,8 +83,7 @@ export default function Hero() {
           className="mx-auto max-w-3xl text-center"
         >
           <h1
-            className={`${display.className} pt-20 leading-[0.96] font-semibold text-white
-                        text-[clamp(2.6rem,7.6vw,5rem)] tracking-[-0.015em]`}
+            className={`${display.className} pt-20 leading-[0.96] font-semibold text-white text-[clamp(2.6rem,7.6vw,5rem)] tracking-[-0.015em]`}
             style={{
               textWrap: "balance" as any,
               WebkitFontSmoothing: "antialiased",
@@ -83,12 +98,7 @@ export default function Hero() {
             preview, customize, and deploy in minutes.
           </p>
 
-          {/* Gigantic input CTA */}
-          <form
-            onSubmit={onSubmit}
-            className="mt-6 md:mt-15 px-2"
-            aria-label="Start by pasting a URL"
-          >
+          <form onSubmit={onSubmit} className="mt-6 md:mt-15 px-2" aria-label="Start by pasting a URL">
             <div
               className="
                 mx-auto max-w-3xl
@@ -101,9 +111,7 @@ export default function Hero() {
                 h-[64px] sm:h-[74px]
               "
             >
-              <label htmlFor="hero-url" className="sr-only">
-                Website URL
-              </label>
+              <label htmlFor="hero-url" className="sr-only">Website URL</label>
               <span className="hidden sm:inline text-neutral-500 text-lg">https://</span>
               <input
                 id="hero-url"
@@ -114,20 +122,17 @@ export default function Hero() {
                 aria-label="Paste a website URL"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                className="
-                  flex-1 bg-transparent outline-none
-                  text-neutral-900 placeholder:text-neutral-400
-                  text-[16px] sm:text-[18px]
-                "
+                className="flex-1 bg-transparent outline-none text-neutral-900 placeholder:text-neutral-400 text-[16px] sm:text-[18px]"
               />
               <button
                 type="submit"
                 className="
                   shrink-0 rounded-full
                   h-[48px] sm:h-[56px] px-5 sm:px-6
-                  bg-accent hover:bg-accent2
+                  bg-accent
                   text-white text-[15px] tracking-wide
                   shadow-[0_6px_18px_rgba(0,0,0,0.25)]
+                  hover:bg-accent
                   hover:shadow-[0_14px_40px_rgba(0,0,0,0.35)]
                   transition
                 "
@@ -136,9 +141,7 @@ export default function Hero() {
                 Preview
               </button>
             </div>
-            <div className="mt-2 text-white/80 text-xs sm:text-sm">
-              Free preview • No card required
-            </div>
+            <div className="mt-2 text-white/80 text-xs sm:text-sm">Free preview • No card required</div>
           </form>
         </motion.div>
       </div>

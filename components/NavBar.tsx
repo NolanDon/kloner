@@ -13,38 +13,31 @@ import { auth } from "@/lib/firebase";
 const ACCENT = "#f55f2a";
 
 /* ------------------------------- types ------------------------------- */
-
 type NavItem = { label: string; href: string };
-type BrandShape = {
-  nav: NavItem[];
-  cta: { href: string };
-};
-
+type BrandShape = { nav: NavItem[]; cta: { href: string } };
 type ChevronArrowProps = { className?: string };
 type SimpleLinkProps = { href: string; label: string };
 type MetricPillProps = { label: string; delay?: number };
 type MegaPanelProps = { active: NavItem | null };
 
 /* ------------------------------ component ---------------------------- */
-
 export default function NavBar(): JSX.Element {
-  const [scrolled, setScrolled] = useState<boolean>(false);
-  const [open, setOpen] = useState<boolean>(false);
+  const [scrolled, setScrolled] = useState(false);
+  const [open, setOpen] = useState(false);
   const [active, setActive] = useState<NavItem | null>(null);
-  const [mOpen, setMOpen] = useState<boolean>(false);
-  const [userMenuOpen, setUserMenuOpen] = useState<boolean>(false);
+  const [mOpen, setMOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
 
-  // Assume useAuth returns { user: User | null }
   const { user } = (useAuth() ?? {}) as { user: User | null };
 
-  useEffect((): (() => void) => {
+  useEffect(() => {
     const on = () => setScrolled(window.scrollY > 8);
     on();
     window.addEventListener("scroll", on);
     return () => window.removeEventListener("scroll", on);
   }, []);
 
-  const initials = useMemo<string>(() => {
+  const initials = useMemo(() => {
     if (!user) return "";
     const name = user.displayName || user.email || "";
     const parts = name
@@ -58,73 +51,63 @@ export default function NavBar(): JSX.Element {
     return (parts[0]![0]! + parts[1]![0]!).toUpperCase();
   }, [user]);
 
-  const shellClasses = scrolled
-    ? "bg-smoke/80 border-white/10 backdrop-blur"
-    : "bg-smoke/60 border-white/10 backdrop-blur";
+  const shellClasses =
+    "rounded-[999px] " +
+    (scrolled
+      ? "bg-smoke/70 border-white/10 backdrop-blur"
+      : "bg-smoke/40 border-white/10 backdrop-blur");
 
   const onSignOut = async (): Promise<void> => {
     try {
       await fetch("/api/auth/session", { method: "DELETE", credentials: "include" });
       await signOut(auth);
       setUserMenuOpen(false);
-    } catch {
-      // no-op
-    }
+    } catch { }
   };
 
   const br = brand as unknown as BrandShape;
 
   return (
-    <div
-      className="fixed left-0 right-0 z-50 top-5 md:top-5"
-      onMouseLeave={() => setOpen(false)}
-    >
-      <div className="container-soft">
-        <div
-          className={`relative flex items-center px-2 py-2 gap-3 md:gap-4 rounded-pill shadow-pill ${shellClasses}`}
-        >
+    <div className="fixed left-0 right-0 top-5 z-50" onMouseLeave={() => setOpen(false)}>
+      <div className="mx-auto max-w-6xl px-3">
+        <div className={`relative flex items-center gap-3 px-3 py-2 md:px-4 ${shellClasses}`}>
           {/* Logo */}
-          <Link
-            href="/"
-            className="ml-4 font-black tracking-tight text-lg md:text-xl shrink-0"
-          >
-            <span className="bg-gradient-to-r from-white to-white/70 bg-clip-text text-transparent">
-              kloner
-            </span>
+          <Link href="/" className="ml-2 font-black tracking-tight text-lg md:text-xl shrink-0 text-white">
+            <span className="text-white">kloner</span>
           </Link>
 
           {/* Desktop nav (centered) */}
-          <nav className="hidden md:flex flex-1 justify-center items-center gap-6 text-sm text-white/80">
-            {br.nav.map((i, idx) => (
-              <>
-                <button
-                  key={i.label}
-                  className="relative hover:text-white transition"
-                  onMouseEnter={() => {
-                    setActive(i);
-                    setOpen(true);
-                  }}
-                  onFocus={() => {
-                    setActive(i);
-                    setOpen(true);
-                  }}
-                  aria-expanded={Boolean(open && active?.label === i.label)}
-                >
-                  {i.label}
-                </button>
-                {idx === 2 && (
-                  <span
-                    aria-hidden
-                    className="mx-1 my-auto block h-5 w-px shrink-0 rounded-full bg-white"
-                  />
-                )}
-              </>
-            ))}
+          <nav className="hidden md:flex flex-1 items-center justify-center">
+            <ul className="flex items-center gap-6 text-[15px] text-white/85">
+              {br.nav.map((i, idx) => (
+                <li key={i.label} className="flex items-center">
+                  <button
+                    className="relative hover:text-white transition"
+                    onMouseEnter={() => {
+                      setActive(i);
+                      setOpen(true);
+                    }}
+                    onFocus={() => {
+                      setActive(i);
+                      setOpen(true);
+                    }}
+                    aria-expanded={Boolean(open && active?.label === i.label)}
+                  >
+                    {i.label}
+                  </button>
+
+                  {/* Soft divider after specific item to match screenshot */}
+                  {idx === 2 && (
+                    <span className="mx-6 h-5 w-px bg-white/15 rounded-full" aria-hidden />
+                  )}
+                </li>
+              ))}
+            </ul>
           </nav>
 
           {/* Right side */}
-          <div className="ml-auto shrink-0 flex items-center gap-2 md:gap-4">
-            {/* Hamburger (mobile) */}
+          <div className="ml-auto flex items-center gap-2 md:gap-4">
+            {/* Mobile burger */}
             <button
               aria-label={mOpen ? "Close menu" : "Open menu"}
               aria-expanded={mOpen}
@@ -132,7 +115,7 @@ export default function NavBar(): JSX.Element {
                 setMOpen((v) => !v);
                 setOpen(false);
               }}
-              className="md:hidden inline-flex h-10 w-10 items-center justify-center rounded-full ring-1 ring-white/15 text-white/85 hover:bg-white/10 transition"
+              className="md:hidden inline-flex h-10 w-10 items-center justify-center rounded-full text-white/90 hover:bg-white/10 ring-1 ring-white/10"
             >
               {mOpen ? <X size={18} strokeWidth={2.2} /> : <Menu size={18} strokeWidth={2.2} />}
             </button>
@@ -140,45 +123,32 @@ export default function NavBar(): JSX.Element {
             {/* Auth area (desktop) */}
             {!user ? (
               <>
-                <a href="/login" className="hidden text-sm md:inline hover:text-white text-white/80 transition">
+                <a href="/login" className="hidden md:inline text-sm text-white/85 hover:text-white">
                   Login
                 </a>
                 <a
                   href={br.cta.href}
-                  className="
-                    group relative hidden md:inline-flex items-center gap-2
-                    rounded-full h-12 px-6
-                    bg-accent hover:bg-accent2 text-white
-                    shadow-[0_6px_18px_rgba(0,0,0,0.25)]
-                    hover:shadow-[0_14px_40px_rgba(0,0,0,0.35)]
-                    transition-all duration-200
-                  "
+                  className="hidden md:inline-flex items-center justify-center h-11 rounded-full px-5 text-[15px] font-medium text-white transition-all"
+                  style={{ backgroundColor: ACCENT }}
                 >
-                  <span className="relative">Start cloning</span>
+                  Start Project
                 </a>
               </>
             ) : (
               <>
-                <Link
-                  href="/dashboard"
-                  className="hidden text-sm md:inline hover:text-white text-white/80 transition"
-                >
+                <Link href="/dashboard" className="hidden md:inline text-sm text-white/85 hover:text-white">
                   Dashboard
                 </Link>
 
-                {/* Avatar button */}
                 <div className="relative hidden md:block">
-                  {/* <button
+                  <button
                     onClick={() => setUserMenuOpen((v) => !v)}
                     aria-haspopup="menu"
                     aria-expanded={userMenuOpen}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-full ring-1 ring-white/20 text-white/90 hover:bg-white/10 transition select-none"
-                    style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-full text-white ring-1 ring-white/20 hover:bg-white/10"
                   >
-                    <span className="text-sm" style={{ color: "#fff" }}>
-                      {initials || "ME"}
-                    </span>
-                  </button> */}
+                    <span className="text-sm">{initials || "ME"}</span>
+                  </button>
 
                   <AnimatePresence>
                     {userMenuOpen && (
@@ -193,9 +163,7 @@ export default function NavBar(): JSX.Element {
                       >
                         <div className="px-4 py-3">
                           <div className="text-sm text-neutral-500">Signed in</div>
-                          <div className="text-sm text-neutral-900 truncate">
-                            {user.displayName || user.email}
-                          </div>
+                          <div className="text-sm text-neutral-900 truncate">{user.displayName || user.email}</div>
                         </div>
                         <div className="h-px bg-neutral-200/70" />
                         <div className="py-1 text-sm">
@@ -213,20 +181,16 @@ export default function NavBar(): JSX.Element {
                   </AnimatePresence>
                 </div>
 
-                {/* CTA swaps to “New project” for authed users */}
                 <a
                   href="/dashboard/new"
-                  className="
-                    group relative hidden md:inline-flex items-center gap-2
-                    rounded-full h-12 px-6
-                    text-white
-                    shadow-[0_6px_18px_rgba(0,0,0,0.25)]
-                    hover:shadow-[0_14px_40px_rgba(0,0,0,0.35)]
-                    transition-all duration-200
-                  "
+                  className="hidden md:inline-flex items-center justify-center h-11 rounded-full px-5 text-[15px] font-medium text-white transition-all
+                   shadow-[0_6px_18px_rgba(0,0,0,0.25)]
+                  hover:bg-accent2
+                  hover:shadow-[0_14px_40px_rgba(0,0,0,0.35)]
+                  transition"
                   style={{ backgroundColor: ACCENT }}
                 >
-                  <span className="relative">New project</span>
+                  New project
                 </a>
               </>
             )}
@@ -241,7 +205,7 @@ export default function NavBar(): JSX.Element {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -6, scale: 0.98 }}
                 transition={{ duration: 0.18, ease: "easeOut" }}
-                className="absolute left-0 right-0 top-full mt-3 hidden md:block"
+                className="absolute left-4 right-4 top-full mt-3 hidden md:block"
                 onMouseEnter={() => setOpen(true)}
               >
                 <MegaPanel active={active} />
@@ -262,24 +226,15 @@ export default function NavBar(): JSX.Element {
               className="md:hidden mt-2 overflow-hidden rounded-2xl border border-white/10 bg-white/90 backdrop-blur shadow-2xl"
             >
               <div className="p-3">
-                {br.nav.map((i, idx) => (
-                  <li key={i.label} className="flex items-center">
-                    <button
-                      className="relative hover:text-white transition"
-                      onMouseEnter={() => { setActive(i); setOpen(true); }}
-                      onFocus={() => { setActive(i); setOpen(true); }}
-                      aria-expanded={Boolean(open && active?.label === i.label)}
-                    >
-                      {i.label}
-                    </button>
-
-                    {idx === 2 && (
-                      <span
-                        aria-hidden
-                        className="mx-6 my-auto block h-5 w-px shrink-0 rounded-full bg-white"
-                      />
-                    )}
-                  </li>
+                {br.nav.map((i) => (
+                  <a
+                    key={i.label}
+                    href={i.href}
+                    onClick={() => setMOpen(false)}
+                    className="block rounded-xl px-3 py-3 text-neutral-900 hover:bg-neutral-50 transition"
+                  >
+                    {i.label}
+                  </a>
                 ))}
 
                 <div className="my-2 h-px bg-neutral-200/70" />
@@ -296,16 +251,10 @@ export default function NavBar(): JSX.Element {
                     <a
                       href={br.cta.href}
                       onClick={() => setMOpen(false)}
-                      className="
-                        group relative mt-2 mb-1 inline-flex w-full items-center justify-center
-                        rounded-full h-12 px-5
-                        bg-accent hover:bg-accent2 text-white
-                        shadow-[0_6px_18px_rgba(0,0,0,0.20)]
-                        hover:shadow-[0_12px_28px_rgba(0,0,0,0.28)]
-                        transition-all duration-200
-                      "
+                      className="group relative mt-2 mb-1 inline-flex w-full items-center justify-center rounded-full h-12 px-5 text-white"
+                      style={{ backgroundColor: ACCENT }}
                     >
-                      <span className="relative">Start cloning</span>
+                      <span className="relative">Try Superpower</span>
                       <ChevronArrow className="relative ml-2 h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
                     </a>
                   </>
@@ -337,10 +286,7 @@ export default function NavBar(): JSX.Element {
                     <a
                       href="/dashboard/new"
                       onClick={() => setMOpen(false)}
-                      className="
-                        group relative mt-2 mb-1 inline-flex w-full items-center justify-center
-                        rounded-full h-12 px-5 text-white transition-all duration-200
-                      "
+                      className="group relative mt-2 mb-1 inline-flex w-full items-center justify-center rounded-full h-12 px-5 text-white"
                       style={{ backgroundColor: ACCENT }}
                     >
                       <span className="relative">New project</span>
@@ -358,7 +304,6 @@ export default function NavBar(): JSX.Element {
 }
 
 /* ------------------------------- pieces -------------------------------- */
-
 function ChevronArrow({ className = "" }: ChevronArrowProps): JSX.Element {
   return (
     <svg
@@ -469,10 +414,7 @@ function MetricPill({ label, delay = 0 }: MetricPillProps): JSX.Element {
 
 function MenuLink({ href, label }: SimpleLinkProps): JSX.Element {
   return (
-    <a
-      href={href}
-      className="block px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100 transition"
-    >
+    <a href={href} className="block px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100 transition">
       {label}
     </a>
   );

@@ -13,6 +13,8 @@ import {
     QueryDocumentSnapshot,
     orderBy,
     limit,
+    onSnapshot,
+    Unsubscribe,
     addDoc,
     doc,
     updateDoc,
@@ -298,6 +300,29 @@ export default function PreviewPage(): JSX.Element {
     const [viewerOpen, setViewerOpen] = useState(false);
     const [viewerIdx, setViewerIdx] = useState(0);
 
+    // optimistic load - generate preview
+    const [optimisticByKey, setOptimisticByKey] = useState<Record<string, ({ id: string } & RenderDoc)>>({});
+
+    async function loadShotsForDoc(u: FirebaseUser, targetUrl: string, data: UrlDoc) {
+        const prefix = data.screenshotsPrefix || `kloner-screenshots/${u.uid}/${data.urlHash || hash64(targetUrl)}`;
+        let fileRefs: StorageReference[] = [];
+        if (Array.isArray(data.screenshotPaths) && data.screenshotPaths.length) {
+            fileRefs = data.screenshotPaths.map((p) => sRef(storage, p));
+        } else {
+            fileRefs = await listAllDeep(sRef(storage, prefix));
+        }
+        const entries = await Promise.all(
+            fileRefs.map(async (r) => {
+                const url = await getDownloadURL(r);
+                const name = r.name || r.fullPath.split("/").pop() || "image";
+                return { path: r.fullPath, url, fileName: name } as Shot;
+            })
+        );
+        entries.sort((a, b) => (a.fileName < b.fileName ? 1 : a.fileName > b.fileName ? -1 : 0));
+        setShots(entries);
+    }
+
+
     const openViewer = useCallback((i: number) => {
         setViewerIdx(i);
         setViewerOpen(true);
@@ -453,65 +478,42 @@ export default function PreviewPage(): JSX.Element {
 
     /* screenshots for selected URL */
     useEffect(() => {
+        let unsubUrlDoc: Unsubscribe | null = null;
         (async () => {
-            setErr("");
-            setInfo("");
-            setLoading(true);
-            setDocSnap(null);
-            setDocData(null);
-            setShots([]);
+            setErr(""); setInfo(""); setLoading(true);
+            setDocSnap(null); setDocData(null); setShots([]);
 
-            if (!user) {
-                setLoading(false);
-                return;
-            }
-            if (!targetUrl) {
-                setLoading(false);
-                return;
-            }
-            if (!isHttpUrl(targetUrl)) {
-                setErr("Invalid URL.");
-                setLoading(false);
-                return;
-            }
+            if (!user || !targetUrl) { setLoading(false); return; }
+            if (!isHttpUrl(targetUrl)) { setErr("Invalid URL."); setLoading(false); return; }
 
             try {
-                const qy = query(collection(db, "kloner_users", user.uid, "kloner_urls"), where("url", "==", targetUrl));
-                const snap = await getDocs(qy);
-                if (snap.empty) {
-                    setErr("No record for this URL under your account.");
-                    setLoading(false);
-                    return;
-                }
-                const first = snap.docs[0];
-                const data = (first.data() || {}) as UrlDoc;
-                setDocSnap(first);
-                setDocData(data);
-
-                const prefix = data.screenshotsPrefix || `kloner-screenshots/${user.uid}/${data.urlHash || hash64(targetUrl)}`;
-                let fileRefs: StorageReference[] = [];
-                if (Array.isArray(data.screenshotPaths) && data.screenshotPaths.length) {
-                    fileRefs = data.screenshotPaths.map((p) => sRef(storage, p));
-                } else {
-                    const root = sRef(storage, prefix);
-                    fileRefs = await listAllDeep(root);
-                }
-                const entries = await Promise.all(
-                    fileRefs.map(async (r) => {
-                        const url = await getDownloadURL(r);
-                        const name = r.name || r.fullPath.split("/").pop() || "image";
-                        return { path: r.fullPath, url, fileName: name } as Shot;
-                    })
+                const qy = query(
+                    collection(db, "kloner_users", user.uid, "kloner_urls"),
+                    where("url", "==", targetUrl)
                 );
-                entries.sort((a, b) => (a.fileName < b.fileName ? 1 : a.fileName > b.fileName ? -1 : 0));
-                setShots(entries);
+                const snap = await getDocs(qy);
+                if (snap.empty) { setErr("No record for this URL under your account."); setLoading(false); return; }
+                const first = snap.docs[0];
+                setDocSnap(first);
+                const initial = (first.data() || {}) as UrlDoc;
+                setDocData(initial);
+                await loadShotsForDoc(user, targetUrl, initial);
+
+                // Realtime: update shots immediately when backend appends screenshotPaths or bumps updatedAt
+                unsubUrlDoc = onSnapshot(first.ref, async (fresh) => {
+                    const data = (fresh.data() || {}) as UrlDoc;
+                    setDocData(data);
+                    await loadShotsForDoc(user, targetUrl, data);
+                });
             } catch (e: any) {
                 setErr(e?.message || "Failed to load screenshots.");
             } finally {
                 setLoading(false);
             }
         })();
+        return () => { unsubUrlDoc?.(); };
     }, [user, targetUrl]);
+
 
     /* renders list filtered to selected URL */
     const [lockUntilByKeyState] = [lockUntilByKey];
@@ -535,41 +537,44 @@ export default function PreviewPage(): JSX.Element {
                 return byUrl || byHash || byKeyHash;
             });
 
+            // bind locks from keys
             const now = Date.now();
             for (const r of filtered) {
                 const key = r.key || "";
-                if (key && lockUntilByKeyState[key] && lockUntilByKeyState[key] > now) {
-                    setLockUntilByRender((m) => ({ ...m, [r.id]: Math.max(m[r.id] || 0, lockUntilByKeyState[key]) }));
+                if (key && lockUntilByKey[key] && lockUntilByKey[key] > now) {
+                    setLockUntilByRender((m) => ({ ...m, [r.id]: Math.max(m[r.id] || 0, lockUntilByKey[key]) }));
                 }
             }
 
-            setRenders((prev) => (rendersEqual(prev, filtered) ? prev : filtered));
-
-            if (targetHash) {
-                const updates: Promise<any>[] = [];
-                for (const r of filtered) {
-                    const needsUrl = !r.url && !!targetUrl;
-                    const needsHash = !r.urlHash && !!targetHash;
-                    if (needsUrl || needsHash) {
-                        updates.push(
-                            setDoc(
-                                doc(db, "kloner_users", user.uid, "kloner_renders", r.id),
-                                {
-                                    ...(needsUrl ? { url: targetUrl } : {}),
-                                    ...(needsHash ? { urlHash: targetHash } : {}),
-                                    ...(r.nameHint ? {} : { nameHint: new URL(targetUrl).hostname }),
-                                    updatedAt: serverTimestamp(),
-                                },
-                                { merge: true }
-                            ).catch(() => void 0)
-                        );
-                    }
+            // —— merge optimistic locals not yet materialized on the server ——
+            const withOptimistic = [...filtered];
+            for (const [k, opt] of Object.entries(optimisticByKey)) {
+                const exists = filtered.some((r) => r.key === k);
+                if (!exists) withOptimistic.unshift(opt);
+                else {
+                    // server has taken over this key → drop optimistic shadow
+                    setOptimisticByKey((m) => {
+                        const n = { ...m };
+                        delete n[k];
+                        return n;
+                    });
                 }
-                if (updates.length) await Promise.all(updates);
             }
 
-            const anyQueued = filtered.some((r) => r.status === "queued");
+            // before setRenders(... withOptimistic)
+            if (filtered.length === 0 && Object.keys(optimisticByKey).length > 0) {
+                setRenders((prev) => {
+                    // keep showing previous list if it contains optimistic items
+                    const hasLocal = prev.some((r) => r.id.startsWith("local_"));
+                    return hasLocal ? prev : prev.concat(Object.values(optimisticByKey));
+                });
+                setLoadingRenders(false);
+                return;
+            }
 
+            setRenders((prev) => (rendersEqual(prev, withOptimistic) ? prev : withOptimistic));
+
+            const anyQueued = withOptimistic.some((r) => r.status === "queued");
             if (anyQueued) {
                 if (!pollTimer.current) {
                     pollStopAt.current = now + 10 * 60 * 1000;
@@ -588,32 +593,81 @@ export default function PreviewPage(): JSX.Element {
                 pollTimer.current = null;
             }
 
+            // when a server render finishes, clear pending + optimistic shadow for its key
             setPendingByKey((prev) => {
                 const next = { ...prev };
-                filtered.forEach((r) => {
-                    if (r.key && (r.status === "ready" || r.status === "failed")) delete next[r.key];
+                withOptimistic.forEach((r) => {
+                    if (r.key && (r.status === "ready" || r.status === "failed")) {
+                        delete next[r.key];
+                        setOptimisticByKey((m) => {
+                            if (!m[r.key!]) return m;
+                            const n = { ...m };
+                            delete n[r.key!];
+                            return n;
+                        });
+                    }
                 });
                 return next;
             });
         } finally {
             setLoadingRenders(false);
         }
-    }, [user, targetUrl, targetHash, lockUntilByKeyState]);
+    }, [user, targetUrl, targetHash, optimisticByKey, lockUntilByKey]);
 
     useEffect(() => {
-        refreshRenders();
-    }, [user, targetUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+        if (!user || !targetUrl || !isHttpUrl(targetUrl)) { setRenders([]); return; }
 
-    useEffect(() => {
-        const onFocus = () => void refreshRenders();
-        const onVis = () => document.visibilityState === "visible" && refreshRenders();
-        window.addEventListener("focus", onFocus);
-        document.addEventListener("visibilitychange", onVis);
-        return () => {
-            window.removeEventListener("focus", onFocus);
-            document.removeEventListener("visibilitychange", onVis);
-        };
-    }, [refreshRenders]);
+        const base = collection(db, "kloner_users", user.uid, "kloner_renders");
+        const qs = query(base, where("archived", "in", [false, null]), orderBy("createdAt", "desc"), limit(100));
+
+        const unsub = onSnapshot(qs, (snap) => {
+            const all = snap.docs.map((d) => ({ id: d.id, ...(d.data() as RenderDoc) }));
+            const filtered = all.filter((r) => {
+                const byUrl = (r.url || "") === targetUrl;
+                const byHash = !!targetHash && r.urlHash === targetHash;
+                const byKeyHash = !!targetHash && extractHashFromKey(r.key) === targetHash;
+                return byUrl || byHash || byKeyHash;
+            });
+
+            const now = Date.now();
+            for (const r of filtered) {
+                const key = r.key || "";
+                if (key && lockUntilByKey[key] && lockUntilByKey[key] > now) {
+                    setLockUntilByRender((m) => ({ ...m, [r.id]: Math.max(m[r.id] || 0, lockUntilByKey[key]) }));
+                }
+            }
+
+            const withOptimistic = [...filtered];
+            for (const [k, opt] of Object.entries(optimisticByKey)) {
+                const exists = filtered.some((r) => r.key === k);
+                if (!exists) withOptimistic.unshift(opt);
+                else {
+                    setOptimisticByKey((m) => { const n = { ...m }; delete n[k]; return n; });
+                }
+            }
+
+            setRenders((prev) => (rendersEqual(prev, withOptimistic) ? prev : withOptimistic));
+
+            setPendingByKey((prev) => {
+                const next = { ...prev };
+                withOptimistic.forEach((r) => {
+                    if (r.key && (r.status === "ready" || r.status === "failed")) {
+                        delete next[r.key];
+                        setOptimisticByKey((m) => {
+                            if (!m[r.key!]) return m;
+                            const n = { ...m };
+                            delete n[r.key!];
+                            return n;
+                        });
+                    }
+                });
+                return next;
+            });
+        });
+
+        return () => unsub();
+    }, [user, targetUrl, targetHash, optimisticByKey, lockUntilByKey]);
+
 
     const selectUrl = useCallback(
         (u: string) => {
@@ -629,10 +683,9 @@ export default function PreviewPage(): JSX.Element {
         async (storageKey: string) => {
             if (!user) return;
             const alreadyQueued = renders.find((r) => r.key === storageKey && r.status === "queued" && !r.archived);
-            if (alreadyQueued) return;
+            if (alreadyQueued || pendingByKey[storageKey]) return;
 
-            const confirmStart = window.confirm("Generate a new preview from this screenshot?");
-            if (!confirmStart) return;
+            if (!window.confirm("Generate a new preview from this screenshot?")) return;
 
             const optimisticId = `local_${hash64(`${user.uid}|${storageKey}|${Date.now()}`)}`;
             const optimistic: { id: string } & RenderDoc = {
@@ -643,16 +696,19 @@ export default function PreviewPage(): JSX.Element {
                 status: "queued",
                 url: targetUrl || null,
                 urlHash: targetUrl ? hash64(targetUrl) : null,
-                nameHint: null,
+                nameHint: targetUrl ? new URL(targetUrl).hostname : null,
                 model: null,
                 archived: false,
                 version: 1,
                 createdAt: new Date(),
                 updatedAt: new Date(),
+                controllerVersion: null,
             } as any;
 
             startHardLock(storageKey, optimisticId, 60_000);
+            // keep it in both lists so memoized children get mounted
             setRenders((prev) => [optimistic, ...prev]);
+            setOptimisticByKey((m) => ({ ...m, [storageKey]: optimistic }));
             setPendingByKey((m) => ({ ...m, [storageKey]: true }));
             setErr("");
             setInfo("Rendering started.");
@@ -681,11 +737,17 @@ export default function PreviewPage(): JSX.Element {
                 await refreshRenders();
             } catch (e: any) {
                 setRenders((prev) => prev.map((r) => (r.id === optimisticId ? { ...r, status: "failed" } : r)));
+                // keep the optimistic card visible but marked failed
+                setOptimisticByKey((m) => {
+                    const v = m[storageKey];
+                    if (!v) return m;
+                    return { ...m, [storageKey]: { ...v, status: "failed" } };
+                });
                 setErr(e?.message || "Failed to start rendering.");
                 push("Preview failed to start", "err");
             }
         },
-        [user, targetUrl, renders, refreshRenders, push, startHardLock]
+        [user, targetUrl, renders, refreshRenders, push, startHardLock, pendingByKey]
     );
 
     /* editor */
@@ -693,6 +755,7 @@ export default function PreviewPage(): JSX.Element {
         async (renderId: string) => {
             if (!user) return;
             setErr("");
+            setLoading(true)
 
             const dref = doc(db, "kloner_users", user.uid, "kloner_renders", renderId);
             const snap = await getDoc(dref);
@@ -717,6 +780,7 @@ export default function PreviewPage(): JSX.Element {
             setEditorRefImg(refSrc);
             setActiveRenderId(renderId);
             setEditorOpen(true);
+            setLoading(false)
         },
         [user, push, shots]
     );
@@ -769,6 +833,11 @@ export default function PreviewPage(): JSX.Element {
                 setShots((prev) => prev.filter((s) => s.path !== shot.path));
                 setRenders((prev) => prev.filter((r) => r.key !== shot.path));
                 setPendingByKey((m) => {
+                    const n = { ...m };
+                    delete n[shot.path];
+                    return n;
+                });
+                setOptimisticByKey((m) => {
                     const n = { ...m };
                     delete n[shot.path];
                     return n;
@@ -852,34 +921,59 @@ export default function PreviewPage(): JSX.Element {
         [user, activeRenderId, targetUrl, editorRefImg, refreshRenders, push]
     );
 
+    const shotsPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    function beginShortShotsPoll(prefix: string) {
+        if (shotsPollRef.current) { clearInterval(shotsPollRef.current); shotsPollRef.current = null; }
+        const deadline = Date.now() + 60_000;
+        shotsPollRef.current = setInterval(async () => {
+            if (!user) return;
+            try {
+                const refs = await listAllDeep(sRef(storage, prefix));
+                const map = new Map(refs.map(r => [r.fullPath, r]));
+                const newOnes = Array.from(map.keys()).filter(p => !shots.some(s => s.path === p));
+                if (newOnes.length) {
+                    const added = await Promise.all(newOnes.map(async (p) => {
+                        const r = map.get(p)!; const url = await getDownloadURL(r);
+                        const name = r.name || r.fullPath.split("/").pop() || "image";
+                        return { path: r.fullPath, url, fileName: name } as Shot;
+                    }));
+                    setShots(prev => [...added, ...prev].sort((a, b) => (a.fileName < b.fileName ? 1 : a.fileName > b.fileName ? -1 : 0)));
+                    clearInterval(shotsPollRef.current!); shotsPollRef.current = null;
+                }
+            } finally {
+                if (Date.now() > deadline && shotsPollRef.current) {
+                    clearInterval(shotsPollRef.current); shotsPollRef.current = null;
+                }
+            }
+        }, 3000);
+    }
+
+    useEffect(() => () => { if (shotsPollRef.current) clearInterval(shotsPollRef.current); }, []);
+
+
     const rescan = useCallback(async () => {
-        if (!isHttpUrl(targetUrl) || rescanCooldown.active) return;
-        const ok = window.confirm("Start a fresh screenshot capture?");
-        if (!ok) return;
-        setRescanning(true);
-        setErr("");
+        if (!isHttpUrl(targetUrl) || rescanCooldown.active || !user || !docData) return;
+        if (!window.confirm("Start a fresh screenshot capture?")) return;
+        setRescanning(true); setErr("");
         try {
-            const r = await fetch("/api/private/generate", {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify({ url: targetUrl }),
-            });
+            const r = await fetch("/api/private/generate", { method: "POST", headers: { "content-type": "application/json" }, credentials: "include", body: JSON.stringify({ url: targetUrl }) });
             if (!r.ok) {
                 const j = await r.json().catch(() => ({}));
-                setErr(j?.error || "Rescan failed.");
-                push("Rescan failed", "err");
+                setErr(j?.error || "Rescan failed."); push("Rescan failed", "err");
             } else {
                 push("Rescan started", "ok");
                 rescanCooldown.start(60_000);
+                const prefix = docData.screenshotsPrefix || `kloner-screenshots/${user.uid}/${docData.urlHash || hash64(targetUrl)}`;
+                beginShortShotsPoll(prefix);
             }
         } catch (e: any) {
-            setErr(e?.message || "Rescan failed.");
-            push("Rescan failed", "err");
+            setErr(e?.message || "Rescan failed."); push("Rescan failed", "err");
         } finally {
             setRescanning(false);
         }
-    }, [targetUrl, push, rescanCooldown]);
+    }, [targetUrl, user, docData, push, rescanCooldown]);
+
 
     /* ───────── cards ───────── */
     const RenderCard = useMemo(
@@ -889,6 +983,7 @@ export default function PreviewPage(): JSX.Element {
                     const isQueued = r.status === "queued";
                     const isFailed = r.status === "failed";
                     const isDeleting = !!deletingRender[r.id];
+                    const isOpening = loading;
 
                     const prevHtmlRef = useRef<string | undefined>(undefined);
                     const [srcDoc, setSrcDoc] = useState<string>("");
@@ -902,7 +997,7 @@ export default function PreviewPage(): JSX.Element {
                     }, [r.html]);
 
                     const hardLocked = !!lockUntilByRender[r.id] && lockUntilByRender[r.id] > Date.now();
-                    const disableOpen = isQueued || isFailed || hardLocked;
+                    const disableOpen = isOpening || isQueued || isFailed || hardLocked;
 
                     const { src: refImgUrl, onError: refImgErr } = useResolvedImg(r.key || "");
                     const versionLabel = shortVersionFromShotPath(r.key ?? "", (docData?.urlHash as string | undefined) ?? null);
@@ -957,7 +1052,7 @@ export default function PreviewPage(): JSX.Element {
                                             style={{ backgroundColor: ACCENT }}
                                             title={isQueued ? "Still rendering" : isFailed ? "Rendering failed" : "Open editor"}
                                         >
-                                            {isQueued ? "Queued" : isFailed ? "Retry Edit" : "Edit"}
+                                            {isQueued ? "Queued" : isFailed ? "Retry Edit" : "Customize"}
                                         </button>
 
                                         <button
@@ -1247,14 +1342,14 @@ export default function PreviewPage(): JSX.Element {
                             <div className="absolute top-0 bg-black/70 h-20 left-0 right-0 z-10 flex items-center justify-between gap-2 p-2 sm:p-3">
 
                                 {/* <div className="flex items-center gap-2"> */}
-                                    <div className="text-[11px] sm:text-xs text-white/80 truncate">
-                                        {shots[viewerIdx].fileName}
-                                    </div>
-                                    <button
-                                        onClick={closeViewer}
-                                        className="rounded-md bg-accent text-white text-xs px-2.5 py-1.5 shadow">
-                                        Close
-                                    </button>
+                                <div className="text-[11px] sm:text-xs text-white/80 truncate">
+                                    {shots[viewerIdx].fileName}
+                                </div>
+                                <button
+                                    onClick={closeViewer}
+                                    className="rounded-md bg-accent text-white text-xs px-2.5 py-1.5 shadow">
+                                    Close
+                                </button>
                                 {/* </div> */}
 
                             </div>

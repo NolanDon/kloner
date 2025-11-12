@@ -8,7 +8,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { AnimatedCreditCard } from './AnimatedCreditCard';
 
 const BULLETS = [
-    'Unlimited previews on your domain',
+    'Includes 100 preview credits / month',
     'Clean & Secure codebase with assets captured',
     'One-click deploy to our trusted hosts',
     'Edit text, images, and meta before export',
@@ -70,12 +70,12 @@ function RotatingCards() {
         <CardShell>
             <div className="absolute inset-0 flex flex-col justify-end gap-2 p-4">
                 <motion.div
-                    className="mb-1 inline-flex w-28 items-center justify-center gap-1 self-start rounded-full border border-neutral-200 bg-white/90 px-2 py-1"
+                    className="mb-1 inline-flex w-36 items-center justify-center gap-1 self-start rounded-full border border-neutral-200 bg-white/90 px-2 py-1"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.1 }}
                 >
-                    <span className="text-[11px] text-neutral-700">Preview ready…</span>
+                    <span className="text-[11px] text-neutral-700">1 credit used</span>
                 </motion.div>
                 <div className="max-w-[72%] rounded-2xl px-3 py-2 text-sm shadow-sm bg-white text-neutral-800 border border-neutral-200">
                     Swap headline and images before export
@@ -110,7 +110,7 @@ function RotatingCards() {
         return (
             <CardShell>
                 <div className="absolute inset-0 flex flex-col justify-center gap-3 p-5">
-                    <Row text="Unlimited previews" delay={0.05} />
+                    <Row text="100 preview credits / month" delay={0.05} />
                     <Row text="Clean export" delay={0.25} />
                     <Row text="One-click deploy" delay={0.45} />
                     <Row text="Keep full control" delay={0.65} />
@@ -190,7 +190,7 @@ export default function MembershipHero() {
                                 Built for instant cloning, <br className="hidden sm:block" /> live preview, and one-click deploy
                             </h2>
                             <p className="text-neutral-600 my-3 md:my-4">
-                                Skip boilerplate and guesswork. Turn any public site into your project in minutes.
+                                Credits-based previews with full-code export. Turn any public site into your project in minutes.
                             </p>
                         </div>
                     </div>
@@ -224,12 +224,15 @@ export default function MembershipHero() {
                             ))}
                         </ul>
 
-                        {/* Price block */}
-                        <div className="mt-5 md:mt-6 flex items-baseline gap-2">
+                        {/* Price + credits */}
+                        <div className="mt-5 md:mt-6 flex items-center gap-3">
                             <div className="text-5xl md:text-6xl text-neutral-900">$29</div>
                             <div className="text-neutral-600 text-sm md:text-base">
                                 /month · billed monthly or annually
                             </div>
+                            <span className="ml-2 inline-flex items-center rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-xs font-medium text-neutral-800">
+                                100 preview credits / mo
+                            </span>
                         </div>
 
                         {/* Payment options */}
@@ -270,7 +273,7 @@ export default function MembershipHero() {
                         </div>
 
                         <div className="mt-2 text-xs text-neutral-500">
-                            Export includes code, assets, and routes. Keep or self-host anytime.
+                            1 credit = 1 preview render. Credits reset monthly. Export includes code, assets, and routes.
                         </div>
                     </div>
                 </div>
