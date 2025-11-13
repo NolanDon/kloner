@@ -307,7 +307,7 @@ export default function HowItWorks() {
               </div>
             </div>
 
-            <div className="mt-10">
+            <div className="hidden md:block mt-10">
               <div className="relative mx-auto max-w-5xl">
                 <div className="h-[3px] rounded bg-black/10" />
                 <motion.div className="absolute inset-y-0 left-0 rounded bg-accent" style={{ width: fill }} />

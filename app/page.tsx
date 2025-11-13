@@ -1,4 +1,3 @@
-// app/page.tsx (or wherever this lives)
 import NavBar from "@/components/NavBar";
 import Hero from "@/components/Hero";
 import StatsStrip from "@/components/StatsStrip";
@@ -15,10 +14,12 @@ import PreviewDashboard from "@/components/StartsWithLabs";
 export default function Page() {
   return (
     <>
+      {/* Nav stays normal; sections below are snap targets */}
       <NavBar />
 
-      {/* DO NOT put h-screen or overflow-y-scroll here */}
-      <main>
+      {/* Scroll container with snap + smooth scroll */}
+      <main className="h-screen snap-y snap-mandatory scroll-smooth">
+      {/* <main> */}
         <section
           id="hero"
           className="snap-start snap-always min-h-screen flex flex-col"
@@ -39,9 +40,10 @@ export default function Page() {
         >
           <StatsStrip />
         </section>
-
-        {/* How it works: disable snap so parallax can scroll inside */}
-        <section id="how" className="snap-none">
+        <section
+          id="how-it-works"
+          className="snap-none"
+        >
           <HowItWorks />
         </section>
 
