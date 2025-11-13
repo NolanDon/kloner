@@ -96,7 +96,7 @@ export default function StatsStrip() {
       <div className="container-soft">
         <SectionReveal>
           <blockquote className="text-center text-2xl md:text-3xl font-semibold max-w-4xl mx-auto text-black/70">
-            “I pasted a URL and had a deployable project before my coffee cooled. Zero setup. Instant preview. One click to Vercel.”
+            “I pasted a URL and had a gorgeous website before my coffee cooled. Zero setup. Instant preview. One click to Vercel.”
           </blockquote>
         </SectionReveal>
         <div className="mt-12 grid md:grid-cols-3 gap-6">

@@ -25,7 +25,7 @@ export default function NavBar(): JSX.Element {
   const { user } = (useAuth() ?? {}) as { user: User | null };
 
   useEffect(() => {
-    const on = () => setScrolled(window.scrollY > 8);
+    const on = () => setScrolled(window.scrollY > 800);
     on();
     window.addEventListener("scroll", on);
     return () => window.removeEventListener("scroll", on);
@@ -64,10 +64,11 @@ export default function NavBar(): JSX.Element {
 
   return (
     <div className="px-4 fixed left-0 right-0 top-5 z-50" onMouseLeave={() => setOpen(false)}>
-      <div className="mx-auto max-w-6xl px-3">
-        <div className={`relative flex items-center gap-3 px-3 py-2 md:px-4 ${shellClasses}`}>
+      <div className="mx-auto max-w-6xl">
+        <div className={`relative flex items-center gap-3 px-3 py-1 md:px-1 mx-2 ${shellClasses}`}
+          style={{ height: "4rem" }} >
           {/* Logo */}
-          <Link href="/" className="ml-2 font-black tracking-tight text-lg md:text-xl shrink-0 text-white">
+          <Link href="/" className="ml-3 font-black tracking-tight text-lg md:text-xl shrink-0 text-white">
             <span className="text-white">kloner</span>
           </Link>
 
@@ -106,13 +107,6 @@ export default function NavBar(): JSX.Element {
             {!user ? (
               <>
                 <a href="/login" className="hidden md:inline text-sm text-white/85 hover:text-white">Login</a>
-                <a
-                  href={br.cta.href}
-                  className="hidden md:inline-flex items-center justify-center h-11 rounded-full px-5 text-[15px] font-medium text-white transition-all"
-                  style={{ backgroundColor: ACCENT }}
-                >
-                  Start Project
-                </a>
               </>
             ) : (
               <>
@@ -156,15 +150,16 @@ export default function NavBar(): JSX.Element {
                     )}
                   </AnimatePresence>
                 </div>
-                <a
-                  href="/dashboard/new"
-                  className="hidden md:inline-flex items-center justify-center h-11 rounded-full px-5 text-[15px] text-white  whitespace-nowrap"
-                  style={{ backgroundColor: ACCENT }}
-                >
-                  New project
-                </a>
               </>
             )}
+
+            <a
+              href="/dashboard/new"
+              className="hidden md:inline-flex items-center justify-center h-14 rounded-full px-5 text-[15px] text-white  whitespace-nowrap"
+              style={{ backgroundColor: ACCENT }}
+            >
+              Start project
+            </a>
           </div>
 
           {/* Desktop mega dropdown */}

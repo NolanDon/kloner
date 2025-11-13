@@ -10,6 +10,7 @@
 /* Kill horizontal scroll everywhere */
 html,
 body {
+    /* scroll-behavior: smooth; */
     @apply bg-white text-black/90 overflow-x-clip;
     /* use clip over hidden when possible */
 }
@@ -36,4 +37,3 @@ body {
 }
 
 /* #f55f2a */
-

@@ -64,9 +64,8 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <head>
-      </head>
-      <body>
+      <head />
+      <body className="bg-white scroll-smooth snap-y snap-mandatory">
         <AuthProviderServer>{children}</AuthProviderServer>
       </body>
     </html>

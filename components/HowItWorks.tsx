@@ -128,14 +128,14 @@ function EditBlocksModal() {
 
         <div className="flex my-2 gap-2">
           <button
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium bg-amber-50 text-amber-700 ring-1 ring-amber-200 hover:bg-amber-100"
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium bg-amber-50 text-amber-700 ring-1 ring-amber-200 pointer-events-none"
             aria-label="Edit block"
           >
             <span>✏️</span>
             <span>Edit</span>
           </button>
           <button
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium bg-rose-50 text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100"
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium bg-rose-50 text-rose-700 ring-1 ring-rose-200 pointer-events-none"
             aria-label="Delete block"
           >
             <span>🗑️</span>
@@ -145,11 +145,6 @@ function EditBlocksModal() {
       </div>
 
       <div className="mt-3 flex items-center justify-between">
-        {/* <div className="text-xs text-neutral-500">Edit pass complete</div> */}
-        <div className="inline-flex items-center gap-2 text-xs text-neutral-600">
-          <CheckCircle2 className="h-4 w-4" />
-          Awaiting Deployment
-        </div>
       </div>
     </div>
   );
@@ -261,7 +256,7 @@ export default function HowItWorks() {
   const s4 = useTransform(scrollYProgress, [0, T4 - ε, T4, 1], [0.35, 0.35, 1, 1]);
 
   return (
-    <section id="how" className="bg-white text-black">
+    <section className="bg-white text-black">
       <div className="container-soft">
         <div ref={containerRef} className="relative h-[220vh]">
           <div className="sticky top-44">

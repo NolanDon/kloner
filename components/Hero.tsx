@@ -146,7 +146,7 @@ export default function Hero() {
                 Preview
               </button>
             </div>
-            <div className="mt-6 text-white/80 text-xs sm:text-sm">Free preview • No card required</div>
+            <div className="mt-6 text-white/80 text-xs sm:text-sm">Free preview • No card required to generate previews</div>
           </form>
         </motion.div>
       </div>
