@@ -55,7 +55,7 @@ export default function KlonerVercelCallback() {
             <NavBar />
             <main className="min-h-screen bg-white py-[120px]">
                 <div className="mx-auto max-w-xl px-4 sm:px-6 lg:px-10 py-10">
-                    <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-900 mb-4">
+                    <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-800 mb-4">
                         Finalizing your Vercel connection
                     </h1>
 

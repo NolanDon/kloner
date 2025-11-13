@@ -351,7 +351,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
                             href={locked ? undefined : r.url}
                             target={locked ? undefined : '_blank'}
                             rel={locked ? undefined : 'noreferrer'}
-                            className={`truncate mr-4 ${locked ? 'text-neutral-400' : 'text-neutral-900 hover:underline'} ${locked ? 'pointer-events-none' : ''}`}
+                            className={`truncate mr-4 ${locked ? 'text-neutral-400' : 'text-neutral-800 hover:underline'} ${locked ? 'pointer-events-none' : ''}`}
                             aria-disabled={locked}
                             tabIndex={locked ? -1 : 0}
                         >
@@ -460,7 +460,7 @@ export default function DashboardPage() {
 
     return (
         <div className="px-4 sm:px-6 lg:px-10 py-6">
-            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-900">Dashboard</h1>
+            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-800">Dashboard</h1>
             <p className="mt-1 text-sm text-neutral-600">Add a URL to capture. We queue screenshots and keep them under your account.</p>
 
             {bootstrapErr ? (

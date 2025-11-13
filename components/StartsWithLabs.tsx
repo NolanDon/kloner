@@ -30,9 +30,9 @@ type Phase =
 /* ------------------------------ Mini features strip (static) ----------------- */
 function FeaturesStrip() {
     const items = [
-        { icon: <TimerOff className="h-5 w-5 text-neutral-900" />, title: 'No setup', sub: 'Paste a URL, get a project' },
-        { icon: <ListChecks className="h-5 w-5 text-neutral-900" />, title: 'Instant preview', sub: 'See the clone in seconds' },
-        { icon: <Hand className="h-5 w-5 text-neutral-900" />, title: 'One-click deploy', sub: 'Vercel, Netlify, or zip' },
+        { icon: <TimerOff className="h-5 w-5 text-neutral-800" />, title: 'No setup', sub: 'Paste a URL, get a project' },
+        { icon: <ListChecks className="h-5 w-5 text-neutral-800" />, title: 'Instant preview', sub: 'See the clone in seconds' },
+        { icon: <Hand className="h-5 w-5 text-neutral-800" />, title: 'One-click deploy', sub: 'Vercel, Netlify, or zip' },
     ];
 
     return (
@@ -49,7 +49,7 @@ function FeaturesStrip() {
                     >
                         <div className="mt-0.5 shrink-0">{it.icon}</div>
                         <div>
-                            <div className="text-base md:text-xl font-semibold leading-tight text-neutral-900">{it.title}</div>
+                            <div className="text-base md:text-xl font-semibold leading-tight text-neutral-800">{it.title}</div>
                             <div className="text-sm text-neutral-500 mt-1">{it.sub}</div>
                         </div>
                     </motion.div>
@@ -176,7 +176,6 @@ export default function PreviewDashboard({
     }, [phase]);
 
     const gridVisible = phase === 'loading' || phase === 'revealing' || phase === 'highlight';
-    const bottomBarVisible = phase === 'revealing' || phase === 'highlight';
     const controls = useAnimation();
 
     useEffect(() => {
@@ -194,7 +193,8 @@ export default function PreviewDashboard({
         if (previewReadyFlash) return false;
         if (phase === 'typing') return true;
         if (phase === 'loading') return true;
-        if (phase === 'revealing' || phase === 'highlight') return false;
+        if (phase === 'revealing') return true;
+        if (phase === 'highlight') return false;
         if (phase === 'deploying' || phase === 'success') return true;
         if (phase === 'idle' || phase === 'cooldown') return true;
         return true;
@@ -203,7 +203,7 @@ export default function PreviewDashboard({
     const primaryBg = phase === 'highlight' ? 'bg-accent' : primaryDisabled ? 'bg-neutral-300' : 'bg-accent';
 
     return (
-        <section className="section bg-white text-neutral-900">
+        <section className="section bg-white text-neutral-800">
             <div className="container-soft">
                 <FeaturesStrip />
 
@@ -254,7 +254,7 @@ export default function PreviewDashboard({
                         className="absolute left-0 right-0 top-0 rounded-2xl border border-neutral-200 bg-white/90 backdrop-blur p-4 md:p-5 shadow-sm mx-auto max-w-5xl"
                     >
                         <div className="flex items-center gap-2 text-xs text-neutral-500">
-                            <span className="text-neutral-900">{headerHint}</span>
+                            <span className="text-neutral-800">{headerHint}</span>
                         </div>
 
                         <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center">
@@ -295,7 +295,7 @@ export default function PreviewDashboard({
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
                                 transition={{ duration: 0.18 }}
-                                className="absolute inset-x-0 top-28 mx-auto max-w-5xl rounded-2xl border border-neutral-200 bg-white p-10 md:p-14 shadow-sm grid place-items-center"
+                                className="absolute inset-x-0 top-40 md:top-35 mx-auto max-w-5xl rounded-2xl border border-neutral-200 bg-white p-10 md:p-14 shadow-sm grid place-items-center"
                             >
                                 {phase === 'deploying' && (
                                     <div className="text-center">
@@ -321,7 +321,7 @@ export default function PreviewDashboard({
 
                     {/* Grid */}
                     {gridVisible && (
-                        <div className="absolute inset-x-0 top-28 mx-auto max-w-5xl">
+                        <div className="absolute inset-x-0 top-40 md:top-28 mx-auto max-w-5xl">
                             <motion.div
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
@@ -349,7 +349,7 @@ export default function PreviewDashboard({
                                                     <div className="min-w-0">
                                                         {revealed ? (
                                                             <>
-                                                                <div className="text-sm font-medium text-neutral-900">{p.name}</div>
+                                                                <div className="text-sm font-medium text-neutral-800">{p.name}</div>
                                                                 {p.hint && <div className="text-xs text-neutral-500 truncate">{p.hint}</div>}
                                                             </>
                                                         ) : (
@@ -369,38 +369,6 @@ export default function PreviewDashboard({
                                 })}
                             </div>
                         </div>
-                    )}
-
-                    {/* Bottom bar */}
-                    {bottomBarVisible && (
-                        <motion.div
-                            initial={{ opacity: 0, y: 6 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.22, delay: 0.05 }}
-                            className="mt-10 absolute inset-x-0 bottom-0 mx-auto max-w-5xl rounded-2xl border border-neutral-200 bg-white p-4 md:p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-3 shadow-sm"
-                        >
-                            <div className="text-sm text-neutral-600">Preview looks good. Deploy to your account.</div>
-                            <div className="flex gap-2">
-                                <button
-                                    aria-disabled
-                                    className={[
-                                        'pointer-events-none relative inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm text-white',
-                                        phase === 'highlight' ? 'bg-accent' : 'bg-neutral-300',
-                                        pulseDeploy ? 'ring-4 ring-neutral-900/10' : 'ring-0',
-                                    ].join(' ')}
-                                >
-                                    <Rocket className="h-4 w-4" />
-                                    Deploy now
-                                </button>
-                                <button
-                                    aria-disabled
-                                    className="pointer-events-none inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm text-neutral-400"
-                                >
-                                    <RefreshCw className="h-4 w-4" />
-                                    Rebuild preview
-                                </button>
-                            </div>
-                        </motion.div>
                     )}
                 </div>
             </div>

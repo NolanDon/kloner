@@ -88,7 +88,7 @@ function IconPill({
 }) {
   const pal = pickPalette(paletteIdx);
   const ringClass = active ? `ring-neutral-300` : pal.ring;
-  const iconClass = active ? `text-neutral-900` : pal.icon;
+  const iconClass = active ? `text-neutral-800` : pal.icon;
 
   return (
     <span
@@ -111,7 +111,7 @@ export default function WhatWeTest() {
   return (
     <section
       id="test"
-      className="z-40 relative bg-white text-neutral-900 rounded-b-[3rem] overflow-hidden"
+      className="z-40 relative bg-white text-neutral-800 rounded-b-[3rem] overflow-hidden"
     >
       <div className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 h-px w-[72%] md:w-[62%] bg-neutral-200 rounded-full" />
 

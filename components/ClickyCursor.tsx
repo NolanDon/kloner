@@ -29,7 +29,7 @@ export const ClickyCursor = ({
             transition={{ duration: 3.6, times: [0, 0.6, 0.65, 0.72, 1], repeat: Infinity, repeatDelay: 1.2, ease: "easeInOut" }}
             style={{ width: size, height: size }}
         >
-            <MousePointer size={size} className="text-neutral-900 z-10" />
+            <MousePointer size={size} className="text-neutral-800 z-10" />
 
             {/* Ripple (slow + big) */}
             <motion.span

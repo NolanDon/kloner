@@ -41,7 +41,7 @@ export default function KlonerVercelConfigure() {
                         <p className="text-xs font-semibold tracking-[0.18em] text-neutral-500 uppercase">
                             Configuration • Kloner + Vercel
                         </p>
-                        <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-900">
+                        <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-800">
                             Configure how Kloner deploys to Vercel
                         </h1>
                         <p className="text-sm text-neutral-600">
@@ -142,7 +142,7 @@ function SettingRow({
                     )}
                 </button>
                 <div className="space-y-1">
-                    <p className="text-sm font-semibold text-neutral-900">{label}</p>
+                    <p className="text-sm font-semibold text-neutral-800">{label}</p>
                     <p className="text-xs text-neutral-600">{description}</p>
                 </div>
             </div>

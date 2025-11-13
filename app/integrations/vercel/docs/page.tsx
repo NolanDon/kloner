@@ -17,7 +17,7 @@ export default function KlonerVercelDocs() {
                         <p className="text-xs font-semibold tracking-[0.18em] text-neutral-500 uppercase">
                             Docs • Kloner + Vercel
                         </p>
-                        <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-900">
+                        <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-800">
                             Using the Kloner integration with Vercel
                         </h1>
                         <p className="text-sm text-neutral-600">
@@ -27,14 +27,14 @@ export default function KlonerVercelDocs() {
                     </header>
 
                     <section className="space-y-3">
-                        <h2 className="text-lg font-semibold text-neutral-900">Flow overview</h2>
+                        <h2 className="text-lg font-semibold text-neutral-800">Flow overview</h2>
                         <ol className="space-y-3 text-sm text-neutral-700">
                             <li className="flex gap-3">
                                 <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-neutral-300 text-[11px]">
                                     1
                                 </span>
                                 <div>
-                                    <p className="font-medium text-neutral-900">Install the integration from Vercel.</p>
+                                    <p className="font-medium text-neutral-800">Install the integration from Vercel.</p>
                                     <p className="text-xs text-neutral-600">
                                         You approve access to deployments, projects, and domains for the selected team or
                                         personal account. Vercel then redirects you to Kloner&apos;s setup page.
@@ -46,7 +46,7 @@ export default function KlonerVercelDocs() {
                                     2
                                 </span>
                                 <div>
-                                    <p className="font-medium text-neutral-900">
+                                    <p className="font-medium text-neutral-800">
                                         Capture and edit a page inside the Kloner dashboard.
                                     </p>
                                     <p className="text-xs text-neutral-600">
@@ -60,7 +60,7 @@ export default function KlonerVercelDocs() {
                                     3
                                 </span>
                                 <div>
-                                    <p className="font-medium text-neutral-900">
+                                    <p className="font-medium text-neutral-800">
                                         Deploy a new project in your chosen Vercel account.
                                     </p>
                                     <p className="text-xs text-neutral-600">
@@ -74,7 +74,7 @@ export default function KlonerVercelDocs() {
                     </section>
 
                     <section className="space-y-3">
-                        <h2 className="flex items-center gap-2 text-lg font-semibold text-neutral-900">
+                        <h2 className="flex items-center gap-2 text-lg font-semibold text-neutral-800">
                             <ListChecks className="h-4 w-4" />
                             Permissions used
                         </h2>
@@ -99,7 +99,7 @@ export default function KlonerVercelDocs() {
                     </section>
 
                     <section className="space-y-3">
-                        <h2 className="text-lg font-semibold text-neutral-900">Uninstalling</h2>
+                        <h2 className="text-lg font-semibold text-neutral-800">Uninstalling</h2>
                         <p className="text-sm text-neutral-700">
                             Removing the integration in Vercel revokes Kloner&apos;s access immediately. Existing
                             deployments and projects remain in your Vercel account; Kloner simply stops pushing new
@@ -108,7 +108,7 @@ export default function KlonerVercelDocs() {
                     </section>
 
                     <section className="space-y-3">
-                        <h2 className="text-lg font-semibold text-neutral-900">Support</h2>
+                        <h2 className="text-lg font-semibold text-neutral-800">Support</h2>
                         <p className="text-sm text-neutral-700">
                             If something does not deploy as expected, capture the deployment ID from your Vercel
                             dashboard and include it in your message to support.

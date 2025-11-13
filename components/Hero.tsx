@@ -68,7 +68,7 @@ export default function Hero() {
             muted
             playsInline
             preload="metadata"
-            poster="/images/hero-poster.jpg"
+            poster="/images/hero-poster.png"
           />
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/45 via-black/15 to-transparent" />
         </div>
@@ -122,7 +122,7 @@ export default function Hero() {
                 aria-label="Paste a website URL"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                className="flex-1 bg-transparent outline-none text-neutral-900 placeholder:text-neutral-400 text-[16px] sm:text-[18px]"
+                className="flex-1 bg-transparent outline-none text-neutral-800 placeholder:text-neutral-400 text-[16px] sm:text-[18px]"
               />
               <button
                 type="submit"

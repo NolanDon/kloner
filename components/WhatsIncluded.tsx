@@ -41,7 +41,7 @@ function FeatureFrame({
     >
       {children}
       <div className="p-4">
-        <div className="font-semibold text-neutral-900">{title}</div>
+        <div className="font-semibold text-neutral-800">{title}</div>
         <div className="mt-1 text-sm text-neutral-500">{sub}</div>
       </div>
     </motion.div>
@@ -162,7 +162,7 @@ const CARDS: CardData[] = [
 ------------------------------------------------------------------*/
 export default function MembershipSticky() {
   return (
-    <section className="bg-white text-neutral-900 pt-60">
+    <section className="bg-white text-neutral-800 pt-60">
       <div className="container-soft">
         <div className="relative grid grid-cols-1 gap-8 lg:grid-cols-12 lg:gap-12">
           {/* LEFT (sticky) */}

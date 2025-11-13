@@ -120,7 +120,7 @@ function QAItem({ item, groupKey }: { item: QA; groupKey: string }) {
 
 export default function FAQSection() {
     return (
-        <section className="bg-white text-neutral-900 pt-40">
+        <section className="bg-white text-neutral-800 pt-40">
             <div className="container-soft">
                 {/* Header */}
                 <div className="mb-10 md:mb-12 flex items-start justify-between md:px-40">
@@ -139,7 +139,7 @@ export default function FAQSection() {
                     <div className="hidden sm:block md:col-span-3">
                         <div className="space-y-24">
                             {GROUPS.map((g) => (
-                                <div key={g.heading} className="text-2xl font-medium text-neutral-900">
+                                <div key={g.heading} className="text-2xl font-medium text-neutral-800">
                                     {g.heading}
                                 </div>
                             ))}

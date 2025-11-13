@@ -139,7 +139,7 @@ export default function NavBar(): JSX.Element {
                       >
                         <div className="px-4 py-3">
                           <div className="text-sm text-neutral-500">Signed in</div>
-                          <div className="text-sm text-neutral-900 truncate">{user.displayName || user.email}</div>
+                          <div className="text-sm text-neutral-800 truncate">{user.displayName || user.email}</div>
                         </div>
                         <div className="h-px bg-neutral-200/70" />
                         <div className="py-1 text-sm">
@@ -216,7 +216,7 @@ export default function NavBar(): JSX.Element {
                     <span className="inline-grid h-7 w-7 place-items-center rounded-xl" style={{ background: ACCENT }}>
                       <LayoutGrid className="h-3.5 w-3.5 text-white" />
                     </span>
-                    <span className="text-sm font-semibold text-neutral-900">Menu</span>
+                    <span className="text-sm font-semibold text-neutral-800">Menu</span>
                   </div>
                   <button
                     onClick={() => setMOpen(false)}
@@ -310,7 +310,7 @@ function MobileLink({ href, label, onNavigate }: { href: string; label: string; 
     <a
       href={href}
       onClick={onNavigate}
-      className="group flex items-center justify-between rounded-xl px-3 py-3 text-neutral-900 hover:bg-neutral-50"
+      className="group flex items-center justify-between rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-50"
     >
       <span className="text-[15px]">{label}</span>
       <ChevronRight className="h-4 w-4 text-neutral-400 group-hover:translate-x-0.5 transition-transform" />
@@ -354,8 +354,8 @@ function MenuLink({ href, label }: { href: string; label: string }) {
 
 function MegaPanel({ active }: { active: NavItem | null }): JSX.Element {
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/90 backdrop-blur shadow-2xl overflow-hidden">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 p-6 md:p-8 text-neutral-900">
+    <div className="rounded-3xl border border-white/10 bg-white/95 backdrop-blur shadow-2xl overflow-hidden">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 p-6 md:p-8 text-neutral-800">
         <Link
           href={active?.href || "#"}
           className="hidden md:block rounded-2xl overflow-hidden ring-1 ring-black/10 bg-white shadow-sm"
@@ -398,7 +398,7 @@ function MegaPanel({ active }: { active: NavItem | null }): JSX.Element {
 
 function SimpleLink({ href, label }: { href: string; label: string }) {
   return (
-    <a href={href} className="block hover:text-neutral-900 text-neutral-700 rounded-pill transition text-[13px]">
+    <a href={href} className="block hover:text-neutral-800 text-neutral-700 rounded-pill transition text-[13px]">
       {label}
     </a>
   );

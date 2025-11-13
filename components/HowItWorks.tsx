@@ -89,12 +89,12 @@ function DeployModal({
       <div className="relative w-full h-full grid place-items-center">
         <motion.div style={{ opacity: spinOpacity }} className="text-center absolute">
           <div className="mx-auto mb-3 h-8 w-8 rounded-full border-2 border-neutral-200 border-t-neutral-900 animate-spin" />
-          <div className="text-sm font-medium text-neutral-900">Deploying to Vercel…</div>
+          <div className="text-sm font-medium text-neutral-800">Deploying to Vercel…</div>
           <div className="text-xs text-neutral-500 mt-1">Building, optimizing, shipping</div>
         </motion.div>
         <motion.div style={{ opacity: doneOpacity }} className="text-center absolute">
           <CheckCircle2 className="h-8 w-8 text-emerald-600 mx-auto mb-2" />
-          <div className="text-sm font-medium text-neutral-900">Deployed</div>
+          <div className="text-sm font-medium text-neutral-800">Deployed</div>
           <div className="text-xs text-neutral-500 mt-1">Your project is live</div>
         </motion.div>
       </div>
@@ -170,7 +170,7 @@ const items = [
   },
   {
     title: 'Preview',
-    text: 'Once complete, begin generating previews from the snapshot we captured.',
+    text: 'Once complete, begin generating previews from the snapshot we capture.',
     step: 2,
     Modal: PreviewGridModal as ModalPlain,
     needsProgress: false,

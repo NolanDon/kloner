@@ -18,7 +18,7 @@ function NavItem({ href, active, children }: { href: string; active: boolean; ch
     return (
         <Link
             href={href}
-            className={`block rounded-lg px-3 py-2 text-sm ${active ? "bg-neutral-50 text-neutral-900 ring-1 ring-neutral-200" : "text-neutral-700 hover:bg-neutral-50"
+            className={`block rounded-lg px-3 py-2 text-sm ${active ? "bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200" : "text-neutral-700 hover:bg-neutral-50"
                 }`}
         >
             {children}
@@ -60,7 +60,7 @@ function AccountBlock() {
                     {initials}
                 </div>
                 <div className="min-w-0">
-                    <div className="text-sm font-medium text-neutral-900 truncate">{user?.displayName || user?.email || "Signed in"}</div>
+                    <div className="text-sm font-medium text-neutral-800 truncate">{user?.displayName || user?.email || "Signed in"}</div>
                     <div className="text-xs text-neutral-500 truncate">Account</div>
                 </div>
             </div>
@@ -212,7 +212,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                                 aria-modal="true"
                             >
                                 <div className="flex items-center justify-between px-4 pt-3 pb-2">
-                                    <div className="text-sm font-semibold text-neutral-900">Quick Menu</div>
+                                    <div className="text-sm font-semibold text-neutral-800">Quick Menu</div>
                                     <button onClick={close} aria-label="Close" className="h-9 w-9 grid place-items-center rounded-full hover:bg-neutral-100">
                                         <X className="h-5 w-5" />
                                     </button>
@@ -227,7 +227,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                                                 <a
                                                     href={href}
                                                     onClick={close}
-                                                    className={`flex items-center gap-3 rounded-xl px-3 py-3 text-[15px] ${active ? "bg-neutral-50 text-neutral-900 ring-1 ring-neutral-200" : "text-neutral-900 hover:bg-neutral-50"
+                                                    className={`flex items-center gap-3 rounded-xl px-3 py-3 text-[15px] ${active ? "bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200" : "text-neutral-800 hover:bg-neutral-50"
                                                         }`}
                                                 >
                                                     <span className="grid h-8 w-8 place-items-center rounded-lg border border-neutral-200 bg-white">

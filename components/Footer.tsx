@@ -5,7 +5,7 @@ import { useEffect, useId, useState } from 'react';
 
 export default function Footer() {
   return (
-    <footer className="relative bg-white text-neutral-900 rounded-t-[3rem] overflow-hidden">
+    <footer className="relative bg-white text-neutral-800 rounded-t-[3rem] overflow-hidden">
       <div className="container-soft pt-10 md:pt-16 pb-8">
         <div className="relative">
           <div className="flex justify-center">
@@ -141,7 +141,7 @@ function Column({
               <a
                 href="#"
                 className="
-                  hover:text-neutral-900 text-neutral-800
+                  hover:text-neutral-800 text-neutral-800
                   text-[15px] md:text-[inherit]
                 "
               >
@@ -165,7 +165,7 @@ function Column({
                   <Chevron />
                   <a
                     href="#"
-                    className="hover:text-neutral-900 text-neutral-700 text-[15px]"
+                    className="hover:text-neutral-800 text-neutral-700 text-[15px]"
                   >
                     {label}
                   </a>

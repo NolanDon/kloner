@@ -19,7 +19,7 @@ export default function KlonerVercelLanding() {
                             <p className="text-xs font-semibold tracking-[0.18em] text-neutral-500 uppercase">
                                 Integration • Vercel
                             </p>
-                            <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-neutral-900">
+                            <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-neutral-800">
                                 Turn any live page into a Vercel project in minutes.
                             </h1>
                             <p className="text-sm sm:text-base text-neutral-600">
@@ -84,7 +84,7 @@ export default function KlonerVercelLanding() {
 
                     {/* Feature cards */}
                     <section className="space-y-4">
-                        <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-neutral-900">
+                        <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-neutral-800">
                             What the Kloner + Vercel integration does
                         </h2>
                         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -108,15 +108,15 @@ export default function KlonerVercelLanding() {
 
                     {/* Links */}
                     <section className="space-y-2">
-                        <h3 className="text-sm font-semibold text-neutral-900">Helpful links</h3>
+                        <h3 className="text-sm font-semibold text-neutral-800">Helpful links</h3>
                         <div className="flex flex-wrap gap-3 text-sm">
-                            <Link href="/integrations/vercel/docs" className="text-neutral-700 hover:text-neutral-900 underline">
+                            <Link href="/integrations/vercel/docs" className="text-neutral-700 hover:text-neutral-800 underline">
                                 Documentation
                             </Link>
-                            <Link href="/integrations/vercel/support" className="text-neutral-700 hover:text-neutral-900 underline">
+                            <Link href="/integrations/vercel/support" className="text-neutral-700 hover:text-neutral-800 underline">
                                 Support
                             </Link>
-                            <Link href="/privacy" className="text-neutral-700 hover:text-neutral-900 underline">
+                            <Link href="/privacy" className="text-neutral-700 hover:text-neutral-800 underline">
                                 Privacy
                             </Link>
                         </div>
@@ -136,7 +136,7 @@ function FeatureCard(props: { icon: React.ReactNode; title: string; body: string
             >
                 {props.icon}
             </div>
-            <h4 className="text-sm font-semibold text-neutral-900">{props.title}</h4>
+            <h4 className="text-sm font-semibold text-neutral-800">{props.title}</h4>
             <p className="text-xs text-neutral-600">{props.body}</p>
         </div>
     );

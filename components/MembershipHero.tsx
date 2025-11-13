@@ -21,7 +21,7 @@ function RotatingCards() {
     const CardShell = ({ children }: { children: React.ReactNode }) => (
         <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-neutral-100">
             {children}
-            <div className="absolute bottom-3 left-3 md:bottom-4 md:left-4 rounded-xl px-2.5 py-1 bg-white/90 text-neutral-900 text-xs md:text-sm font-semibold shadow">
+            <div className="absolute bottom-3 left-3 md:bottom-4 md:left-4 rounded-xl px-2.5 py-1 bg-white/90 text-neutral-800 text-xs md:text-sm font-semibold shadow">
                 $29<span className="font-normal"> /month</span>
             </div>
         </div>
@@ -175,7 +175,7 @@ export default function MembershipHero() {
     return (
         <section
             className="
-        bg-white text-neutral-900
+        bg-white text-neutral-800
         pt-[calc(var(--header-h,56px)+20px)]
         md:pt-60
       "
@@ -226,7 +226,7 @@ export default function MembershipHero() {
 
                         {/* Price + credits */}
                         <div className="mt-5 md:mt-6 flex items-center gap-3">
-                            <div className="text-5xl md:text-6xl text-neutral-900">$29</div>
+                            <div className="text-5xl md:text-6xl text-neutral-800">$29</div>
                             <div className="text-neutral-600 text-sm md:text-base">
                                 /month · billed monthly or annually
                             </div>

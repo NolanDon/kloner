@@ -16,7 +16,7 @@ export default function KlonerVercelSupport() {
                         <p className="text-xs font-semibold tracking-[0.18em] text-neutral-500 uppercase">
                             Support • Kloner + Vercel
                         </p>
-                        <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-900">
+                        <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-800">
                             Need help with the Kloner integration?
                         </h1>
                         <p className="text-sm text-neutral-600">
@@ -35,7 +35,7 @@ export default function KlonerVercelSupport() {
                                     <Mail className="h-4 w-4" />
                                 </div>
                                 <div className="space-y-1">
-                                    <h2 className="text-sm font-semibold text-neutral-900">Email support</h2>
+                                    <h2 className="text-sm font-semibold text-neutral-800">Email support</h2>
                                     <p className="text-sm text-neutral-700">
                                         For deployment failures, include the Vercel project name, deployment ID, and the
                                         URL you attempted to clone.
@@ -43,7 +43,7 @@ export default function KlonerVercelSupport() {
                                     <p className="text-sm">
                                         <a
                                             href="mailto:support@kloner.app"
-                                            className="font-semibold text-neutral-900 underline"
+                                            className="font-semibold text-neutral-800 underline"
                                         >
                                             support@kloner.app
                                         </a>
@@ -61,7 +61,7 @@ export default function KlonerVercelSupport() {
                                     <MessageCircleMore className="h-4 w-4" />
                                 </div>
                                 <div className="space-y-1">
-                                    <h2 className="text-sm font-semibold text-neutral-900">What to send</h2>
+                                    <h2 className="text-sm font-semibold text-neutral-800">What to send</h2>
                                     <ul className="list-disc pl-5 text-sm text-neutral-700 space-y-1">
                                         <li>The URL you tried to clone.</li>
                                         <li>The Vercel team or account where you installed the integration.</li>

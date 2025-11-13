@@ -53,7 +53,7 @@ export default function SettingsPage(): JSX.Element {
         <>
             <NavBar />
             <div className="mx-auto max-w-3xl px-4 py-[120px]">
-                <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-900">Settings</h1>
+                <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-800">Settings</h1>
                 <p className="mt-1 text-sm text-neutral-600">Manage account, connections, and notifications.</p>
 
                 {/* Profile */}
@@ -63,7 +63,7 @@ export default function SettingsPage(): JSX.Element {
                             {initials}
                         </div>
                         <div className="min-w-0">
-                            <div className="text-sm font-medium text-neutral-900 truncate">{user?.displayName || user?.email || "Signed in"}</div>
+                            <div className="text-sm font-medium text-neutral-800 truncate">{user?.displayName || user?.email || "Signed in"}</div>
                             <div className="text-xs text-neutral-500">User ID: {user?.uid.slice(0, 8)}…</div>
                         </div>
                     </div>
@@ -73,7 +73,7 @@ export default function SettingsPage(): JSX.Element {
                 <section className="mt-6 rounded-2xl border border-neutral-200 bg-white p-4">
                     <div className="flex items-center gap-2">
                         <Plug className="h-4 w-4 text-neutral-700" />
-                        <h2 className="text-sm font-semibold text-neutral-900">Connections</h2>
+                        <h2 className="text-sm font-semibold text-neutral-800">Connections</h2>
                     </div>
 
                     <div className="mt-3 grid sm:grid-cols-2 gap-3">
@@ -81,7 +81,7 @@ export default function SettingsPage(): JSX.Element {
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                     <Rocket className="h-4 w-4 text-neutral-700" />
-                                    <div className="text-sm font-medium text-neutral-900">Vercel</div>
+                                    <div className="text-sm font-medium text-neutral-800">Vercel</div>
                                 </div>
                                 <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 border border-emerald-200">
                                     connected?
@@ -109,7 +109,7 @@ export default function SettingsPage(): JSX.Element {
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                     <Bell className="h-4 w-4 text-neutral-700" />
-                                    <div className="text-sm font-medium text-neutral-900">Email Alerts</div>
+                                    <div className="text-sm font-medium text-neutral-800">Email Alerts</div>
                                 </div>
                                 <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold text-neutral-500 border border-neutral-200">
                                     coming soon
@@ -130,13 +130,13 @@ export default function SettingsPage(): JSX.Element {
                 <section className="mt-6 rounded-2xl border border-neutral-200 bg-white p-4">
                     <div className="flex items-center gap-2">
                         <Shield className="h-4 w-4 text-neutral-700" />
-                        <h2 className="text-sm font-semibold text-neutral-900">Security</h2>
+                        <h2 className="text-sm font-semibold text-neutral-800">Security</h2>
                     </div>
 
                     <div className="mt-3 grid sm:grid-cols-2 gap-3">
                         <div className="rounded-xl border border-neutral-200 p-3">
                             <div className="flex items-center justify-between">
-                                <div className="text-sm font-medium text-neutral-900">Two-Factor Auth</div>
+                                <div className="text-sm font-medium text-neutral-800">Two-Factor Auth</div>
                                 <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold text-neutral-500 border border-neutral-200">
                                     not available yet
                                 </span>
@@ -149,7 +149,7 @@ export default function SettingsPage(): JSX.Element {
 
                         <div className="rounded-xl border border-neutral-200 p-3">
                             <div className="flex items-center justify-between">
-                                <div className="text-sm font-medium text-neutral-900">API Keys</div>
+                                <div className="text-sm font-medium text-neutral-800">API Keys</div>
                                 <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold text-neutral-500 border border-neutral-200">
                                     coming soon
                                 </span>
