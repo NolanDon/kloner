@@ -1,7 +1,7 @@
 // app/api/vercel/oauth/callback/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import admin from "firebase-admin";
-import { verifySession } from "../../../_lib/auth";
+import { verifySession } from "@/app/api/_lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
