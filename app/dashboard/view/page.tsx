@@ -1071,7 +1071,7 @@ export default function PreviewPage(): JSX.Element {
                                 Flow: Step 1 — Select URL. Step 2 — Generate base screenshot. Step 3 — Generate editable preview. Step 4 — Customize and Deploy.
                             </p> */}
                         </div>
-                        <div className="flex items-center gap-2">
+                        {/* <div className="flex items-center gap-2">
                             <a
                                 href="/api/vercel/oauth/start"
                                 className="rounded-lg border border-neutral-200 bg-[--accent] px-3 py-2 text-sm text-white"
@@ -1080,7 +1080,7 @@ export default function PreviewPage(): JSX.Element {
                             >
                                 Connect Vercel
                             </a>
-                        </div>
+                        </div> */}
                     </div>
 
                     <div className="mt-3">
@@ -1189,7 +1189,6 @@ export default function PreviewPage(): JSX.Element {
                         <>
                             <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
                                 <strong className="text-accent">Step 2</strong> — We’ve captured your initial base images. Review them carefully before generating a website preview.
-                                If any look incomplete or inaccurate, you can rescan or discard them to ensure the correct version of your webpage is used.
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -5,23 +5,16 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { brand } from "@/lib/config";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X } from "lucide-react";
+import { Menu, X, LogOut, User2, LayoutGrid, Home, ChevronRight, Globe, Camera, Hammer, Rocket, Wand2, Eye, ScanSearch } from "lucide-react";
 import { useAuth } from "@/src/hooks/useAuth";
 import { signOut, type User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import { Globe, Camera, Hammer, Rocket, Wand2, Eye, ScanSearch } from "lucide-react";
 
 const ACCENT = "#f55f2a";
 
-/* ------------------------------- types ------------------------------- */
 type NavItem = { label: string; href: string };
 type BrandShape = { nav: NavItem[]; cta: { href: string } };
-type ChevronArrowProps = { className?: string };
-type SimpleLinkProps = { href: string; label: string };
-type MetricPillProps = { label: string; delay?: number };
-type MegaPanelProps = { active: NavItem | null };
 
-/* ------------------------------ component ---------------------------- */
 export default function NavBar(): JSX.Element {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
@@ -38,15 +31,18 @@ export default function NavBar(): JSX.Element {
     return () => window.removeEventListener("scroll", on);
   }, []);
 
+  // lock body scroll when mobile menu open
+  useEffect(() => {
+    const el = document.documentElement;
+    const prev = el.style.overflow;
+    el.style.overflow = mOpen ? "hidden" : prev || "";
+    return () => { el.style.overflow = prev; };
+  }, [mOpen]);
+
   const initials = useMemo(() => {
     if (!user) return "";
     const name = user.displayName || user.email || "";
-    const parts = name
-      .replace(/@.*/, "")
-      .replace(/[_.\-]+/g, " ")
-      .trim()
-      .split(/\s+/)
-      .slice(0, 2);
+    const parts = name.replace(/@.*/, "").replace(/[_.\-]+/g, " ").trim().split(/\s+/).slice(0, 2);
     if (parts.length === 0) return "";
     if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
     return (parts[0]![0]! + parts[1]![0]!).toUpperCase();
@@ -54,9 +50,7 @@ export default function NavBar(): JSX.Element {
 
   const shellClasses =
     "rounded-[999px] " +
-    (scrolled
-      ? "bg-smoke/70 border-white/10 backdrop-blur"
-      : "bg-smoke/40 border-white/10 backdrop-blur");
+    (scrolled ? "bg-smoke/70 border-white/10 backdrop-blur" : "bg-smoke/40 border-white/10 backdrop-blur");
 
   const onSignOut = async (): Promise<void> => {
     try {
@@ -69,7 +63,7 @@ export default function NavBar(): JSX.Element {
   const br = brand as unknown as BrandShape;
 
   return (
-    <div className="fixed left-0 right-0 top-5 z-50" onMouseLeave={() => setOpen(false)}>
+    <div className="px-4 fixed left-0 right-0 top-5 z-50" onMouseLeave={() => setOpen(false)}>
       <div className="mx-auto max-w-6xl px-3">
         <div className={`relative flex items-center gap-3 px-3 py-2 md:px-4 ${shellClasses}`}>
           {/* Logo */}
@@ -77,30 +71,20 @@ export default function NavBar(): JSX.Element {
             <span className="text-white">kloner</span>
           </Link>
 
-          {/* Desktop nav (centered) */}
+          {/* Desktop nav */}
           <nav className="hidden md:flex flex-1 items-center justify-center">
             <ul className="flex items-center gap-6 text-[15px] text-white/85">
               {br.nav.map((i, idx) => (
                 <li key={i.label} className="flex items-center">
                   <button
-                    className="relative hover:text-white transition"
-                    onMouseEnter={() => {
-                      setActive(i);
-                      setOpen(true);
-                    }}
-                    onFocus={() => {
-                      setActive(i);
-                      setOpen(true);
-                    }}
+                    className="relative hover:text-white transition  whitespace-nowrap"
+                    onMouseEnter={() => { setActive(i); setOpen(true); }}
+                    onFocus={() => { setActive(i); setOpen(true); }}
                     aria-expanded={Boolean(open && active?.label === i.label)}
                   >
                     {i.label}
                   </button>
-
-                  {/* Soft divider after specific item to match screenshot */}
-                  {idx === 2 && (
-                    <span className="mx-6 h-5 w-px bg-white/15 rounded-full" aria-hidden />
-                  )}
+                  {idx === 2 && <span className="ml-5 h-5 w-px bg-white/15 rounded-full" aria-hidden />}
                 </li>
               ))}
             </ul>
@@ -112,21 +96,16 @@ export default function NavBar(): JSX.Element {
             <button
               aria-label={mOpen ? "Close menu" : "Open menu"}
               aria-expanded={mOpen}
-              onClick={() => {
-                setMOpen((v) => !v);
-                setOpen(false);
-              }}
+              onClick={() => { setMOpen(v => !v); setOpen(false); }}
               className="md:hidden inline-flex h-10 w-10 items-center justify-center rounded-full text-white/90 hover:bg-white/10 ring-1 ring-white/10"
             >
               {mOpen ? <X size={18} strokeWidth={2.2} /> : <Menu size={18} strokeWidth={2.2} />}
             </button>
 
-            {/* Auth area (desktop) */}
+            {/* Auth (desktop) */}
             {!user ? (
               <>
-                <a href="/login" className="hidden md:inline text-sm text-white/85 hover:text-white">
-                  Login
-                </a>
+                <a href="/login" className="hidden md:inline text-sm text-white/85 hover:text-white">Login</a>
                 <a
                   href={br.cta.href}
                   className="hidden md:inline-flex items-center justify-center h-11 rounded-full px-5 text-[15px] font-medium text-white transition-all"
@@ -137,20 +116,16 @@ export default function NavBar(): JSX.Element {
               </>
             ) : (
               <>
-                <Link href="/dashboard" className="hidden md:inline text-sm text-white/85 hover:text-white">
-                  Dashboard
-                </Link>
-
+                <Link href="/dashboard" className="hidden md:inline text-sm text-white/85 hover:text-white">Dashboard</Link>
                 <div className="relative hidden md:block">
                   <button
-                    onClick={() => setUserMenuOpen((v) => !v)}
+                    onClick={() => setUserMenuOpen(v => !v)}
                     aria-haspopup="menu"
                     aria-expanded={userMenuOpen}
                     className="inline-flex h-8 w-8 items-center justify-center rounded-full text-white ring-1 ring-white/20 hover:bg-white/10"
                   >
                     <span className="text-sm">{initials || "ME"}</span>
                   </button>
-
                   <AnimatePresence>
                     {userMenuOpen && (
                       <motion.div
@@ -181,14 +156,9 @@ export default function NavBar(): JSX.Element {
                     )}
                   </AnimatePresence>
                 </div>
-
                 <a
                   href="/dashboard/new"
-                  className="hidden md:inline-flex items-center justify-center h-11 rounded-full px-5 text-[15px] font-medium text-white transition-all
-                   shadow-[0_6px_18px_rgba(0,0,0,0.25)]
-                  hover:bg-accent2
-                  hover:shadow-[0_14px_40px_rgba(0,0,0,0.35)]
-                  transition"
+                  className="hidden md:inline-flex items-center justify-center h-11 rounded-full px-5 text-[15px] text-white  whitespace-nowrap"
                   style={{ backgroundColor: ACCENT }}
                 >
                   New project
@@ -215,88 +185,117 @@ export default function NavBar(): JSX.Element {
           </AnimatePresence>
         </div>
 
-        {/* Mobile dropdown */}
+        {/* Mobile Menu (new sheet) */}
         <AnimatePresence>
           {mOpen && (
-            <motion.div
-              key="mobile"
-              initial={{ opacity: 0, height: 0, y: -6 }}
-              animate={{ opacity: 1, height: "auto", y: 0 }}
-              exit={{ opacity: 0, height: 0, y: -6 }}
-              transition={{ duration: 0.2, ease: "easeOut" }}
-              className="md:hidden mt-2 overflow-hidden rounded-2xl border border-white/10 bg-white/90 backdrop-blur shadow-2xl"
-            >
-              <div className="p-3">
-                {br.nav.map((i) => (
-                  <a
-                    key={i.label}
-                    href={i.href}
+            <>
+              {/* Backdrop */}
+              <motion.div
+                key="mb-backdrop"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.18 }}
+                className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm"
+                onClick={() => setMOpen(false)}
+              />
+              {/* Sheet */}
+              <motion.nav
+                key="mb-sheet"
+                initial={{ y: -16, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: -12, opacity: 0 }}
+                transition={{ duration: 0.22, ease: "easeOut" }}
+                className="fixed inset-x-3 top-[max(12px,env(safe-area-inset-top))] z-[70] rounded-3xl border border-white/15 bg-white/95 shadow-2xl backdrop-blur"
+                role="dialog"
+                aria-modal="true"
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between px-4 pt-3 pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-grid h-7 w-7 place-items-center rounded-xl" style={{ background: ACCENT }}>
+                      <LayoutGrid className="h-3.5 w-3.5 text-white" />
+                    </span>
+                    <span className="text-sm font-semibold text-neutral-900">Menu</span>
+                  </div>
+                  <button
                     onClick={() => setMOpen(false)}
-                    className="block rounded-xl px-3 py-3 text-neutral-900 hover:bg-neutral-50 transition"
+                    aria-label="Close menu"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full text-neutral-700 hover:bg-neutral-100"
                   >
-                    {i.label}
-                  </a>
-                ))}
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
 
-                <div className="my-2 h-px bg-neutral-200/70" />
+                <div className="h-px bg-neutral-200/70" />
 
-                {!user ? (
-                  <>
-                    <a
-                      href="/login"
-                      onClick={() => setMOpen(false)}
-                      className="block rounded-xl px-3 py-3 text-neutral-700 hover:bg-neutral-50 transition"
-                    >
-                      Login
-                    </a>
-                    <a
-                      href={br.cta.href}
-                      onClick={() => setMOpen(false)}
-                      className="group relative mt-2 mb-1 inline-flex w-full items-center justify-center rounded-full h-12 px-5 text-white"
-                      style={{ backgroundColor: ACCENT }}
-                    >
-                      <span className="relative">Try Superpower</span>
-                      <ChevronArrow className="relative ml-2 h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
-                    </a>
-                  </>
-                ) : (
-                  <>
-                    <a
-                      href="/dashboard"
-                      onClick={() => setMOpen(false)}
-                      className="block rounded-xl px-3 py-3 text-neutral-900 hover:bg-neutral-50 transition"
-                    >
-                      Dashboard
-                    </a>
-                    <a
-                      href="/settings"
-                      onClick={() => setMOpen(false)}
-                      className="block rounded-xl px-3 py-3 text-neutral-900 hover:bg-neutral-50 transition"
-                    >
-                      Settings
-                    </a>
-                    <button
-                      onClick={async () => {
-                        await onSignOut();
-                        setMOpen(false);
-                      }}
-                      className="w-full text-left rounded-xl px-3 py-3 text-neutral-900 hover:bg-neutral-50 transition"
-                    >
-                      Sign out
-                    </button>
-                    <a
-                      href="/dashboard/new"
-                      onClick={() => setMOpen(false)}
-                      className="group relative mt-2 mb-1 inline-flex w-full items-center justify-center rounded-full h-12 px-5 text-white"
-                      style={{ backgroundColor: ACCENT }}
-                    >
-                      <span className="relative">New project</span>
-                      <ChevronArrow className="relative ml-2 h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
-                    </a>
-                  </>
-                )}
-              </div>
-            </motion.div>
+                {/* Quick actions */}
+                <div className="grid grid-cols-3 gap-3 px-4 py-3">
+                  <QuickAction href="/#how" icon={ScanSearch} label="Crawl" onNavigate={() => setMOpen(false)} />
+                  <QuickAction href="/dashboard/view" icon={Camera} label="Screenshots" onNavigate={() => setMOpen(false)} />
+                  <QuickAction href="/dashboard/view" icon={Hammer} label="Generate" onNavigate={() => setMOpen(false)} />
+                  <QuickAction href="/dashboard" icon={Eye} label="Customize" onNavigate={() => setMOpen(false)} />
+                  <QuickAction href="/docs" icon={Wand2} label="Docs" onNavigate={() => setMOpen(false)} />
+                  <QuickAction href="/price" icon={Rocket} label="Deploy" onNavigate={() => setMOpen(false)} />
+                </div>
+
+                <div className="h-px bg-neutral-200/70" />
+
+                {/* Links */}
+                <ul className="px-2 py-2">
+                  {br.nav.map((i) => (
+                    <li key={i.label}>
+                      <MobileLink href={i.href} label={i.label} onNavigate={() => setMOpen(false)} />
+                    </li>
+                  ))}
+                </ul>
+
+                <div className="h-px bg-neutral-200/70" />
+
+                {/* Auth section */}
+                <div className="px-4 py-3">
+                  {!user ? (
+                    <div className="flex gap-2">
+                      <a
+                        href="/login"
+                        onClick={() => setMOpen(false)}
+                        className="inline-flex flex-1 items-center justify-center rounded-full border border-neutral-300 bg-white px-4 py-2.5 text-sm font-medium text-neutral-800"
+                      >
+                        <User2 className="mr-2 h-4 w-4" /> Login
+                      </a>
+                      <a
+                        href={br.cta.href}
+                        onClick={() => setMOpen(false)}
+                        className="inline-flex flex-1 items-center justify-center rounded-full px-4 py-2.5 text-sm font-semibold text-white"
+                        style={{ background: ACCENT }}
+                      >
+                        Start Project
+                      </a>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <a
+                        href="/dashboard"
+                        onClick={() => setMOpen(false)}
+                        className="inline-flex flex-1 items-center justify-center rounded-full border border-neutral-300 bg-white px-4 py-2.5 text-sm font-medium text-neutral-800"
+                      >
+                        <Home className="mr-2 h-4 w-4" /> Dashboard
+                      </a>
+                      <button
+                        onClick={async () => { await onSignOut(); setMOpen(false); }}
+                        className="inline-flex flex-1 items-center justify-center rounded-full px-4 py-2.5 text-sm font-semibold text-white"
+                        style={{ background: ACCENT }}
+                      >
+                        <LogOut className="mr-2 h-4 w-4" /> Sign out
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Safe bottom padding */}
+                <div className="pb-[max(10px,env(safe-area-inset-bottom))]" />
+              </motion.nav>
+            </>
           )}
         </AnimatePresence>
       </div>
@@ -305,25 +304,55 @@ export default function NavBar(): JSX.Element {
 }
 
 /* ------------------------------- pieces -------------------------------- */
-function ChevronArrow({ className = "" }: ChevronArrowProps): JSX.Element {
+
+function MobileLink({ href, label, onNavigate }: { href: string; label: string; onNavigate: () => void }) {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
+    <a
+      href={href}
+      onClick={onNavigate}
+      className="group flex items-center justify-between rounded-xl px-3 py-3 text-neutral-900 hover:bg-neutral-50"
     >
-      <path d="M6 12h12" />
-      <path d="M12 6l6 6-6 6" />
-    </svg>
+      <span className="text-[15px]">{label}</span>
+      <ChevronRight className="h-4 w-4 text-neutral-400 group-hover:translate-x-0.5 transition-transform" />
+    </a>
   );
 }
 
-function MegaPanel({ active }: MegaPanelProps): JSX.Element {
+function QuickAction({
+  href,
+  icon: Icon,
+  label,
+  onNavigate,
+}: {
+  href: string;
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+  label: string;
+  onNavigate: () => void;
+}) {
+  return (
+    <a
+      href={href}
+      onClick={onNavigate}
+      className="group grid place-items-center gap-2 rounded-2xl border border-neutral-200 bg-white/70 px-3 py-4 text-center hover:border-neutral-300"
+    >
+      <div className="grid h-10 w-10 place-items-center rounded-xl" style={{ background: ACCENT }}>
+        <Icon className="h-5 w-5 text-white" />
+      </div>
+      <span className="text-xs font-semibold text-neutral-800">{label}</span>
+    </a>
+  );
+}
+
+/* keep your existing MegaPanel/AnimatedPromoCard/etc below (unchanged) */
+function MenuLink({ href, label }: { href: string; label: string }) {
+  return (
+    <a href={href} className="block px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100 transition">
+      {label}
+    </a>
+  );
+}
+
+function MegaPanel({ active }: { active: NavItem | null }): JSX.Element {
   return (
     <div className="rounded-3xl border border-white/10 bg-white/90 backdrop-blur shadow-2xl overflow-hidden">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 p-6 md:p-8 text-neutral-900">
@@ -367,7 +396,7 @@ function MegaPanel({ active }: MegaPanelProps): JSX.Element {
   );
 }
 
-function SimpleLink({ href, label }: SimpleLinkProps): JSX.Element {
+function SimpleLink({ href, label }: { href: string; label: string }) {
   return (
     <a href={href} className="block hover:text-neutral-900 text-neutral-700 rounded-pill transition text-[13px]">
       {label}
@@ -375,22 +404,14 @@ function SimpleLink({ href, label }: SimpleLinkProps): JSX.Element {
   );
 }
 
-/** Compact, icon-forward promo card */
 export function AnimatedPromoCard(): JSX.Element {
   return (
-    <div className="relative w-full max-w-sm rounded-2xl border border-neutral-200 bg-gradient-to-br from-orange-50/70 via-white to-white shadow-sm overflow-hidden  h-[220px]">
-      {/* sheen */}
+    <div className="relative w-full max-w-sm rounded-2xl border border-neutral-200 bg-gradient-to-br from-orange-50/70 via-white to-white shadow-sm overflow-hidden h-[220px]">
       <div className="pointer-events-none absolute -inset-x-1/2 -top-1/3 h-1/2 rotate-12 bg-white/50 blur-2xl animate-[sheen_5s_linear_infinite]" />
-
-      {/* header */}
       <div className="flex items-center gap-2 px-4 pt-4">
-        <Wand2 className="h-4 w-4 text-[--accent]" />
-        <h3 className="text-sm font-semibold text-neutral-800 tracking-tight">
-          Kloner Workflow
-        </h3>
+        <Wand2 className="h-4 w-4" style={{ color: ACCENT }} />
+        <h3 className="text-sm font-semibold text-neutral-800 tracking-tight">Kloner Workflow</h3>
       </div>
-
-      {/* left metric pills */}
       <div className="absolute left-4 top-12 space-y-2 ">
         <MetricPill icon={ScanSearch} label="Crawl" delay={0} />
         <MetricPill icon={Camera} label="Screenshot" delay={0.25} />
@@ -398,31 +419,9 @@ export function AnimatedPromoCard(): JSX.Element {
         <MetricPill icon={Eye} label="Customize" delay={0.75} />
         <MetricPill icon={Rocket} label="Deploy" delay={1.0} />
       </div>
-
-      {/* subtle illustration / anchor */}
-      {/* <div className="flex items-end justify-end pr-4 pb-4 h-[220px]">
-        <div className="relative grid place-items-center rounded-xl border border-neutral-200 bg-white/70 backdrop-blur px-4 py-3">
-          <div className="flex items-center gap-2">
-            <Globe className="h-4 w-4 text-neutral-700" />
-            <span className="text-xs font-medium text-neutral-700">example.com</span>
-          </div>
-          <span className="mt-2 inline-flex items-center gap-1 rounded-md bg-neutral-100 px-2 py-1 text-[10px] font-semibold text-neutral-700">
-            <Rocket className="h-3 w-3" />
-            Ready to Publish
-          </span>
-        </div>
-      </div> */}
-
       <style jsx>{`
-        @keyframes sheen {
-          0% { transform: translateX(-20%) rotate(12deg); opacity: .6; }
-          50% { transform: translateX(40%) rotate(12deg); opacity: .2; }
-          100% { transform: translateX(100%) rotate(12deg); opacity: .6; }
-        }
-        @keyframes popin {
-          0% { transform: translateY(6px) scale(.98); opacity: 0; }
-          100% { transform: translateY(0) scale(1); opacity: 1; }
-        }
+        @keyframes sheen { 0%{transform:translateX(-20%) rotate(12deg);opacity:.6} 50%{transform:translateX(40%) rotate(12deg);opacity:.2} 100%{transform:translateX(100%) rotate(12deg);opacity:.6} }
+        @keyframes popin { 0%{transform:translateY(6px) scale(.98);opacity:0} 100%{transform:translateY(0) scale(1);opacity:1} }
       `}</style>
     </div>
   );
@@ -445,13 +444,5 @@ function MetricPill({
       <Icon className="h-3.5 w-3.5" />
       {label}
     </div>
-  );
-}
-
-function MenuLink({ href, label }: SimpleLinkProps): JSX.Element {
-  return (
-    <a href={href} className="block px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100 transition">
-      {label}
-    </a>
   );
 }

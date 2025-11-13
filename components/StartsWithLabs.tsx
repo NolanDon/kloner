@@ -222,7 +222,7 @@ export default function PreviewDashboard({
 
 
                     <p className="text-neutral-600 mt-2 md:mt-3 max-w-2xl mx-auto text-base sm:text-lg">
-                        Drop a link. We fetch assets, normalize code, and spin up a live preview you can deploy in one click.
+                        Drop a link. We generate assets, normalize code, and spin up a live preview you can deploy in one click.
                     </p>
                     <a
                         href="#how"

@@ -4,7 +4,7 @@ export const brand = {
   nav: [
     { label: "Home", href: "/" },
     { label: "How it Works", href: "#how" },
-    { label: "Reviews", href: "#stories" },
+    // { label: "Reviews", href: "#stories" },
     { label: "FAQs", href: "#faq" },
     { label: "About", href: "#faq" },
   ],

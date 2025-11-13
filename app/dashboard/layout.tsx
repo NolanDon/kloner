@@ -9,6 +9,8 @@ import Link from "next/link";
 import Image from "next/image";
 import logo from "@/public/images/logo.png";
 import CenterLoader from "@/components/ui/CenterLoader";
+import { AnimatePresence, motion } from "framer-motion";
+import { MoreHorizontal, X, Home, LayoutTemplate, Hammer, BookText, Settings as SettingsIcon, LogOut, Eye } from "lucide-react";
 
 const ACCENT = "#f55f2a";
 
@@ -52,7 +54,7 @@ function AccountBlock() {
     }
 
     return (
-        <div className="mt-auto p-4 border-t border-neutral-200">
+        <div className="mt-auto p-4 border-top border-neutral-200">
             <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-full grid place-items-center font-semibold text-white" style={{ backgroundColor: ACCENT }}>
                     {initials}
@@ -136,6 +138,130 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         );
     }
 
+    // Mobile header sheet: mirrors SidebarShell entries + account actions
+    function MobileHeader() {
+        const pathname = usePathname();
+        const [open, setOpen] = useState(false);
+
+        useEffect(() => {
+            // lock body scroll when open
+            const el = document.documentElement;
+            const prev = el.style.overflow;
+            el.style.overflow = open ? "hidden" : prev || "";
+            return () => {
+                el.style.overflow = prev;
+            };
+        }, [open]);
+
+        const close = () => setOpen(false);
+
+        const items = [
+            { href: "/", label: "Home", icon: Home },
+            { href: "/dashboard", label: "Dashboard", icon: LayoutTemplate },
+            { href: "/dashboard/view", label: "Preview Builder", icon: Eye },
+            { href: "/docs", label: "Docs", icon: BookText },
+            { href: "/settings", label: "Settings", icon: SettingsIcon },
+        ];
+
+        const onSignOut = async () => {
+            await fbSignOut(auth);
+            close();
+            router.replace("/login");
+        };
+
+        return (
+            <div className="md:hidden sticky top-0 z-10 bg-white border-b border-neutral-200">
+                <div className="flex items-center justify-between px-4 py-3">
+                    <a href="/" className="inline-flex items-center gap-2">
+                        <div className="h-8 w-8 grid place-items-center rounded-lg text-white font-black" style={{ backgroundColor: ACCENT }}>
+                            K
+                        </div>
+                        <div className="font-semibold">Kloner</div>
+                    </a>
+
+                    {/* Replaces bare Settings link with a compact dropdown sheet */}
+                    <button
+                        onClick={() => setOpen(true)}
+                        aria-label="Open quick menu"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-700"
+                    >
+                        <MoreHorizontal className="h-4 w-4" />
+                    </button>
+                </div>
+
+                <AnimatePresence>
+                    {open && (
+                        <>
+                            <motion.div
+                                key="mbl-backdrop"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 0.18 }}
+                                className="fixed inset-0 z-[80] bg-black/40 backdrop-blur-sm"
+                                onClick={close}
+                            />
+                            <motion.div
+                                key="mbl-sheet"
+                                initial={{ y: -12, opacity: 0 }}
+                                animate={{ y: 0, opacity: 1 }}
+                                exit={{ y: -10, opacity: 0 }}
+                                transition={{ duration: 0.2, ease: "easeOut" }}
+                                className="fixed inset-x-3 top-[max(12px,env(safe-area-inset-top))] z-[90] rounded-3xl border border-neutral-200 bg-white shadow-2xl"
+                                role="dialog"
+                                aria-modal="true"
+                            >
+                                <div className="flex items-center justify-between px-4 pt-3 pb-2">
+                                    <div className="text-sm font-semibold text-neutral-900">Quick Menu</div>
+                                    <button onClick={close} aria-label="Close" className="h-9 w-9 grid place-items-center rounded-full hover:bg-neutral-100">
+                                        <X className="h-5 w-5" />
+                                    </button>
+                                </div>
+                                <div className="h-px bg-neutral-200/80" />
+
+                                <ul className="px-2 py-2">
+                                    {items.map(({ href, label, icon: Icon }) => {
+                                        const active = pathname === href || (href !== "/" && pathname.startsWith(href));
+                                        return (
+                                            <li key={href}>
+                                                <a
+                                                    href={href}
+                                                    onClick={close}
+                                                    className={`flex items-center gap-3 rounded-xl px-3 py-3 text-[15px] ${active ? "bg-neutral-50 text-neutral-900 ring-1 ring-neutral-200" : "text-neutral-900 hover:bg-neutral-50"
+                                                        }`}
+                                                >
+                                                    <span className="grid h-8 w-8 place-items-center rounded-lg border border-neutral-200 bg-white">
+                                                        <Icon className="h-4 w-4" />
+                                                    </span>
+                                                    {label}
+                                                </a>
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
+
+                                <div className="h-px bg-neutral-200/80" />
+
+                                <div className="px-4 py-3">
+                                    <button
+                                        onClick={onSignOut}
+                                        className="w-full inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold text-white"
+                                        style={{ background: ACCENT }}
+                                    >
+                                        <LogOut className="h-4 w-4" />
+                                        Sign out
+                                    </button>
+                                </div>
+
+                                <div className="pb-[max(8px,env(safe-area-inset-bottom))]" />
+                            </motion.div>
+                        </>
+                    )}
+                </AnimatePresence>
+            </div>
+        );
+    }
+
     return (
         <main className="bg-white">
             <div className="mx-auto max-w-[1400px] grid grid-cols-1 md:grid-cols-[auto,1fr]">
@@ -144,21 +270,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 </aside>
 
                 <section className="min-h-screen">
-                    {/* Mobile header */}
-                    <div className="md:hidden sticky top-0 z-10 bg-white border-b border-neutral-200">
-                        <div className="flex items-center justify-between px-4 py-3">
-                            <a href="/" className="inline-flex items-center gap-2">
-                                <div className="h-8 w-8 grid place-items-center rounded-lg text-white font-black" style={{ backgroundColor: ACCENT }}>
-                                    K
-                                </div>
-                                <div className="font-semibold">Kloner</div>
-                            </a>
-                            <a href="/settings" className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700">
-                                Settings
-                            </a>
-                        </div>
-                    </div>
-
+                    <MobileHeader />
                     {children}
                 </section>
             </div>

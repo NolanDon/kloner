@@ -14,11 +14,11 @@ const GROUPS: Group[] = [
         items: [
             {
                 q: 'What does the preview do?',
-                a: 'We crawl the target URL, capture HTML, CSS, JS, images, and fonts, then render a sandboxed preview so you can edit copy and images before exporting.'
+                a: 'We crawl the target image screenshot, then render a sandboxed preview so you can edit copy and images before exporting.'
             },
             {
                 q: 'What exactly gets exported?',
-                a: 'A clean Next.js project with pages or app routes, componentized layouts, optimized images, subset fonts, and extracted SEO tags (title, meta, Open Graph, Twitter).'
+                a: 'A clean Next.js project, componentized layouts, optimized images, subset fonts.'
             },
             {
                 q: 'Will forms and client scripts work?',
@@ -30,7 +30,7 @@ const GROUPS: Group[] = [
             },
             {
                 q: 'Can I run the exported project anywhere?',
-                a: 'Yes. The output is standard Next.js. It runs on Vercel, Netlify, or any Node/Edge host. You can also export static and serve on S3/CloudFront.'
+                a: 'Yes. The output is standard Next.js. It runs on Vercel, Netlify, or any Node/Edge host.'
             },
         ],
     },
@@ -51,7 +51,7 @@ const GROUPS: Group[] = [
             },
             {
                 q: 'Is there a team plan?',
-                a: 'Yes. Team seats support shared previews, export approvals, and environment-specific deploys. Contact us if you need SSO or custom limits.'
+                a: 'This feature is currently in development. Team support will allow you to share previews, export approvals, and environment-specific deploys. Contact us if you need SSO or custom limits.'
             },
         ],
     },

@@ -163,21 +163,21 @@ type ModalPlain = React.ComponentType;
 const items = [
   {
     title: 'Paste a URL',
-    text: 'Point us at any site. We\'ll fetch the page structure and begin generating a base.',
+    text: 'Point us at any site. We\'ll fetch the page structure and begin creating a snapshot.',
     step: 1,
     Modal: UrlInputModal as ModalPlain,
     needsProgress: false,
   },
   {
     title: 'Preview',
-    text: 'Once complete, begin generating previews from the images we capture.',
+    text: 'Once complete, begin generating previews from the snapshot we captured.',
     step: 2,
     Modal: PreviewGridModal as ModalPlain,
     needsProgress: false,
   },
   {
     title: 'Customize',
-    text: 'After choosing a preview, open it in our editor to modify blocks, or add assets.',
+    text: 'After choosing a final preview, open it in our editor to modify blocks, or add assets.',
     step: 3,
     Modal: EditBlocksModal as ModalPlain,
     needsProgress: false,

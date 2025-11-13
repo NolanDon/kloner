@@ -149,11 +149,11 @@ type CardData = {
 
 const CARDS: CardData[] = [
   { title: 'Clean dashboard', sub: 'All your URLs organized in one simple view.', Mini: MiniPlan },
+  { title: 'Fail safe', sub: 'Rescan anytime until the result feels right.', Mini: MiniUpload },
   { title: 'Accuracy', sub: 'Pixel-perfect captures, ready to ship for any business type.', Mini: MiniData },
-  { title: 'Capture Engine', sub: 'Built by strong engineers with the power to capture long, multi-section pages.', Mini: MiniConcierge },
-  { title: 'Quick actions', sub: 'Jump straight to deployment or customization with instant tools.', Mini: MiniAddons },
-  { title: 'Customization', sub: 'Full creative control at your fingertips.', Mini: MiniClinic },
-  { title: 'Fail safety', sub: 'Rescan anytime until the result feels right.', Mini: MiniUpload },
+  { title: 'Customization', sub: 'Full creative control at your fingertips, with options to modify and remove blocks, upload assets and change code.', Mini: MiniClinic },
+  // { title: 'Quick actions', sub: 'Jump straight to deployment or customization with instant tools.', Mini: MiniAddons },
+  // { title: 'Capture Engine', sub: 'Built by strong engineers with the power to capture long, multi-section pages.', Mini: MiniConcierge },
 ];
 
 
@@ -182,8 +182,8 @@ export default function MembershipSticky() {
           </div>
 
           {/* RIGHT (scrolling cards) */}
-          <div className="lg:col-span-8">
-            <div className="grid gap-6 sm:grid-cols-2 lg:gap-8">
+          <div className="lg:col-span-8 pt-20 md:pt-60">
+            <div className="grid gap-6 lg:gap-8">
               {CARDS.map((c, i) => (
                 <FeatureFrame key={c.title} i={i} title={c.title} sub={c.sub}>
                   <c.Mini />
