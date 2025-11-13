@@ -28,7 +28,7 @@ import {
 import { ref as sRef, listAll, getDownloadURL, deleteObject, type StorageReference } from "firebase/storage";
 import { auth, db, storage } from "@/lib/firebase";
 import PreviewEditor from "@/components/PreviewEditor";
-import { Rocket, Plus, ChevronDown, AlertTriangle, Maximize2, Hammer, Eye } from "lucide-react";
+import { Rocket, Plus, ChevronDown, AlertTriangle, Maximize2, Hammer, Eye, HammerIcon } from "lucide-react";
 
 const ACCENT = "#f55f2a";
 
@@ -879,81 +879,80 @@ export default function PreviewPage(): JSX.Element {
                     };
 
                     return (
-                        <div className="relative flex min-w-[300px] flex-col overflow-visible rounded-xl border border-neutral-200 bg-white shadow-sm">
-                            <span className="absolute left-2 top-2 z-30 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow" style={{ backgroundColor: "#1d4ed8" }} title={`Version ${versionLabel}`}>
-                                {versionLabel}
-                            </span>
+                        <>
+                            <div className="relative flex min-w-[300px] flex-col overflow-visible rounded-xl border border-neutral-200 bg-white shadow-sm">
+                                <span className="absolute left-2 top-2 z-30 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow" style={{ backgroundColor: "#1d4ed8" }} title={`Version ${versionLabel}`}>
+                                    {versionLabel}
+                                </span>
 
-                            <button
-                                onClick={() => discardRender(r.id)}
-                                disabled={isDeleting}
-                                aria-label="Discard preview"
-                                title="Delete this editable preview"
-                                className="absolute top-0 right-0 z-40 grid h-5 w-5 place-items-center -translate-y-1/2 translate-x-1/2 rounded-full bg-red-600 text-white shadow-md ring-1 ring-white hover:bg-red-700 hover:ring-red-300 disabled:opacity-50"
-                            >
-                                <span className="text-lg mb-0.5 leading-none">×</span>
-                            </button>
+                                <button
+                                    onClick={() => discardRender(r.id)}
+                                    disabled={isDeleting}
+                                    aria-label="Discard preview"
+                                    title="Delete this editable preview"
+                                    className="absolute top-0 right-0 z-40 grid h-5 w-5 place-items-center -translate-y-1/2 translate-x-1/2 rounded-full bg-red-600 text-white shadow-md ring-1 ring-white hover:bg-red-700 hover:ring-red-300 disabled:opacity-50"
+                                >
+                                    <span className="text-lg mb-0.5 leading-none">×</span>
+                                </button>
 
-                            <div className="relative">
-                                {!refImgUrl ? (
-                                    <div className="aspect-[4/3] w-full grid place-items-center text-xs text-neutral-500">No snapshot available</div>
-                                ) : (
-                                    <a href={refImgUrl} target="_blank" rel="noreferrer" className="block" title="Open the base screenshot">
-                                        <img
-                                            src={refImgUrl}
-                                            alt={r.nameHint || "preview"}
-                                            loading="lazy"
-                                            onError={refImgErr}
-                                            className="h-full w-full max-h-[260px] object-cover opacity-[0.25] select-none pointer-events-none"
-                                            draggable={false}
-                                        />
-                                    </a>
-                                )}
+                                <div className="relative">
+                                    {!refImgUrl ? (
+                                        <div className="aspect-[4/3] w-full grid place-items-center text-xs text-neutral-500">No snapshot available</div>
+                                    ) : (
+                                        <a href={refImgUrl} target="_blank" rel="noreferrer" className="block" title="Open the base screenshot">
+                                            <img
+                                                src={refImgUrl}
+                                                alt={r.nameHint || "preview"}
+                                                loading="lazy"
+                                                onError={refImgErr}
+                                                className="h-full w-full max-h-[260px] object-cover opacity-[0.25] select-none pointer-events-none"
+                                                draggable={false}
+                                            />
+                                        </a>
+                                    )}
 
-                                <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
-                                    <div className="pointer-events-auto flex items-center gap-2 rounded-xl bg-white/90 p-2 ring-1 ring-neutral-200 backdrop-blur">
-                                        <button
-                                            onClick={() => continueRender(r.id)}
-                                            disabled={disableOpen || isDeleting}
-                                            className="rounded-md px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-                                            style={{ backgroundColor: ACCENT }}
-                                            title={isQueued ? "Still building preview" : isFailed ? "Open editor to fix" : "Open editor to customize"}
-                                        >
-                                            {isQueued ? "Queued" : isFailed ? "Customize (fix)" : "Customize"}
-                                        </button>
+                                    <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
+                                        <div className="pointer-events-auto flex items-center gap-2 rounded-xl bg-white/90 p-2 ring-1 ring-neutral-200 backdrop-blur">
+                                            <button
+                                                onClick={() => continueRender(r.id)}
+                                                disabled={disableOpen || isDeleting}
+                                                className="rounded-md px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                                                style={{ backgroundColor: ACCENT }}
+                                                title={isQueued ? "Still building preview" : isFailed ? "Open editor to fix" : "Open editor to customize"}
+                                            >
+                                                {isQueued ? "Queued" : isFailed ? "Customize (fix)" : "Customize"}
+                                            </button>
 
-                                        <button
-                                            onClick={deployThis}
-                                            disabled={!r.html || isDeleting || isQueued}
-                                            className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 disabled:opacity-50 relative inline-flex items-center gap-2"
-                                            title="Deploy current HTML to Vercel"
-                                        >
-                                            Deploy
-                                            <Rocket className="h-3 w-3" />
-                                        </button>
+                                            <button
+                                                onClick={deployThis}
+                                                disabled={!r.html || isDeleting || isQueued}
+                                                className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 disabled:opacity-50 relative inline-flex items-center gap-2"
+                                                title="Deploy current HTML to Vercel"
+                                            >
+                                                Deploy
+                                                <Rocket className="h-3 w-3" />
+                                            </button>
+                                        </div>
                                     </div>
+
+                                    <span className="absolute bottom-2 left-2 z-20 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-neutral-600 ring-1 ring-neutral-200" title="Preview status label">
+                                        {isFailed ? "Failed" : r.html?.trim() ? "Preview ready" : "Awaiting HTML"}
+                                    </span>
+                                    <span className="absolute bottom-2 right-2 z-20 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-neutral-600 ring-1 ring-neutral-200">
+                                        {r.status}
+                                    </span>
+
+                                    {isDeleting && <CenterSpinner label="Deleting…" />}
+                                    {(isQueued || hardLocked) && <CenterSpinner label={isQueued ? "Rendering…" : "Locked…"} />}
                                 </div>
 
-                                <span className="absolute bottom-2 left-2 z-20 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-neutral-600 ring-1 ring-neutral-200" title="Preview status label">
-                                    {isFailed ? "Failed" : r.html?.trim() ? "Preview ready" : "Awaiting HTML"}
-                                </span>
-                                <span className="absolute bottom-2 right-2 z-20 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-neutral-600 ring-1 ring-neutral-200">
-                                    {r.status}
-                                </span>
+                                <div className="relative h-0 overflow-hidden" aria-hidden>
+                                    <iframe title={`r-${r.id}`} className="w-full h-0" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms allow-pointer-lock" referrerPolicy="no-referrer" allow="clipboard-read; clipboard-write" key={`frame-${r.id}`} srcDoc={srcDoc} />
+                                </div>
 
-                                {isDeleting && <CenterSpinner label="Deleting…" />}
-                                {(isQueued || hardLocked) && <CenterSpinner label={isQueued ? "Rendering…" : "Locked…"} />}
+
                             </div>
-
-                            <div className="relative h-0 overflow-hidden" aria-hidden>
-                                <iframe title={`r-${r.id}`} className="w-full h-0" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms allow-pointer-lock" referrerPolicy="no-referrer" allow="clipboard-read; clipboard-write" key={`frame-${r.id}`} srcDoc={srcDoc} />
-                            </div>
-
-                            <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
-                                <strong className="text-accent">Step 4</strong> — Customize edits, then Deploy to publish. Discard removes this preview only.
-                            </div>
-
-                        </div>
+                        </>
                     );
                 },
                 (prev, next) => {
@@ -1041,10 +1040,6 @@ export default function PreviewPage(): JSX.Element {
                                             <Hammer className={`h-4 w-4 ${locked ? "animate-pulse" : ""}`} aria-hidden />
                                         </button>
                                     </div>
-                                </div>
-
-                                <div className="mt-1 text-[11px] text-neutral-500">
-                                    Step 3 — Pick a screenshot → Generate preview to get editable HTML.
                                 </div>
                             </figcaption>
                         </figure>
@@ -1138,9 +1133,9 @@ export default function PreviewPage(): JSX.Element {
                                         </ul>
                                     </div>
                                 )}
-                                <p className="mt-2 text-xs text-neutral-500">
+                                {/* <p className="mt-2 text-xs text-neutral-500">
                                     After selecting, proceed to Step 2 below to capture a fresh screenshot if needed.
-                                </p>
+                                </p> */}
                             </div>
                         )}
                     </div>
@@ -1187,8 +1182,15 @@ export default function PreviewPage(): JSX.Element {
 
                     ) : (
                         <>
+
                             <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
-                                <strong className="text-accent">Step 2</strong> — We’ve captured your initial base images. Review them carefully before generating a website preview.
+                                <strong className="text-accent">Step 2</strong> — We’ve captured your initial base image. 
+
+                                {renders.length === 0 && (
+                                    <div className="inline-flex mt-1 text-sm pt-5 flex items-center text-neutral-700">
+                                        Click Generate preview <Hammer className={`mx-1 h-3 w-3`} /> to generate the first preview.
+                                    </div>
+                                )}
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1213,6 +1215,11 @@ export default function PreviewPage(): JSX.Element {
                             <h2 className="text-1xl sm:text-3xl font-semibold tracking-tight text-neutral-700">Website Previews</h2>
                         </div>
                     </div>
+
+                    <p className="mt-2 text-xs text-neutral-500">
+                        These are the concept sites generated from your chosen snapshot.
+                    </p>
+
                     {renders.length === 0 ? (
                         <>
                             <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
@@ -1225,13 +1232,34 @@ export default function PreviewPage(): JSX.Element {
                     ) : (
                         <>
                             <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
-                                <strong className="text-accent">Step 3</strong> — Each card is an editable preview generated from a screenshot. Use Customize to edit HTML. Use Deploy to publish to Vercel.
+                                <strong className="text-accent">Step 3</strong> — Customize edits, then Deploy to publish. Discard removes this preview only.
                             </div>
+                            <p className="mt-2 text-xs text-neutral-500">
+                                Tip: Reference the original with the version badge
+                                <span
+                                    className="ml-2 rounded-md px-2 py-1 text-[10px] font-semibold text-white shadow"
+                                    style={{ backgroundColor: "#1d4ed8" }}
+                                    title={`Version`}
+                                >
+                                    592f
+                                </span>
+                            </p>
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" aria-label="Editable previews list">
                                 {renders.map((r) => <RenderCard key={r.id} r={r} />)}
                             </div>
                         </>
                     )}
+                </div>
+
+                <div className="mt-10">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h2 className="text-1xl sm:text-3xl font-semibold tracking-tight text-neutral-700">Deployments</h2>
+                        </div>
+                    </div>
+                    <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
+                        <strong className="text-accent">Step 4</strong> — Track your deployments, customize and redeploy.
+                    </div>
                 </div>
             </div>
 

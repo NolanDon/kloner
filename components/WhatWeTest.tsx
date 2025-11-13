@@ -111,8 +111,17 @@ export default function WhatWeTest() {
   return (
     <section
       id="test"
-      className="z-40 relative bg-white text-neutral-800 rounded-b-[3rem] overflow-hidden"
+      className="z-40 relative bg-white text-neutral-800 rounded-b-[3rem] overflow-hidden py-40"
     >
+      <div className="flex items-center justify-center">
+        <a
+          href="#join"
+          className="bg-accent hover:bg-accent2 items-center gap-2 rounded-full px-6 py-4 text-white"
+        >
+          Start your project <span aria-hidden>›</span>
+
+        </a>
+      </div>
       <div className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 h-px w-[72%] md:w-[62%] bg-neutral-200 rounded-full" />
 
       <div className="container-soft py-14 md:py-20">

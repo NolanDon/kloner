@@ -57,7 +57,7 @@ function MiniData() {
       <img
         src="/images/included-section/5.jpg"
         alt="Clean capture preview"
-        className="absolute inset-0 h-full w-full object-cover"
+        className="absolute rounded-md inset-0 h-full w-full object-cover"
       />
     </CardShell>
   );
@@ -149,8 +149,8 @@ type CardData = {
 
 const CARDS: CardData[] = [
   { title: 'Clean dashboard', sub: 'All your URLs organized in one simple view.', Mini: MiniPlan },
-  { title: 'Fail safe', sub: 'Rescan anytime until the result feels right.', Mini: MiniUpload },
   { title: 'Accuracy', sub: 'Pixel-perfect captures, ready to ship for any business type.', Mini: MiniData },
+  { title: 'Previews', sub: 'Rescan anytime until the result feels right.', Mini: MiniUpload },
   { title: 'Customization', sub: 'Full creative control at your fingertips, with options to modify and remove blocks, upload assets and change code.', Mini: MiniClinic },
   // { title: 'Quick actions', sub: 'Jump straight to deployment or customization with instant tools.', Mini: MiniAddons },
   // { title: 'Capture Engine', sub: 'Built by strong engineers with the power to capture long, multi-section pages.', Mini: MiniConcierge },

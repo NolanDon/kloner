@@ -13,8 +13,8 @@ const GROUPS: Group[] = [
         heading: 'How it works',
         items: [
             {
-                q: 'How long does this process take?',
-                a: 'Whether you choose to customize or not will differ this timeframe, without customization, your deployment can be live in as little as 10 minutes.'
+                q: 'How long does the process take from entering a URL to deployment?',
+                a: 'Whether you choose to customize or not will differ this timeframe, without customization, your site can be generated and live in as little as 10 minutes.'
             },
             {
                 q: 'What exactly gets exported?',

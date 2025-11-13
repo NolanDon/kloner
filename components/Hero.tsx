@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import { Outfit } from "next/font/google";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
 
@@ -28,6 +28,11 @@ function toAbsolute(u: string) {
 export default function Hero() {
   const router = useRouter();
   const [url, setUrl] = useState("");
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -40,7 +45,6 @@ export default function Hero() {
       return;
     }
 
-    // Not signed in: stash and send to signup
     try {
       localStorage.setItem("kloner.pendingUrl", abs);
     } catch { }
@@ -49,7 +53,7 @@ export default function Hero() {
 
   return (
     <section
-      className="relative flex items-center bg-white text-black"
+      className="relative flex items-center bg-white text-neutral-800"
       style={{
         height: "calc(100dvh - var(--header-h, 0px))",
         minHeight: 560,
@@ -122,7 +126,8 @@ export default function Hero() {
                 aria-label="Paste a website URL"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                className="flex-1 bg-transparent outline-none text-neutral-800 placeholder:text-neutral-400 text-[16px] sm:text-[18px]"
+                ref={inputRef}
+                className="flex-1 bg-transparent outline-none text-neutral-600 placeholder:text-neutral-400 text-[16px] sm:text-[18px]"
               />
               <button
                 type="submit"
