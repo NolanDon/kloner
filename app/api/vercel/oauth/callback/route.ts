@@ -55,7 +55,8 @@ export async function GET(req: NextRequest) {
 
     // helper to build redirect with status + reason and clear cookie
     const redirectWithStatus = (status: "success" | "error", reason?: string) => {
-        const next = new URL("/integrations/vercel/callback", process.env.OAUTH_REDIRECT_BASE_PROD || "https://kloner.app");
+        const base = process.env.OAUTH_REDIRECT_BASE_PROD || "https://kloner.app";
+        const next = new URL("/integrations/vercel/callback", base);
         next.searchParams.set("status", status);
         if (reason) next.searchParams.set("reason", reason);
 
@@ -75,7 +76,8 @@ export async function GET(req: NextRequest) {
         decoded = await verifySession(req); // { uid, email, claims? }
     } catch {
         // No Kloner session → redirect to login and explain we came from Vercel
-        const loginUrl = new URL("/login", process.env.OAUTH_REDIRECT_BASE_PROD || "https://kloner.app");
+        const base = process.env.OAUTH_REDIRECT_BASE_PROD || "https://kloner.app";
+        const loginUrl = new URL("/login", base);
         loginUrl.searchParams.set("from", "vercel");
 
         const res = NextResponse.redirect(loginUrl.toString(), { status: 302 });
@@ -83,7 +85,7 @@ export async function GET(req: NextRequest) {
         return res;
     }
 
-    const uid = decoded.uid;
+    const uid = decoded.uid as string;
 
     // 3) Perform code → token exchange with Vercel
     const redirectUri =
@@ -129,6 +131,7 @@ export async function GET(req: NextRequest) {
             scope: json.scope ?? null,
             updatedAt: now,
             createdAt: now,
+            connected: true,
         },
         { merge: true },
     );
