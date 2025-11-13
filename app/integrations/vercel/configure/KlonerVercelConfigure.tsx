@@ -1,4 +1,3 @@
-// app/integrations/vercel/configure/page.tsx
 "use client";
 
 import { useSearchParams } from "next/navigation";
@@ -23,7 +22,7 @@ export default function KlonerVercelConfigure() {
         setSaving(true);
         setSaved(false);
         try {
-            // TODO: send these preferences to your backend.
+            // TODO: send preferences to backend
             // await fetch("/api/vercel/integration/preferences", { ... });
             await new Promise((r) => setTimeout(r, 400));
             setSaved(true);
@@ -45,19 +44,23 @@ export default function KlonerVercelConfigure() {
                             Configure how Kloner deploys to Vercel
                         </h1>
                         <p className="text-sm text-neutral-600">
-                            These options apply only to this Vercel integration configuration. You can change them
-                            later from this page.
+                            These options apply only to this Vercel integration configuration.
+                            You can change them later from this page.
                         </p>
                     </header>
 
                     <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm text-xs text-neutral-600 space-y-1">
                         <p>
                             <span className="font-semibold text-neutral-800">Configuration ID:</span>{" "}
-                            <span className="font-mono text-[11px] break-all">{configurationId || "not provided"}</span>
+                            <span className="font-mono text-[11px] break-all">
+                                {configurationId || "not provided"}
+                            </span>
                         </p>
                         <p>
                             <span className="font-semibold text-neutral-800">Team ID:</span>{" "}
-                            <span className="font-mono text-[11px] break-all">{teamId || "not provided"}</span>
+                            <span className="font-mono text-[11px] break-all">
+                                {teamId || "not provided"}
+                            </span>
                         </p>
                     </section>
 
@@ -86,8 +89,9 @@ export default function KlonerVercelConfigure() {
                         <div className="flex items-center gap-2 text-xs text-neutral-600">
                             <Info className="h-4 w-4 text-neutral-500" />
                             <p>
-                                Preferences here do not change your Vercel billing or limits. They only control how
-                                Kloner behaves when you trigger a deploy from the Kloner dashboard.
+                                Preferences here do not change your Vercel billing or limits.
+                                They only control how Kloner behaves when you trigger a deploy from
+                                the Kloner dashboard.
                             </p>
                         </div>
 
@@ -111,7 +115,6 @@ export default function KlonerVercelConfigure() {
                 </div>
             </main>
         </>
-
     );
 }
 
