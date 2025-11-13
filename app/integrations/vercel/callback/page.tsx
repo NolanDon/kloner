@@ -1,11 +1,12 @@
 import { Suspense } from "react";
 import KlonerVercelCallback from "./KlonerVercelCallback";
 
-export function VercelPage() {
+export default function VercelPage() {
 
     return (
-        <Suspense>
+        <Suspense fallback={null}>
             <KlonerVercelCallback />
         </Suspense>
     )
 }
+
