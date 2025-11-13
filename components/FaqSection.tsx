@@ -13,8 +13,8 @@ const GROUPS: Group[] = [
         heading: 'How it works',
         items: [
             {
-                q: 'What does the preview do?',
-                a: 'We crawl the target image screenshot, then render a sandboxed preview so you can edit copy and images before exporting.'
+                q: 'How long does this process take?',
+                a: 'Whether you choose to customize or not will differ this timeframe, without customization, your deployment from the time you enter your url can take as little as 10 minutes.'
             },
             {
                 q: 'What exactly gets exported?',

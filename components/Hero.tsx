@@ -90,7 +90,7 @@ export default function Hero() {
               MozOsxFontSmoothing: "grayscale",
             }}
           >
-            Turn any site into your project
+            Click, Clone, Customize & Deploy.
           </h1>
 
           <p className="mt-4 md:mt-5 text-white/80 text-base sm:text-lg px-2 pb-10 md:pb-20">
@@ -141,7 +141,7 @@ export default function Hero() {
                 Preview
               </button>
             </div>
-            <div className="mt-2 text-white/80 text-xs sm:text-sm">Free preview • No card required</div>
+            <div className="mt-6 text-white/80 text-xs sm:text-sm">Free preview • No card required</div>
           </form>
         </motion.div>
       </div>
