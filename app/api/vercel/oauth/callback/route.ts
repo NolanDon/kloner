@@ -88,7 +88,7 @@ export async function GET(req: NextRequest) {
         { merge: true },
     );
 
-    // clear state cookie
+    // clear state cookies
     const res = NextResponse.redirect("/dashboard?vercel=connected");
     res.cookies.set("vercel_oauth_state", "", {
         maxAge: 0,
