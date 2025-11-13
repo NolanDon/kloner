@@ -7,35 +7,43 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Initialize Firebase Admin using a *base64-encoded* service account JSON.
- *
- * FIREBASE_SERVICE_ACCOUNT should be the service-account JSON, base64-encoded:
- *   echo '<json here>' | base64
- * and set that string as the env var.
+ * Initialize Firebase Admin once per cold start.
+ * FIREBASE_SERVICE_ACCOUNT should be either:
+ * - raw JSON, or
+ * - base64-encoded JSON (common in Vercel env setup).
  */
 if (!admin.apps.length) {
     const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
     if (!raw) {
-        throw new Error("FIREBASE_SERVICE_ACCOUNT env var is missing");
+        throw new Error("FIREBASE_SERVICE_ACCOUNT env missing");
     }
 
-    // Decode base64 → string → JSON
-    const decodedJson = Buffer.from(raw, "base64").toString("utf8");
-    const serviceAccount = JSON.parse(decodedJson);
+    let parsed: admin.ServiceAccount;
+    try {
+        // Try base64 decode first; if that fails, assume plain JSON
+        const maybeDecoded = Buffer.from(raw, "base64").toString("utf8");
+        parsed = JSON.parse(maybeDecoded);
+    } catch {
+        parsed = JSON.parse(raw);
+    }
 
     admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount as admin.ServiceAccount),
+        credential: admin.credential.cert(parsed),
     });
 }
 
 const db = admin.firestore();
 
-// Base for redirect_uri (must match what you configured in Vercel)
-const REDIRECT_BASE =
-    process.env.NODE_ENV === "production"
-        ? process.env.OAUTH_REDIRECT_BASE_PROD || "https://kloner.app"
-        : process.env.OAUTH_REDIRECT_BASE_DEV || "http://localhost:3000";
-
+/**
+ * OAuth callback from Vercel.
+ *
+ * Flow:
+ * 1. Validate `state` from cookie vs query param (CSRF protection).
+ * 2. Verify the user session (we must know which Kloner user to attach the token to).
+ * 3. Exchange `code` for an access token with Vercel.
+ * 4. Persist the token + metadata under kloner_users/{uid}/integrations/vercel.
+ * 5. Redirect to a UI page with ?status=success|error so the UI can react accordingly.
+ */
 export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const code = url.searchParams.get("code");
@@ -45,27 +53,48 @@ export async function GET(req: NextRequest) {
 
     const cookieState = req.cookies.get("vercel_oauth_state")?.value;
 
-    // CSRF/state validation
+    // helper to build redirect with status + reason and clear cookie
+    const redirectWithStatus = (status: "success" | "error", reason?: string) => {
+        const next = new URL("/integrations/vercel/callback", process.env.OAUTH_REDIRECT_BASE_PROD || "https://kloner.app");
+        next.searchParams.set("status", status);
+        if (reason) next.searchParams.set("reason", reason);
+
+        const res = NextResponse.redirect(next.toString(), { status: 302 });
+        res.cookies.set("vercel_oauth_state", "", { maxAge: 0, path: "/" });
+        return res;
+    };
+
+    // 1) CSRF / state validation
     if (!code || !state || !cookieState || state !== cookieState) {
-        return NextResponse.json({ error: "invalid_state" }, { status: 400 });
+        return redirectWithStatus("error", "state");
     }
 
-    // Require a signed-in Kloner user to bind the integration to
+    // 2) Tie install to the currently logged-in Kloner user
     let decoded;
     try {
         decoded = await verifySession(req); // { uid, email, claims? }
     } catch {
-        return NextResponse.redirect("/login?from=vercel");
+        // No Kloner session → redirect to login and explain we came from Vercel
+        const loginUrl = new URL("/login", process.env.OAUTH_REDIRECT_BASE_PROD || "https://kloner.app");
+        loginUrl.searchParams.set("from", "vercel");
+
+        const res = NextResponse.redirect(loginUrl.toString(), { status: 302 });
+        res.cookies.set("vercel_oauth_state", "", { maxAge: 0, path: "/" });
+        return res;
     }
+
     const uid = decoded.uid;
 
-    const redirectUri = `${REDIRECT_BASE}/api/vercel/oauth/callback`;
+    // 3) Perform code → token exchange with Vercel
+    const redirectUri =
+        process.env.NODE_ENV === "production"
+            ? "https://kloner.app/api/vercel/oauth/callback"
+            : "http://localhost:3000/api/vercel/oauth/callback";
 
-    // Code → token exchange with Vercel
     const body = new URLSearchParams({
         code,
-        client_id: process.env.VERCEL_OAUTH_CLIENT_ID!,
-        client_secret: process.env.VERCEL_OAUTH_CLIENT_SECRET!,
+        client_id: process.env.VERCEL_OAUTH_CLIENT_ID || "",
+        client_secret: process.env.VERCEL_OAUTH_CLIENT_SECRET || "",
         redirect_uri: redirectUri,
     });
 
@@ -78,18 +107,15 @@ export async function GET(req: NextRequest) {
     if (!tokenRes.ok) {
         const text = await tokenRes.text();
         console.error("Vercel token exchange failed", tokenRes.status, text);
-        return NextResponse.json(
-            { error: "token_exchange_failed" },
-            { status: 500 },
-        );
+        return redirectWithStatus("error", "token");
     }
 
     const json: any = await tokenRes.json();
-    // json: { access_token, token_type, team_id?, user_id?, expires_at?, scope?, ... }
+    // shape: { access_token, token_type, team_id?, user_id?, expires_at?, scope?, ... }
 
+    // 4) Persist token under kloner_users/{uid}/integrations/vercel
     const now = admin.firestore.FieldValue.serverTimestamp();
 
-    // Persist integration under kloner_users/{uid}/integrations/vercel
     const userRef = db.collection("kloner_users").doc(uid);
     const vercelRef = userRef.collection("integrations").doc("vercel");
 
@@ -107,15 +133,6 @@ export async function GET(req: NextRequest) {
         { merge: true },
     );
 
-    // Clear state cookie and return to dashboard
-    const res = NextResponse.redirect("/dashboard?vercel=connected");
-    res.cookies.set("vercel_oauth_state", "", {
-        maxAge: 0,
-        path: "/",
-        httpOnly: true,
-        sameSite: "lax",
-        secure: process.env.NODE_ENV === "production",
-    });
-
-    return res;
+    // 5) Success → redirect with status=success
+    return redirectWithStatus("success");
 }
