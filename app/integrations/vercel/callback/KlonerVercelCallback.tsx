@@ -1,116 +1,75 @@
-// app/integrations/vercel/callback/page.tsx
-"use client";
+// app/api/vercel/oauth/callback/route.ts
+import { NextRequest, NextResponse } from "next/server";
 
-import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
-import { CheckCircle2, Loader2, AlertTriangle } from "lucide-react";
-import NavBar from "@/components/NavBar";
+const env = {
+    clientId: process.env.VERCEL_OAUTH_CLIENT_ID,
+    clientSecret: process.env.VERCEL_OAUTH_CLIENT_SECRET,
+    redirectBase:
+        process.env.NODE_ENV === "production"
+            ? process.env.OAUTH_REDIRECT_BASE_PROD // e.g. "https://kloner.app"
+            : process.env.OAUTH_REDIRECT_BASE_DEV, // e.g. "http://localhost:3000"
+};
 
-const ACCENT = "#f55f2a";
+export async function GET(req: NextRequest) {
+    if (!env.clientId || !env.clientSecret || !env.redirectBase) {
+        return NextResponse.json({ error: "server_misconfigured" }, { status: 500 });
+    }
 
-type State = "pending" | "ok" | "error";
+    const url = new URL(req.url);
+    const code = url.searchParams.get("code");
+    const returnedState = url.searchParams.get("state");
 
-export default function KlonerVercelCallback() {
-    const search = useSearchParams();
-    const [state, setState] = useState<State>("pending");
-    const [message, setMessage] = useState<string>("Linking your Vercel installation…");
+    const cookieState = req.cookies.get("vercel_oauth_state")?.value ?? null;
 
-    useEffect(() => {
-        const configurationId = search.get("configurationId");
-        const teamId = search.get("teamId");
-        const projectId = search.get("projectId");
+    if (!code || !returnedState || !cookieState || returnedState !== cookieState) {
+        return NextResponse.json({ error: "invalid_state_or_code" }, { status: 400 });
+    }
 
-        if (!configurationId) {
-            setState("error");
-            setMessage("Missing configurationId. Open this page only from the Vercel integration flow.");
-            return;
-        }
+    const redirectUri = `${env.redirectBase}/api/vercel/oauth/callback`;
 
-        // TODO: call your backend to persist configurationId + teamId + projectId if needed.
-        // Example:
-        //
-        // fetch("/api/vercel/integration/complete", {
-        //   method: "POST",
-        //   headers: { "content-type": "application/json" },
-        //   credentials: "include",
-        //   body: JSON.stringify({ configurationId, teamId, projectId }),
-        // })
-        //   .then(r => r.ok ? r.json() : Promise.reject(r))
-        //   .then(() => { setState("ok"); setMessage("Vercel is now connected to Kloner."); })
-        //   .catch(() => { setState("error"); setMessage("Failed to store the integration configuration."); });
+    const body = new URLSearchParams({
+        code,
+        client_id: env.clientId,
+        client_secret: env.clientSecret,
+        redirect_uri: redirectUri,
+    });
 
-        // Placeholder happy-path so the page renders sensibly before backend wiring:
-        setTimeout(() => {
-            setState("ok");
-            setMessage("Vercel is now connected to Kloner. You can close this page and return to the dashboard.");
-        }, 400);
-    }, [search]);
+    const tokenRes = await fetch("https://api.vercel.com/v2/oauth/access_token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body,
+    });
 
-    const configurationId = search.get("configurationId") || "";
-    const teamId = search.get("teamId") || "";
-    const projectId = search.get("projectId") || "";
-
-    return (
-        <>
-            <NavBar />
-            <main className="min-h-screen bg-white py-[120px]">
-                <div className="mx-auto max-w-xl px-4 sm:px-6 lg:px-10 py-10">
-                    <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-800 mb-4">
-                        Finalizing your Vercel connection
-                    </h1>
-
-                    <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm space-y-3">
-                        <Status state={state} message={message} />
-
-                        <div className="mt-3 space-y-1 text-xs text-neutral-600">
-                            <p>Details provided by Vercel:</p>
-                            {configurationId && (
-                                <div>
-                                    <span className="font-semibold text-neutral-800">Configuration ID:</span>{" "}
-                                    <span className="font-mono text-[11px] break-all">{configurationId}</span>
-                                </div>
-                            )}
-                            {teamId && (
-                                <div>
-                                    <span className="font-semibold text-neutral-800">Team ID:</span>{" "}
-                                    <span className="font-mono text-[11px] break-all">{teamId}</span>
-                                </div>
-                            )}
-                            {projectId && (
-                                <div>
-                                    <span className="font-semibold text-neutral-800">Default project ID:</span>{" "}
-                                    <span className="font-mono text-[11px] break-all">{projectId}</span>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            </main>
-        </>
-    );
-}
-
-function Status({ state, message }: { state: State; message: string }) {
-    if (state === "pending") {
-        return (
-            <div className="flex items-center gap-2 text-sm text-neutral-800">
-                <Loader2 className="h-4 w-4 animate-spin" style={{ color: ACCENT }} />
-                <span>{message}</span>
-            </div>
+    if (!tokenRes.ok) {
+        const text = await tokenRes.text();
+        return NextResponse.json(
+            { error: "token_exchange_failed", details: text },
+            { status: 502 },
         );
     }
-    if (state === "ok") {
-        return (
-            <div className="flex items-center gap-2 text-sm text-emerald-700">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                <span>{message}</span>
-            </div>
-        );
-    }
-    return (
-        <div className="flex items-center gap-2 text-sm text-red-700">
-            <AlertTriangle className="h-4 w-4 text-red-600" />
-            <span>{message}</span>
-        </div>
-    );
+
+    const tokenJson = (await tokenRes.json()) as {
+        access_token: string;
+        token_type: string;
+        installation_id?: string;
+        user_id?: string;
+        team_id?: string;
+        // refresh_token, expires_at, etc if enabled
+    };
+
+    // TODO: associate tokenJson.access_token with your logged-in user.
+    // e.g. verify Firebase session and write to Firestore:
+    //
+    // const decoded = await verifySession(req);
+    // await setDoc(doc(db, "users", decoded.uid, "integrations", "vercel"), {
+    //   accessToken: tokenJson.access_token,
+    //   teamId: tokenJson.team_id ?? null,
+    //   userId: tokenJson.user_id ?? null,
+    //   installationId: tokenJson.installation_id ?? null,
+    //   updatedAt: Date.now(),
+    // });
+
+    // Final redirect back into your dashboard
+    const redirectBack = new URL("/dashboard?vercel=linked", env.redirectBase);
+    return NextResponse.redirect(redirectBack.toString(), { status: 302 });
 }

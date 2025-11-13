@@ -1,47 +1,43 @@
-// /app/api/vercel/oauth/start/route.ts
+// app/api/vercel/oauth/start/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 
 const env = {
-    cid: process.env.VERCEL_OAUTH_CLIENT_ID,
-    redirectBase:
-        process.env.NODE_ENV === "production"
-            ? process.env.OAUTH_REDIRECT_BASE_PROD
-            : process.env.OAUTH_REDIRECT_BASE_DEV,
+    clientId: process.env.VERCEL_OAUTH_CLIENT_ID,
+    redirectUri: process.env.VERCEL_OAUTH_REDIRECT_URI,
+    scopes:
+        process.env.VERCEL_OAUTH_SCOPES ??
+        // adjust scopes to what your OAuth app actually needs
+        "read:projects read:deployments write:deployments read:env write:env read:user",
 };
 
 export async function GET(req: NextRequest) {
-    if (!env.cid || !env.redirectBase) {
-        return NextResponse.json({ error: "server_misconfigured" }, { status: 500 });
+    if (!env.clientId || !env.redirectUri) {
+        return NextResponse.json(
+            { error: "vercel_oauth_misconfigured" },
+            { status: 500 },
+        );
     }
 
+    // CSRF state
     const state = crypto.randomBytes(16).toString("hex");
-    const verifier = crypto.randomBytes(32).toString("base64url");
-    const challenge = crypto.createHash("sha256").update(verifier).digest("base64url");
 
-    const redirectUri = `${env.redirectBase}/api/vercel/oauth/callback`;
+    const authorizeUrl = new URL("https://vercel.com/oauth/authorize");
+    authorizeUrl.searchParams.set("client_id", env.clientId);
+    authorizeUrl.searchParams.set("redirect_uri", env.redirectUri);
+    authorizeUrl.searchParams.set("response_type", "code");
+    authorizeUrl.searchParams.set("scope", env.scopes);
+    authorizeUrl.searchParams.set("state", state);
 
-    const authorize = new URL("https://vercel.com/oauth/authorize");
-    authorize.searchParams.set("client_id", env.cid);
-    authorize.searchParams.set("redirect_uri", redirectUri);
-    authorize.searchParams.set("response_type", "code");
-    authorize.searchParams.set(
-        "scope",
-        ["read:projects", "write:blobs", "read:blobs", "write:deployments", "read:deployments"].join(" "),
-    );
-    authorize.searchParams.set("state", state);
-    authorize.searchParams.set("code_challenge", challenge);
-    authorize.searchParams.set("code_challenge_method", "S256");
+    const res = NextResponse.redirect(authorizeUrl.toString(), { status: 302 });
 
-    const res = NextResponse.redirect(authorize.toString(), { status: 302 });
-    const cookieBase = {
+    res.cookies.set("vercel_oauth_state", state, {
         httpOnly: true,
-        sameSite: "lax" as const,
-        maxAge: 600,
-        secure: process.env.NODE_ENV === "production", // avoid Secure on http://localhost
+        sameSite: "lax",
+        maxAge: 600, // 10 minutes
+        secure: process.env.NODE_ENV === "production",
         path: "/",
-    };
-    res.cookies.set("vercel_oauth_state", state, cookieBase);
-    res.cookies.set("vercel_oauth_verifier", verifier, cookieBase);
+    });
+
     return res;
 }
