@@ -1001,7 +1001,7 @@ export default function PreviewPage(): JSX.Element {
                             {isDeleting && <CenterSpinner label="Deleting…" />}
 
                             <a href={s.url} target="_blank" rel="noreferrer" className="block" title="Open full-size screenshot">
-                                <div className="w-full aspect-[4/3] bg-neutral-50 flex items-center justify-center rounded-t-xl relative">
+                                <div className="w-full aspect-[4/3] bg-neutral-50 opacity-30 flex items-center justify-center rounded-t-xl relative">
                                     <img
                                         src={s.url}
                                         alt={s.fileName}
@@ -1032,7 +1032,7 @@ export default function PreviewPage(): JSX.Element {
                                             onClick={() => buildFromKey(s.path)}
                                             disabled={locked || isDeleting}
                                             aria-busy={locked}
-                                            className="shrink-0 rounded-md px-2 py-1 text-[14px] text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+                                            className="shrink-0 rounded-md px-4 py-2 text-[14px] text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
                                             style={{ backgroundColor: ACCENT }}
                                             title="Create editable preview from this screenshot"
                                         >
@@ -1058,6 +1058,11 @@ export default function PreviewPage(): JSX.Element {
     return (
         <main className="min-h-screen bg-white">
             <div className="mx-auto max-w-[1200px] px-4 sm:px-6 lg:px-10 py-8">
+                {/* subtle divider */}
+                <div className="mb-4 flex items-center gap-2">
+                    <div className="h-px flex-1 bg-neutral-200/70" />
+                    <div className="h-px flex-1 bg-neutral-200/70" />
+                </div>
                 <div className="mb-5">
                     <div className="flex items-center justify-between gap-3 flex-wrap">
                         <div>
@@ -1088,7 +1093,7 @@ export default function PreviewPage(): JSX.Element {
                         ) : (
                             <div className="relative inline-block" ref={urlMenuRef}>
                                 <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
-                                    <strong className="text-accent">Step 1</strong> — Select a URL
+                                    <strong className="text-accent">Step 1</strong> — You have chosen the following URL, you can select a different one from the dropdown.
                                 </div>
                                 <button
                                     type="button"
@@ -1144,7 +1149,12 @@ export default function PreviewPage(): JSX.Element {
                 {err ? <div className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div> : null}
                 {info ? <div className="mt-2 rounded-lg border border-neutral-300 bg-neutral-50 px-3 py-2 text-sm text-neutral-800">{info}</div> : null}
 
-                <div className="mt-6">
+                <div className="mt-20">
+                    {/* subtle divider */}
+                    <div className="mb-4 flex items-center gap-2">
+                        <div className="h-px flex-1 bg-neutral-200/70" />
+                        <div className="h-px flex-1 bg-neutral-200/70" />
+                    </div>
                     <h2 className="text-1xl sm:text-3xl font-semibold tracking-tight text-neutral-700">
                         Screenshots
                     </h2>
@@ -1184,13 +1194,18 @@ export default function PreviewPage(): JSX.Element {
                         <>
 
                             <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
-                                <strong className="text-accent">Step 2</strong> — We’ve captured your initial base image. 
+                                <strong className="text-accent">Step 2</strong> — We’ve captured your base image. Click
 
-                                {renders.length === 0 && (
-                                    <div className="inline-flex mt-1 text-sm pt-5 flex items-center text-neutral-700">
-                                        Click Generate preview <Hammer className={`mx-1 h-3 w-3`} /> to generate the first preview.
+                                {renders.length === 0 ? (
+                                    <div className="x-1 inline-flex mt-1 text-sm flex items-center text-neutral-700">
+                                        <a className="mx-2 bg-accent rounded-md px-4 py-1.5 text-[14px] flex flex-inline items-center text-white">Generate preview <Hammer className={`mx-1 h-4 w-4`} /></a> to create your first website preview.
                                     </div>
-                                )}
+                                ) :
+
+                                    <div className="mx-1 inline-flex mt-1 text-sm flex items-center text-neutral-700">
+                                        Move to <strong className="text-accent mx-1">Step 3</strong> to begin customization.
+                                    </div>
+                                }
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1209,7 +1224,12 @@ export default function PreviewPage(): JSX.Element {
                     )}
                 </div>
 
-                <div className="mt-10">
+                <div className="mt-20">
+                    {/* subtle divider */}
+                    <div className="mb-4 flex items-center gap-2">
+                        <div className="h-px flex-1 bg-neutral-200/70" />
+                        <div className="h-px flex-1 bg-neutral-200/70" />
+                    </div>
                     <div className="flex items-center justify-between">
                         <div>
                             <h2 className="text-1xl sm:text-3xl font-semibold tracking-tight text-neutral-700">Website Previews</h2>
@@ -1223,7 +1243,7 @@ export default function PreviewPage(): JSX.Element {
                     {renders.length === 0 ? (
                         <>
                             <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
-                                <strong className="text-accent">Step 3</strong> — Website Previews. Customize to edit the HTML. Deploy publishes to Vercel.
+                                <strong className="text-accent">Step 3 </strong> — Website Previews. Customize to edit the HTML. Deploy publishes to Vercel.
                             </div>
                             <div className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
                                 No previews yet. Generate one from a base screenshot above.
@@ -1231,8 +1251,8 @@ export default function PreviewPage(): JSX.Element {
                         </>
                     ) : (
                         <>
-                            <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
-                                <strong className="text-accent">Step 3</strong> — Customize edits, then Deploy to publish. Discard removes this preview only.
+                            <div className="rounded-xl border flex items-center flex-inline border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
+                                <strong className="text-accent mr-1">Step 3</strong> — Customize your website preview, then click <div className="mx-2 rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs flex items-center flex-inline font-semibold text-neutral-800">Deploy<Rocket className="mx-1 h-3 w-3" /></div> to begin publishing.
                             </div>
                             <p className="mt-2 text-xs text-neutral-500">
                                 Tip: Reference the original with the version badge
@@ -1251,16 +1271,29 @@ export default function PreviewPage(): JSX.Element {
                     )}
                 </div>
 
-                <div className="mt-10">
+                <div className="mt-20">
+                    {/* subtle divider */}
+                    <div className="mb-4 flex items-center gap-2">
+                        <div className="h-px flex-1 bg-neutral-200/70" />
+                        <div className="h-px flex-1 bg-neutral-200/70" />
+                    </div>
+
                     <div className="flex items-center justify-between">
                         <div>
-                            <h2 className="text-1xl sm:text-3xl font-semibold tracking-tight text-neutral-700">Deployments</h2>
+                            <h2 className="text-1xl sm:text-3xl font-semibold tracking-tight text-neutral-700">
+                                Deployments
+                            </h2>
+                            <p className="mt-2 text-xs text-neutral-500">
+                                These are the live websites you currently have published.
+                            </p>
                         </div>
                     </div>
+
                     <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
-                        <strong className="text-accent">Step 4</strong> — Track your deployments, customize and redeploy.
+                        <strong className="text-accent">Step 4</strong> — Track or modify your deployments here.
                     </div>
                 </div>
+
             </div>
 
             {editorOpen && (
