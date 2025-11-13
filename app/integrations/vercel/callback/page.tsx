@@ -1,15 +1,18 @@
 // app/integrations/vercel/callback/page.tsx
-"use client";
-
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 
 const ACCENT = "#f55f2a";
 
-export default function VercelIntegrationCallbackPage() {
-    const search = useSearchParams();
-    const status = search.get("status") ?? "success";
-    const reason = search.get("reason") ?? null;
+type PageProps = {
+    searchParams: { [key: string]: string | string[] | undefined };
+};
+
+export default function VercelIntegrationCallbackPage({ searchParams }: PageProps) {
+    const statusParam = searchParams.status;
+    const reasonParam = searchParams.reason;
+
+    const status = Array.isArray(statusParam) ? statusParam[0] : statusParam ?? "success";
+    const reason = Array.isArray(reasonParam) ? reasonParam[0] : null;
     const isSuccess = status === "success";
 
     const title = isSuccess
@@ -113,9 +116,7 @@ export default function VercelIntegrationCallbackPage() {
                     </div>
 
                     <div className="mt-5 border-t border-white/5 pt-4 text-[11px] text-zinc-500 text-center">
-                        <p>
-                            If this window was opened automatically by Vercel, you can now close it.
-                        </p>
+                        <p>If this window was opened automatically by Vercel, you can now close it.</p>
                     </div>
                 </div>
             </div>
