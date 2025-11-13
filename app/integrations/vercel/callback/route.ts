@@ -1,8 +1,35 @@
 // app/api/vercel/oauth/callback/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import admin from "firebase-admin";
+import { verifySession } from "../../../_lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+if (!admin.apps.length) {
+    // FIREBASE_SERVICE_ACCOUNT should be a JSON string (or base64 of JSON)
+    const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
+    if (!raw) {
+        throw new Error("FIREBASE_SERVICE_ACCOUNT is not set");
+    }
+
+    let svcJson: admin.ServiceAccount;
+
+    try {
+        // try plain JSON first
+        svcJson = JSON.parse(raw);
+    } catch {
+        // fall back to base64-encoded JSON (common on Vercel)
+        const decoded = Buffer.from(raw, "base64").toString("utf8");
+        svcJson = JSON.parse(decoded);
+    }
+
+    admin.initializeApp({
+        credential: admin.credential.cert(svcJson),
+    });
+}
+
+const db = admin.firestore();
 
 const env = {
     clientId: process.env.VERCEL_OAUTH_CLIENT_ID,
@@ -14,7 +41,6 @@ const env = {
 };
 
 export async function GET(req: NextRequest) {
-    // Sanity check env so you fail hard if misconfigured
     if (!env.clientId || !env.clientSecret || !env.redirectBase) {
         return NextResponse.json({ error: "server_misconfigured" }, { status: 500 });
     }
@@ -26,7 +52,6 @@ export async function GET(req: NextRequest) {
     const cookieState = req.cookies.get("vercel_oauth_state")?.value ?? null;
 
     if (!code || !returnedState || !cookieState || returnedState !== cookieState) {
-        // Redirect to UI with explicit error reason
         const failUrl = new URL("/integrations/vercel/callback", env.redirectBase);
         failUrl.searchParams.set("status", "error");
         failUrl.searchParams.set("reason", "state");
@@ -51,7 +76,6 @@ export async function GET(req: NextRequest) {
         installation_id?: string;
         user_id?: string;
         team_id?: string;
-        // refresh_token, expires_at, etc if enabled
     };
 
     try {
@@ -87,12 +111,41 @@ export async function GET(req: NextRequest) {
         return res;
     }
 
-    // TODO: persist tokenJson.access_token etc. somewhere secure, server-side only.
-    //
-    // Security notes:
-    // - Never expose access_token to the browser.
-    // - Store it against your user/server identity (e.g. in a DB or secret store).
-    // - If you add refresh tokens later, keep them encrypted-at-rest.
+    // tie the integration to the logged-in Kloner user (via your session cookie)
+    let uid: string | null = null;
+    try {
+        const decoded = await verifySession(req); // your helper: { uid, email, ... }
+        uid = decoded.uid;
+    } catch {
+        uid = null;
+    }
+
+    if (uid) {
+        const now = admin.firestore.FieldValue.serverTimestamp();
+
+        const vercelRef = db
+            .collection("kloner_users")
+            .doc(uid)
+            .collection("integrations")
+            .doc("vercel");
+
+        // NOTE: in a real system you’d encrypt access_token at rest
+        await vercelRef.set(
+            {
+                connected: true,
+                accessToken: tokenJson.access_token,
+                tokenType: tokenJson.token_type,
+                vercelUserId: tokenJson.user_id ?? null,
+                vercelTeamId: tokenJson.team_id ?? null,
+                installationId: tokenJson.installation_id ?? null,
+                updatedAt: now,
+                createdAt: now,
+            },
+            { merge: true },
+        );
+    } else {
+        console.warn("Vercel OAuth callback with no authenticated Kloner user");
+    }
 
     const successUrl = new URL("/integrations/vercel/callback", env.redirectBase);
     successUrl.searchParams.set("status", "success");
