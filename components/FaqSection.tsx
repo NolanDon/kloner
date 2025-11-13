@@ -14,11 +14,11 @@ const GROUPS: Group[] = [
         items: [
             {
                 q: 'How long does this process take?',
-                a: 'Whether you choose to customize or not will differ this timeframe, without customization, your deployment from the time you enter your url can take as little as 10 minutes.'
+                a: 'Whether you choose to customize or not will differ this timeframe, without customization, your deployment can be live in as little as 10 minutes.'
             },
             {
                 q: 'What exactly gets exported?',
-                a: 'A clean Next.js project, componentized layouts, optimized images, subset fonts.'
+                a: 'A clean, secure and well-structured project, componentized layouts, optimized images, subset fonts.'
             },
             {
                 q: 'Will forms and client scripts work?',
