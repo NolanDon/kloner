@@ -117,7 +117,16 @@ export default function SettingsPage(): JSX.Element {
             .map((b) => b.toString(16).padStart(2, "0"))
             .join("");
 
+        // optional: keep for debugging
         localStorage.setItem("kloner_vercel_latest_csrf", state);
+
+        // IMPORTANT: set the cookie the callback expects
+        document.cookie = [
+            `vercel_oauth_state=${state}`,
+            "Path=/",
+            "Max-Age=600",           // 10 minutes
+            "SameSite=Lax"
+        ].join("; ");
 
         const link = `https://vercel.com/integrations/${VERCEL_INTEGRATION_SLUG}/new?state=${state}`;
         window.location.assign(link);
