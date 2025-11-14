@@ -34,124 +34,110 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
-/**
- * OAuth callback from Vercel.
- *
- * Flow:
- * 1. Validate `state` from cookie vs query param (CSRF protection).
- * 2. Verify the user session (we must know which Kloner user to attach the token to).
- * 3. Exchange `code` for an access token with Vercel.
- * 4. Persist the token + metadata under kloner_users/{uid}/integrations/vercel.
- * 5. Redirect to a UI page with ?status=success|error so the UI can react accordingly.
- */
 export async function GET(req: NextRequest) {
-    console.log("[vercel-oauth] incoming", req.url);
-
-    const url = new URL(req.url);
-    const code = url.searchParams.get("code");
-    const state = url.searchParams.get("state");
-    const teamId = url.searchParams.get("teamId") || undefined;
-    const configurationId = url.searchParams.get("configurationId") || undefined;
-
-    const cookieState = req.cookies.get("vercel_oauth_state")?.value;
-
-    console.log("[vercel-oauth] query", { hasCode: !!code, state, teamId, configurationId });
-    console.log("[vercel-oauth] cookieState", cookieState);
+    const base = process.env.OAUTH_REDIRECT_BASE_PROD || "https://kloner.app";
 
     const redirectWithStatus = (status: "success" | "error", reason?: string) => {
-        const base = process.env.OAUTH_REDIRECT_BASE_PROD || "https://kloner.app";
         const next = new URL("/integrations/vercel/callback", base);
         next.searchParams.set("status", status);
         if (reason) next.searchParams.set("reason", reason);
-
-        console.log("[vercel-oauth] redirect", { status, reason, to: next.toString() });
 
         const res = NextResponse.redirect(next.toString(), { status: 302 });
         res.cookies.set("vercel_oauth_state", "", { maxAge: 0, path: "/" });
         return res;
     };
 
-    if (!code || !state || !cookieState || state !== cookieState) {
-        console.warn("[vercel-oauth] state mismatch", { code: !!code, state, cookieState });
-        return redirectWithStatus("error", "state");
-    }
-
-    let decoded;
     try {
-        decoded = await verifySession(req);
-        console.log("[vercel-oauth] verified session", { uid: decoded.uid });
+        const url = new URL(req.url);
+        const code = url.searchParams.get("code");
+        const state = url.searchParams.get("state");
+        const teamId = url.searchParams.get("teamId") || undefined;
+        const configurationId = url.searchParams.get("configurationId") || undefined;
+
+        const cookieState = req.cookies.get("vercel_oauth_state")?.value;
+
+        // 1) CSRF / state validation
+        if (!code || !state || !cookieState || state !== cookieState) {
+            console.warn("[vercel-oauth] state mismatch", { code: !!code, state, cookieState });
+            return redirectWithStatus("error", "state");
+        }
+
+        // 2) Verify Kloner session (must be logged in)
+        let decoded;
+        try {
+            decoded = await verifySession(req); // { uid, email, claims? }
+        } catch (err) {
+            console.error("[vercel-oauth] verifySession failed", err);
+            // Explicitly mark as auth failure instead of silently “success”
+            return redirectWithStatus("error", "auth");
+        }
+
+        const uid = decoded.uid as string;
+
+        // 3) Exchange code → access token with Vercel
+        const redirectUri =
+            process.env.NODE_ENV === "production"
+                ? `${base}/api/vercel/oauth/callback`
+                : "http://localhost:3000/api/vercel/oauth/callback";
+
+        const body = new URLSearchParams({
+            code,
+            client_id: process.env.VERCEL_OAUTH_CLIENT_ID || "",
+            client_secret: process.env.VERCEL_OAUTH_CLIENT_SECRET || "",
+            redirect_uri: redirectUri,
+        });
+
+        let json: any;
+        try {
+            const tokenRes = await fetch("https://api.vercel.com/v2/oauth/access_token", {
+                method: "POST",
+                headers: { "content-type": "application/x-www-form-urlencoded" },
+                body,
+            });
+
+            if (!tokenRes.ok) {
+                const text = await tokenRes.text();
+                console.error("[vercel-oauth] token exchange failed", tokenRes.status, text);
+                return redirectWithStatus("error", "token");
+            }
+
+            json = await tokenRes.json();
+        } catch (err) {
+            console.error("[vercel-oauth] token exchange threw", err);
+            return redirectWithStatus("error", "token");
+        }
+
+        // 4) Persist token under kloner_users/{uid}/integrations/vercel
+        const now = admin.firestore.FieldValue.serverTimestamp();
+
+        try {
+            const userRef = db.collection("kloner_users").doc(uid);
+            const vercelRef = userRef.collection("integrations").doc("vercel");
+
+            await vercelRef.set(
+                {
+                    accessToken: json.access_token,
+                    tokenType: json.token_type,
+                    vercelUserId: json.user_id ?? null,
+                    vercelTeamId: teamId ?? json.team_id ?? null,
+                    configurationId: configurationId ?? null,
+                    scope: json.scope ?? null,
+                    updatedAt: now,
+                    createdAt: now,
+                    connected: true,
+                },
+                { merge: true },
+            );
+        } catch (err) {
+            console.error("[vercel-oauth] Firestore write failed", err, { uid });
+            // Critical: do NOT claim success if Firestore failed
+            return redirectWithStatus("error", "db");
+        }
+
+        // 5) Only here is it actually successful
+        return redirectWithStatus("success");
     } catch (err) {
-        console.warn("[vercel-oauth] verifySession failed", err);
-        const base = process.env.OAUTH_REDIRECT_BASE_PROD || "https://kloner.app";
-        const loginUrl = new URL("/login", base);
-        loginUrl.searchParams.set("from", "vercel");
-
-        const res = NextResponse.redirect(loginUrl.toString(), { status: 302 });
-        res.cookies.set("vercel_oauth_state", "", { maxAge: 0, path: "/" });
-        return res;
+        console.error("[vercel-oauth] unexpected error", err);
+        return redirectWithStatus("error", "internal");
     }
-
-    const uid = decoded.uid as string;
-
-    const redirectUri =
-        process.env.NODE_ENV === "production"
-            ? "https://kloner.app/api/vercel/oauth/callback"
-            : "http://localhost:3000/api/vercel/oauth/callback";
-
-    const body = new URLSearchParams({
-        code,
-        client_id: process.env.VERCEL_OAUTH_CLIENT_ID || "",
-        client_secret: process.env.VERCEL_OAUTH_CLIENT_SECRET || "",
-        redirect_uri: redirectUri,
-    });
-
-    console.log("[vercel-oauth] exchanging code for token", { redirectUri });
-
-    const tokenRes = await fetch("https://api.vercel.com/v2/oauth/access_token", {
-        method: "POST",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        body,
-    });
-
-    if (!tokenRes.ok) {
-        const text = await tokenRes.text();
-        console.error("[vercel-oauth] token exchange failed", tokenRes.status, text);
-        return redirectWithStatus("error", "token");
-    }
-
-    const json: any = await tokenRes.json();
-    console.log("[vercel-oauth] token response", {
-        hasToken: !!json.access_token,
-        user_id: json.user_id,
-        team_id: json.team_id,
-        scope: json.scope,
-    });
-
-    const now = admin.firestore.FieldValue.serverTimestamp();
-
-    const userRef = db.collection("kloner_users").doc(uid);
-    const vercelRef = userRef.collection("integrations").doc("vercel");
-
-    console.log("[vercel-oauth] writing Firestore", {
-        path: `kloner_users/${uid}/integrations/vercel`,
-    });
-
-    await vercelRef.set(
-        {
-            accessToken: json.access_token,
-            tokenType: json.token_type,
-            vercelUserId: json.user_id ?? null,
-            vercelTeamId: teamId ?? json.team_id ?? null,
-            configurationId: configurationId ?? null,
-            scope: json.scope ?? null,
-            updatedAt: now,
-            createdAt: now,
-            connected: true,
-        },
-        { merge: true },
-    );
-
-    console.log("[vercel-oauth] Firestore write complete");
-
-    return redirectWithStatus("success");
 }

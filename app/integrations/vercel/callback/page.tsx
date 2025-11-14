@@ -25,16 +25,19 @@ export default function VercelIntegrationCallbackPage({ searchParams }: PageProp
             ? "The security check for this OAuth request failed. This usually happens if the link was reused or the session expired. Try connecting Vercel again from Kloner."
             : reason === "token"
                 ? "Vercel returned an error while exchanging the authorization code. Try again from Kloner; if it keeps failing, check your Vercel OAuth app configuration."
-                : "Something went wrong while talking to Vercel. Try reconnecting from Kloner.";
+                : reason === "auth"
+                    ? "We couldn’t confirm your Kloner session while handling the Vercel callback. Sign in again on Kloner, then reconnect Vercel from the dashboard."
+                    : reason === "db"
+                        ? "We connected to Vercel but couldn’t save the integration in your Kloner account. Nothing was linked. Try again in a moment."
+                        : "Something went wrong while talking to Vercel. Try reconnecting from Kloner.";
 
     return (
         <main className="min-h-screen bg-black text-white flex items-center justify-center px-4">
             <div className="max-w-lg w-full">
                 <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-zinc-900 to-black/60 px-6 sm:px-8 py-8 sm:py-10 shadow-[0_24px_80px_rgba(0,0,0,0.6)]">
-                    {/* animated badge */}
+                    {/* badge */}
                     <div className="flex justify-center mb-6">
                         <div className="relative h-32 w-32 sm:h-36 sm:w-36 flex items-center justify-center">
-                            {/* pulsing ring – only if success */}
                             {isSuccess && (
                                 <>
                                     <span
@@ -47,7 +50,6 @@ export default function VercelIntegrationCallbackPage({ searchParams }: PageProp
                                     />
                                 </>
                             )}
-                            {/* solid circle + icon */}
                             <span
                                 className="relative inline-flex h-16 w-16 items-center justify-center rounded-full shadow-lg"
                                 style={{
@@ -58,22 +60,14 @@ export default function VercelIntegrationCallbackPage({ searchParams }: PageProp
                                 }}
                             >
                                 {isSuccess ? (
-                                    <svg
-                                        viewBox="0 0 24 24"
-                                        className="h-8 w-8 text-white"
-                                        aria-hidden="true"
-                                    >
+                                    <svg viewBox="0 0 24 24" className="h-8 w-8 text-white" aria-hidden="true">
                                         <path
                                             fill="currentColor"
                                             d="M9.55 16.6 5.4 12.45l1.4-1.4 2.75 2.75 7.65-7.65 1.4 1.4Z"
                                         />
                                     </svg>
                                 ) : (
-                                    <svg
-                                        viewBox="0 0 24 24"
-                                        className="h-8 w-8 text-white"
-                                        aria-hidden="true"
-                                    >
+                                    <svg viewBox="0 0 24 24" className="h-8 w-8 text-white" aria-hidden="true">
                                         <path
                                             fill="currentColor"
                                             d="M12 2a10 10 0 1 0 .001 20.001A10 10 0 0 0 12 2Zm0 5a1 1 0 0 1 .993.883L13 8v6a1 1 0 0 1-1.993.117L11 14V8a1 1 0 0 1 1-1Zm0 10a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5Z"
