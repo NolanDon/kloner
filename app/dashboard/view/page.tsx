@@ -3,7 +3,7 @@
 
 import React, { useEffect, useMemo, useState, useCallback, useRef, memo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { onAuthStateChanged, User as FirebaseUser } from "firebase/auth";
+import { onAuthStateChanged, User as FirebaseUser, getIdTokenResult } from "firebase/auth";
 import {
     collection,
     query,
@@ -32,18 +32,29 @@ import {
     Rocket,
     Plus,
     ChevronDown,
-    AlertTriangle,
-    Maximize2,
     Hammer,
     Eye,
-    HammerIcon,
     CheckCircle2,
     Timer,
+    Lock,
+    Crown,
 } from "lucide-react";
+
+import {
+    isHttpUrl,
+    normUrl,
+    hash64,
+    ensureHttp,
+    extractHashFromKey,
+    shortVersionFromShotPath,
+    rendersEqual,
+    CREDIT_LIMITS,
+    type UserTier,
+} from "./page.helpers";
+
 
 const ACCENT = "#f55f2a";
 
-/* ───────── types ───────── */
 type UrlDoc = {
     url: string;
     urlHash?: string;
@@ -71,76 +82,6 @@ type RenderDoc = {
     lastExportedAt?: any;
 };
 
-/* ───────── utils ───────── */
-function isHttpUrl(s?: string): s is string {
-    if (!s) return false;
-    try {
-        const u = new URL(s);
-        return u.protocol === "http:" || u.protocol === "https:";
-    } catch {
-        return false;
-    }
-}
-function normUrl(s: string): string {
-    try {
-        const u = new URL(s);
-        u.hash = "";
-        return u.toString();
-    } catch {
-        return s.trim();
-    }
-}
-function hash64(s: string): string {
-    let h = 0;
-    for (let i = 0; i < s.length; i++) {
-        h = (h << 5) - h + s.charCodeAt(i);
-        h |= 0;
-    }
-    return Math.abs(h).toString(36);
-}
-function ensureHttp(u: string): string {
-    if (!u) return "";
-    return /^https?:\/\//i.test(u) ? u : `https://${u.replace(/^\/+/, "")}`;
-}
-async function listAllDeep(root: StorageReference): Promise<StorageReference[]> {
-    const out: StorageReference[] = [];
-    async function walk(ref: StorageReference) {
-        const l = await listAll(ref);
-        out.push(...l.items);
-        await Promise.all(l.prefixes.map(walk));
-    }
-    await walk(root);
-    return out;
-}
-function tsToMs(v: any): number {
-    if (!v) return 0;
-    if (v instanceof Date) return v.getTime();
-    if (typeof v?.toDate === "function") return (v as Timestamp).toDate().getTime();
-    if (typeof v === "number") return v;
-    return 0;
-}
-function extractHashFromKey(key?: string | null): string | null {
-    if (!key) return null;
-    const file = (key.split("?")[0] || "").split("/").pop() || "";
-    const stem = file.replace(/\.(jpe?g|png|webp|gif|bmp|tiff)$/i, "");
-    const m = stem.match(/(\d+)$/) || stem.match(/([A-Za-z0-9]+)$/);
-    return m ? m[1] || m[0] : null;
-}
-function shortVersionFromShotPath(
-    path: string,
-    fallbackHash?: string | null,
-    minChars = 4
-): string {
-    const base = extractHashFromKey(path) || fallbackHash || "";
-    if (!base) return "v";
-    const digitTail = (base.match(/(\d+)$/) || [])[1] || "";
-    if (digitTail.length >= minChars) return digitTail.slice(-minChars);
-    const token = base.replace(/[^A-Za-z0-9]/g, "");
-    if (token.length >= minChars) return token.slice(-minChars);
-    return token || "v";
-}
-
-/* ───────── tiny toast ───────── */
 type ToastMsg = { id: string; text: string; tone?: "ok" | "warn" | "err" };
 function useToasts() {
     const [toasts, setToasts] = useState<ToastMsg[]>([]);
@@ -171,25 +112,6 @@ function Toasts({ toasts }: { toasts: ToastMsg[] }) {
     );
 }
 
-/* ───────── cooldown helper ───────── */
-function useCooldown(initialUntil = 0) {
-    const [until, setUntil] = useState<number>(initialUntil);
-    const [now, setNow] = useState<number>(Date.now());
-    useEffect(() => {
-        if (until <= Date.now()) return;
-        const t = setInterval(() => {
-            setNow(Date.now());
-            if (Date.now() >= until) clearInterval(t);
-        }, 500);
-        return () => clearInterval(t);
-    }, [until]);
-    const remaining = Math.max(0, Math.ceil((until - now) / 1000));
-    const start = useCallback((ms: number) => setUntil(Date.now() + ms), []);
-    const clear = useCallback(() => setUntil(0), []);
-    return { remaining, active: remaining > 0, start, clear };
-}
-
-/* ───────── overlay spinner ───────── */
 const CenterSpinner = memo(function CenterSpinner({
     label = "Loading…",
     dim = true,
@@ -200,10 +122,7 @@ const CenterSpinner = memo(function CenterSpinner({
     size?: number;
 }) {
     return (
-        <div
-            className={`absolute inset-0 z-30 grid place-items-center ${dim ? "bg-white/85" : ""
-                }`}
-        >
+        <div className={`absolute inset-0 z-30 grid place-items-center ${dim ? "bg-white/85" : ""}`}>
             <div
                 className="flex items-center gap-2 rounded border px-3 py-1.5 text-xs text-neutral-800 bg-white"
                 role="status"
@@ -225,23 +144,6 @@ const CenterSpinner = memo(function CenterSpinner({
     );
 });
 
-/* ───────── shallow equality ───────── */
-function rendersEqual(a: Array<{ id: string } & RenderDoc>, b: Array<{ id: string } & RenderDoc>): boolean {
-    if (a === b) return true;
-    if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i++) {
-        const x = a[i];
-        const y = b[i];
-        if (x.id !== y.id) return false;
-        if (x.status !== y.status) return false;
-        if ((x.html || "") !== (y.html || "")) return false;
-        if ((x.key || "") !== (y.key || "")) return false;
-        if ((x.nameHint || "") !== (y.nameHint || "")) return false;
-    }
-    return true;
-}
-
-/* ───────── ghost action card ───────── */
 const GhostActionCard = memo(function GhostActionCard({
     title,
     subtitle,
@@ -274,13 +176,20 @@ const GhostActionCard = memo(function GhostActionCard({
     );
 });
 
-/* ───────── main ───────── */
 export default function PreviewPage(): JSX.Element {
     const router = useRouter();
     const search = useSearchParams();
     const { toasts, push } = useToasts();
 
     const [user, setUser] = useState<FirebaseUser | null>(null);
+    const [userTier, setUserTier] = useState<UserTier>("unknown");
+    const [credits, setCredits] = useState<{ screenshotUsed: number; previewUsed: number; dateKey: string }>({
+        screenshotUsed: 0,
+        previewUsed: 0,
+        dateKey: "",
+    });
+    const [showCreditsPaywall, setShowCreditsPaywall] = useState<null | "screenshot" | "preview" | "deploy">(null);
+    const [showUpgradeAfterCustomize, setShowUpgradeAfterCustomize] = useState(false);
 
     const [urls, setUrls] = useState<Array<{ id: string } & UrlDoc>>([]);
     const [urlsLoading, setUrlsLoading] = useState<boolean>(true);
@@ -314,6 +223,68 @@ export default function PreviewPage(): JSX.Element {
     const [optimisticByKey, setOptimisticByKey] = useState<Record<string, { id: string } & RenderDoc>>({});
 
     const didAutoSelectRef = useRef(false);
+
+    const todayKey = useMemo(() => new Date().toISOString().slice(0, 10), []);
+    const tierLimits = useMemo(() => CREDIT_LIMITS[userTier] || CREDIT_LIMITS.free, [userTier]);
+
+
+    async function listAllDeep(root: StorageReference): Promise<StorageReference[]> {
+        const out: StorageReference[] = [];
+        async function walk(ref: StorageReference) {
+            const l = await listAll(ref);
+            out.push(...l.items);
+            await Promise.all(l.prefixes.map(walk));
+        }
+        await walk(root);
+        return out;
+    }
+
+    const screenshotRemaining = tierLimits.screenshotDaily
+        ? Math.max(tierLimits.screenshotDaily - credits.screenshotUsed, 0)
+        : null;
+    const previewRemaining = tierLimits.previewDaily
+        ? Math.max(tierLimits.previewDaily - credits.previewUsed, 0)
+        : null;
+
+    function persistCredits(next: { screenshotUsed: number; previewUsed: number }) {
+        if (!user) {
+            setCredits({ screenshotUsed: next.screenshotUsed, previewUsed: next.previewUsed, dateKey: todayKey });
+            return;
+        }
+        const key = `kloner.credits.${user.uid}.${todayKey}`;
+        try {
+            localStorage.setItem(
+                key,
+                JSON.stringify({ screenshotUsed: next.screenshotUsed, previewUsed: next.previewUsed })
+            );
+        } catch { }
+        setCredits({ screenshotUsed: next.screenshotUsed, previewUsed: next.previewUsed, dateKey: todayKey });
+    }
+
+    function canUseScreenshotCredit(): boolean {
+        if (!tierLimits.screenshotDaily) return true;
+        return credits.screenshotUsed < tierLimits.screenshotDaily;
+    }
+    function canUsePreviewCredit(): boolean {
+        if (!tierLimits.previewDaily) return true;
+        return credits.previewUsed < tierLimits.previewDaily;
+    }
+    function markScreenshotSuccess() {
+        if (!tierLimits.screenshotDaily) return;
+        const next = { screenshotUsed: credits.screenshotUsed + 1, previewUsed: credits.previewUsed };
+        persistCredits(next);
+    }
+    function markPreviewSuccess() {
+        if (!tierLimits.previewDaily) return;
+        const next = { screenshotUsed: credits.screenshotUsed, previewUsed: credits.previewUsed + 1 };
+        persistCredits(next);
+    }
+
+    useEffect(() => {
+        if (credits.dateKey && credits.dateKey !== todayKey) {
+            persistCredits({ screenshotUsed: 0, previewUsed: 0 });
+        }
+    }, [todayKey, credits.dateKey]);
 
     async function loadShotsForDoc(u: FirebaseUser, targetUrl: string, data: UrlDoc) {
         const prefix = data.screenshotsPrefix || `kloner-screenshots/${u.uid}/${data.urlHash || hash64(targetUrl)}`;
@@ -400,8 +371,6 @@ export default function PreviewPage(): JSX.Element {
         if (renderId) setLockUntilByRender((m) => ({ ...m, [renderId]: Math.max(m[renderId] || 0, until) }));
     }, []);
 
-    const rescanCooldown = useCooldown(0);
-
     const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
     const pollStopAt = useRef<number>(0);
 
@@ -441,20 +410,41 @@ export default function PreviewPage(): JSX.Element {
 
     const targetHash = useMemo(() => (isHttpUrl(targetUrl) ? hash64(targetUrl) : null), [targetUrl]);
 
-    /* auth */
     useEffect(() => {
-        const unsub = onAuthStateChanged(auth, (u) => {
+        const unsub = onAuthStateChanged(auth, async (u) => {
             if (!u) {
                 const next = encodeURIComponent(`/dashboard/view?u=${encodeURIComponent(targetUrl || "")}`);
                 router.replace(`/login?next=${next}`);
                 return;
             }
             setUser(u);
+            try {
+                const result = await getIdTokenResult(u, true);
+                const claimTier = (result.claims.userTier as string) || "free";
+                const normalized: UserTier =
+                    claimTier === "pro" || claimTier === "agency" || claimTier === "enterprise"
+                        ? (claimTier as UserTier)
+                        : "free";
+                setUserTier(normalized);
+                const key = `kloner.credits.${u.uid}.${todayKey}`;
+                let parsed = { screenshotUsed: 0, previewUsed: 0 };
+                try {
+                    const raw = localStorage.getItem(key);
+                    if (raw) parsed = JSON.parse(raw) as { screenshotUsed: number; previewUsed: number };
+                } catch { }
+                setCredits({
+                    screenshotUsed: parsed.screenshotUsed || 0,
+                    previewUsed: parsed.previewUsed || 0,
+                    dateKey: todayKey,
+                });
+            } catch {
+                setUserTier("free");
+                setCredits({ screenshotUsed: 0, previewUsed: 0, dateKey: todayKey });
+            }
         });
         return () => unsub();
-    }, [router, targetUrl]);
+    }, [router, targetUrl, todayKey]);
 
-    /* fetch user's URL list */
     useEffect(() => {
         (async () => {
             if (!user) {
@@ -478,7 +468,9 @@ export default function PreviewPage(): JSX.Element {
         })();
     }, [user]);
 
-    /* screenshots for selected URL */
+    // Track last screenshot-related state to avoid reloading shots on every doc update
+    const lastDocShotsKeyRef = useRef<string>("");
+
     useEffect(() => {
         let unsubUrlDoc: Unsubscribe | null = null;
         (async () => {
@@ -514,12 +506,28 @@ export default function PreviewPage(): JSX.Element {
                 setDocSnap(first);
                 const initial = (first.data() || {}) as UrlDoc;
                 setDocData(initial);
+
+                // seed key and load once
+                lastDocShotsKeyRef.current = JSON.stringify({
+                    paths: initial.screenshotPaths || [],
+                    prefix: initial.screenshotsPrefix || "",
+                });
                 await loadShotsForDoc(user, targetUrl, initial);
 
+                // live updates: only reload shots if screenshot-related fields changed
                 unsubUrlDoc = onSnapshot(first.ref, async (fresh) => {
                     const data = (fresh.data() || {}) as UrlDoc;
                     setDocData(data);
-                    await loadShotsForDoc(user, targetUrl, data);
+
+                    const currentKey = JSON.stringify({
+                        paths: data.screenshotPaths || [],
+                        prefix: data.screenshotsPrefix || "",
+                    });
+
+                    if (currentKey !== lastDocShotsKeyRef.current) {
+                        lastDocShotsKeyRef.current = currentKey;
+                        await loadShotsForDoc(user, targetUrl, data);
+                    }
                 });
             } catch (e: any) {
                 setErr(e?.message || "Failed to load screenshots.");
@@ -532,96 +540,98 @@ export default function PreviewPage(): JSX.Element {
         };
     }, [user, targetUrl]);
 
-    /* renders list filtered to selected URL */
-    const refreshRenders = useCallback(async () => {
-        if (!user) return;
-        if (!targetUrl || !isHttpUrl(targetUrl)) {
-            setRenders((prev) => (prev.length ? [] : prev));
-            return;
-        }
-        setLoadingRenders(true);
-        try {
-            const base = collection(db, "kloner_users", user.uid, "kloner_renders");
-            const qs = query(
-                base,
-                where("archived", "in", [false, null]),
-                orderBy("createdAt", "desc"),
-                limit(100)
-            );
-            const snap = await getDocs(qs);
-            const all = snap.docs.map((d) => ({ id: d.id, ...(d.data() as RenderDoc) }));
-
-            const filtered = all.filter((r) => {
-                const byUrl = (r.url || "") === targetUrl;
-                const byHash = !!targetHash && r.urlHash === targetHash;
-                const byKeyHash = !!targetHash && extractHashFromKey(r.key) === targetHash;
-                return byUrl || byHash || byKeyHash;
-            });
-
-            const now = Date.now();
-            for (const r of filtered) {
-                const key = r.key || "";
-                if (key && lockUntilByKey[key] && lockUntilByKey[key] > now) {
-                    setLockUntilByRender((m) => ({
-                        ...m,
-                        [r.id]: Math.max(m[r.id] || 0, lockUntilByKey[key]),
-                    }));
-                }
+    const refreshRenders = useCallback(
+        async () => {
+            if (!user) return;
+            if (!targetUrl || !isHttpUrl(targetUrl)) {
+                setRenders((prev) => (prev.length ? [] : prev));
+                return;
             }
+            setLoadingRenders(true);
+            try {
+                const base = collection(db, "kloner_users", user.uid, "kloner_renders");
+                const qs = query(
+                    base,
+                    where("archived", "in", [false, null]),
+                    orderBy("createdAt", "desc"),
+                    limit(100)
+                );
+                const snap = await getDocs(qs);
+                const all = snap.docs.map((d) => ({ id: d.id, ...(d.data() as RenderDoc) }));
 
-            const withOptimistic = [...filtered];
-            for (const [k, opt] of Object.entries(optimisticByKey)) {
-                const exists = filtered.some((r) => r.key === k);
-                if (!exists) withOptimistic.unshift(opt);
-                else {
-                    setOptimisticByKey((m) => {
-                        const n = { ...m };
-                        delete n[k];
-                        return n;
-                    });
+                const filtered = all.filter((r) => {
+                    const byUrl = (r.url || "") === targetUrl;
+                    const byHash = !!targetHash && r.urlHash === targetHash;
+                    const byKeyHash = !!targetHash && extractHashFromKey(r.key) === targetHash;
+                    return byUrl || byHash || byKeyHash;
+                });
+
+                const now = Date.now();
+                for (const r of filtered) {
+                    const key = r.key || "";
+                    if (key && lockUntilByKey[key] && lockUntilByKey[key] > now) {
+                        setLockUntilByRender((m) => ({
+                            ...m,
+                            [r.id]: Math.max(m[r.id] || 0, lockUntilByKey[key]),
+                        }));
+                    }
                 }
-            }
 
-            setRenders((prev) => (rendersEqual(prev, withOptimistic) ? prev : withOptimistic));
-
-            const anyQueued = withOptimistic.some((r) => r.status === "queued");
-            if (anyQueued) {
-                if (!pollTimer.current) {
-                    pollStopAt.current = now + 10 * 60 * 1000;
-                    pollTimer.current = setInterval(async () => {
-                        await refreshRenders();
-                        if (Date.now() > pollStopAt.current && pollTimer.current) {
-                            clearInterval(pollTimer.current);
-                            pollTimer.current = null;
-                        }
-                    }, 5000);
-                } else {
-                    pollStopAt.current = Math.max(pollStopAt.current, now + 5 * 60 * 1000);
-                }
-            } else if (pollTimer.current) {
-                clearInterval(pollTimer.current);
-                pollTimer.current = null;
-            }
-
-            setPendingByKey((prev) => {
-                const next = { ...prev };
-                withOptimistic.forEach((r) => {
-                    if (r.key && (r.status === "ready" || r.status === "failed")) {
-                        delete next[r.key];
+                const withOptimistic = [...filtered];
+                for (const [k, opt] of Object.entries(optimisticByKey)) {
+                    const exists = filtered.some((r) => r.key === k);
+                    if (!exists) withOptimistic.unshift(opt);
+                    else {
                         setOptimisticByKey((m) => {
-                            if (!m[r.key!]) return m;
                             const n = { ...m };
-                            delete n[r.key!];
+                            delete n[k];
                             return n;
                         });
                     }
+                }
+
+                setRenders((prev) => (rendersEqual(prev, withOptimistic) ? prev : withOptimistic));
+
+                const anyQueued = withOptimistic.some((r) => r.status === "queued");
+                if (anyQueued) {
+                    if (!pollTimer.current) {
+                        pollStopAt.current = now + 10 * 60 * 1000;
+                        pollTimer.current = setInterval(async () => {
+                            await refreshRenders();
+                            if (Date.now() > pollStopAt.current && pollTimer.current) {
+                                clearInterval(pollTimer.current);
+                                pollTimer.current = null;
+                            }
+                        }, 5000);
+                    } else {
+                        pollStopAt.current = Math.max(pollStopAt.current, now + 5 * 60 * 1000);
+                    }
+                } else if (pollTimer.current) {
+                    clearInterval(pollTimer.current);
+                    pollTimer.current = null;
+                }
+
+                setPendingByKey((prev) => {
+                    const next = { ...prev };
+                    withOptimistic.forEach((r) => {
+                        if (r.key && (r.status === "ready" || r.status === "failed")) {
+                            delete next[r.key];
+                            setOptimisticByKey((m) => {
+                                if (!m[r.key!]) return m;
+                                const n = { ...m };
+                                delete n[r.key!];
+                                return n;
+                            });
+                        }
+                    });
+                    return next;
                 });
-                return next;
-            });
-        } finally {
-            setLoadingRenders(false);
-        }
-    }, [user, targetUrl, targetHash, optimisticByKey, lockUntilByKey]);
+            } finally {
+                setLoadingRenders(false);
+            }
+        },
+        [user, targetUrl, targetHash, optimisticByKey, lockUntilByKey]
+    );
 
     useEffect(() => {
         if (!user || !targetUrl || !isHttpUrl(targetUrl)) {
@@ -697,10 +707,15 @@ export default function PreviewPage(): JSX.Element {
     const buildFromKey = useCallback(
         async (storageKey: string) => {
             if (!user) return;
-            const alreadyQueued = renders.find(
-                (r) => r.key === storageKey && r.status === "queued" && !r.archived
-            );
+            const alreadyQueued = renders.find((r) => r.key === storageKey && r.status === "queued" && !r.archived);
             if (alreadyQueued || pendingByKey[storageKey]) return;
+
+            if (!canUsePreviewCredit()) {
+                push("You have used all available preview credits for today on this plan.", "warn");
+                setShowCreditsPaywall("preview");
+                return;
+            }
+
             if (!window.confirm("Generate an editable preview from this screenshot?")) return;
 
             const optimisticId = `local_${hash64(`${user.uid}|${storageKey}|${Date.now()}`)}`;
@@ -744,15 +759,15 @@ export default function PreviewPage(): JSX.Element {
                 const j = await r.json().catch(() => ({} as any));
                 if (r.status === 202) {
                     push("Server accepted preview job", "ok");
+                    markPreviewSuccess();
                     await refreshRenders();
                     return;
                 }
                 if (!r.ok || !j?.ok) throw new Error(j?.error || "Render failed");
+                markPreviewSuccess();
                 await refreshRenders();
             } catch (e: any) {
-                setRenders((prev) =>
-                    prev.map((r) => (r.id === optimisticId ? { ...r, status: "failed" } : r))
-                );
+                setRenders((prev) => prev.map((r) => (r.id === optimisticId ? { ...r, status: "failed" } : r)));
                 setOptimisticByKey((m) => {
                     const v = m[storageKey];
                     if (!v) return m;
@@ -762,7 +777,7 @@ export default function PreviewPage(): JSX.Element {
                 push("Preview failed to start", "err");
             }
         },
-        [user, targetUrl, renders, refreshRenders, push, startHardLock, pendingByKey]
+        [user, targetUrl, renders, refreshRenders, push, startHardLock, pendingByKey, canUsePreviewCredit, markPreviewSuccess]
     );
 
     const continueRender = useCallback(
@@ -775,6 +790,7 @@ export default function PreviewPage(): JSX.Element {
             if (!snap.exists()) {
                 setErr("Preview not found.");
                 push("Preview not found", "err");
+                setLoading(false);
                 return;
             }
             const data = snap.data() as RenderDoc;
@@ -865,6 +881,11 @@ export default function PreviewPage(): JSX.Element {
     );
 
     async function exportToVercel(html: string, name?: string) {
+        if (userTier === "free") {
+            setShowCreditsPaywall("preview");
+            push("Export and deploy are reserved for paid plans.", "warn");
+            return;
+        }
         const r = await fetch("/api/user-deploy", {
             method: "POST",
             headers: { "content-type": "application/json" },
@@ -896,46 +917,51 @@ export default function PreviewPage(): JSX.Element {
             if (!user) return;
             const rid = payload.draftId || activeRenderId;
             if (!rid) {
-                const created = await addDoc(
-                    collection(db, "kloner_users", user.uid, "kloner_renders"),
-                    {
-                        url: targetUrl || null,
-                        urlHash: targetUrl ? hash64(targetUrl) : null,
-                        key: null,
-                        referenceImage: editorRefImg || null,
-                        html: payload.html,
-                        nameHint:
-                            payload.meta?.nameHint ||
-                            (targetUrl ? new URL(targetUrl).hostname : null),
-                        status: "ready",
-                        archived: false,
-                        version: payload.version || 1,
-                        createdAt: serverTimestamp(),
-                        updatedAt: serverTimestamp(),
-                    } as any
-                );
+                const created = await addDoc(collection(db, "kloner_users", user.uid, "kloner_renders"), {
+                    url: targetUrl || null,
+                    urlHash: targetUrl ? hash64(targetUrl) : null,
+                    key: null,
+                    referenceImage: editorRefImg || null,
+                    html: payload.html,
+                    nameHint: payload.meta?.nameHint || (targetUrl ? new URL(targetUrl).hostname : null),
+                    status: "ready",
+                    archived: false,
+                    version: payload.version || 1,
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp(),
+                } as any);
                 setActiveRenderId(created.id);
                 push("Draft saved", "ok");
                 await refreshRenders();
-                return;
+            } else {
+                await setDoc(
+                    doc(db, "kloner_users", user.uid, "kloner_renders", rid),
+                    {
+                        url: targetUrl || null,
+                        urlHash: targetUrl ? hash64(targetUrl) : null,
+                        html: payload.html,
+                        referenceImage: editorRefImg || null,
+                        nameHint:
+                            payload.meta?.nameHint || (targetUrl ? new URL(targetUrl).hostname : null),
+                        version: payload.version || 1,
+                        updatedAt: serverTimestamp(),
+                    },
+                    { merge: true }
+                );
+                push("Draft updated", "ok");
+                await refreshRenders();
             }
-            await setDoc(
-                doc(db, "kloner_users", user.uid, "kloner_renders", rid),
-                {
-                    url: targetUrl || null,
-                    urlHash: targetUrl ? hash64(targetUrl) : null,
-                    html: payload.html,
-                    referenceImage: editorRefImg || null,
-                    nameHint:
-                        payload.meta?.nameHint ||
-                        (targetUrl ? new URL(targetUrl).hostname : null),
-                    version: payload.version || 1,
-                    updatedAt: serverTimestamp(),
-                },
-                { merge: true }
-            );
-            push("Draft updated", "ok");
-            await refreshRenders();
+
+            try {
+                if (user) {
+                    const flagKey = `kloner.firstCustomize.${user.uid}`;
+                    const seen = typeof window !== "undefined" ? localStorage.getItem(flagKey) : "1";
+                    if (!seen) {
+                        if (typeof window !== "undefined") localStorage.setItem(flagKey, "1");
+                        setShowUpgradeAfterCustomize(true);
+                    }
+                }
+            } catch { }
         },
         [user, activeRenderId, targetUrl, editorRefImg, refreshRenders, push]
     );
@@ -952,9 +978,7 @@ export default function PreviewPage(): JSX.Element {
             try {
                 const refs = await listAllDeep(sRef(storage, prefix));
                 const map = new Map(refs.map((r) => [r.fullPath, r]));
-                const newOnes = Array.from(map.keys()).filter(
-                    (p) => !shots.some((s) => s.path === p)
-                );
+                const newOnes = Array.from(map.keys()).filter((p) => !shots.some((s) => s.path === p));
                 if (newOnes.length) {
                     const added = await Promise.all(
                         newOnes.map(async (p) => {
@@ -988,7 +1012,14 @@ export default function PreviewPage(): JSX.Element {
     );
 
     const rescan = useCallback(async () => {
-        if (!isHttpUrl(targetUrl) || rescanCooldown.active || !user || !docData) return;
+        if (!isHttpUrl(targetUrl) || !user || !docData) return;
+
+        if (!canUseScreenshotCredit()) {
+            push("You have used all available screenshot credits for today on this plan.", "warn");
+            setShowCreditsPaywall("screenshot");
+            return;
+        }
+
         if (!window.confirm("Rescan this URL now? This queues a fresh screenshot.")) return;
         setRescanning(true);
         setErr("");
@@ -1005,11 +1036,7 @@ export default function PreviewPage(): JSX.Element {
                 push("Rescan failed", "err");
             } else {
                 push("Rescan started", "ok");
-                rescanCooldown.start(60_000);
-                const prefix =
-                    docData.screenshotsPrefix ||
-                    `kloner-screenshots/${user.uid}/${docData.urlHash || hash64(targetUrl)}`;
-                beginShortShotsPoll(prefix);
+                markScreenshotSuccess();
             }
         } catch (e: any) {
             setErr(e?.message || "Rescan failed.");
@@ -1017,7 +1044,7 @@ export default function PreviewPage(): JSX.Element {
         } finally {
             setRescanning(false);
         }
-    }, [targetUrl, user, docData, push, rescanCooldown]);
+    }, [targetUrl, user, docData, push, canUseScreenshotCredit, markScreenshotSuccess]);
 
     useEffect(() => {
         if (didAutoSelectRef.current) return;
@@ -1028,7 +1055,6 @@ export default function PreviewPage(): JSX.Element {
         }
     }, [urlsLoading, targetUrl, urls, router]);
 
-    /* ───────── cards ───────── */
     const RenderCard = useMemo(
         () =>
             memo(
@@ -1045,9 +1071,7 @@ export default function PreviewPage(): JSX.Element {
                         prevHtmlRef.current = r.html;
                         const safeHtml = (r.html || "").trim();
                         const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob: https: http:; style-src 'unsafe-inline'; font-src data: https:; script-src 'unsafe-inline'; connect-src 'none';">`;
-                        const base = r.html
-                            ? `<base target="_blank" rel="noopener noreferrer">`
-                            : "";
+                        const base = r.html ? `<base target="_blank" rel="noopener noreferrer">` : "";
                         setSrcDoc(`${csp}${base}${safeHtml}`);
                     }, [r.html]);
 
@@ -1055,9 +1079,7 @@ export default function PreviewPage(): JSX.Element {
                         !!lockUntilByRender[r.id] && lockUntilByRender[r.id] > Date.now();
                     const disableOpen = isOpening || isQueued || isFailed || hardLocked;
 
-                    const { src: refImgUrl, onError: refImgErr } = useResolvedImg(
-                        r.key || ""
-                    );
+                    const { src: refImgUrl, onError: refImgErr } = useResolvedImg(r.key || "");
                     const versionLabel = shortVersionFromShotPath(
                         r.key ?? "",
                         (docData?.urlHash as string | undefined) ?? null
@@ -1071,6 +1093,8 @@ export default function PreviewPage(): JSX.Element {
                             await exportToVercel(r.html!, r.nameHint || undefined);
                         } catch { }
                     };
+
+                    const deployLocked = userTier === "free";
 
                     return (
                         <>
@@ -1120,17 +1144,41 @@ export default function PreviewPage(): JSX.Element {
                                     <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
                                         <div className="pointer-events-auto flex items-center gap-2 rounded-xl bg-white/90 p-2 ring-1 ring-neutral-200 backdrop-blur">
                                             <button
-                                                onClick={deployThis}
+                                                onClick={
+                                                    deployLocked
+                                                        ? () => {
+                                                            setShowCreditsPaywall("deploy");
+                                                            push(
+                                                                "Deploy is available on paid plans.",
+                                                                "warn"
+                                                            );
+                                                        }
+                                                        : deployThis
+                                                }
                                                 disabled={!r.html || isDeleting || isQueued}
-                                                className="shrink-0 rounded-md px-2 py-1 text-[14px] border border-neutral-200 text-neutral-800 hover:bg-neutral-50 inline-flex items-center gap-1.5" title="Deploy current HTML to Vercel"
+                                                className="shrink-0 rounded-md px-2 py-1 text-[0.75rem] border border-neutral-200 text-neutral-800 hover:bg-neutral-50 inline-flex items-center gap-1.5"
+                                                title={
+                                                    deployLocked
+                                                        ? "Upgrade to publish live sites"
+                                                        : "Deploy current HTML to Vercel"
+                                                }
                                             >
-                                                Deploy
-                                                <Rocket className="h-4 w-4" />
+                                                {deployLocked ? (
+                                                    <>
+                                                        <Lock className="h-4 w-4" />
+                                                        <span>Deploy (locked)</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <span>Deploy</span>
+                                                        <Rocket className="h-4 w-4" />
+                                                    </>
+                                                )}
                                             </button>
                                             <button
                                                 onClick={() => continueRender(r.id)}
                                                 disabled={disableOpen || isDeleting}
-                                                className="shrink-0 rounded-md px-4 py-2 text-[14px] text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+                                                className="shrink-0 rounded-md px-4 py-2 text-[0.75rem] text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
                                                 style={{ backgroundColor: ACCENT }}
                                                 title={
                                                     isQueued
@@ -1146,7 +1194,6 @@ export default function PreviewPage(): JSX.Element {
                                                         ? "Customize (fix)"
                                                         : "Customize"}
                                             </button>
-
                                         </div>
                                     </div>
 
@@ -1166,9 +1213,7 @@ export default function PreviewPage(): JSX.Element {
 
                                     {isDeleting && <CenterSpinner label="Deleting…" />}
                                     {(isQueued || hardLocked) && (
-                                        <CenterSpinner
-                                            label={isQueued ? "Rendering…" : "Locked…"}
-                                        />
+                                        <CenterSpinner label={isQueued ? "Rendering…" : "Locked…"} />
                                     )}
                                 </div>
 
@@ -1199,7 +1244,7 @@ export default function PreviewPage(): JSX.Element {
                     );
                 }
             ),
-        [continueRender, discardRender, deletingRender, docData?.controllerVersion, exportToVercel]
+        [continueRender, discardRender, deletingRender, docData?.controllerVersion, exportToVercel, userTier, push]
     );
 
     const ShotCard = useMemo(
@@ -1227,7 +1272,6 @@ export default function PreviewPage(): JSX.Element {
 
                     return (
                         <figure className="relative rounded-xl border border-neutral-200 bg-white shadow-sm flex flex-col">
-                            {/* version badge */}
                             <span
                                 className="absolute top-2 left-2 z-10 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow"
                                 style={{ backgroundColor: "#1d4ed8" }}
@@ -1236,7 +1280,6 @@ export default function PreviewPage(): JSX.Element {
                                 {versionLabel}
                             </span>
 
-                            {/* top-right discard "X" */}
                             <button
                                 onClick={() => discardShot(s)}
                                 disabled={locked || isDeleting}
@@ -1260,13 +1303,12 @@ export default function PreviewPage(): JSX.Element {
                                     <img
                                         src={s.url}
                                         alt={s.fileName}
-                                        className={`h-full w-full object-cover opacity-30`}
+                                        className="h-full w-full object-cover opacity-30"
                                         loading="lazy"
                                         onLoad={() => setImgLoading(false)}
                                         onError={() => setImgLoading(false)}
                                     />
 
-                                    {/* buttons overlayed in middle of image */}
                                     <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
                                         <div className="pointer-events-auto flex flex-col sm:flex-row items-center gap-2 rounded-xl bg-white/90 p-2 ring-1 ring-neutral-200 backdrop-blur">
                                             <button
@@ -1274,7 +1316,7 @@ export default function PreviewPage(): JSX.Element {
                                                     e.preventDefault();
                                                     onView(index);
                                                 }}
-                                                className="shrink-0 rounded-md px-2 py-1 text-[14px] border border-neutral-200 text-neutral-800 hover:bg-neutral-50 inline-flex items-center gap-1.5"
+                                                className="shrink-0 rounded-md px-2 py-1 text-[0.75rem] border border-neutral-200 text-neutral-800 hover:bg-neutral-50 inline-flex items-center gap-1.5"
                                                 title="View full-screen"
                                             >
                                                 <Eye className="h-3 w-3 opacity-90" aria-hidden />
@@ -1288,7 +1330,7 @@ export default function PreviewPage(): JSX.Element {
                                                 }}
                                                 disabled={locked || isDeleting}
                                                 aria-busy={locked}
-                                                className="shrink-0 rounded-md px-4 py-2 text-[14px] text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+                                                className="shrink-0 rounded-md px-4 py-2 text-[0.7rem] text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
                                                 style={{ backgroundColor: ACCENT }}
                                                 title="Create editable preview from this screenshot"
                                             >
@@ -1296,8 +1338,7 @@ export default function PreviewPage(): JSX.Element {
                                                     {locked ? "In progress" : "Generate preview"}
                                                 </span>
                                                 <Hammer
-                                                    className={`h-4 w-4 ${locked ? "animate-pulse" : ""
-                                                        }`}
+                                                    className={`h-4 w-4 ${locked ? "animate-pulse" : ""}`}
                                                     aria-hidden
                                                 />
                                             </button>
@@ -1312,7 +1353,6 @@ export default function PreviewPage(): JSX.Element {
                                 </div>
                             </a>
 
-                            {/* keep caption, but no buttons here now */}
                             <figcaption className="px-3 py-2 text-xs text-neutral-700 rounded-b-xl">
                                 <div className="flex items-center justify-between gap-2 flex-wrap">
                                     <span className="truncate text-[11px] text-neutral-500">
@@ -1332,22 +1372,88 @@ export default function PreviewPage(): JSX.Element {
         [buildFromKey, discardShot, deletingByKey, lockUntilByKey, docData?.urlHash]
     );
 
-
-    /* ───────── step completion flags ───────── */
     const step1Done = !!activeUrlDoc;
     const step2Done = shots.length > 0;
     const step3Done = renders.length > 0;
     const step4Done = renders.some((r) => (r as any).lastExportedAt);
 
-    /* ───────── render ───────── */
+    const planLabel =
+        userTier === "unknown"
+            ? "Detecting plan…"
+            : userTier === "free"
+                ? "Free plan"
+                : userTier === "pro"
+                    ? "Pro plan"
+                    : userTier === "agency"
+                        ? "Agency plan"
+                        : "Enterprise plan";
+
     return (
         <main className="min-h-screen bg-white">
             <div className="mx-auto max-w-[1200px] px-4 sm:px-6 lg:px-10 py-8">
-                {/* subtle divider */}
                 <div className="mb-4 flex items-center gap-2">
                     <div className="h-px flex-1 bg-neutral-200/70" />
                     <div className="h-px flex-1 bg-neutral-200/70" />
                 </div>
+
+                <div className="mb-4 rounded-2xl border border-neutral-200 bg-gradient-to-r from-neutral-50 to-white px-4 py-3 sm:px-5 sm:py-4 text-xs sm:text-sm text-neutral-700 shadow-sm">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                        {/* Left: plan info */}
+                        <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                                <div className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1">
+                                    <Crown className="h-3.5 w-3.5 text-amber-500" />
+                                    <span className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                                        Current plan
+                                    </span>
+                                </div>
+                                <span className="text-sm font-semibold text-neutral-900">
+                                    {planLabel}
+                                </span>
+                            </div>
+
+                            <div className="flex flex-wrap gap-2">
+                                {/* Screenshot credits pill */}
+                                <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] sm:text-xs text-neutral-700">
+                                    Screenshot credits today:&nbsp;
+                                    <span className="font-semibold text-neutral-900">
+                                        {tierLimits.screenshotDaily
+                                            ? `${screenshotRemaining}/${tierLimits.screenshotDaily}`
+                                            : "unlimited"}
+                                    </span>
+                                </span>
+
+                                {/* Preview credits pill */}
+                                <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] sm:text-xs text-neutral-700">
+                                    Preview credits today:&nbsp;
+                                    <span className="font-semibold text-neutral-900">
+                                        {tierLimits.previewDaily
+                                            ? `${previewRemaining}/${tierLimits.previewDaily}`
+                                            : "unlimited"}
+                                    </span>
+                                </span>
+                            </div>
+
+                            {userTier === "free" && (
+                                <p className="text-[11px] leading-relaxed text-neutral-500">
+                                    Free plans include a limited number of screenshots and previews per
+                                    day. Upgrading unlocks higher limits and one-click deploy.
+                                </p>
+                            )}
+                        </div>
+
+                        {/* Right: upgrade / manage */}
+                        <button
+                            type="button"
+                            onClick={() => router.push("/pricing")}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 hover:border-amber-300 transition-colors"
+                        >
+                            <Crown className="h-3.5 w-3.5" />
+                            <span>{userTier === "free" ? "View upgrade options" : "Manage plan"}</span>
+                        </button>
+                    </div>
+                </div>
+
                 <div className="mb-5">
                     <div className="flex items-center justify-between gap-3 flex-wrap">
                         <div>
@@ -1370,8 +1476,8 @@ export default function PreviewPage(): JSX.Element {
                                     )}
                                     Step 1
                                 </strong>{" "}
-                                — Add a URL in Dashboard. Return here to capture screenshots and
-                                build previews.
+                                — Add a URL in Dashboard. Return here to capture screenshots and build
+                                previews.
                             </div>
                         ) : (
                             <div className="relative inline-block" ref={urlMenuRef}>
@@ -1382,8 +1488,8 @@ export default function PreviewPage(): JSX.Element {
                                         )}
                                         Step 1
                                     </strong>{" "}
-                                    — You have chosen the following URL, you can select a different
-                                    one from the dropdown.
+                                    — You have chosen the following URL, you can select a different one
+                                    from the dropdown.
                                 </div>
                                 <button
                                     type="button"
@@ -1429,9 +1535,7 @@ export default function PreviewPage(): JSX.Element {
                                                                     : "bg-neutral-300"
                                                                     }`}
                                                             />
-                                                            <span className="truncate">
-                                                                {u.url}
-                                                            </span>
+                                                            <span className="truncate">{u.url}</span>
                                                         </button>
                                                     </li>
                                                 );
@@ -1456,7 +1560,6 @@ export default function PreviewPage(): JSX.Element {
                 ) : null}
 
                 <div className="mt-20">
-                    {/* subtle divider */}
                     <div className="mb-4 flex items-center gap-2">
                         <div className="h-px flex-1 bg-neutral-200/70" />
                         <div className="h-px flex-1 bg-neutral-200/70" />
@@ -1465,8 +1568,7 @@ export default function PreviewPage(): JSX.Element {
                         Screenshots
                     </h2>
                     <p className="mt-2 text-xs text-neutral-500">
-                        These are the original screenshots captured directly from your entered
-                        URL.
+                        These are the original screenshots captured directly from your entered URL.
                     </p>
 
                     {!targetUrl ? (
@@ -1513,15 +1615,12 @@ export default function PreviewPage(): JSX.Element {
                                     title={
                                         rescanning
                                             ? "Starting…"
-                                            : rescanCooldown.active
-                                                ? `Rescan (${rescanCooldown.remaining}s)`
-                                                : "Generate new base image"
+                                            : "Generate new base image"
                                     }
                                     subtitle="Captures a fresh screenshot for this URL. Safe; does not remove prior versions."
                                     onClick={rescan}
                                     disabled={
                                         rescanning ||
-                                        rescanCooldown.active ||
                                         !isHttpUrl(targetUrl)
                                     }
                                 />
@@ -1540,8 +1639,12 @@ export default function PreviewPage(): JSX.Element {
                                 </strong>{" "}
                                 — We’ve captured your base image.
                                 {renders.length === 0 && (
-                                    <div className="x-1 inline-flex ml-1 mt-1 text-sm flex items-center text-neutral-700">Click
-                                        <span className="mx-2 bg-accent whitespace-nowrap rounded-md px-4 py-1.5 text-[14px] flex flex-inline items-center text-white">
+                                    <div className="x-1 inline-flex ml-1 mt-1 text-sm flex items-center text-neutral-700">
+                                        Click
+                                        <span
+                                            className="mx-2 whitespace-nowrap rounded-md px-4 py-1.5 text-[0.75rem] flex flex-inline items-center text-white"
+                                            style={{ backgroundColor: ACCENT }}
+                                        >
                                             Generate preview{" "}
                                             <Hammer className="mx-1 h-4 w-4" />
                                         </span>{" "}
@@ -1574,15 +1677,12 @@ export default function PreviewPage(): JSX.Element {
                                     title={
                                         rescanning
                                             ? "Starting…"
-                                            : rescanCooldown.active
-                                                ? `Rescan (${rescanCooldown.remaining}s)`
-                                                : "Add / Rescan"
+                                            : "Add / Rescan"
                                     }
                                     subtitle="Capture a fresh screenshot for this page."
                                     onClick={rescan}
                                     disabled={
                                         rescanning ||
-                                        rescanCooldown.active ||
                                         !isHttpUrl(targetUrl)
                                     }
                                 />
@@ -1592,7 +1692,6 @@ export default function PreviewPage(): JSX.Element {
                 </div>
 
                 <div className="mt-20">
-                    {/* subtle divider */}
                     <div className="mb-4 flex items-center gap-2">
                         <div className="h-px flex-1 bg-neutral-200/70" />
                         <div className="h-px flex-1 bg-neutral-200/70" />
@@ -1611,50 +1710,71 @@ export default function PreviewPage(): JSX.Element {
 
                     {renders.length === 0 ? (
                         <>
-                            <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
-                                <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1">
+                            {/* Step 3 – empty state */}
+                            <div className="mt-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-3 text-sm text-neutral-700 flex flex-wrap items-center gap-2 my-4">
+                                <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1 mr-1">
                                     {step3Done ? (
                                         <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                                     ) : (
                                         <Timer className="h-4 w-4 text-orange-400" />
                                     )}
                                     Step 3
-                                </strong>{" "}
-                                — Website Previews. Customize to edit the HTML. Deploy publishes to
-                                Vercel.
+                                </strong>
+                                <span className="text-neutral-400">—</span>
+                                <span>
+                                    Website previews are created from your base screenshots. Generate a
+                                    preview above to start customizing before deployment.
+                                </span>
                             </div>
-                            <div className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
+
+                            <div className="mt-1 rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-700 my-4">
                                 No previews yet. Generate one from a base screenshot above.
                             </div>
                         </>
                     ) : (
                         <>
-                            <div className="rounded-xl border flex items-center flex-inline border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
-                                <strong className="text-neutral-800 font-semibold mr-1 inline-flex items-center gap-1">
+                            {/* Step 3 – previews present */}
+                            <div className="mt-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-3 text-sm text-neutral-700 flex flex-wrap items-center gap-2 my-4">
+                                <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1 mr-1">
                                     {step3Done ? (
                                         <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                                     ) : (
                                         <Timer className="h-4 w-4 text-orange-400" />
                                     )}
                                     Step 3
-                                </strong>{" "}
-                                — Customize your website preview, then click{" "}
-                                <div className="mx-2 rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs flex items-center flex-inline font-semibold text-neutral-800">
+                                </strong>
+
+                                <span className="text-neutral-400">—</span>
+
+                                <span className="ml-1">
+                                    Customize your website preview, then click
+                                </span>
+
+                                <button
+                                    type="button"
+                                    className="inline-flex items-center rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm"
+                                    disabled
+                                >
                                     Deploy
-                                    <Rocket className="mx-1 h-3 w-3" />
-                                </div>{" "}
-                                to begin publishing.
+                                    <Rocket className="ml-1 h-3 w-3" />
+                                </button>
+
+                                <span className="ml-1">
+                                    to begin publishing. On free plans, deploy is locked and becomes
+                                    available after upgrading.
+                                </span>
                             </div>
-                            <p className="mt-2 text-xs text-neutral-500">
+
+                            <p className="mt-1 text-xs text-neutral-500">
                                 Tip: Reference the original with the version badge
                                 <span
                                     className="ml-2 rounded-md px-2 py-1 text-[10px] font-semibold text-white shadow"
                                     style={{ backgroundColor: "#1d4ed8" }}
-                                    title={`Version`}
                                 >
                                     592f
                                 </span>
                             </p>
+
                             <div
                                 className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
                                 aria-label="Editable previews list"
@@ -1668,7 +1788,6 @@ export default function PreviewPage(): JSX.Element {
                 </div>
 
                 <div className="mt-20">
-                    {/* subtle divider */}
                     <div className="mb-4 flex items-center gap-2">
                         <div className="h-px flex-1 bg-neutral-200/70" />
                         <div className="h-px flex-1 bg-neutral-200/70" />
@@ -1683,6 +1802,12 @@ export default function PreviewPage(): JSX.Element {
                                 These are the live websites you currently have published.
                             </p>
                         </div>
+                        {userTier === "free" && (
+                            <div className="inline-flex items-center gap-1 text-[11px] text-neutral-600">
+                                <Lock className="h-3 w-3" />
+                                <span>Deployment management unlocks on paid plans.</span>
+                            </div>
+                        )}
                     </div>
 
                     <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
@@ -1692,7 +1817,8 @@ export default function PreviewPage(): JSX.Element {
                             )}
                             Step 4
                         </strong>{" "}
-                        — Track or modify your deployments here.
+                        — Track or modify your deployments here. Deployment tools for free plans
+                        are limited to preview only.
                     </div>
                 </div>
             </div>
@@ -1775,6 +1901,95 @@ export default function PreviewPage(): JSX.Element {
                             >
                                 ›
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showCreditsPaywall && (
+                <div className="fixed inset-0 z-[12000]">
+                    <div className="absolute inset-0 bg-black/60" />
+                    <div className="absolute inset-0 flex items-center justify-center p-4">
+                        <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border border-neutral-200 p-6 text-sm text-neutral-800">
+                            <div className="flex items-center gap-2 mb-2">
+                                <Crown className="h-4 w-4 text-amber-500" />
+                                <h3 className="text-base font-semibold">
+                                    You’ve hit the limit on your {userTier === "free" ? "free" : userTier} plan
+                                </h3>
+                            </div>
+                            <p className="text-xs text-neutral-600 mb-3">
+                                {showCreditsPaywall === "screenshot" && "You have used all daily screenshot credits. Upgrade to capture more pages and monitor more sites."}
+                                {showCreditsPaywall === "preview" && "You have used all daily preview credits. Upgrade to generate more designs and unlock one-click deploy."}
+                                {showCreditsPaywall === "deploy" && "To deploy your website live, upgrade to a paid plan to unlock one-click deploy."}
+                            </p>
+                            <ul className="mb-4 list-disc list-inside text-xs text-neutral-700 space-y-1">
+                                <li>Higher daily limits for screenshots and previews</li>
+                                <li>Unlock deploy to Vercel and live URLs</li>
+                                <li>Priority rendering and faster queues</li>
+                            </ul>
+                            <div className="flex items-center justify-end gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowCreditsPaywall(null)}
+                                    className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs text-neutral-700 hover:bg-neutral-50"
+                                >
+                                    Not now
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowCreditsPaywall(null);
+                                        router.push("/pricing");
+                                    }}
+                                    className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white"
+                                    style={{ backgroundColor: ACCENT }}
+                                >
+                                    View upgrade options
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showUpgradeAfterCustomize && (
+                <div className="fixed inset-0 z-[12050]">
+                    <div className="absolute inset-0 bg-black/60" />
+                    <div className="absolute inset-0 flex items-center justify-center p-4">
+                        <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border border-neutral-200 p-6 text-sm text-neutral-800">
+                            <div className="flex items-center gap-2 mb-2">
+                                <Crown className="h-4 w-4 text-amber-500" />
+                                <h3 className="text-base font-semibold">Make this website yours</h3>
+                            </div>
+                            <p className="text-xs text-neutral-600 mb-3">
+                                You’ve customized your first preview. The next step is to turn it into
+                                a live site with your own URL and branding.
+                            </p>
+                            <ul className="mb-4 list-disc list-inside text-xs text-neutral-700 space-y-1">
+                                <li>Publish to a live URL in a few clicks</li>
+                                <li>Connect your own domain and logo</li>
+                                <li>Keep iterating without touching code</li>
+                            </ul>
+                            <div className="flex items-center justify-end gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowUpgradeAfterCustomize(false)}
+                                    className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs text-neutral-700 hover:bg-neutral-50"
+                                >
+                                    Maybe later
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowUpgradeAfterCustomize(false);
+                                        router.push("/pricing");
+                                    }}
+                                    className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white"
+                                    style={{ backgroundColor: ACCENT }}
+                                >
+                                    Upgrade and publish
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -1,3 +1,4 @@
+// app/login/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -97,7 +98,6 @@ async function addAndStart(uid: string, url: string) {
     if (!isHttpUrl(cleaned)) throw new Error("Invalid URL.");
     const urlHash = hash64(cleaned);
 
-    // Dedup by urlHash OR url
     const col = collection(db, "kloner_users", uid, "kloner_urls");
     const [byHash, byUrl] = await Promise.all([
         getDocs(query(col, where("urlHash", "==", urlHash))),
@@ -116,7 +116,6 @@ async function addAndStart(uid: string, url: string) {
         });
     }
 
-    // Queue capture regardless (idempotent server)
     const r = await fetch("/api/private/generate", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -143,7 +142,6 @@ export default function LoginPage(): JSX.Element {
     const [pw, setPw] = useState<string>("");
     const [showPw, setShowPw] = useState<boolean>(false);
 
-    // Read pending URL from query or localStorage for UI display + auto-add
     const pendingUrl = useMemo(() => {
         const q = search.get("u");
         if (q) return q;
@@ -162,7 +160,6 @@ export default function LoginPage(): JSX.Element {
 
                 const pending = pendingUrl?.trim();
                 if (pending) {
-                    // Once authenticated, auto-add + queue
                     let cleaned = "";
                     try {
                         cleaned = await addAndStart(u.uid, pending);
@@ -172,7 +169,6 @@ export default function LoginPage(): JSX.Element {
                         router.replace(`/dashboard?u=${encodeURIComponent(cleaned)}`);
                         return;
                     } catch {
-                        // Fall through to dashboard if add fails
                     }
                 }
 
@@ -183,7 +179,6 @@ export default function LoginPage(): JSX.Element {
             }
         });
         return () => unsub();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [router, search, pendingUrl]);
 
     const signInWithGoogle = async (): Promise<void> => {
@@ -251,11 +246,10 @@ export default function LoginPage(): JSX.Element {
                     <p className="mt-1 text-sm text-neutral-600">
                         {mode === "signin"
                             ? "Use Google or email to access your Kloner dashboard."
-                            : "Quick signup with email or Google."}
+                            : "Quick signup with email or Google. Free plan includes limited daily previews."}
                     </p>
                 </div>
 
-                {/* Pending URL notice */}
                 {pendingUrl ? (
                     <div className="mb-4 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-700">
                         We’ll add this URL after you {mode === "signin" ? "sign in" : "sign up"}:{" "}
