@@ -87,20 +87,22 @@ export async function GET(req: NextRequest) {
             decoded = await verifySession(req); // { uid, email, claims? }
         } catch (err) {
             console.error("[vercel-oauth] verifySession failed", err);
-            // Explicitly mark as auth failure
             return redirectWithStatus("error", "auth");
         }
 
         const uid = decoded.uid as string;
 
         // 4) Exchange code → access token with Vercel
-        // Single source of truth for redirect_uri: prefer env, fallback to base.
-        const redirectUriFromEnv = process.env.VERCEL_OAUTH_REDIRECT_URI;
-        const redirectUri =
-            redirectUriFromEnv ||
-            (process.env.NODE_ENV === "production"
-                ? `${base}/api/vercel/oauth/callback`
-                : "http://localhost:3000/api/vercel/oauth/callback");
+        // CRITICAL: this must be EXACTLY the same value as:
+        // - the redirect_uri configured in the Vercel OAuth app
+        // - the redirect_uri used in /api/vercel/oauth/start
+        const redirectUri = process.env.VERCEL_OAUTH_REDIRECT_URI;
+        if (!redirectUri) {
+            console.error(
+                "[vercel-oauth] VERCEL_OAUTH_REDIRECT_URI env missing during token exchange",
+            );
+            return redirectWithStatus("error", "config");
+        }
 
         const body = new URLSearchParams({
             code,
@@ -159,11 +161,10 @@ export async function GET(req: NextRequest) {
             );
         } catch (err) {
             console.error("[vercel-oauth] Firestore write failed", err, { uid });
-            // Do NOT claim success if Firestore failed
             return redirectWithStatus("error", "db");
         }
 
-        // 6) Only here is it actually successful
+        // 6) Success
         return redirectWithStatus("success");
     } catch (err) {
         console.error("[vercel-oauth] unexpected error", err);
