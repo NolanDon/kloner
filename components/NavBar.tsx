@@ -96,7 +96,7 @@ export default function NavBar(): JSX.Element {
     { label: "Product", href: "/#how" },
     { label: "Docs", href: "/docs" },
     { label: "Pricing", href: "/price" },
-    { label: "Changelog", href: "/#changelog" },
+    // { label: "Changelog", href: "/#changelog" },
   ];
 
   // merge, avoid duplicate labels
@@ -527,7 +527,7 @@ function MegaPanel({ active }: { active: NavItem | null }): JSX.Element {
           <SimpleLink href="/docs#safety" label="Safety & fairness" />
           <SimpleLink href="/docs#export-options" label="Export & library" />
           <SimpleLink href="/#faq" label="FAQs" />
-          <SimpleLink href="/#changelog" label="Changelog" />
+          {/* <SimpleLink href="/#changelog" label="Changelog" /> */}
         </div>
 
         {/* OTHER */}

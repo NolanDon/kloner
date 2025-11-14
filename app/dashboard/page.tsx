@@ -4,11 +4,26 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import {
-    addDoc, collection, serverTimestamp, onSnapshot, query, orderBy, doc,
-    deleteDoc, updateDoc, getDocs, where, writeBatch, type Unsubscribe,
+    addDoc,
+    collection,
+    serverTimestamp,
+    onSnapshot,
+    query,
+    orderBy,
+    doc,
+    deleteDoc,
+    updateDoc,
+    getDocs,
+    where,
+    writeBatch,
+    type Unsubscribe,
 } from 'firebase/firestore';
 import {
-    ref as sRef, listAll, deleteObject, getDownloadURL, type ListResult,
+    ref as sRef,
+    listAll,
+    deleteObject,
+    getDownloadURL,
+    type ListResult,
 } from 'firebase/storage';
 import { auth, db, storage } from '@/lib/firebase';
 import { CheckCircle2, Clock3, AlertTriangle, Loader2 } from 'lucide-react';
@@ -25,7 +40,13 @@ type UrlStatusRaw =
     | 'stale'
     | 'unknown';
 
-type UrlStatusUi = 'queued' | 'processing' | 'ready' | 'stale' | 'error' | 'unknown';
+type UrlStatusUi =
+    | 'queued'
+    | 'processing'
+    | 'ready'
+    | 'stale'
+    | 'error'
+    | 'unknown';
 
 interface UrlDoc {
     url: string;
@@ -43,18 +64,38 @@ interface UrlDoc {
     id?: string;
 }
 
-interface UrlFormProps { uid: string; onAdded?: () => void; }
-interface UrlRowProps { uid: string; r: UrlDoc & { id: string }; }
+interface UrlFormProps {
+    uid: string;
+    onAdded?: () => void;
+}
+interface UrlRowProps {
+    uid: string;
+    r: UrlDoc & { id: string };
+}
 
 function isHttpUrl(s: string): s is string {
-    try { const u = new URL(s); return u.protocol === 'http:' || u.protocol === 'https:'; }
-    catch { return false; }
+    try {
+        const u = new URL(s);
+        return u.protocol === 'http:' || u.protocol === 'https:';
+    } catch {
+        return false;
+    }
 }
 function normUrl(s: string): string {
-    try { const u = new URL(s); u.hash = ''; return u.toString(); } catch { return s.trim(); }
+    try {
+        const u = new URL(s);
+        u.hash = '';
+        return u.toString();
+    } catch {
+        return s.trim();
+    }
 }
 function hash64(s: string): string {
-    let h = 0; for (let i = 0; i < s.length; i++) { h = (h << 5) - h + s.charCodeAt(i); h |= 0; }
+    let h = 0;
+    for (let i = 0; i < s.length; i++) {
+        h = (h << 5) - h + s.charCodeAt(i);
+        h |= 0;
+    }
     return Math.abs(h).toString(36);
 }
 
@@ -70,10 +111,12 @@ function normalizeUrlStatus(
     if (s === 'uploaded' || s === 'done' || s === 'ready') return 'ready';
     if (s === 'in_progress' || s === 'processing') return 'processing';
 
-    // watchdog: queued too long -> stale
     if (s === 'queued') {
         const STALE_MIN_MS = 6 * 60 * 1000;
-        const ts = typeof updatedAt?.toMillis === 'function' ? updatedAt.toMillis() : Date.parse(updatedAt || '');
+        const ts =
+            typeof updatedAt?.toMillis === 'function'
+                ? updatedAt.toMillis()
+                : Date.parse(updatedAt || '');
         if (Number.isFinite(ts) && Date.now() - ts > STALE_MIN_MS) return 'stale';
         return (shotCount || 0) > 0 ? 'processing' : 'queued';
     }
@@ -81,20 +124,66 @@ function normalizeUrlStatus(
 }
 
 function StatusBadge({ status }: { status: UrlStatusUi }) {
-    const base = 'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium';
+    const base =
+        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium';
     switch (status) {
         case 'ready':
-            return <span className={`${base} bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200`} title="Screenshots ready"><CheckCircle2 className="h-3.5 w-3.5" />Ready</span>;
+            return (
+                <span
+                    className={`${base} bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200`}
+                    title="Screenshots ready"
+                >
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Ready
+                </span>
+            );
         case 'processing':
-            return <span className={`${base} bg-amber-50 text-amber-700 ring-1 ring-amber-200`} title="Running"><Loader2 className="h-3.5 w-3.5 animate-spin" />Processing</span>;
+            return (
+                <span
+                    className={`${base} bg-amber-50 text-amber-700 ring-1 ring-amber-200`}
+                    title="Running"
+                >
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Processing
+                </span>
+            );
         case 'queued':
-            return <span className={`${base} bg-sky-50 text-sky-700 ring-1 ring-sky-200`} title="Queued"><Clock3 className="h-3.5 w-3.5" />Queued</span>;
+            return (
+                <span
+                    className={`${base} bg-sky-50 text-sky-700 ring-1 ring-sky-200`}
+                    title="Queued"
+                >
+                    <Clock3 className="h-3.5 w-3.5" />
+                    Queued
+                </span>
+            );
         case 'stale':
-            return <span className={`${base} bg-rose-50 text-rose-700 ring-1 ring-rose-200`} title="Timed out or failed">Stale</span>;
+            return (
+                <span
+                    className={`${base} bg-rose-50 text-rose-700 ring-1 ring-rose-200`}
+                    title="Timed out or failed"
+                >
+                    Stale
+                </span>
+            );
         case 'error':
-            return <span className={`${base} bg-rose-50 text-rose-700 ring-1 ring-rose-200`} title="Failed"><AlertTriangle className="h-3.5 w-3.5" />Failed</span>;
+            return (
+                <span
+                    className={`${base} bg-rose-50 text-rose-700 ring-1 ring-rose-200`}
+                    title="Failed"
+                >
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    Failed
+                </span>
+            );
         default:
-            return <span className={`${base} bg-neutral-100 text-neutral-700 ring-1 ring-neutral-200`}>Unknown</span>;
+            return (
+                <span
+                    className={`${base} bg-neutral-100 text-neutral-700 ring-1 ring-neutral-200`}
+                >
+                    Unknown
+                </span>
+            );
     }
 }
 
@@ -168,7 +257,10 @@ function UrlForm({ uid, onAdded }: UrlFormProps) {
     }
 
     return (
-        <form onSubmit={(e) => void handleAdd(e)} className="rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5 shadow-sm">
+        <form
+            onSubmit={(e) => void handleAdd(e)}
+            className="rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5 shadow-sm"
+        >
             <div className="flex flex-col sm:flex-row gap-3">
                 <input
                     type="url"
@@ -176,7 +268,11 @@ function UrlForm({ uid, onAdded }: UrlFormProps) {
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
                     className="flex-1 rounded-xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:ring-4"
-                    style={{ boxShadow: '0 0 0 0 rgba(0,0,0,0)', caretColor: ACCENT, WebkitTapHighlightColor: 'transparent' }}
+                    style={{
+                        boxShadow: '0 0 0 0 rgba(0,0,0,0)',
+                        caretColor: ACCENT,
+                        WebkitTapHighlightColor: 'transparent',
+                    }}
                 />
                 <button
                     type="submit"
@@ -188,8 +284,33 @@ function UrlForm({ uid, onAdded }: UrlFormProps) {
                 </button>
             </div>
             {err ? <p className="mt-2 text-sm text-red-600">{err}</p> : null}
-            <p className="mt-2 text-xs text-neutral-500">We queue a capture and store screenshots under your account.</p>
+            <p className="mt-2 text-xs text-neutral-500">
+                We queue a capture and store screenshots under your account.
+            </p>
         </form>
+    );
+}
+
+/* skeleton row */
+function UrlRowSkeleton() {
+    return (
+        <div className="rounded-xl border border-neutral-200 bg-white p-4 sm:p-5 shadow-sm animate-pulse">
+            <div className="flex items-start gap-3">
+                <div className="h-14 w-14 rounded-lg bg-neutral-200" />
+                <div className="flex-1 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                        <div className="h-3 w-40 rounded bg-neutral-200" />
+                        <div className="h-5 w-20 rounded-full bg-neutral-100" />
+                    </div>
+                    <div className="h-2.5 w-56 rounded bg-neutral-100" />
+                    <div className="flex flex-wrap gap-2 justify-end sm:justify-start">
+                        <div className="h-8 w-20 rounded-lg bg-neutral-100" />
+                        <div className="h-8 w-20 rounded-lg bg-neutral-100" />
+                        <div className="h-8 w-20 rounded-lg bg-neutral-100" />
+                    </div>
+                </div>
+            </div>
+        </div>
     );
 }
 
@@ -204,7 +325,6 @@ function UrlRow({ uid, r }: UrlRowProps) {
         r.updatedAt
     );
 
-    // Only lock while actually processing. Stale/queued remain interactive.
     const locked = uiStatus === 'processing';
 
     const [thumbUrl, setThumbUrl] = useState<string | null>(null);
@@ -215,26 +335,39 @@ function UrlRow({ uid, r }: UrlRowProps) {
                 let key: string | null = pickLatestPath(r.screenshotPaths || []);
                 if (!key && r.screenshotsPrefix) {
                     const folderRef = sRef(storage, r.screenshotsPrefix);
-                    const listed: ListResult | null = await listAll(folderRef).catch(() => null);
+                    const listed: ListResult | null = await listAll(folderRef).catch(
+                        () => null
+                    );
                     if (listed && listed.items.length > 0) {
-                        const items = listed.items.slice().sort((a, b) => (a.name < b.name ? 1 : -1));
+                        const items = listed.items
+                            .slice()
+                            .sort((a, b) => (a.name < b.name ? 1 : -1));
                         key = `${r.screenshotsPrefix}/${items[0].name}`;
                     }
                 }
-                if (!key) { if (alive) setThumbUrl(null); return; }
+                if (!key) {
+                    if (alive) setThumbUrl(null);
+                    return;
+                }
                 const url = await getDownloadURL(sRef(storage, key));
                 if (alive) setThumbUrl(url);
-            } catch { if (alive) setThumbUrl(null); }
+            } catch {
+                if (alive) setThumbUrl(null);
+            }
         })();
-        return () => { alive = false; };
+        return () => {
+            alive = false;
+        };
     }, [r.screenshotPaths, r.screenshotsPrefix]);
 
-    // inside UrlRow component
     async function handleRescanClick() {
         if (busy || locked) return;
-        const ok = typeof window !== 'undefined'
-            ? window.confirm('Rescan this URL now? This will queue a new capture and may overwrite the latest screenshot.')
-            : true;
+        const ok =
+            typeof window !== 'undefined'
+                ? window.confirm(
+                    'Rescan this URL now? This will queue a new capture and may overwrite the latest screenshot.'
+                )
+                : true;
         if (!ok) return;
         await rescan();
     }
@@ -287,16 +420,24 @@ function UrlRow({ uid, r }: UrlRowProps) {
             const prefix = r.screenshotsPrefix || `screenshots/${uid}/${urlHash}`;
 
             if (Array.isArray(r.screenshotPaths) && r.screenshotPaths.length > 0) {
-                await Promise.allSettled(r.screenshotPaths.map((p) => deleteObject(sRef(storage, p))));
+                await Promise.allSettled(
+                    r.screenshotPaths.map((p) => deleteObject(sRef(storage, p)))
+                );
             } else {
                 const folderRef = sRef(storage, prefix);
-                const listed: ListResult | null = await listAll(folderRef).catch(() => null);
+                const listed: ListResult | null = await listAll(folderRef).catch(
+                    () => null
+                );
                 if (listed) {
-                    await Promise.allSettled(listed.items.map((it) => deleteObject(it)));
+                    await Promise.allSettled(
+                        listed.items.map((it) => deleteObject(it))
+                    );
                     await Promise.allSettled(
                         listed.prefixes.map(async (sub) => {
                             const sublist = await listAll(sub);
-                            await Promise.allSettled(sublist.items.map((it) => deleteObject(it)));
+                            await Promise.allSettled(
+                                sublist.items.map((it) => deleteObject(it))
+                            );
                         })
                     );
                 }
@@ -305,13 +446,17 @@ function UrlRow({ uid, r }: UrlRowProps) {
             const rendersCol = collection(db, 'kloner_users', uid, 'kloner_renders');
             const qHash = query(rendersCol, where('urlHash', '==', urlHash));
             const qUrl = query(rendersCol, where('url', '==', r.url));
-            const [snapHash, snapUrl] = await Promise.all([getDocs(qHash), getDocs(qUrl)]);
+            const [snapHash, snapUrl] = await Promise.all([
+                getDocs(qHash),
+                getDocs(qUrl),
+            ]);
             const toDeleteIds = new Set<string>();
             snapHash.forEach((d) => toDeleteIds.add(d.id));
             snapUrl.forEach((d) => toDeleteIds.add(d.id));
             if (toDeleteIds.size > 0) {
                 const batch = writeBatch(db);
-                for (const id of toDeleteIds) batch.delete(doc(db, 'kloner_users', uid, 'kloner_renders', id));
+                for (const id of toDeleteIds)
+                    batch.delete(doc(db, 'kloner_users', uid, 'kloner_renders', id));
                 await batch.commit();
             }
 
@@ -324,34 +469,41 @@ function UrlRow({ uid, r }: UrlRowProps) {
     }
 
     return (
-        <div className={`rounded-xl border border-neutral-200 bg-white p-4 sm:p-5 shadow-sm relative ${locked ? 'opacity-60' : ''}`} aria-busy={locked} aria-disabled={locked}>
-            {/* {locked && (
-                <div className="absolute inset-0 grid place-items-center pointer-events-none">
-                    <div className="flex items-center gap-2 rounded border px-3 py-1.5 text-xs text-neutral-800 bg-white">
-                        <span className="inline-block h-4 w-4 rounded-full border-2 border-neutral-300" style={{ borderTopColor: ACCENT, animation: 'spin 0.8s linear infinite' }} aria-hidden />
-                        Working…
-                    </div>
-                </div>
-            )} */}
-
-            <div className="flex items-start gap-3">
+        <div
+            className={`rounded-xl border border-neutral-200 bg-white p-4 sm:p-5 shadow-sm relative ${locked ? 'opacity-60' : ''
+                }`}
+            aria-busy={locked}
+            aria-disabled={locked}
+        >
+            <div className="flex flex-col sm:flex-row gap-4 sm:gap-5">
                 {thumbUrl ? (
-                    <div className="h-14 w-14 rounded-lg overflow-hidden border border-neutral-200 bg-neutral-100 shrink-0">
-                        <img src={thumbUrl} alt="" className="h-full w-full object-cover" draggable={false} />
+                    <div className="h-16 w-full sm:w-20 rounded-lg overflow-hidden border border-neutral-200 bg-neutral-100 shrink-0 sm:h-16">
+                        <img
+                            src={thumbUrl}
+                            alt=""
+                            className="h-full w-full object-cover"
+                            draggable={false}
+                        />
                     </div>
                 ) : (
-                    <div className="h-14 w-14 rounded-lg grid place-items-center text-white font-semibold shrink-0" style={{ backgroundColor: ACCENT }}>
+                    <div
+                        className="h-16 w-full sm:w-20 rounded-lg grid place-items-center text-white font-semibold shrink-0 sm:h-16"
+                        style={{ backgroundColor: ACCENT }}
+                    >
                         {(r.urlHash ?? hash64(r.url)).slice(0, 2).toUpperCase()}
                     </div>
                 )}
 
-                <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
+                <div className="min-w-0 flex-1 flex flex-col gap-2">
+                    <div className="flex flex-wrap items-center gap-2 justify-between">
                         <a
                             href={locked ? undefined : r.url}
                             target={locked ? undefined : '_blank'}
                             rel={locked ? undefined : 'noreferrer'}
-                            className={`truncate mr-4 ${locked ? 'text-neutral-400' : 'text-neutral-800 hover:underline'} ${locked ? 'pointer-events-none' : ''}`}
+                            className={`truncate max-w-full sm:max-w-[70%] text-sm ${locked
+                                    ? 'text-neutral-400 pointer-events-none'
+                                    : 'text-neutral-800 hover:underline'
+                                }`}
                             aria-disabled={locked}
                             tabIndex={locked ? -1 : 0}
                         >
@@ -361,26 +513,34 @@ function UrlRow({ uid, r }: UrlRowProps) {
                     </div>
 
                     {r.lastError && (uiStatus === 'stale' || uiStatus === 'error') ? (
-                        <div className="mt-2 text-xs text-rose-600">Last error: {r.lastError}</div>
+                        <div className="text-xs text-rose-600">
+                            Last error: {r.lastError}
+                        </div>
                     ) : null}
-                    {err ? <div className="mt-2 text-sm text-red-600">{err}</div> : null}
+                    {err ? <div className="text-xs text-red-600">{err}</div> : null}
 
-                    <div className="mt-3 flex flex-wrap gap-2">
+                    <div className="mt-1 flex flex-wrap gap-2 justify-end sm:justify-start">
                         <button
                             onClick={() => void handleRescanClick()}
                             disabled={busy || locked}
-                            className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                            className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
                         >
-                            {busy ? 'Working…' : uiStatus === 'stale' ? 'Retry' : 'Rescan'}
+                            {busy
+                                ? 'Working…'
+                                : uiStatus === 'stale'
+                                    ? 'Retry'
+                                    : 'Rescan'}
                         </button>
 
                         <a
                             href={
-                                locked ? undefined : `/dashboard/view?u=${encodeURIComponent(r.url)}`
+                                locked
+                                    ? undefined
+                                    : `/dashboard/view?u=${encodeURIComponent(r.url)}`
                             }
-                            className={`rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs ${locked
-                                ? "text-neutral-400 pointer-events-none"
-                                : "text-neutral-700 hover:bg-neutral-50"
+                            className={`rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs ${locked
+                                    ? 'text-neutral-400 pointer-events-none'
+                                    : 'text-neutral-700 hover:bg-neutral-50'
                                 }`}
                             aria-disabled={locked}
                             tabIndex={locked ? -1 : 0}
@@ -391,7 +551,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
                         <button
                             onClick={() => void remove()}
                             disabled={busy || locked}
-                            className="rounded-lg px-3 py-2 text-xs text-white disabled:opacity-50"
+                            className="rounded-lg px-3 py-1.5 text-xs text-white disabled:opacity-50"
                             style={{ backgroundColor: ACCENT }}
                         >
                             Delete
@@ -411,6 +571,7 @@ export default function DashboardPage() {
     const search = useSearchParams();
     const [user, setUser] = useState<FirebaseUser | null>(null);
     const [rows, setRows] = useState<Array<UrlDoc & { id: string }>>([]);
+    const [rowsLoading, setRowsLoading] = useState<boolean>(true);
     const unsubRef = useRef<Unsubscribe | null>(null);
     const [bootstrapErr, setBootstrapErr] = useState<string>('');
 
@@ -418,16 +579,36 @@ export default function DashboardPage() {
 
     useEffect(() => {
         const off = onAuthStateChanged(auth, (u) => {
-            if (!u) { router.replace('/login?next=/dashboard'); return; }
+            if (!u) {
+                router.replace('/login?next=/dashboard');
+                return;
+            }
             setUser(u);
-            const qy = query(collection(db, 'kloner_users', u.uid, 'kloner_urls'), orderBy('createdAt', 'desc'));
+            const qy = query(
+                collection(db, 'kloner_users', u.uid, 'kloner_urls'),
+                orderBy('createdAt', 'desc')
+            );
             unsubRef.current?.();
-            unsubRef.current = onSnapshot(qy, (snap) => {
-                const list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as UrlDoc) }));
-                setRows(list);
-            });
+            unsubRef.current = onSnapshot(
+                qy,
+                (snap) => {
+                    const list = snap.docs.map((d) => ({
+                        id: d.id,
+                        ...(d.data() as UrlDoc),
+                    }));
+                    setRows(list);
+                    setRowsLoading(false);
+                },
+                (err) => {
+                    setBootstrapErr(err.message || 'Failed to load URLs.');
+                    setRowsLoading(false);
+                }
+            );
         });
-        return () => { off(); unsubRef.current?.(); };
+        return () => {
+            off();
+            unsubRef.current?.();
+        };
     }, [router]);
 
     useEffect(() => {
@@ -435,13 +616,13 @@ export default function DashboardPage() {
         if (!u) return;
         if (addOnceRef.current) return;
 
-        const paramUrl = search.get("u");
+        const paramUrl = search.get('u');
         if (!paramUrl) return;
 
         const cleaned = normUrl(paramUrl);
         const key = `kloner:addOnce:${u.uid}:${hash64(cleaned)}`;
-        if (localStorage.getItem(key)) {
-            router.replace("/dashboard"); // strip param
+        if (typeof window !== 'undefined' && localStorage.getItem(key)) {
+            router.replace('/dashboard');
             return;
         }
 
@@ -449,19 +630,26 @@ export default function DashboardPage() {
         (async () => {
             try {
                 await addAndStart(u.uid, paramUrl);
-                localStorage.setItem(key, String(Date.now()));
+                if (typeof window !== 'undefined') {
+                    localStorage.setItem(key, String(Date.now()));
+                }
             } catch (e: any) {
-                setBootstrapErr(e?.message || "Failed to add URL.");
+                setBootstrapErr(e?.message || 'Failed to add URL.');
             } finally {
-                router.replace("/dashboard"); // never keep ?u= on URL
+                router.replace('/dashboard');
             }
         })();
     }, [search, user, router]);
 
     return (
         <div className="px-4 sm:px-6 lg:px-10 py-6">
-            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-800">Dashboard</h1>
-            <p className="mt-1 text-sm text-neutral-600">Add a URL to capture. We queue screenshots and keep them under your account.</p>
+            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-800">
+                Dashboard
+            </h1>
+            <p className="mt-1 text-sm text-neutral-600">
+                Add a URL to capture. We queue screenshots and keep them under your
+                account.
+            </p>
 
             {bootstrapErr ? (
                 <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -469,14 +657,32 @@ export default function DashboardPage() {
                 </div>
             ) : null}
 
-            <div className="mt-6">{user ? <UrlForm uid={user.uid} onAdded={() => { }} /> : null}</div>
+            <div className="mt-6">
+                {user ? <UrlForm uid={user.uid} onAdded={() => { }} /> : null}
+            </div>
 
             <div className="mt-8">
-                <h2 className="text-sm font-semibold text-neutral-700">Tracked URLs</h2>
+                <div className="flex items-center justify-between gap-2">
+                    <h2 className="text-sm font-semibold text-neutral-700">
+                        Tracked URLs
+                    </h2>
+                    {rows.length > 0 && (
+                        <span className="text-xs text-neutral-400">
+                            {rows.length} tracked
+                        </span>
+                    )}
+                </div>
+
                 <div className="mt-3 grid grid-cols-1 gap-4">
-                    {rows.length === 0 ? (
-                        <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center text-neutral-500">
-                            No URLs yet. Add one above.
+                    {rowsLoading && rows.length === 0 ? (
+                        <>
+                            <UrlRowSkeleton />
+                            <UrlRowSkeleton />
+                            <UrlRowSkeleton />
+                        </>
+                    ) : rows.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center text-neutral-500 text-sm">
+                            No URLs yet. Add one above to see capture status here.
                         </div>
                     ) : (
                         rows.map((r) => <UrlRow key={r.id} uid={user!.uid} r={r} />)

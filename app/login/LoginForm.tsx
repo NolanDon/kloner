@@ -26,6 +26,7 @@ import {
     query,
     where,
 } from "firebase/firestore";
+import Image from "next/image";
 
 const ACCENT = "#f55f2a";
 
@@ -386,19 +387,17 @@ export default function LoginPage(): JSX.Element {
                     disabled={loading}
                     className="w-full inline-flex items-center justify-center gap-3 rounded-xl border border-neutral-200 bg-white text-black px-4 py-3 font-medium hover:bg-neutral-50 transition disabled:opacity-50 focus:outline-none"
                 >
-                    <svg
-                        aria-hidden
-                        viewBox="0 0 24 24"
+                    <Image
+                        src="/images/g.webp"
+                        alt="Google"
+                        width={20}
+                        height={20}
                         className="h-5 w-5"
-                        xmlns="http://www.w3.org/2000/svg"
-                    >
-                        <path
-                            fill="#4285F4"
-                            d="M21.35 11.1h-9.18v2.98h5.26c-.23 1.5-1.76 4.4-5.26 4.4-3.17 0-5.76-2.62-5.76-5.84s2.59-5.84 5.76-5.84c1.8 0 3.01.76 3.7 1.42l2.52-2.43C17.06 4.4 15 3.5 12.17 3.5 6.97 3.5 2.75 7.72 2.75 12.94S6.97 22.38 12.17 22.38c7.3 0 9.07-6.39 8.77-11.28z"
-                        />
-                    </svg>
+                        priority
+                    />
                     {loading ? "Please wait…" : "Continue with Google"}
                 </button>
+
 
                 {err ? (
                     <p className="mt-4 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
