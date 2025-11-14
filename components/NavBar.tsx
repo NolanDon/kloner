@@ -68,7 +68,7 @@ export default function NavBar(): JSX.Element {
         <div className={`relative flex items-center gap-3 px-3 py-1 md:px-1 mx-2 ${shellClasses}`}
           style={{ height: "4rem" }} >
           {/* Logo */}
-          <Link href="/" className="ml-3 font-black tracking-tight text-lg md:text-xl shrink-0 text-white">
+          <Link href="/" className="ml-5 font-black tracking-tight text-lg md:text-xl shrink-0 text-white">
             <span className="text-white">kloner</span>
           </Link>
 

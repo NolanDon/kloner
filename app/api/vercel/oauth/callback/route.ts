@@ -35,7 +35,8 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 export async function GET(req: NextRequest) {
-    const base = process.env.OAUTH_REDIRECT_BASE_PROD || "https://kloner.app";
+    const base =
+        process.env.OAUTH_REDIRECT_BASE_PROD || "https://kloner.app";
 
     const redirectWithStatus = (
         status: "success" | "error",
@@ -46,11 +47,7 @@ export async function GET(req: NextRequest) {
         if (reason) next.searchParams.set("reason", reason);
 
         const res = NextResponse.redirect(next.toString(), { status: 302 });
-        // Clear CSRF cookie regardless of outcome
-        res.cookies.set("vercel_oauth_state", "", {
-            maxAge: 0,
-            path: "/",
-        });
+        res.cookies.set("vercel_oauth_state", "", { maxAge: 0, path: "/" });
         return res;
     };
 
@@ -64,14 +61,11 @@ export async function GET(req: NextRequest) {
 
         const cookieState = req.cookies.get("vercel_oauth_state")?.value;
 
-        // 1) Basic param check
         if (!code) {
             console.warn("[vercel-oauth] missing code param");
             return redirectWithStatus("error", "token");
         }
 
-        // 2) CSRF / state validation – only enforced if we actually set a cookie
-        //    This lets pure Vercel-driven flows (no /start, no cookie) still work.
         if (cookieState && state !== cookieState) {
             console.warn("[vercel-oauth] state mismatch", {
                 code: !!code,
@@ -81,10 +75,9 @@ export async function GET(req: NextRequest) {
             return redirectWithStatus("error", "state");
         }
 
-        // 3) Verify Kloner session (must be logged in for "connect from Kloner" flow)
         let decoded;
         try {
-            decoded = await verifySession(req); // { uid, email, claims? }
+            decoded = await verifySession(req);
         } catch (err) {
             console.error("[vercel-oauth] verifySession failed", err);
             return redirectWithStatus("error", "auth");
@@ -92,10 +85,7 @@ export async function GET(req: NextRequest) {
 
         const uid = decoded.uid as string;
 
-        // 4) Exchange code → access token with Vercel
-        // CRITICAL: this must be EXACTLY the same value as:
-        // - the redirect_uri configured in the Vercel OAuth app
-        // - the redirect_uri used in /api/vercel/oauth/start
+        // CRITICAL: must equal Vercel Integration Redirect URL and /start redirect_uri
         const redirectUri = process.env.VERCEL_OAUTH_REDIRECT_URI;
         if (!redirectUri) {
             console.error(
@@ -138,7 +128,6 @@ export async function GET(req: NextRequest) {
             return redirectWithStatus("error", "token");
         }
 
-        // 5) Persist token under kloner_users/{uid}/integrations/vercel
         const now = admin.firestore.FieldValue.serverTimestamp();
 
         try {
@@ -164,7 +153,6 @@ export async function GET(req: NextRequest) {
             return redirectWithStatus("error", "db");
         }
 
-        // 6) Success
         return redirectWithStatus("success");
     } catch (err) {
         console.error("[vercel-oauth] unexpected error", err);
