@@ -45,6 +45,8 @@ const db = admin.firestore();
  * 5. Redirect to a UI page with ?status=success|error so the UI can react accordingly.
  */
 export async function GET(req: NextRequest) {
+    console.log("[vercel-oauth] incoming", req.url);
+
     const url = new URL(req.url);
     const code = url.searchParams.get("code");
     const state = url.searchParams.get("state");
@@ -53,29 +55,33 @@ export async function GET(req: NextRequest) {
 
     const cookieState = req.cookies.get("vercel_oauth_state")?.value;
 
-    // helper to build redirect with status + reason and clear cookie
+    console.log("[vercel-oauth] query", { hasCode: !!code, state, teamId, configurationId });
+    console.log("[vercel-oauth] cookieState", cookieState);
+
     const redirectWithStatus = (status: "success" | "error", reason?: string) => {
         const base = process.env.OAUTH_REDIRECT_BASE_PROD || "https://kloner.app";
         const next = new URL("/integrations/vercel/callback", base);
         next.searchParams.set("status", status);
         if (reason) next.searchParams.set("reason", reason);
 
+        console.log("[vercel-oauth] redirect", { status, reason, to: next.toString() });
+
         const res = NextResponse.redirect(next.toString(), { status: 302 });
         res.cookies.set("vercel_oauth_state", "", { maxAge: 0, path: "/" });
         return res;
     };
 
-    // 1) CSRF / state validation
     if (!code || !state || !cookieState || state !== cookieState) {
+        console.warn("[vercel-oauth] state mismatch", { code: !!code, state, cookieState });
         return redirectWithStatus("error", "state");
     }
 
-    // 2) Tie install to the currently logged-in Kloner user
     let decoded;
     try {
-        decoded = await verifySession(req); // { uid, email, claims? }
-    } catch {
-        // No Kloner session → redirect to login and explain we came from Vercel
+        decoded = await verifySession(req);
+        console.log("[vercel-oauth] verified session", { uid: decoded.uid });
+    } catch (err) {
+        console.warn("[vercel-oauth] verifySession failed", err);
         const base = process.env.OAUTH_REDIRECT_BASE_PROD || "https://kloner.app";
         const loginUrl = new URL("/login", base);
         loginUrl.searchParams.set("from", "vercel");
@@ -87,7 +93,6 @@ export async function GET(req: NextRequest) {
 
     const uid = decoded.uid as string;
 
-    // 3) Perform code → token exchange with Vercel
     const redirectUri =
         process.env.NODE_ENV === "production"
             ? "https://kloner.app/api/vercel/oauth/callback"
@@ -100,6 +105,8 @@ export async function GET(req: NextRequest) {
         redirect_uri: redirectUri,
     });
 
+    console.log("[vercel-oauth] exchanging code for token", { redirectUri });
+
     const tokenRes = await fetch("https://api.vercel.com/v2/oauth/access_token", {
         method: "POST",
         headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -108,18 +115,26 @@ export async function GET(req: NextRequest) {
 
     if (!tokenRes.ok) {
         const text = await tokenRes.text();
-        console.error("Vercel token exchange failed", tokenRes.status, text);
+        console.error("[vercel-oauth] token exchange failed", tokenRes.status, text);
         return redirectWithStatus("error", "token");
     }
 
     const json: any = await tokenRes.json();
-    // shape: { access_token, token_type, team_id?, user_id?, expires_at?, scope?, ... }
+    console.log("[vercel-oauth] token response", {
+        hasToken: !!json.access_token,
+        user_id: json.user_id,
+        team_id: json.team_id,
+        scope: json.scope,
+    });
 
-    // 4) Persist token under kloner_users/{uid}/integrations/vercel
     const now = admin.firestore.FieldValue.serverTimestamp();
 
     const userRef = db.collection("kloner_users").doc(uid);
     const vercelRef = userRef.collection("integrations").doc("vercel");
+
+    console.log("[vercel-oauth] writing Firestore", {
+        path: `kloner_users/${uid}/integrations/vercel`,
+    });
 
     await vercelRef.set(
         {
@@ -136,6 +151,7 @@ export async function GET(req: NextRequest) {
         { merge: true },
     );
 
-    // 5) Success → redirect with status=success
+    console.log("[vercel-oauth] Firestore write complete");
+
     return redirectWithStatus("success");
 }
