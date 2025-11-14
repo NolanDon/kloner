@@ -7,11 +7,11 @@ const env = {
     redirectUri: process.env.VERCEL_OAUTH_REDIRECT_URI,
     scopes:
         process.env.VERCEL_OAUTH_SCOPES ??
-        // adjust scopes to what your OAuth app actually needs
+        // Adjust scopes to what your OAuth app actually needs
         "read:projects read:deployments write:deployments read:env write:env read:user",
 };
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
     if (!env.clientId || !env.redirectUri) {
         return NextResponse.json(
             { error: "vercel_oauth_misconfigured" },
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
         );
     }
 
-    // CSRF state
+    // CSRF state for the "launched from Kloner UI" flow
     const state = crypto.randomBytes(16).toString("hex");
 
     const authorizeUrl = new URL("https://vercel.com/oauth/authorize");
@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
 
     const res = NextResponse.redirect(authorizeUrl.toString(), { status: 302 });
 
+    // Tie the CSRF state to this browser session
     res.cookies.set("vercel_oauth_state", state, {
         httpOnly: true,
         sameSite: "lax",

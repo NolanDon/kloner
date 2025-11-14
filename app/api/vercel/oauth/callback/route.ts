@@ -37,13 +37,20 @@ const db = admin.firestore();
 export async function GET(req: NextRequest) {
     const base = process.env.OAUTH_REDIRECT_BASE_PROD || "https://kloner.app";
 
-    const redirectWithStatus = (status: "success" | "error", reason?: string) => {
+    const redirectWithStatus = (
+        status: "success" | "error",
+        reason?: string,
+    ) => {
         const next = new URL("/integrations/vercel/callback", base);
         next.searchParams.set("status", status);
         if (reason) next.searchParams.set("reason", reason);
 
         const res = NextResponse.redirect(next.toString(), { status: 302 });
-        res.cookies.set("vercel_oauth_state", "", { maxAge: 0, path: "/" });
+        // Clear CSRF cookie regardless of outcome
+        res.cookies.set("vercel_oauth_state", "", {
+            maxAge: 0,
+            path: "/",
+        });
         return res;
     };
 
@@ -52,33 +59,48 @@ export async function GET(req: NextRequest) {
         const code = url.searchParams.get("code");
         const state = url.searchParams.get("state");
         const teamId = url.searchParams.get("teamId") || undefined;
-        const configurationId = url.searchParams.get("configurationId") || undefined;
+        const configurationId =
+            url.searchParams.get("configurationId") || undefined;
 
         const cookieState = req.cookies.get("vercel_oauth_state")?.value;
 
-        // 1) CSRF / state validation
-        if (!code || !state || !cookieState || state !== cookieState) {
-            console.warn("[vercel-oauth] state mismatch", { code: !!code, state, cookieState });
+        // 1) Basic param check
+        if (!code) {
+            console.warn("[vercel-oauth] missing code param");
+            return redirectWithStatus("error", "token");
+        }
+
+        // 2) CSRF / state validation – only enforced if we actually set a cookie
+        //    This lets pure Vercel-driven flows (no /start, no cookie) still work.
+        if (cookieState && state !== cookieState) {
+            console.warn("[vercel-oauth] state mismatch", {
+                code: !!code,
+                state,
+                cookieState,
+            });
             return redirectWithStatus("error", "state");
         }
 
-        // 2) Verify Kloner session (must be logged in)
+        // 3) Verify Kloner session (must be logged in for "connect from Kloner" flow)
         let decoded;
         try {
             decoded = await verifySession(req); // { uid, email, claims? }
         } catch (err) {
             console.error("[vercel-oauth] verifySession failed", err);
-            // Explicitly mark as auth failure instead of silently “success”
+            // Explicitly mark as auth failure
             return redirectWithStatus("error", "auth");
         }
 
         const uid = decoded.uid as string;
 
-        // 3) Exchange code → access token with Vercel
+        // 4) Exchange code → access token with Vercel
+        // Single source of truth for redirect_uri: prefer env, fallback to base.
+        const redirectUriFromEnv = process.env.VERCEL_OAUTH_REDIRECT_URI;
         const redirectUri =
-            process.env.NODE_ENV === "production"
+            redirectUriFromEnv ||
+            (process.env.NODE_ENV === "production"
                 ? `${base}/api/vercel/oauth/callback`
-                : "http://localhost:3000/api/vercel/oauth/callback";
+                : "http://localhost:3000/api/vercel/oauth/callback");
 
         const body = new URLSearchParams({
             code,
@@ -89,15 +111,22 @@ export async function GET(req: NextRequest) {
 
         let json: any;
         try {
-            const tokenRes = await fetch("https://api.vercel.com/v2/oauth/access_token", {
-                method: "POST",
-                headers: { "content-type": "application/x-www-form-urlencoded" },
-                body,
-            });
+            const tokenRes = await fetch(
+                "https://api.vercel.com/v2/oauth/access_token",
+                {
+                    method: "POST",
+                    headers: { "content-type": "application/x-www-form-urlencoded" },
+                    body,
+                },
+            );
 
             if (!tokenRes.ok) {
                 const text = await tokenRes.text();
-                console.error("[vercel-oauth] token exchange failed", tokenRes.status, text);
+                console.error(
+                    "[vercel-oauth] token exchange failed",
+                    tokenRes.status,
+                    text,
+                );
                 return redirectWithStatus("error", "token");
             }
 
@@ -107,7 +136,7 @@ export async function GET(req: NextRequest) {
             return redirectWithStatus("error", "token");
         }
 
-        // 4) Persist token under kloner_users/{uid}/integrations/vercel
+        // 5) Persist token under kloner_users/{uid}/integrations/vercel
         const now = admin.firestore.FieldValue.serverTimestamp();
 
         try {
@@ -130,11 +159,11 @@ export async function GET(req: NextRequest) {
             );
         } catch (err) {
             console.error("[vercel-oauth] Firestore write failed", err, { uid });
-            // Critical: do NOT claim success if Firestore failed
+            // Do NOT claim success if Firestore failed
             return redirectWithStatus("error", "db");
         }
 
-        // 5) Only here is it actually successful
+        // 6) Only here is it actually successful
         return redirectWithStatus("success");
     } catch (err) {
         console.error("[vercel-oauth] unexpected error", err);
