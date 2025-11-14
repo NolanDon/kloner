@@ -10,13 +10,20 @@
 /* Kill horizontal scroll everywhere */
 html,
 body {
-    /* scroll-behavior: smooth; */
+    scroll-behavior: smooth;
     @apply bg-white text-black/90 overflow-x-clip;
     /* use clip over hidden when possible */
 }
 
-/* If you must support older Safari, swap to overflow-x-hidden instead */
-/* html, body { overflow-x: hidden; } */
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
+}
+
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
 
 .container-soft {
     @apply max-w-6xl mx-auto px-4;

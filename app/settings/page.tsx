@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { auth, db } from "@/lib/firebase";
+import { auth } from "@/lib/firebase";
 import {
     onAuthStateChanged,
     deleteUser,
@@ -20,59 +20,31 @@ import {
     Trash2,
     Gauge,
 } from "lucide-react";
-import { doc, getDoc } from "firebase/firestore";
 import NavBar from "@/components/NavBar";
+import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 
 const ACCENT = "#f55f2a";
 
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
 
-type VercelStatus = "loading" | "connected" | "disconnected";
-
 export default function SettingsPage(): JSX.Element {
     const [user, setUser] = useState<User | null>(null);
     const [busy, setBusy] = useState(false);
     const [msg, setMsg] = useState<string>("");
 
-    const [vercelStatus, setVercelStatus] = useState<VercelStatus>("loading");
     const [disconnectBusy, setDisconnectBusy] = useState(false);
+
+    const {
+        status: vercelStatus,
+        checking: vercelChecking,
+        refresh: refreshVercelStatus,
+    } = useVercelIntegration();
 
     useEffect(() => {
         const off = onAuthStateChanged(auth, (u) => setUser(u));
         return () => off();
     }, []);
-
-    // load Vercel integration status once user is known
-    useEffect(() => {
-        if (!user) {
-            setVercelStatus("disconnected");
-            return;
-        }
-
-        let cancelled = false;
-
-        const run = async () => {
-            setVercelStatus("loading");
-            try {
-                const ref = doc(db, "kloner_users", user.uid, "integrations", "vercel");
-                const snap = await getDoc(ref);
-                if (!cancelled && snap.exists() && (snap.data() as any)?.connected) {
-                    setVercelStatus("connected");
-                } else if (!cancelled) {
-                    setVercelStatus("disconnected");
-                }
-            } catch {
-                if (!cancelled) setVercelStatus("disconnected");
-            }
-        };
-
-        run();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [user]);
 
     const initials = useMemo(() => {
         if (!user) return "ME";
@@ -93,7 +65,7 @@ export default function SettingsPage(): JSX.Element {
                 const provider = new GoogleAuthProvider();
                 await reauthenticateWithPopup(user, provider);
             } catch {
-                // ignore; deleteUser will throw if reauth actually required
+                // deleteUser will still enforce reauth if actually needed
             }
             await deleteUser(user);
             setMsg("Account deleted.");
@@ -117,15 +89,13 @@ export default function SettingsPage(): JSX.Element {
             .map((b) => b.toString(16).padStart(2, "0"))
             .join("");
 
-        // optional: keep for debugging
         localStorage.setItem("kloner_vercel_latest_csrf", state);
 
-        // IMPORTANT: set the cookie the callback expects
         document.cookie = [
             `vercel_oauth_state=${state}`,
             "Path=/",
-            "Max-Age=600",           // 10 minutes
-            "SameSite=Lax"
+            "Max-Age=600",
+            "SameSite=Lax",
         ].join("; ");
 
         const link = `https://vercel.com/integrations/${VERCEL_INTEGRATION_SLUG}/new?state=${state}`;
@@ -137,9 +107,11 @@ export default function SettingsPage(): JSX.Element {
         try {
             const res = await fetch("/api/vercel/disconnect", {
                 method: "POST",
+                credentials: "include",
             });
             if (res.ok) {
-                setVercelStatus("disconnected");
+                // Re-ping status to ensure local state is aligned with backend + Vercel
+                await refreshVercelStatus();
             } else {
                 console.error("Failed to disconnect Vercel");
             }
@@ -153,9 +125,11 @@ export default function SettingsPage(): JSX.Element {
     const vercelBadgeLabel =
         vercelStatus === "connected"
             ? "connected"
-            : vercelStatus === "loading"
+            : vercelStatus === "loading" || vercelChecking
                 ? "checking…"
-                : "connect";
+                : vercelStatus === "error"
+                    ? "error"
+                    : "connect";
 
     const vercelBadgeClasses =
         vercelStatus === "connected"

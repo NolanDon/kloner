@@ -10,15 +10,34 @@ import Image from "next/image";
 import logo from "@/public/images/logo.png";
 import CenterLoader from "@/components/ui/CenterLoader";
 import { AnimatePresence, motion } from "framer-motion";
-import { MoreHorizontal, X, Home, LayoutTemplate, Hammer, BookText, Settings as SettingsIcon, LogOut, Eye } from "lucide-react";
+import { MoreHorizontal, X, Home, LayoutTemplate, BookText, Settings as SettingsIcon, LogOut, Eye } from "lucide-react";
 
 const ACCENT = "#f55f2a";
 
-function NavItem({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
+function NavItem({
+    href,
+    active,
+    children,
+}: {
+    href: string;
+    active: boolean;
+    children: React.ReactNode;
+}) {
+    const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+        if (active) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    };
+
     return (
         <Link
             href={href}
-            className={`block rounded-lg px-3 py-2 text-sm ${active ? "bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200" : "text-neutral-700 hover:bg-neutral-50"
+            onClick={handleClick}
+            aria-disabled={active}
+            className={`block rounded-lg px-3 py-2 text-sm ${active
+                    ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
+                    : "text-neutral-700 hover:bg-neutral-50"
                 }`}
         >
             {children}
@@ -27,7 +46,11 @@ function NavItem({ href, active, children }: { href: string; active: boolean; ch
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
-    return <div className="px-3 pt-4 pb-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">{children}</div>;
+    return (
+        <div className="px-3 pt-4 pb-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
+            {children}
+        </div>
+    );
 }
 
 function AccountBlock() {
@@ -42,7 +65,12 @@ function AccountBlock() {
     const initials = useMemo(() => {
         if (!user) return "ME";
         const name = user.displayName || user.email || "";
-        const parts = name.replace(/@.*/, "").replace(/[_.\-]+/g, " ").trim().split(/\s+/).slice(0, 2);
+        const parts = name
+            .replace(/@.*/, "")
+            .replace(/[_.\-]+/g, " ")
+            .trim()
+            .split(/\s+/)
+            .slice(0, 2);
         if (parts.length === 0) return "ME";
         if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
         return (parts[0]![0]! + parts[1]![0]!).toUpperCase();
@@ -56,15 +84,23 @@ function AccountBlock() {
     return (
         <div className="mt-auto p-4 border-top border-neutral-200">
             <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full grid place-items-center font-semibold text-white" style={{ backgroundColor: ACCENT }}>
+                <div
+                    className="h-10 w-10 rounded-full grid place-items-center font-semibold text-white"
+                    style={{ backgroundColor: ACCENT }}
+                >
                     {initials}
                 </div>
                 <div className="min-w-0">
-                    <div className="text-sm font-medium text-neutral-800 truncate">{user?.displayName || user?.email || "Signed in"}</div>
+                    <div className="text-sm font-medium text-neutral-800 truncate">
+                        {user?.displayName || user?.email || "Signed in"}
+                    </div>
                     <div className="text-xs text-neutral-500 truncate">Account</div>
                 </div>
             </div>
-            <button onClick={handleSignOut} className="mt-3 w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50">
+            <button
+                onClick={handleSignOut}
+                className="mt-3 w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
+            >
                 Sign out
             </button>
         </div>
@@ -102,14 +138,14 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         const inPreview = pathname.startsWith("/dashboard/view") || pathname === "/dashboard";
 
         return (
-            <div className="flex h-screen flex-col w-full">
+            <div className="flex h-full flex-col w-full">
                 {/* Brand */}
                 <div className="px-5 py-5 border-b border-neutral-200">
                     <Link href="/" className="inline-flex items-center gap-2">
-                        <div className="relative h-8 w-8 overflow-hidden rounded-full bg-white/20 ring-1 ring-white/40">
+                        <div className="relative h-12 w-12 overflow-hidden rounded-full bg-white/20 ring-1 ring-white/40">
                             <Image src={logo} alt="" fill priority className="object-cover" />
                         </div>
-                        <div className="font-semibold tracking-tight">Kloner</div>
+                        <div className="font-semibold text-[20px] tracking-tight">Kloner</div>
                     </Link>
                 </div>
 
@@ -117,19 +153,29 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 <nav className="flex-1 p-3 text-sm overflow-y-auto">
                     <SectionLabel>General</SectionLabel>
                     <div className="space-y-1">
-                        <NavItem href="/" active={false}>Home</NavItem>
+                        <NavItem href="/" active={false}>
+                            Home
+                        </NavItem>
                     </div>
 
                     <SectionLabel>Preview</SectionLabel>
                     <div className="space-y-1">
-                        <NavItem href="/dashboard" active={inDashboard}>Dashboard</NavItem>
-                        <NavItem href="/dashboard/view" active={inPreview && !inDashboard}>Preview Builder</NavItem>
+                        <NavItem href="/dashboard" active={inDashboard}>
+                            Dashboard
+                        </NavItem>
+                        <NavItem href="/dashboard/view" active={inPreview && !inDashboard}>
+                            Preview Builder
+                        </NavItem>
                     </div>
 
                     <SectionLabel>General</SectionLabel>
                     <div className="space-y-1">
-                        <NavItem href="/settings" active={usePathname() === "/settings"}>Settings</NavItem>
-                        <NavItem href="/docs" active={usePathname() === "/docs"}>Docs</NavItem>
+                        <NavItem href="/settings" active={usePathname() === "/settings"}>
+                            Settings
+                        </NavItem>
+                        <NavItem href="/docs" active={usePathname() === "/docs"}>
+                            Docs
+                        </NavItem>
                     </div>
                 </nav>
 
@@ -138,13 +184,11 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         );
     }
 
-    // Mobile header sheet: mirrors SidebarShell entries + account actions
     function MobileHeader() {
         const pathname = usePathname();
         const [open, setOpen] = useState(false);
 
         useEffect(() => {
-            // lock body scroll when open
             const el = document.documentElement;
             const prev = el.style.overflow;
             el.style.overflow = open ? "hidden" : prev || "";
@@ -173,13 +217,15 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             <div className="md:hidden sticky top-0 z-10 bg-white border-b border-neutral-200">
                 <div className="flex items-center justify-between px-4 py-3">
                     <a href="/" className="inline-flex items-center gap-2">
-                        <div className="h-8 w-8 grid place-items-center rounded-lg text-white font-black" style={{ backgroundColor: ACCENT }}>
+                        <div
+                            className="h-8 w-8 grid place-items-center rounded-lg text-white font-black"
+                            style={{ backgroundColor: ACCENT }}
+                        >
                             K
                         </div>
                         <div className="font-semibold">Kloner</div>
                     </a>
 
-                    {/* Replaces bare Settings link with a compact dropdown sheet */}
                     <button
                         onClick={() => setOpen(true)}
                         aria-label="Open quick menu"
@@ -207,13 +253,19 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                                 animate={{ y: 0, opacity: 1 }}
                                 exit={{ y: -10, opacity: 0 }}
                                 transition={{ duration: 0.2, ease: "easeOut" }}
-                                className="fixed inset-x-3 top-[max(12px,env(safe-area-inset-top))] z-[90] rounded-3xl border border-neutral-200 bg-white shadow-2xl"
+                                className="fixed inset-x-3 top-[max(12px,env(safe-area-inset-top))] z[90] rounded-3xl border border-neutral-200 bg-white shadow-2xl"
                                 role="dialog"
                                 aria-modal="true"
                             >
                                 <div className="flex items-center justify-between px-4 pt-3 pb-2">
-                                    <div className="text-sm font-semibold text-neutral-800">Quick Menu</div>
-                                    <button onClick={close} aria-label="Close" className="h-9 w-9 grid place-items-center rounded-full hover:bg-neutral-100">
+                                    <div className="text-sm font-semibold text-neutral-800">
+                                        Quick Menu
+                                    </div>
+                                    <button
+                                        onClick={close}
+                                        aria-label="Close"
+                                        className="h-9 w-9 grid place-items-center rounded-full hover:bg-neutral-100"
+                                    >
                                         <X className="h-5 w-5" />
                                     </button>
                                 </div>
@@ -221,13 +273,31 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
                                 <ul className="px-2 py-2">
                                     {items.map(({ href, label, icon: Icon }) => {
-                                        const active = pathname === href || (href !== "/" && pathname.startsWith(href));
+                                        const active =
+                                            pathname === href ||
+                                            (href !== "/" && pathname.startsWith(href));
+
+                                        const handleClick = (
+                                            e: React.MouseEvent<HTMLAnchorElement>,
+                                        ) => {
+                                            if (active) {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                close();
+                                                return;
+                                            }
+                                            close();
+                                        };
+
                                         return (
                                             <li key={href}>
                                                 <a
                                                     href={href}
-                                                    onClick={close}
-                                                    className={`flex items-center gap-3 rounded-xl px-3 py-3 text-[15px] ${active ? "bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200" : "text-neutral-800 hover:bg-neutral-50"
+                                                    onClick={handleClick}
+                                                    aria-disabled={active}
+                                                    className={`flex items-center gap-3 rounded-xl px-3 py-3 text-[15px] ${active
+                                                            ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
+                                                            : "text-neutral-800 hover:bg-neutral-50"
                                                         }`}
                                                 >
                                                     <span className="grid h-8 w-8 place-items-center rounded-lg border border-neutral-200 bg-white">
@@ -263,15 +333,15 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     }
 
     return (
-        <main className="bg-white">
-            <div className="mx-auto max-w-[1400px] grid grid-cols-1 md:grid-cols-[auto,1fr]">
-                <aside className="hidden md:flex md:w-64 lg:w-72 shrink-0 border-r border-neutral-200 bg-white">
+        <main className="bg-white h-screen overflow-hidden">
+            <div className="mx-auto max-w-[1400px] h-full grid grid-cols-1 md:grid-cols-[auto,1fr]">
+                <aside className="hidden md:block md:w-64 lg:w-72 shrink-0 border-r border-neutral-200 bg-white h-full sticky top-0">
                     <SidebarShell />
                 </aside>
 
-                <section className="min-h-screen">
+                <section className="min-h-screen overflow-y-scroll scrollbar-hide">
                     <MobileHeader />
-                    {children}
+                    <div className="flex-1">{children}</div>
                 </section>
             </div>
         </main>

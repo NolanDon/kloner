@@ -7,7 +7,6 @@ export const dynamic = "force-dynamic";
 
 const WEBHOOK_SECRET = process.env.VERCEL_WEBHOOK_SECRET || "";
 
-// Basic type; extend as needed
 type VercelWebhookPayload = {
     type: string;
     id: string;
@@ -28,36 +27,38 @@ export async function POST(req: NextRequest) {
     const signature = req.headers.get("x-vercel-signature");
 
     if (!verifySignature(rawBody, signature)) {
-        return NextResponse.json({ ok: false, error: "Invalid signature" }, { status: 401 });
+        return NextResponse.json(
+            { ok: false, error: "Invalid signature" },
+            { status: 401 },
+        );
     }
 
     let event: VercelWebhookPayload;
     try {
         event = JSON.parse(rawBody);
     } catch {
-        return NextResponse.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
+        return NextResponse.json(
+            { ok: false, error: "Invalid JSON" },
+            { status: 400 },
+        );
     }
 
-    // Minimal routing on event type
     switch (event.type) {
         case "deployment.created":
         case "deployment.succeeded":
         case "deployment.error":
         case "deployment.canceled":
-            // TODO: persist deployment state for the corresponding user / configuration
-            // e.g. write to Firestore keyed by event.payload.projectId / deploymentId
+            // TODO: persist deployment state keyed by deployment/project if needed.
             break;
 
         case "project.created":
         case "project.removed":
-            // TODO: sync project metadata if you care
+            // TODO: sync project metadata if needed.
             break;
 
         default:
-            // Ignore unhandled events
             break;
     }
 
-    // Acknowledge quickly so Vercel doesn’t retry
     return NextResponse.json({ ok: true });
 }

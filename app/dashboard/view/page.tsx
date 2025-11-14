@@ -28,7 +28,18 @@ import {
 import { ref as sRef, listAll, getDownloadURL, deleteObject, type StorageReference } from "firebase/storage";
 import { auth, db, storage } from "@/lib/firebase";
 import PreviewEditor from "@/components/PreviewEditor";
-import { Rocket, Plus, ChevronDown, AlertTriangle, Maximize2, Hammer, Eye, HammerIcon } from "lucide-react";
+import {
+    Rocket,
+    Plus,
+    ChevronDown,
+    AlertTriangle,
+    Maximize2,
+    Hammer,
+    Eye,
+    HammerIcon,
+    CheckCircle2,
+    Timer,
+} from "lucide-react";
 
 const ACCENT = "#f55f2a";
 
@@ -57,19 +68,34 @@ type RenderDoc = {
     model?: string | null;
     version?: number;
     controllerVersion?: string | null;
+    lastExportedAt?: any;
 };
 
 /* ───────── utils ───────── */
 function isHttpUrl(s?: string): s is string {
     if (!s) return false;
-    try { const u = new URL(s); return u.protocol === "http:" || u.protocol === "https:"; } catch { return false; }
+    try {
+        const u = new URL(s);
+        return u.protocol === "http:" || u.protocol === "https:";
+    } catch {
+        return false;
+    }
 }
 function normUrl(s: string): string {
-    try { const u = new URL(s); u.hash = ""; return u.toString(); } catch { return s.trim(); }
+    try {
+        const u = new URL(s);
+        u.hash = "";
+        return u.toString();
+    } catch {
+        return s.trim();
+    }
 }
 function hash64(s: string): string {
     let h = 0;
-    for (let i = 0; i < s.length; i++) { h = (h << 5) - h + s.charCodeAt(i); h |= 0; }
+    for (let i = 0; i < s.length; i++) {
+        h = (h << 5) - h + s.charCodeAt(i);
+        h |= 0;
+    }
     return Math.abs(h).toString(36);
 }
 function ensureHttp(u: string): string {
@@ -174,11 +200,23 @@ const CenterSpinner = memo(function CenterSpinner({
     size?: number;
 }) {
     return (
-        <div className={`absolute inset-0 grid place-items-center ${dim ? "bg-white/85" : ""}`}>
-            <div className="flex items-center gap-2 rounded border px-3 py-1.5 text-xs text-neutral-800 bg-white" role="status" aria-live="polite">
+        <div
+            className={`absolute inset-0 z-30 grid place-items-center ${dim ? "bg-white/85" : ""
+                }`}
+        >
+            <div
+                className="flex items-center gap-2 rounded border px-3 py-1.5 text-xs text-neutral-800 bg-white"
+                role="status"
+                aria-live="polite"
+            >
                 <span
                     className="inline-block rounded-full border-2 border-neutral-300"
-                    style={{ width: size, height: size, borderTopColor: ACCENT, animation: "spin 0.8s linear infinite" }}
+                    style={{
+                        width: size,
+                        height: size,
+                        borderTopColor: ACCENT,
+                        animation: "spin 0.8s linear infinite",
+                    }}
                     aria-hidden
                 />
                 {label}
@@ -273,7 +311,7 @@ export default function PreviewPage(): JSX.Element {
     const [viewerOpen, setViewerOpen] = useState(false);
     const [viewerIdx, setViewerIdx] = useState(0);
 
-    const [optimisticByKey, setOptimisticByKey] = useState<Record<string, ({ id: string } & RenderDoc)>>({});
+    const [optimisticByKey, setOptimisticByKey] = useState<Record<string, { id: string } & RenderDoc>>({});
 
     const didAutoSelectRef = useRef(false);
 
@@ -299,14 +337,24 @@ export default function PreviewPage(): JSX.Element {
     const openViewer = useCallback((i: number) => {
         setViewerIdx(i);
         setViewerOpen(true);
-        try { document.documentElement.style.overflow = "hidden"; } catch { }
+        try {
+            document.documentElement.style.overflow = "hidden";
+        } catch { }
     }, []);
     const closeViewer = useCallback(() => {
         setViewerOpen(false);
-        try { document.documentElement.style.overflow = ""; } catch { }
+        try {
+            document.documentElement.style.overflow = "";
+        } catch { }
     }, []);
-    const nextShot = useCallback(() => { if (!shots.length) return; setViewerIdx((i) => (i + 1) % shots.length); }, [shots.length]);
-    const prevShot = useCallback(() => { if (!shots.length) return; setViewerIdx((i) => (i - 1 + shots.length) % shots.length); }, [shots.length]);
+    const nextShot = useCallback(() => {
+        if (!shots.length) return;
+        setViewerIdx((i) => (i + 1) % shots.length);
+    }, [shots.length]);
+    const prevShot = useCallback(() => {
+        if (!shots.length) return;
+        setViewerIdx((i) => (i - 1 + shots.length) % shots.length);
+    }, [shots.length]);
     useEffect(() => {
         if (!viewerOpen) return;
         const onKey = (e: KeyboardEvent) => {
@@ -321,7 +369,11 @@ export default function PreviewPage(): JSX.Element {
     async function resolveStorageUrl(pathOrUrl: string): Promise<string> {
         if (!pathOrUrl) return "";
         if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
-        try { return await getDownloadURL(sRef(storage, pathOrUrl)); } catch { return ""; }
+        try {
+            return await getDownloadURL(sRef(storage, pathOrUrl));
+        } catch {
+            return "";
+        }
     }
     function useResolvedImg(pathOrUrl: string) {
         const [src, setSrc] = React.useState("");
@@ -330,9 +382,14 @@ export default function PreviewPage(): JSX.Element {
             const u = await resolveStorageUrl(pathOrUrl);
             if (u) setSrc(u);
         }, [pathOrUrl]);
-        React.useEffect(() => { refresh(); }, [refresh]);
+        React.useEffect(() => {
+            refresh();
+        }, [refresh]);
         const onError = React.useCallback(() => {
-            if (!retriedRef.current) { retriedRef.current = true; refresh(); }
+            if (!retriedRef.current) {
+                retriedRef.current = true;
+                refresh();
+            }
         }, [refresh]);
         return { src, onError };
     }
@@ -351,7 +408,12 @@ export default function PreviewPage(): JSX.Element {
     const targetUrl = useMemo(() => {
         const raw = search.get("u");
         if (!raw) return "";
-        try { const dec = decodeURIComponent(raw); return normUrl(ensureHttp(dec)); } catch { return normUrl(ensureHttp(raw)); }
+        try {
+            const dec = decodeURIComponent(raw);
+            return normUrl(ensureHttp(dec));
+        } catch {
+            return normUrl(ensureHttp(raw));
+        }
     }, [search]);
 
     const [urlMenuOpen, setUrlMenuOpen] = useState(false);
@@ -395,10 +457,18 @@ export default function PreviewPage(): JSX.Element {
     /* fetch user's URL list */
     useEffect(() => {
         (async () => {
-            if (!user) { setUrls([]); setUrlsLoading(false); return; }
+            if (!user) {
+                setUrls([]);
+                setUrlsLoading(false);
+                return;
+            }
             setUrlsLoading(true);
             try {
-                const qy = query(collection(db, "kloner_users", user.uid, "kloner_urls"), orderBy("createdAt", "desc"), limit(50));
+                const qy = query(
+                    collection(db, "kloner_users", user.uid, "kloner_urls"),
+                    orderBy("createdAt", "desc"),
+                    limit(50)
+                );
                 const snap = await getDocs(qy);
                 const list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as UrlDoc) }));
                 setUrls(list);
@@ -412,11 +482,22 @@ export default function PreviewPage(): JSX.Element {
     useEffect(() => {
         let unsubUrlDoc: Unsubscribe | null = null;
         (async () => {
-            setErr(""); setInfo(""); setLoading(true);
-            setDocSnap(null); setDocData(null); setShots([]);
+            setErr("");
+            setInfo("");
+            setLoading(true);
+            setDocSnap(null);
+            setDocData(null);
+            setShots([]);
 
-            if (!user || !targetUrl) { setLoading(false); return; }
-            if (!isHttpUrl(targetUrl)) { setErr("Invalid URL."); setLoading(false); return; }
+            if (!user || !targetUrl) {
+                setLoading(false);
+                return;
+            }
+            if (!isHttpUrl(targetUrl)) {
+                setErr("Invalid URL.");
+                setLoading(false);
+                return;
+            }
 
             try {
                 const qy = query(
@@ -424,7 +505,11 @@ export default function PreviewPage(): JSX.Element {
                     where("url", "==", targetUrl)
                 );
                 const snap = await getDocs(qy);
-                if (snap.empty) { setErr("No record for this URL under your account."); setLoading(false); return; }
+                if (snap.empty) {
+                    setErr("No record for this URL under your account.");
+                    setLoading(false);
+                    return;
+                }
                 const first = snap.docs[0];
                 setDocSnap(first);
                 const initial = (first.data() || {}) as UrlDoc;
@@ -442,17 +527,27 @@ export default function PreviewPage(): JSX.Element {
                 setLoading(false);
             }
         })();
-        return () => { unsubUrlDoc?.(); };
+        return () => {
+            unsubUrlDoc?.();
+        };
     }, [user, targetUrl]);
 
     /* renders list filtered to selected URL */
     const refreshRenders = useCallback(async () => {
         if (!user) return;
-        if (!targetUrl || !isHttpUrl(targetUrl)) { setRenders((prev) => (prev.length ? [] : prev)); return; }
+        if (!targetUrl || !isHttpUrl(targetUrl)) {
+            setRenders((prev) => (prev.length ? [] : prev));
+            return;
+        }
         setLoadingRenders(true);
         try {
             const base = collection(db, "kloner_users", user.uid, "kloner_renders");
-            const qs = query(base, where("archived", "in", [false, null]), orderBy("createdAt", "desc"), limit(100));
+            const qs = query(
+                base,
+                where("archived", "in", [false, null]),
+                orderBy("createdAt", "desc"),
+                limit(100)
+            );
             const snap = await getDocs(qs);
             const all = snap.docs.map((d) => ({ id: d.id, ...(d.data() as RenderDoc) }));
 
@@ -467,7 +562,10 @@ export default function PreviewPage(): JSX.Element {
             for (const r of filtered) {
                 const key = r.key || "";
                 if (key && lockUntilByKey[key] && lockUntilByKey[key] > now) {
-                    setLockUntilByRender((m) => ({ ...m, [r.id]: Math.max(m[r.id] || 0, lockUntilByKey[key]) }));
+                    setLockUntilByRender((m) => ({
+                        ...m,
+                        [r.id]: Math.max(m[r.id] || 0, lockUntilByKey[key]),
+                    }));
                 }
             }
 
@@ -476,7 +574,11 @@ export default function PreviewPage(): JSX.Element {
                 const exists = filtered.some((r) => r.key === k);
                 if (!exists) withOptimistic.unshift(opt);
                 else {
-                    setOptimisticByKey((m) => { const n = { ...m }; delete n[k]; return n; });
+                    setOptimisticByKey((m) => {
+                        const n = { ...m };
+                        delete n[k];
+                        return n;
+                    });
                 }
             }
 
@@ -522,9 +624,17 @@ export default function PreviewPage(): JSX.Element {
     }, [user, targetUrl, targetHash, optimisticByKey, lockUntilByKey]);
 
     useEffect(() => {
-        if (!user || !targetUrl || !isHttpUrl(targetUrl)) { setRenders([]); return; }
+        if (!user || !targetUrl || !isHttpUrl(targetUrl)) {
+            setRenders([]);
+            return;
+        }
         const base = collection(db, "kloner_users", user.uid, "kloner_renders");
-        const qs = query(base, where("archived", "in", [false, null]), orderBy("createdAt", "desc"), limit(100));
+        const qs = query(
+            base,
+            where("archived", "in", [false, null]),
+            orderBy("createdAt", "desc"),
+            limit(100)
+        );
         const unsub = onSnapshot(qs, (snap) => {
             const all = snap.docs.map((d) => ({ id: d.id, ...(d.data() as RenderDoc) }));
             const filtered = all.filter((r) => {
@@ -537,7 +647,10 @@ export default function PreviewPage(): JSX.Element {
             for (const r of filtered) {
                 const key = r.key || "";
                 if (key && lockUntilByKey[key] && lockUntilByKey[key] > now) {
-                    setLockUntilByRender((m) => ({ ...m, [r.id]: Math.max(m[r.id] || 0, lockUntilByKey[key]) }));
+                    setLockUntilByRender((m) => ({
+                        ...m,
+                        [r.id]: Math.max(m[r.id] || 0, lockUntilByKey[key]),
+                    }));
                 }
             }
             const withOptimistic = [...filtered];
@@ -545,7 +658,11 @@ export default function PreviewPage(): JSX.Element {
                 const exists = filtered.some((r) => r.key === k);
                 if (!exists) withOptimistic.unshift(opt);
                 else {
-                    setOptimisticByKey((m) => { const n = { ...m }; delete n[k]; return n; });
+                    setOptimisticByKey((m) => {
+                        const n = { ...m };
+                        delete n[k];
+                        return n;
+                    });
                 }
             }
             setRenders((prev) => (rendersEqual(prev, withOptimistic) ? prev : withOptimistic));
@@ -580,7 +697,9 @@ export default function PreviewPage(): JSX.Element {
     const buildFromKey = useCallback(
         async (storageKey: string) => {
             if (!user) return;
-            const alreadyQueued = renders.find((r) => r.key === storageKey && r.status === "queued" && !r.archived);
+            const alreadyQueued = renders.find(
+                (r) => r.key === storageKey && r.status === "queued" && !r.archived
+            );
             if (alreadyQueued || pendingByKey[storageKey]) return;
             if (!window.confirm("Generate an editable preview from this screenshot?")) return;
 
@@ -631,7 +750,9 @@ export default function PreviewPage(): JSX.Element {
                 if (!r.ok || !j?.ok) throw new Error(j?.error || "Render failed");
                 await refreshRenders();
             } catch (e: any) {
-                setRenders((prev) => prev.map((r) => (r.id === optimisticId ? { ...r, status: "failed" } : r)));
+                setRenders((prev) =>
+                    prev.map((r) => (r.id === optimisticId ? { ...r, status: "failed" } : r))
+                );
                 setOptimisticByKey((m) => {
                     const v = m[storageKey];
                     if (!v) return m;
@@ -651,7 +772,11 @@ export default function PreviewPage(): JSX.Element {
             setLoading(true);
             const dref = doc(db, "kloner_users", user.uid, "kloner_renders", renderId);
             const snap = await getDoc(dref);
-            if (!snap.exists()) { setErr("Preview not found."); push("Preview not found", "err"); return; }
+            if (!snap.exists()) {
+                setErr("Preview not found.");
+                push("Preview not found", "err");
+                return;
+            }
             const data = snap.data() as RenderDoc;
             let refSrc =
                 (data.referenceImage && (await resolveStorageUrl(data.referenceImage))) ||
@@ -684,7 +809,11 @@ export default function PreviewPage(): JSX.Element {
                 setErr(e?.message || "Failed to discard preview.");
                 push("Failed to discard preview", "err");
             } finally {
-                setDeletingRender((m) => { const n = { ...m }; delete n[renderId]; return n; });
+                setDeletingRender((m) => {
+                    const n = { ...m };
+                    delete n[renderId];
+                    return n;
+                });
             }
         },
         [user, push]
@@ -703,18 +832,33 @@ export default function PreviewPage(): JSX.Element {
                 const rSnap = await getDocs(query(rCol, where("key", "==", shot.path)));
                 if (rSnap.empty === false) await Promise.all(rSnap.docs.map((d) => deleteDoc(d.ref)));
                 try {
-                    await updateDoc(docSnap.ref, { screenshotPaths: arrayRemove(shot.path), updatedAt: serverTimestamp() } as any);
+                    await updateDoc(docSnap.ref, {
+                        screenshotPaths: arrayRemove(shot.path),
+                        updatedAt: serverTimestamp(),
+                    } as any);
                 } catch { }
                 setShots((prev) => prev.filter((s) => s.path !== shot.path));
                 setRenders((prev) => prev.filter((r) => r.key !== shot.path));
-                setPendingByKey((m) => { const n = { ...m }; delete n[shot.path]; return n; });
-                setOptimisticByKey((m) => { const n = { ...m }; delete n[shot.path]; return n; });
+                setPendingByKey((m) => {
+                    const n = { ...m };
+                    delete n[shot.path];
+                    return n;
+                });
+                setOptimisticByKey((m) => {
+                    const n = { ...m };
+                    delete n[shot.path];
+                    return n;
+                });
                 push("Screenshot deleted", "ok");
             } catch (e: any) {
                 setErr(e?.message || "Failed to delete screenshot.");
                 push("Failed to delete screenshot", "err");
             } finally {
-                setDeletingByKey((m) => { const n = { ...m }; delete n[shot.path]; return n; });
+                setDeletingByKey((m) => {
+                    const n = { ...m };
+                    delete n[shot.path];
+                    return n;
+                });
             }
         },
         [user, docSnap, push]
@@ -743,23 +887,33 @@ export default function PreviewPage(): JSX.Element {
     }
 
     const saveDraft = useCallback(
-        async (payload: { draftId?: string; html: string; meta: { nameHint?: string; device: string; mode: string }; version: number }) => {
+        async (payload: {
+            draftId?: string;
+            html: string;
+            meta: { nameHint?: string; device: string; mode: string };
+            version: number;
+        }) => {
             if (!user) return;
             const rid = payload.draftId || activeRenderId;
             if (!rid) {
-                const created = await addDoc(collection(db, "kloner_users", user.uid, "kloner_renders"), {
-                    url: targetUrl || null,
-                    urlHash: targetUrl ? hash64(targetUrl) : null,
-                    key: null,
-                    referenceImage: editorRefImg || null,
-                    html: payload.html,
-                    nameHint: payload.meta?.nameHint || (targetUrl ? new URL(targetUrl).hostname : null),
-                    status: "ready",
-                    archived: false,
-                    version: payload.version || 1,
-                    createdAt: serverTimestamp(),
-                    updatedAt: serverTimestamp(),
-                } as any);
+                const created = await addDoc(
+                    collection(db, "kloner_users", user.uid, "kloner_renders"),
+                    {
+                        url: targetUrl || null,
+                        urlHash: targetUrl ? hash64(targetUrl) : null,
+                        key: null,
+                        referenceImage: editorRefImg || null,
+                        html: payload.html,
+                        nameHint:
+                            payload.meta?.nameHint ||
+                            (targetUrl ? new URL(targetUrl).hostname : null),
+                        status: "ready",
+                        archived: false,
+                        version: payload.version || 1,
+                        createdAt: serverTimestamp(),
+                        updatedAt: serverTimestamp(),
+                    } as any
+                );
                 setActiveRenderId(created.id);
                 push("Draft saved", "ok");
                 await refreshRenders();
@@ -772,7 +926,9 @@ export default function PreviewPage(): JSX.Element {
                     urlHash: targetUrl ? hash64(targetUrl) : null,
                     html: payload.html,
                     referenceImage: editorRefImg || null,
-                    nameHint: payload.meta?.nameHint || (targetUrl ? new URL(targetUrl).hostname : null),
+                    nameHint:
+                        payload.meta?.nameHint ||
+                        (targetUrl ? new URL(targetUrl).hostname : null),
                     version: payload.version || 1,
                     updatedAt: serverTimestamp(),
                 },
@@ -786,49 +942,78 @@ export default function PreviewPage(): JSX.Element {
 
     const shotsPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     function beginShortShotsPoll(prefix: string) {
-        if (shotsPollRef.current) { clearInterval(shotsPollRef.current); shotsPollRef.current = null; }
+        if (shotsPollRef.current) {
+            clearInterval(shotsPollRef.current);
+            shotsPollRef.current = null;
+        }
         const deadline = Date.now() + 60_000;
         shotsPollRef.current = setInterval(async () => {
             if (!user) return;
             try {
                 const refs = await listAllDeep(sRef(storage, prefix));
-                const map = new Map(refs.map(r => [r.fullPath, r]));
-                const newOnes = Array.from(map.keys()).filter(p => !shots.some(s => s.path === p));
+                const map = new Map(refs.map((r) => [r.fullPath, r]));
+                const newOnes = Array.from(map.keys()).filter(
+                    (p) => !shots.some((s) => s.path === p)
+                );
                 if (newOnes.length) {
-                    const added = await Promise.all(newOnes.map(async (p) => {
-                        const r = map.get(p)!; const url = await getDownloadURL(r);
-                        const name = r.name || r.fullPath.split("/").pop() || "image";
-                        return { path: r.fullPath, url, fileName: name } as Shot;
-                    }));
-                    setShots(prev => [...added, ...prev].sort((a, b) => (a.fileName < b.fileName ? 1 : a.fileName > b.fileName ? -1 : 0)));
-                    clearInterval(shotsPollRef.current!); shotsPollRef.current = null;
+                    const added = await Promise.all(
+                        newOnes.map(async (p) => {
+                            const r = map.get(p)!;
+                            const url = await getDownloadURL(r);
+                            const name = r.name || r.fullPath.split("/").pop() || "image";
+                            return { path: r.fullPath, url, fileName: name } as Shot;
+                        })
+                    );
+                    setShots((prev) =>
+                        [...added, ...prev].sort((a, b) =>
+                            a.fileName < b.fileName ? 1 : a.fileName > b.fileName ? -1 : 0
+                        )
+                    );
+                    clearInterval(shotsPollRef.current!);
+                    shotsPollRef.current = null;
                 }
             } finally {
                 if (Date.now() > deadline && shotsPollRef.current) {
-                    clearInterval(shotsPollRef.current); shotsPollRef.current = null;
+                    clearInterval(shotsPollRef.current);
+                    shotsPollRef.current = null;
                 }
             }
         }, 3000);
     }
-    useEffect(() => () => { if (shotsPollRef.current) clearInterval(shotsPollRef.current); }, []);
+    useEffect(
+        () => () => {
+            if (shotsPollRef.current) clearInterval(shotsPollRef.current);
+        },
+        []
+    );
 
     const rescan = useCallback(async () => {
         if (!isHttpUrl(targetUrl) || rescanCooldown.active || !user || !docData) return;
         if (!window.confirm("Rescan this URL now? This queues a fresh screenshot.")) return;
-        setRescanning(true); setErr("");
+        setRescanning(true);
+        setErr("");
         try {
-            const r = await fetch("/api/private/generate", { method: "POST", headers: { "content-type": "application/json" }, credentials: "include", body: JSON.stringify({ url: targetUrl }) });
+            const r = await fetch("/api/private/generate", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ url: targetUrl }),
+            });
             if (!r.ok) {
                 const j = await r.json().catch(() => ({}));
-                setErr(j?.error || "Rescan failed."); push("Rescan failed", "err");
+                setErr(j?.error || "Rescan failed.");
+                push("Rescan failed", "err");
             } else {
                 push("Rescan started", "ok");
                 rescanCooldown.start(60_000);
-                const prefix = docData.screenshotsPrefix || `kloner-screenshots/${user.uid}/${docData.urlHash || hash64(targetUrl)}`;
+                const prefix =
+                    docData.screenshotsPrefix ||
+                    `kloner-screenshots/${user.uid}/${docData.urlHash || hash64(targetUrl)}`;
                 beginShortShotsPoll(prefix);
             }
         } catch (e: any) {
-            setErr(e?.message || "Rescan failed."); push("Rescan failed", "err");
+            setErr(e?.message || "Rescan failed.");
+            push("Rescan failed", "err");
         } finally {
             setRescanning(false);
         }
@@ -842,7 +1027,6 @@ export default function PreviewPage(): JSX.Element {
             router.replace(`/dashboard/view?u=${encodeURIComponent(first)}`, { scroll: false });
         }
     }, [urlsLoading, targetUrl, urls, router]);
-
 
     /* ───────── cards ───────── */
     const RenderCard = useMemo(
@@ -861,27 +1045,41 @@ export default function PreviewPage(): JSX.Element {
                         prevHtmlRef.current = r.html;
                         const safeHtml = (r.html || "").trim();
                         const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob: https: http:; style-src 'unsafe-inline'; font-src data: https:; script-src 'unsafe-inline'; connect-src 'none';">`;
-                        const base = r.html ? `<base target="_blank" rel="noopener noreferrer">` : "";
+                        const base = r.html
+                            ? `<base target="_blank" rel="noopener noreferrer">`
+                            : "";
                         setSrcDoc(`${csp}${base}${safeHtml}`);
                     }, [r.html]);
 
-                    const hardLocked = !!lockUntilByRender[r.id] && lockUntilByRender[r.id] > Date.now();
+                    const hardLocked =
+                        !!lockUntilByRender[r.id] && lockUntilByRender[r.id] > Date.now();
                     const disableOpen = isOpening || isQueued || isFailed || hardLocked;
 
-                    const { src: refImgUrl, onError: refImgErr } = useResolvedImg(r.key || "");
-                    const versionLabel = shortVersionFromShotPath(r.key ?? "", (docData?.urlHash as string | undefined) ?? null);
+                    const { src: refImgUrl, onError: refImgErr } = useResolvedImg(
+                        r.key || ""
+                    );
+                    const versionLabel = shortVersionFromShotPath(
+                        r.key ?? "",
+                        (docData?.urlHash as string | undefined) ?? null
+                    );
 
                     const deployThis = async () => {
                         if (!r.html?.trim()) return;
                         const ok = window.confirm("Deploy this preview to Vercel?");
                         if (!ok) return;
-                        try { await exportToVercel(r.html!, r.nameHint || undefined); } catch { }
+                        try {
+                            await exportToVercel(r.html!, r.nameHint || undefined);
+                        } catch { }
                     };
 
                     return (
                         <>
                             <div className="relative flex min-w-[300px] flex-col overflow-visible rounded-xl border border-neutral-200 bg-white shadow-sm">
-                                <span className="absolute left-2 top-2 z-30 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow" style={{ backgroundColor: "#1d4ed8" }} title={`Version ${versionLabel}`}>
+                                <span
+                                    className="absolute left-2 top-2 z-30 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow"
+                                    style={{ backgroundColor: "#1d4ed8" }}
+                                    title={`Version ${versionLabel}`}
+                                >
                                     {versionLabel}
                                 </span>
 
@@ -897,9 +1095,17 @@ export default function PreviewPage(): JSX.Element {
 
                                 <div className="relative">
                                     {!refImgUrl ? (
-                                        <div className="aspect-[4/3] w-full grid place-items-center text-xs text-neutral-500">No snapshot available</div>
+                                        <div className="aspect-[4/3] w-full grid place-items-center text-xs text-neutral-500">
+                                            No snapshot available
+                                        </div>
                                     ) : (
-                                        <a href={refImgUrl} target="_blank" rel="noreferrer" className="block" title="Open the base screenshot">
+                                        <a
+                                            href={refImgUrl}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="block"
+                                            title="Open the base screenshot"
+                                        >
                                             <img
                                                 src={refImgUrl}
                                                 alt={r.nameHint || "preview"}
@@ -914,43 +1120,69 @@ export default function PreviewPage(): JSX.Element {
                                     <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
                                         <div className="pointer-events-auto flex items-center gap-2 rounded-xl bg-white/90 p-2 ring-1 ring-neutral-200 backdrop-blur">
                                             <button
-                                                onClick={() => continueRender(r.id)}
-                                                disabled={disableOpen || isDeleting}
-                                                className="rounded-md px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-                                                style={{ backgroundColor: ACCENT }}
-                                                title={isQueued ? "Still building preview" : isFailed ? "Open editor to fix" : "Open editor to customize"}
-                                            >
-                                                {isQueued ? "Queued" : isFailed ? "Customize (fix)" : "Customize"}
-                                            </button>
-
-                                            <button
                                                 onClick={deployThis}
                                                 disabled={!r.html || isDeleting || isQueued}
-                                                className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 disabled:opacity-50 relative inline-flex items-center gap-2"
-                                                title="Deploy current HTML to Vercel"
+                                                className="shrink-0 rounded-md px-2 py-1 text-[14px] border border-neutral-200 text-neutral-800 hover:bg-neutral-50 inline-flex items-center gap-1.5" title="Deploy current HTML to Vercel"
                                             >
                                                 Deploy
-                                                <Rocket className="h-3 w-3" />
+                                                <Rocket className="h-4 w-4" />
                                             </button>
+                                            <button
+                                                onClick={() => continueRender(r.id)}
+                                                disabled={disableOpen || isDeleting}
+                                                className="shrink-0 rounded-md px-4 py-2 text-[14px] text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+                                                style={{ backgroundColor: ACCENT }}
+                                                title={
+                                                    isQueued
+                                                        ? "Still building preview"
+                                                        : isFailed
+                                                            ? "Open editor to fix"
+                                                            : "Open editor to customize"
+                                                }
+                                            >
+                                                {isQueued
+                                                    ? "Queued"
+                                                    : isFailed
+                                                        ? "Customize (fix)"
+                                                        : "Customize"}
+                                            </button>
+
                                         </div>
                                     </div>
 
-                                    <span className="absolute bottom-2 left-2 z-20 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-neutral-600 ring-1 ring-neutral-200" title="Preview status label">
-                                        {isFailed ? "Failed" : r.html?.trim() ? "Preview ready" : "Awaiting HTML"}
+                                    <span
+                                        className="absolute bottom-2 left-2 z-20 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-neutral-600 ring-1 ring-neutral-200"
+                                        title="Preview status label"
+                                    >
+                                        {isFailed
+                                            ? "Failed"
+                                            : r.html?.trim()
+                                                ? "Preview ready"
+                                                : "Awaiting HTML"}
                                     </span>
                                     <span className="absolute bottom-2 right-2 z-20 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-neutral-600 ring-1 ring-neutral-200">
                                         {r.status}
                                     </span>
 
                                     {isDeleting && <CenterSpinner label="Deleting…" />}
-                                    {(isQueued || hardLocked) && <CenterSpinner label={isQueued ? "Rendering…" : "Locked…"} />}
+                                    {(isQueued || hardLocked) && (
+                                        <CenterSpinner
+                                            label={isQueued ? "Rendering…" : "Locked…"}
+                                        />
+                                    )}
                                 </div>
 
                                 <div className="relative h-0 overflow-hidden" aria-hidden>
-                                    <iframe title={`r-${r.id}`} className="w-full h-0" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms allow-pointer-lock" referrerPolicy="no-referrer" allow="clipboard-read; clipboard-write" key={`frame-${r.id}`} srcDoc={srcDoc} />
+                                    <iframe
+                                        title={`r-${r.id}`}
+                                        className="w-full h-0"
+                                        sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms allow-pointer-lock"
+                                        referrerPolicy="no-referrer"
+                                        allow="clipboard-read; clipboard-write"
+                                        key={`frame-${r.id}`}
+                                        srcDoc={srcDoc}
+                                    />
                                 </div>
-
-
                             </div>
                         </>
                     );
@@ -958,7 +1190,13 @@ export default function PreviewPage(): JSX.Element {
                 (prev, next) => {
                     const a = prev.r;
                     const b = next.r;
-                    return a.id === b.id && a.status === b.status && (a.html || "") === (b.html || "") && (a.key || "") === (b.key || "") && (a.nameHint || "") === (b.nameHint || "");
+                    return (
+                        a.id === b.id &&
+                        a.status === b.status &&
+                        (a.html || "") === (b.html || "") &&
+                        (a.key || "") === (b.key || "") &&
+                        (a.nameHint || "") === (b.nameHint || "")
+                    );
                 }
             ),
         [continueRender, discardRender, deletingRender, docData?.controllerVersion, exportToVercel]
@@ -968,13 +1206,24 @@ export default function PreviewPage(): JSX.Element {
         () =>
             memo(
                 function ShotCardInner({
-                    s, locked, index, onView
-                }: { s: Shot; locked: boolean; index: number; onView: (i: number) => void }) {
+                    s,
+                    locked,
+                    index,
+                    onView,
+                }: {
+                    s: Shot;
+                    locked: boolean;
+                    index: number;
+                    onView: (i: number) => void;
+                }) {
                     const [imgLoading, setImgLoading] = useState<boolean>(true);
                     const isDeleting = !!deletingByKey[s.path];
                     const hardLocked = (lockUntilByKey[s.path] || 0) > Date.now();
                     const showOverlay = locked || imgLoading || hardLocked || isDeleting;
-                    const versionLabel = shortVersionFromShotPath(s.path, (docData?.urlHash as string | undefined) ?? null);
+                    const versionLabel = shortVersionFromShotPath(
+                        s.path,
+                        (docData?.urlHash as string | undefined) ?? null
+                    );
 
                     return (
                         <figure className="relative rounded-xl border border-neutral-200 bg-white shadow-sm flex flex-col">
@@ -987,7 +1236,7 @@ export default function PreviewPage(): JSX.Element {
                                 {versionLabel}
                             </span>
 
-                            {/* NEW: top-right discard "X" */}
+                            {/* top-right discard "X" */}
                             <button
                                 onClick={() => discardShot(s)}
                                 disabled={locked || isDeleting}
@@ -1000,46 +1249,75 @@ export default function PreviewPage(): JSX.Element {
 
                             {isDeleting && <CenterSpinner label="Deleting…" />}
 
-                            <a href={s.url} target="_blank" rel="noreferrer" className="block" title="Open full-size screenshot">
-                                <div className="w-full aspect-[4/3] bg-neutral-50 opacity-30 flex items-center justify-center rounded-t-xl relative">
+                            <a
+                                href={s.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="block"
+                                title="Open full-size screenshot"
+                            >
+                                <div className="w-full aspect-[4/3] bg-neutral-50 flex items-center justify-center rounded-t-xl relative">
                                     <img
                                         src={s.url}
                                         alt={s.fileName}
-                                        className={`h-full w-full object-cover ${locked ? "opacity-60" : ""}`}
+                                        className={`h-full w-full object-cover opacity-30`}
                                         loading="lazy"
                                         onLoad={() => setImgLoading(false)}
                                         onError={() => setImgLoading(false)}
                                     />
-                                    {showOverlay && <CenterSpinner label={locked ? "Queued preview…" : "Loading…"} />}
+
+                                    {/* buttons overlayed in middle of image */}
+                                    <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
+                                        <div className="pointer-events-auto flex flex-col sm:flex-row items-center gap-2 rounded-xl bg-white/90 p-2 ring-1 ring-neutral-200 backdrop-blur">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    onView(index);
+                                                }}
+                                                className="shrink-0 rounded-md px-2 py-1 text-[14px] border border-neutral-200 text-neutral-800 hover:bg-neutral-50 inline-flex items-center gap-1.5"
+                                                title="View full-screen"
+                                            >
+                                                <Eye className="h-3 w-3 opacity-90" aria-hidden />
+                                                <span>View</span>
+                                            </button>
+
+                                            <button
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    buildFromKey(s.path);
+                                                }}
+                                                disabled={locked || isDeleting}
+                                                aria-busy={locked}
+                                                className="shrink-0 rounded-md px-4 py-2 text-[14px] text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+                                                style={{ backgroundColor: ACCENT }}
+                                                title="Create editable preview from this screenshot"
+                                            >
+                                                <span>
+                                                    {locked ? "In progress" : "Generate preview"}
+                                                </span>
+                                                <Hammer
+                                                    className={`h-4 w-4 ${locked ? "animate-pulse" : ""
+                                                        }`}
+                                                    aria-hidden
+                                                />
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {showOverlay && (
+                                        <CenterSpinner
+                                            label={locked ? "Queued preview…" : "Loading…"}
+                                        />
+                                    )}
                                 </div>
                             </a>
 
+                            {/* keep caption, but no buttons here now */}
                             <figcaption className="px-3 py-2 text-xs text-neutral-700 rounded-b-xl">
                                 <div className="flex items-center justify-between gap-2 flex-wrap">
-                                    <div className="flex items-center gap-2">
-                                        <button
-                                            onClick={() => onView(index)}
-                                            className="shrink-0 rounded-md px-2 py-1 text-[14px] border border-neutral-200 text-neutral-800 hover:bg-neutral-50 inline-flex items-center gap-1.5"
-                                            title="View full-screen"
-                                        >
-                                            <Eye className="h-3 w-3 opacity-90" aria-hidden />
-                                            <span>View</span>
-                                        </button>
-                                    </div>
-
-                                    <div className="ml-auto flex items-center gap-2">
-                                        <button
-                                            onClick={() => buildFromKey(s.path)}
-                                            disabled={locked || isDeleting}
-                                            aria-busy={locked}
-                                            className="shrink-0 rounded-md px-4 py-2 text-[14px] text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
-                                            style={{ backgroundColor: ACCENT }}
-                                            title="Create editable preview from this screenshot"
-                                        >
-                                            <span>{locked ? "In progress" : "Generate preview"}</span>
-                                            <Hammer className={`h-4 w-4 ${locked ? "animate-pulse" : ""}`} aria-hidden />
-                                        </button>
-                                    </div>
+                                    <span className="truncate text-[11px] text-neutral-500">
+                                        {s.fileName}
+                                    </span>
                                 </div>
                             </figcaption>
                         </figure>
@@ -1054,6 +1332,13 @@ export default function PreviewPage(): JSX.Element {
         [buildFromKey, discardShot, deletingByKey, lockUntilByKey, docData?.urlHash]
     );
 
+
+    /* ───────── step completion flags ───────── */
+    const step1Done = !!activeUrlDoc;
+    const step2Done = shots.length > 0;
+    const step3Done = renders.length > 0;
+    const step4Done = renders.some((r) => (r as any).lastExportedAt);
+
     /* ───────── render ───────── */
     return (
         <main className="min-h-screen bg-white">
@@ -1066,21 +1351,10 @@ export default function PreviewPage(): JSX.Element {
                 <div className="mb-5">
                     <div className="flex items-center justify-between gap-3 flex-wrap">
                         <div>
-                            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-700">Preview Builder</h1>
-                            {/* <p className="mt-1 text-sm text-neutral-600">
-                                Flow: Step 1 — Select URL. Step 2 — Generate base screenshot. Step 3 — Generate editable preview. Step 4 — Customize and Deploy.
-                            </p> */}
+                            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-700">
+                                Preview Builder
+                            </h1>
                         </div>
-                        {/* <div className="flex items-center gap-2">
-                            <a
-                                href="/api/vercel/oauth/start"
-                                className="rounded-lg border border-neutral-200 bg-[--accent] px-3 py-2 text-sm text-white"
-                                style={{ background: ACCENT }}
-                                title="Connect your Vercel account to enable Deploy"
-                            >
-                                Connect Vercel
-                            </a>
-                        </div> */}
                     </div>
 
                     <div className="mt-3">
@@ -1088,12 +1362,28 @@ export default function PreviewPage(): JSX.Element {
                             <div className="h-10 rounded-xl bg-neutral-100 animate-pulse" />
                         ) : urls.length === 0 ? (
                             <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
-                                <strong className="text-accent">Step 1</strong> — Add a URL in Dashboard. Return here to capture screenshots and build previews.
+                                <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1">
+                                    {step1Done ? (
+                                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                                    ) : (
+                                        <Timer className="h-4 w-4 text-orange-400" />
+                                    )}
+                                    Step 1
+                                </strong>{" "}
+                                — Add a URL in Dashboard. Return here to capture screenshots and
+                                build previews.
                             </div>
                         ) : (
                             <div className="relative inline-block" ref={urlMenuRef}>
                                 <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
-                                    <strong className="text-accent">Step 1</strong> — You have chosen the following URL, you can select a different one from the dropdown.
+                                    <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1">
+                                        {step1Done && (
+                                            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                                        )}
+                                        Step 1
+                                    </strong>{" "}
+                                    — You have chosen the following URL, you can select a different
+                                    one from the dropdown.
                                 </div>
                                 <button
                                     type="button"
@@ -1103,7 +1393,9 @@ export default function PreviewPage(): JSX.Element {
                                     aria-haspopup="listbox"
                                     aria-expanded={urlMenuOpen}
                                 >
-                                    <span className="truncate">{activeUrlDoc?.url}</span>
+                                    <span className="truncate">
+                                        {activeUrlDoc?.url || "Select a URL"}
+                                    </span>
                                     <ChevronDown className="h-4 w-4 shrink-0 text-neutral-500" />
                                 </button>
 
@@ -1126,11 +1418,20 @@ export default function PreviewPage(): JSX.Element {
                                                                 selectUrl(u.url);
                                                             }}
                                                             title={u.url}
-                                                            className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm ${isActive ? "bg-neutral-100 text-neutral-700" : "text-neutral-800 hover:bg-neutral-50"
+                                                            className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm ${isActive
+                                                                ? "bg-neutral-100 text-neutral-700"
+                                                                : "text-neutral-800 hover:bg-neutral-50"
                                                                 }`}
                                                         >
-                                                            <span className={`inline-block h-2.5 w-2.5 rounded-full ${isActive ? "bg-neutral-800" : "bg-neutral-300"}`} />
-                                                            <span className="truncate">{u.url}</span>
+                                                            <span
+                                                                className={`inline-block h-2.5 w-2.5 rounded-full ${isActive
+                                                                    ? "bg-neutral-800"
+                                                                    : "bg-neutral-300"
+                                                                    }`}
+                                                            />
+                                                            <span className="truncate">
+                                                                {u.url}
+                                                            </span>
                                                         </button>
                                                     </li>
                                                 );
@@ -1138,16 +1439,21 @@ export default function PreviewPage(): JSX.Element {
                                         </ul>
                                     </div>
                                 )}
-                                {/* <p className="mt-2 text-xs text-neutral-500">
-                                    After selecting, proceed to Step 2 below to capture a fresh screenshot if needed.
-                                </p> */}
                             </div>
                         )}
                     </div>
                 </div>
 
-                {err ? <div className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div> : null}
-                {info ? <div className="mt-2 rounded-lg border border-neutral-300 bg-neutral-50 px-3 py-2 text-sm text-neutral-800">{info}</div> : null}
+                {err ? (
+                    <div className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+                        {err}
+                    </div>
+                ) : null}
+                {info ? (
+                    <div className="mt-2 rounded-lg border border-neutral-300 bg-neutral-50 px-3 py-2 text-sm text-neutral-800">
+                        {info}
+                    </div>
+                ) : null}
 
                 <div className="mt-20">
                     {/* subtle divider */}
@@ -1159,13 +1465,22 @@ export default function PreviewPage(): JSX.Element {
                         Screenshots
                     </h2>
                     <p className="mt-2 text-xs text-neutral-500">
-                        These are the original screenshots captured directly from your entered URL.
+                        These are the original screenshots captured directly from your entered
+                        URL.
                     </p>
 
                     {!targetUrl ? (
                         <>
                             <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
-                                <strong className="text-accent">Step 2</strong> — Below will host your base images.
+                                <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1">
+                                    {step2Done ? (
+                                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                                    ) : (
+                                        <Timer className="h-4 w-4 text-orange-400" />
+                                    )}
+                                    Step 2
+                                </strong>{" "}
+                                — Below will host your base images.
                             </div>
                             <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-6 my-4 text-sm text-neutral-700">
                                 Select a URL above to manage its screenshots and previews.
@@ -1173,51 +1488,103 @@ export default function PreviewPage(): JSX.Element {
                         </>
                     ) : loading ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-64 rounded-xl bg-neutral-100 animate-pulse" />)}
+                            {Array.from({ length: 6 }).map((_, i) => (
+                                <div
+                                    key={i}
+                                    className="h-64 rounded-xl bg-neutral-100 animate-pulse"
+                                />
+                            ))}
                         </div>
                     ) : shots.length === 0 ? (
                         <>
                             <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
-                                <strong className="text-accent">Step 2</strong> — The section below will host your base images.
+                                <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1">
+                                    {step2Done ? (
+                                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                                    ) : (
+                                        <Timer className="h-4 w-4 text-orange-400" />
+                                    )}
+                                    Step 2
+                                </strong>{" "}
+                                — The section below will host your base images.
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                 <GhostActionCard
-                                    title={rescanning ? "Starting…" : rescanCooldown.active ? `Rescan (${rescanCooldown.remaining}s)` : "Generate new base image"}
+                                    title={
+                                        rescanning
+                                            ? "Starting…"
+                                            : rescanCooldown.active
+                                                ? `Rescan (${rescanCooldown.remaining}s)`
+                                                : "Generate new base image"
+                                    }
                                     subtitle="Captures a fresh screenshot for this URL. Safe; does not remove prior versions."
                                     onClick={rescan}
-                                    disabled={rescanning || rescanCooldown.active || !isHttpUrl(targetUrl)}
+                                    disabled={
+                                        rescanning ||
+                                        rescanCooldown.active ||
+                                        !isHttpUrl(targetUrl)
+                                    }
                                 />
                             </div>
                         </>
-
                     ) : (
                         <>
-
                             <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
-                                <strong className="text-accent">Step 2</strong> — We’ve captured your base image. Click
-
-                                {renders.length === 0 ? (
-                                    <div className="x-1 inline-flex mt-1 text-sm flex items-center text-neutral-700">
-                                        <a className="mx-2 bg-accent rounded-md px-4 py-1.5 text-[14px] flex flex-inline items-center text-white">Generate preview <Hammer className={`mx-1 h-4 w-4`} /></a> to create your first website preview.
+                                <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1">
+                                    {step2Done ? (
+                                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                                    ) : (
+                                        <Timer className="h-4 w-4 text-orange-400" />
+                                    )}
+                                    Step 2
+                                </strong>{" "}
+                                — We’ve captured your base image.
+                                {renders.length === 0 && (
+                                    <div className="x-1 inline-flex ml-1 mt-1 text-sm flex items-center text-neutral-700">Click
+                                        <span className="mx-2 bg-accent whitespace-nowrap rounded-md px-4 py-1.5 text-[14px] flex flex-inline items-center text-white">
+                                            Generate preview{" "}
+                                            <Hammer className="mx-1 h-4 w-4" />
+                                        </span>{" "}
+                                        to create a website preview.
                                     </div>
-                                ) :
-
-                                    <div className="mx-1 inline-flex mt-1 text-sm flex items-center text-neutral-700">
-                                        Move to <strong className="text-accent mx-1">Step 3</strong> to begin customization.
-                                    </div>
-                                }
+                                )}
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                 {shots.map((s, i) => {
-                                    const locked = !!pendingByKey[s.path] || renders.some((r) => r.key === s.path && r.status === "queued" && !r.archived);
-                                    return <ShotCard key={s.path} s={s} locked={locked} index={i} onView={openViewer} />;
+                                    const locked =
+                                        !!pendingByKey[s.path] ||
+                                        renders.some(
+                                            (r) =>
+                                                r.key === s.path &&
+                                                r.status === "queued" &&
+                                                !r.archived
+                                        );
+                                    return (
+                                        <ShotCard
+                                            key={s.path}
+                                            s={s}
+                                            locked={locked}
+                                            index={i}
+                                            onView={openViewer}
+                                        />
+                                    );
                                 })}
                                 <GhostActionCard
-                                    title={rescanning ? "Starting…" : rescanCooldown.active ? `Rescan (${rescanCooldown.remaining}s)` : "Add / Rescan"}
+                                    title={
+                                        rescanning
+                                            ? "Starting…"
+                                            : rescanCooldown.active
+                                                ? `Rescan (${rescanCooldown.remaining}s)`
+                                                : "Add / Rescan"
+                                    }
                                     subtitle="Capture a fresh screenshot for this page."
                                     onClick={rescan}
-                                    disabled={rescanning || rescanCooldown.active || !isHttpUrl(targetUrl)}
+                                    disabled={
+                                        rescanning ||
+                                        rescanCooldown.active ||
+                                        !isHttpUrl(targetUrl)
+                                    }
                                 />
                             </div>
                         </>
@@ -1232,7 +1599,9 @@ export default function PreviewPage(): JSX.Element {
                     </div>
                     <div className="flex items-center justify-between">
                         <div>
-                            <h2 className="text-1xl sm:text-3xl font-semibold tracking-tight text-neutral-700">Website Previews</h2>
+                            <h2 className="text-1xl sm:text-3xl font-semibold tracking-tight text-neutral-700">
+                                Website Previews
+                            </h2>
                         </div>
                     </div>
 
@@ -1243,7 +1612,16 @@ export default function PreviewPage(): JSX.Element {
                     {renders.length === 0 ? (
                         <>
                             <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
-                                <strong className="text-accent">Step 3 </strong> — Website Previews. Customize to edit the HTML. Deploy publishes to Vercel.
+                                <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1">
+                                    {step3Done ? (
+                                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                                    ) : (
+                                        <Timer className="h-4 w-4 text-orange-400" />
+                                    )}
+                                    Step 3
+                                </strong>{" "}
+                                — Website Previews. Customize to edit the HTML. Deploy publishes to
+                                Vercel.
                             </div>
                             <div className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
                                 No previews yet. Generate one from a base screenshot above.
@@ -1252,7 +1630,20 @@ export default function PreviewPage(): JSX.Element {
                     ) : (
                         <>
                             <div className="rounded-xl border flex items-center flex-inline border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
-                                <strong className="text-accent mr-1">Step 3</strong> — Customize your website preview, then click <div className="mx-2 rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs flex items-center flex-inline font-semibold text-neutral-800">Deploy<Rocket className="mx-1 h-3 w-3" /></div> to begin publishing.
+                                <strong className="text-neutral-800 font-semibold mr-1 inline-flex items-center gap-1">
+                                    {step3Done ? (
+                                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                                    ) : (
+                                        <Timer className="h-4 w-4 text-orange-400" />
+                                    )}
+                                    Step 3
+                                </strong>{" "}
+                                — Customize your website preview, then click{" "}
+                                <div className="mx-2 rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs flex items-center flex-inline font-semibold text-neutral-800">
+                                    Deploy
+                                    <Rocket className="mx-1 h-3 w-3" />
+                                </div>{" "}
+                                to begin publishing.
                             </div>
                             <p className="mt-2 text-xs text-neutral-500">
                                 Tip: Reference the original with the version badge
@@ -1264,8 +1655,13 @@ export default function PreviewPage(): JSX.Element {
                                     592f
                                 </span>
                             </p>
-                            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" aria-label="Editable previews list">
-                                {renders.map((r) => <RenderCard key={r.id} r={r} />)}
+                            <div
+                                className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                                aria-label="Editable previews list"
+                            >
+                                {renders.map((r) => (
+                                    <RenderCard key={r.id} r={r} />
+                                ))}
                             </div>
                         </>
                     )}
@@ -1290,23 +1686,33 @@ export default function PreviewPage(): JSX.Element {
                     </div>
 
                     <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
-                        <strong className="text-accent">Step 4</strong> — Track or modify your deployments here.
+                        <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1">
+                            {step4Done && (
+                                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                            )}
+                            Step 4
+                        </strong>{" "}
+                        — Track or modify your deployments here.
                     </div>
                 </div>
-
             </div>
 
             {editorOpen && (
                 <PreviewEditor
                     initialHtml={editorHtml}
                     sourceImage={editorRefImg}
-                    onClose={() => { setEditorOpen(false); setActiveRenderId(undefined); }}
+                    onClose={() => {
+                        setEditorOpen(false);
+                        setActiveRenderId(undefined);
+                    }}
                     onExport={exportToVercel}
                     draftId={activeRenderId}
                     saveDraft={saveDraft}
                     onLiveHtml={(html) => {
                         if (!activeRenderId) return;
-                        setRenders((prev) => prev.map((r) => (r.id === activeRenderId ? { ...r, html } : r)));
+                        setRenders((prev) =>
+                            prev.map((r) => (r.id === activeRenderId ? { ...r, html } : r))
+                        );
                     }}
                 />
             )}
@@ -1316,12 +1722,26 @@ export default function PreviewPage(): JSX.Element {
 
             {viewerOpen && shots[viewerIdx] && (
                 <div className="fixed inset-0 z-[10000]">
-                    <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={closeViewer} />
+                    <div
+                        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+                        onClick={closeViewer}
+                    />
                     <div className="absolute inset-0 p-4 sm:p-6 md:p-8 grid place-items-center">
                         <div className="relative w-full h-full max-w-[min(95vw,1400px)]">
                             <div className="absolute top-0 bg-black/70 h-20 left-0 right-0 z-10 flex items-center justify-between gap-2 p-2 sm:p-3">
-                                <div className="text-[11px] sm:text-xs text-white/80 truncate">{shots[viewerIdx].fileName}</div>
-                                <button onClick={closeViewer} className="rounded-md" style={{ background: ACCENT, color: "#fff", padding: "6px 10px", fontSize: "12px" }}>
+                                <div className="text-[11px] sm:text-xs text-white/80 truncate">
+                                    {shots[viewerIdx].fileName}
+                                </div>
+                                <button
+                                    onClick={closeViewer}
+                                    className="rounded-md"
+                                    style={{
+                                        background: ACCENT,
+                                        color: "#fff",
+                                        padding: "6px 10px",
+                                        fontSize: "12px",
+                                    }}
+                                >
                                     Close
                                 </button>
                             </div>
@@ -1331,7 +1751,11 @@ export default function PreviewPage(): JSX.Element {
                                         src={shots[viewerIdx].url}
                                         alt={shots[viewerIdx].fileName}
                                         className="max-w-none"
-                                        style={{ width: "auto", height: "auto", maxWidth: "none" }}
+                                        style={{
+                                            width: "auto",
+                                            height: "auto",
+                                            maxWidth: "none",
+                                        }}
                                     />
                                 </div>
                             </div>

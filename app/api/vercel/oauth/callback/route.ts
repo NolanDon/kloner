@@ -1,38 +1,10 @@
 // app/api/vercel/oauth/callback/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import admin from "firebase-admin";
-import { verifySession } from "../../../_lib/auth";
+import { verifySession, getAdminDb } from "../../../_lib/auth";
+import { FieldValue } from "firebase-admin/firestore";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-/**
- * Initialize Firebase Admin once per cold start.
- * FIREBASE_SERVICE_ACCOUNT should be either:
- * - raw JSON, or
- * - base64-encoded JSON (common in Vercel env setup).
- */
-if (!admin.apps.length) {
-    const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
-    if (!raw) {
-        throw new Error("FIREBASE_SERVICE_ACCOUNT env missing");
-    }
-
-    let parsed: admin.ServiceAccount;
-    try {
-        // Try base64 decode first; if that fails, assume plain JSON
-        const maybeDecoded = Buffer.from(raw, "base64").toString("utf8");
-        parsed = JSON.parse(maybeDecoded);
-    } catch {
-        parsed = JSON.parse(raw);
-    }
-
-    admin.initializeApp({
-        credential: admin.credential.cert(parsed),
-    });
-}
-
-const db = admin.firestore();
 
 export async function GET(req: NextRequest) {
     const base =
@@ -128,7 +100,8 @@ export async function GET(req: NextRequest) {
             return redirectWithStatus("error", "token");
         }
 
-        const now = admin.firestore.FieldValue.serverTimestamp();
+        const db = getAdminDb();
+        const now = FieldValue.serverTimestamp();
 
         try {
             const userRef = db.collection("kloner_users").doc(uid);

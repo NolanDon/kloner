@@ -1,41 +1,47 @@
-// app/api/vercel/oauth/start/route.ts
+// app/api/vercel/status/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import crypto from "crypto";
+import { verifySession, getAdminDb } from "../../../_lib/auth";
 
-const env = {
-    clientId: process.env.VERCEL_OAUTH_CLIENT_ID,
-    redirectUri: process.env.VERCEL_OAUTH_REDIRECT_URI,
-    scopes:
-        process.env.VERCEL_OAUTH_SCOPES ??
-        "read:projects read:deployments write:deployments read:env write:env read:user",
-};
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-export async function GET(_req: NextRequest) {
-    if (!env.clientId || !env.redirectUri) {
-        return NextResponse.json(
-            { error: "vercel_oauth_misconfigured" },
-            { status: 500 },
-        );
+export async function GET(req: NextRequest) {
+    // If there is no session cookie at all, don’t even try to verify.
+    const hasSessionCookie = Boolean(req.cookies.get("__session")?.value);
+    if (!hasSessionCookie) {
+        // Anonymous / not logged in → treat as disconnected, no error log.
+        return NextResponse.json({ connected: false }, { status: 200 });
     }
 
-    const state = crypto.randomBytes(16).toString("hex");
+    const db = getAdminDb();
 
-    const authorizeUrl = new URL("https://vercel.com/oauth/authorize");
-    authorizeUrl.searchParams.set("client_id", env.clientId);
-    authorizeUrl.searchParams.set("redirect_uri", env.redirectUri);
-    authorizeUrl.searchParams.set("response_type", "code");
-    authorizeUrl.searchParams.set("scope", env.scopes);
-    authorizeUrl.searchParams.set("state", state);
+    try {
+        const decoded = await verifySession(req);
+        const uid = decoded.uid as string;
 
-    const res = NextResponse.redirect(authorizeUrl.toString(), { status: 302 });
+        const ref = db
+            .collection("kloner_users")
+            .doc(uid)
+            .collection("integrations")
+            .doc("vercel");
 
-    res.cookies.set("vercel_oauth_state", state, {
-        httpOnly: true,
-        sameSite: "lax",
-        maxAge: 600,
-        secure: process.env.NODE_ENV === "production",
-        path: "/",
-    });
+        const snap = await ref.get();
 
-    return res;
+        if (!snap.exists) {
+            return NextResponse.json({ connected: false }, { status: 200 });
+        }
+
+        const data = snap.data() || {};
+        const connected = Boolean((data as any).connected);
+
+        return NextResponse.json({ connected }, { status: 200 });
+    } catch (err: any) {
+        // If verifySession says 401, just treat as disconnected, don’t spam the console.
+        if (err && typeof err.status === "number" && err.status === 401) {
+            return NextResponse.json({ connected: false }, { status: 200 });
+        }
+
+        console.error("[vercel-status] unexpected error", err);
+        return NextResponse.json({ connected: false }, { status: 200 });
+    }
 }

@@ -2,3 +2,4 @@ node_modules
 .next
 .env.local
 app/.DS_Store
+serviceAccount.json
