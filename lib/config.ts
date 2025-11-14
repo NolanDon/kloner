@@ -3,10 +3,10 @@ export const brand = {
   name: "kloner",
   nav: [
     { label: "Home", href: "/" },
-    { label: "How it Works", href: "#how" },
+    { label: "How it Works", href: "/#how" },
     // { label: "Reviews", href: "#stories" },
-    { label: "FAQs", href: "#faq" },
-    { label: "About", href: "#faq" },
+    { label: "FAQs", href: "/#faqs" },
+    { label: "About", href: "/docs" },
   ],
-  cta: { label: "Try Kloner", href: "#cta" }
+  cta: { label: "Try Kloner", href: "/dashboard" }
 } as const;

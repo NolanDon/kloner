@@ -120,7 +120,7 @@ function QAItem({ item, groupKey }: { item: QA; groupKey: string }) {
 
 export default function FAQSection() {
     return (
-        <section className="bg-white text-neutral-800 pt-40">
+        <section id="faqs" className="bg-white text-neutral-800 pt-40">
             <div className="container-soft">
                 {/* Header */}
                 <div className="mb-10 md:mb-12 flex items-start justify-between md:px-40">

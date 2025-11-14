@@ -1,17 +1,17 @@
 // components/MembershipHero.tsx
-'use client';
+"use client";
 
-import Image from 'next/image';
-import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { Check, Shield, Clock4, CreditCard } from 'lucide-react';
-import React, { useEffect, useMemo, useState } from 'react';
-import { AnimatedCreditCard } from './AnimatedCreditCard';
+import Image from "next/image";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { Check, Shield, Clock4, CreditCard } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { AnimatedCreditCard } from "./AnimatedCreditCard";
 
 const BULLETS = [
-    'Includes 100 preview credits / month',
-    'Clean & Secure codebase with assets captured',
-    'One-click deploy to our trusted hosts',
-    'Edit text, images, and meta before export',
+    "Includes 100 preview credits per month on Pro",
+    "Free tier with lighter daily credit limits",
+    "Clean export with code, assets, and routes",
+    "Edit text, images, and meta before export",
 ];
 
 function RotatingCards() {
@@ -42,14 +42,20 @@ function RotatingCards() {
     );
 
     const AddonsMarquee = () => {
-        const items = ['HTML → React', 'Image optimization', 'Route mapping', 'SEO tags', 'Font capture'];
+        const items = [
+            "HTML → React",
+            "Image optimization",
+            "Route mapping",
+            "SEO tags",
+            "Font capture",
+        ];
         return (
             <CardShell>
                 <div className="absolute inset-0 overflow-hidden">
                     <motion.div
                         className="absolute left-0 top-1/2 -translate-y-1/2 flex gap-4 px-4"
-                        animate={{ x: ['0%', '-55%'] }}
-                        transition={{ duration: 12, ease: 'linear', repeat: Infinity }}
+                        animate={{ x: ["0%", "-55%"] }}
+                        transition={{ duration: 12, ease: "linear", repeat: Infinity }}
                     >
                         {[...items, ...items].map((k, idx) => (
                             <motion.div
@@ -70,12 +76,14 @@ function RotatingCards() {
         <CardShell>
             <div className="absolute inset-0 flex flex-col justify-end gap-2 p-4">
                 <motion.div
-                    className="mb-1 inline-flex w-36 items-center justify-center gap-1 self-start rounded-full border border-neutral-200 bg-white/90 px-2 py-1"
+                    className="mb-1 inline-flex w-44 items-center justify-center gap-1 self-start rounded-full border border-neutral-200 bg-white/90 px-2 py-1"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.1 }}
                 >
-                    <span className="text-[11px] text-neutral-700">1 credit used</span>
+                    <span className="text-[11px] text-neutral-700">
+                        1 credit used (preview)
+                    </span>
                 </motion.div>
                 <div className="max-w-[72%] rounded-2xl px-3 py-2 text-sm shadow-sm bg-white text-neutral-800 border border-neutral-200">
                     Swap headline and images before export
@@ -100,7 +108,12 @@ function RotatingCards() {
                         strokeLinejoin="round"
                         initial={{ pathLength: 0 }}
                         animate={{ pathLength: [0, 1] }}
-                        transition={{ duration: 0.6, repeat: Infinity, repeatDelay: 1.2, delay }}
+                        transition={{
+                            duration: 0.6,
+                            repeat: Infinity,
+                            repeatDelay: 1.2,
+                            delay,
+                        }}
                     />
                 </svg>
                 <span className="text-sm font-medium text-neutral-800">{text}</span>
@@ -110,10 +123,10 @@ function RotatingCards() {
         return (
             <CardShell>
                 <div className="absolute inset-0 flex flex-col justify-center gap-3 p-5">
-                    <Row text="100 preview credits / month" delay={0.05} />
-                    <Row text="Clean export" delay={0.25} />
-                    <Row text="One-click deploy" delay={0.45} />
-                    <Row text="Keep full control" delay={0.65} />
+                    <Row text="100 preview credits / month on Pro" delay={0.05} />
+                    <Row text="Credits reset every month" delay={0.25} />
+                    <Row text="Failed runs do not use credits" delay={0.45} />
+                    <Row text="You keep full control of exports" delay={0.65} />
                 </div>
             </CardShell>
         );
@@ -121,17 +134,20 @@ function RotatingCards() {
 
     const slides = useMemo(
         () => [
-            { key: 'price', label: 'Deploy', node: <PricePulse /> },
-            { key: 'addons', label: 'Features', node: <AddonsMarquee /> },
-            { key: 'concierge', label: 'Preview', node: <ConciergeTyping /> },
-            { key: 'plan', label: 'Export', node: <PlanChecks /> },
+            { key: "price", label: "Deploy", node: <PricePulse /> },
+            { key: "addons", label: "Features", node: <AddonsMarquee /> },
+            { key: "concierge", label: "Credits", node: <ConciergeTyping /> },
+            { key: "plan", label: "Plan details", node: <PlanChecks /> },
         ],
         []
     );
 
     useEffect(() => {
         if (reduce) return;
-        const id = setInterval(() => setI((v) => (v + 1) % slides.length), 3000);
+        const id = setInterval(
+            () => setI((v) => (v + 1) % slides.length),
+            3000
+        );
         return () => clearInterval(id);
     }, [slides.length, reduce]);
 
@@ -144,7 +160,7 @@ function RotatingCards() {
                         initial={{ opacity: 0, scale: 1.02 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.98 }}
-                        transition={{ duration: 0.5, ease: 'easeOut' }}
+                        transition={{ duration: 0.5, ease: "easeOut" }}
                         className="absolute inset-0"
                     >
                         {slides[i].node}
@@ -158,7 +174,10 @@ function RotatingCards() {
                         key={s.key}
                         onClick={() => setI(idx)}
                         className={`h-8 px-3 shrink-0 rounded-full border text-xs font-medium transition
-              ${i === idx ? 'border-neutral-900 bg-neutral-900 text-white' : 'border-neutral-200 bg-white text-neutral-700 hover:border-neutral-400'}`}
+              ${i === idx
+                                ? "border-neutral-900 bg-neutral-900 text-white"
+                                : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-400"
+                            }`}
                         aria-label={`Show ${s.label}`}
                         aria-current={i === idx}
                     >
@@ -187,10 +206,12 @@ export default function MembershipHero() {
                     <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 md:gap-4">
                         <div>
                             <h2 className="text-2xl sm:text-3xl md:text-4xl">
-                                Built for instant cloning, <br className="hidden sm:block" /> live preview, and one-click deploy
+                                Built for instant cloning, <br className="hidden sm:block" />{" "}
+                                live preview, and one-click deploy
                             </h2>
                             <p className="text-neutral-600 my-3 md:my-4">
-                                Credits-based previews with full-code export. Turn any public site into your project in minutes.
+                                Credits-based previews with full-code export. Start on the Free
+                                tier, then upgrade to Pro when you need higher limits.
                             </p>
                         </div>
                     </div>
@@ -212,33 +233,39 @@ export default function MembershipHero() {
                             Pro Membership
                         </h3>
                         <p className="text-neutral-600 mt-3 max-w-prose text-[15px] md:text-base">
-                            Everything you need to clone, preview, and deploy. Keep full control of your code and hosting.
+                            Everything you need to safely clone, preview, and deploy. You keep
+                            full control of your code, hosting, and how you use each export.
                         </p>
 
                         <ul className="mt-4 md:mt-5 space-y-2">
                             {BULLETS.map((b) => (
                                 <li key={b} className="flex gap-2">
                                     <Check className="h-5 w-5 mt-0.5 text-emerald-600" />
-                                    <span className="text-neutral-800 text-sm md:text-base">{b}</span>
+                                    <span className="text-neutral-800 text-sm md:text-base">
+                                        {b}
+                                    </span>
                                 </li>
                             ))}
                         </ul>
 
                         {/* Price + credits */}
-                        <div className="mt-5 md:mt-6 flex items-center gap-3">
+                        <div className="mt-5 md:mt-6 flex flex-wrap items-center gap-3">
                             <div className="text-5xl md:text-6xl text-neutral-900">$29</div>
                             <div className="text-neutral-600 text-sm md:text-base">
-                                /month · billed monthly or annually
+                                /month · cancel anytime
                             </div>
-                            <span className="ml-2 inline-flex items-center rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-xs font-medium text-neutral-800">
-                                100 preview credits / mo
+                            <span className="ml-0 md:ml-2 inline-flex items-center rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-xs font-medium text-neutral-800">
+                                100 preview credits / month (Pro)
+                            </span>
+                            <span className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-xs font-medium text-neutral-700">
+                                Free tier available with lighter limits
                             </span>
                         </div>
 
                         {/* Payment options */}
                         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-neutral-600">
                             <span>Flexible payment options</span>
-                            {['AMEX', 'VISA', 'Mastercard'].map((label) => (
+                            {["AMEX", "VISA", "Mastercard"].map((label) => (
                                 <span
                                     key={label}
                                     className="inline-flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 bg-white"
@@ -265,7 +292,7 @@ export default function MembershipHero() {
                                 <Shield className="h-4 w-4" /> Cancel anytime
                             </span>
                             <span className="inline-flex items-center gap-1.5">
-                                <CreditCard className="h-4 w-4" /> No card for preview
+                                <CreditCard className="h-4 w-4" /> No card needed to try
                             </span>
                             <span className="inline-flex items-center gap-1.5">
                                 <Clock4 className="h-4 w-4" /> Deploy in seconds
@@ -273,7 +300,10 @@ export default function MembershipHero() {
                         </div>
 
                         <div className="mt-2 text-xs text-neutral-500">
-                            5 credits = 1 preview render. Credits reset monthly. Export includes code, assets, and routes.
+                            Credits are consumed only on successful previews and resets
+                            happen monthly. You are responsible for ensuring you have the
+                            right to clone and work with any URL you submit. Use of Kloner is
+                            governed by the current Terms and Conditions.
                         </div>
                     </div>
                 </div>

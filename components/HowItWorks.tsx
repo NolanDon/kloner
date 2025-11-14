@@ -256,7 +256,7 @@ export default function HowItWorks() {
   const s4 = useTransform(scrollYProgress, [0, T4 - ε, T4, 1], [0.35, 0.35, 1, 1]);
 
   return (
-    <section className="bg-white text-black">
+    <section id="how" className="bg-white text-black">
       <div className="container-soft">
         <div ref={containerRef} className="relative h-[220vh]">
           <div className="sticky top-44">

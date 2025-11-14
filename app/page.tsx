@@ -19,7 +19,7 @@ export default function Page() {
 
       {/* Scroll container with snap + smooth scroll */}
       <main className="h-screen snap-y snap-mandatory scroll-smooth">
-      {/* <main> */}
+        {/* <main> */}
         <section
           id="hero"
           className="snap-start snap-always min-h-screen flex flex-col"
@@ -77,7 +77,7 @@ export default function Page() {
 
         <section
           id="what-we-test"
-          className="snap-start snap-always min-h-screen flex flex-col"
+          className="snap-start snap-always flex flex-col"
         >
           <WhatWeTest />
         </section>
@@ -91,7 +91,7 @@ export default function Page() {
 
         <section
           id="footer"
-          className="snap-start snap-always min-h-screen flex flex-col"
+          className="snap-start snap-always flex flex-col"
         >
           <Footer />
         </section>

@@ -31,17 +31,23 @@ export default function Footer() {
         <div className="mt-6 md:mt-8 grid gap-4 md:gap-10 md:grid-cols-5 text-sm">
           <Column
             title="Product"
-            items={['How it Works', 'What’s Included', 'Live Preview', 'Changelog']}
+            items={['How it Works', 'What’s Included', 'Live Preview']}
           />
           <Column
             title="Company"
-            items={['About', 'Careers', 'Labs', 'Contact', 'FAQs']}
+            items={['About', 'Contact', 'FAQs']}
             noteIndex={1}
             note="We’re hiring!"
           />
           <Column
             title="Compare"
-            items={['Cloning vs Rebuild', 'Vercel vs Netlify', 'Static vs SSR', 'Export Options', 'Pricing']}
+            items={[
+              'Cloning vs Rebuild',
+              'Vercel vs Netlify',
+              'Static vs SSR',
+              'Export Options',
+              'Pricing',
+            ]}
           />
           <Column
             title="Library"
@@ -98,7 +104,7 @@ function Column({
   }, [isDesktop]);
 
   return (
-    <div className="border-b border-neutral-200/70 py-50 md:border-none">
+    <div className="border-b border-neutral-200/70 py-3 last:border-b-0 md:border-none md:py-0">
       <button
         type="button"
         className="
@@ -114,7 +120,8 @@ function Column({
         <span className="text-base md:text-[inherit]">{title}</span>
         <svg
           viewBox="0 0 24 24"
-          className={`h-5 w-5 md:hidden transition-transform ${open ? 'rotate-180' : 'rotate-0'}`}
+          className={`h-5 w-5 md:hidden transition-transform ${open ? 'rotate-180' : 'rotate-0'
+            }`}
           stroke="currentColor"
           fill="none"
           strokeWidth="2"
@@ -131,7 +138,7 @@ function Column({
         className={`
           overflow-hidden transition-all
           md:overflow-visible
-          ${open ? 'max-h-[1000px] opacity-100 pb-4 md:pb-0' : 'max-h-0 opacity-90 md:max-h-none'}
+          ${open ? 'max-h-[1000px] opacity-100 pb-2 md:pb-0' : 'max-h-0 opacity-90 md:max-h-none'}
         `}
       >
         <ul className="space-y-3 pb-1 md:pb-0">
@@ -148,14 +155,16 @@ function Column({
                 {label}
               </a>
               {noteIndex === i && note ? (
-                <span className="ml-2 text-[11px] md:text-[11px] text-[#ff6f3d] whitespace-nowrap">[{note}]</span>
+                <span className="ml-2 text-[11px] md:text-[11px] text-[#ff6f3d] whitespace-nowrap">
+                  [{note}]
+                </span>
               ) : null}
             </li>
           ))}
         </ul>
 
         {extraGroup ? (
-          <div className="pt-4 md:pt-7">
+          <div className="pt-4 md:pt-5">
             <div className="mb-3 text-neutral-700 md:text-neutral-700">
               {extraGroup.heading}
             </div>

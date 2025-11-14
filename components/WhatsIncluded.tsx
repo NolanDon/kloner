@@ -40,7 +40,7 @@ function FeatureFrame({
       className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm"
     >
       {children}
-      <div className="p-4">
+      <div className="p-4" id="included">
         <div className="font-semibold text-neutral-800">{title}</div>
         <div className="mt-1 text-sm text-neutral-500">{sub}</div>
       </div>

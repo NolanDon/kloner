@@ -87,7 +87,7 @@ export default function Hero() {
           className="mx-auto max-w-3xl text-center"
         >
           <h1
-            className={`${display.className} pt-20 leading-[0.96] font-semibold text-white text-[clamp(2.6rem,7.6vw,5rem)] tracking-[-0.015em]`}
+            className={`${display.className} pt-20 leading-[0.96] font-semibold text-white text-[3.5rem] md:text-[5rem] tracking-[-0.015em]`}
             style={{
               textWrap: "balance" as any,
               WebkitFontSmoothing: "antialiased",
@@ -97,10 +97,16 @@ export default function Hero() {
             Click, Clone, Customize & Deploy.
           </h1>
 
-          <p className="mt-4 md:mt-5 text-white/80 text-base sm:text-lg px-2 pb-10 md:pb-20">
+          <p className="block md:hidden mt-4 md:mt-5 text-white/80 text-base sm:text-lg px-2 pb-10 md:pb-20">
+            Paste a URL. We generate a ready-to-ship project you can
+            preview, customize, and deploy in minutes.
+          </p>
+
+          <p className="hidden md:block mt-4 md:mt-5 text-white/80 text-base sm:text-lg px-2 pb-10 md:pb-20">
             Paste a URL. We generate a ready-to-ship project you can <br />
             preview, customize, and deploy in minutes.
           </p>
+
 
           <form onSubmit={onSubmit} className="mt-6 md:mt-15 px-2" aria-label="Start by pasting a URL">
             <div

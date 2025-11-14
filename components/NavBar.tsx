@@ -5,7 +5,21 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { brand } from "@/lib/config";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, LogOut, User2, LayoutGrid, Home, ChevronRight, Globe, Camera, Hammer, Rocket, Wand2, Eye, ScanSearch } from "lucide-react";
+import {
+  Menu,
+  X,
+  LogOut,
+  User2,
+  LayoutGrid,
+  Home,
+  ChevronRight,
+  Camera,
+  Hammer,
+  Rocket,
+  Wand2,
+  Eye,
+  ScanSearch,
+} from "lucide-react";
 import { useAuth } from "@/src/hooks/useAuth";
 import { signOut, type User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
@@ -36,13 +50,20 @@ export default function NavBar(): JSX.Element {
     const el = document.documentElement;
     const prev = el.style.overflow;
     el.style.overflow = mOpen ? "hidden" : prev || "";
-    return () => { el.style.overflow = prev; };
+    return () => {
+      el.style.overflow = prev;
+    };
   }, [mOpen]);
 
   const initials = useMemo(() => {
     if (!user) return "";
     const name = user.displayName || user.email || "";
-    const parts = name.replace(/@.*/, "").replace(/[_.\-]+/g, " ").trim().split(/\s+/).slice(0, 2);
+    const parts = name
+      .replace(/@.*/, "")
+      .replace(/[_.\-]+/g, " ")
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2);
     if (parts.length === 0) return "";
     if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
     return (parts[0]![0]! + parts[1]![0]!).toUpperCase();
@@ -50,11 +71,16 @@ export default function NavBar(): JSX.Element {
 
   const shellClasses =
     "rounded-[999px] " +
-    (scrolled ? "bg-smoke/70 border-white/10 backdrop-blur" : "bg-smoke/40 border-white/10 backdrop-blur");
+    (scrolled
+      ? "bg-smoke/70 border-white/10 backdrop-blur"
+      : "bg-smoke/40 border-white/10 backdrop-blur");
 
   const onSignOut = async (): Promise<void> => {
     try {
-      await fetch("/api/auth/session", { method: "DELETE", credentials: "include" });
+      await fetch("/api/auth/session", {
+        method: "DELETE",
+        credentials: "include",
+      });
       await signOut(auth);
       setUserMenuOpen(false);
     } catch { }
@@ -62,30 +88,74 @@ export default function NavBar(): JSX.Element {
 
   const br = brand as unknown as BrandShape;
 
+  // base nav from config
+  const baseNav: NavItem[] = br?.nav ?? [];
+
+  // extra items users expect
+  const extraNav: NavItem[] = [
+    { label: "Product", href: "/#how" },
+    { label: "Docs", href: "/docs" },
+    { label: "Pricing", href: "/price" },
+    { label: "Changelog", href: "/#changelog" },
+  ];
+
+  // merge, avoid duplicate labels
+  const navItems: NavItem[] = useMemo(() => {
+    const seen = new Set(baseNav.map((i) => i.label));
+    const merged = [...baseNav];
+    for (const item of extraNav) {
+      if (!seen.has(item.label)) {
+        merged.push(item);
+        seen.add(item.label);
+      }
+    }
+    return merged;
+  }, [baseNav]);
+
   return (
-    <div className="px-4 fixed left-0 right-0 top-5 z-50" onMouseLeave={() => setOpen(false)}>
+    <div
+      className="px-4 fixed left-0 right-0 top-5 z-50"
+      onMouseLeave={() => setOpen(false)}
+    >
       <div className="mx-auto max-w-6xl">
-        <div className={`relative flex items-center gap-3 px-3 py-1 md:px-1 mx-2 ${shellClasses}`}
-          style={{ height: "4rem" }} >
+        <div
+          className={`relative flex items-center gap-3 px-3 py-1 md:px-1 mx-2 ${shellClasses}`}
+          style={{ height: "4rem" }}
+        >
           {/* Logo */}
-          <Link href="/" className="ml-5 font-black tracking-tight text-lg md:text-xl shrink-0 text-white">
+          <Link
+            href="/"
+            className="ml-5 font-black tracking-tight text-xl md:text-2xl shrink-0 text-white"
+          >
             <span className="text-white">kloner</span>
           </Link>
 
           {/* Desktop nav */}
           <nav className="hidden md:flex flex-1 items-center justify-center">
             <ul className="flex items-center gap-6 text-[15px] text-white/85">
-              {br.nav.map((i, idx) => (
+              {navItems.map((i, idx) => (
                 <li key={i.label} className="flex items-center">
-                  <button
-                    className="relative hover:text-white transition  whitespace-nowrap"
-                    onMouseEnter={() => { setActive(i); setOpen(true); }}
-                    onFocus={() => { setActive(i); setOpen(true); }}
+                  <Link
+                    href={i.href}
+                    className="relative hover:text-white transition whitespace-nowrap"
+                    onMouseEnter={() => {
+                      setActive(i);
+                      setOpen(true);
+                    }}
+                    onFocus={() => {
+                      setActive(i);
+                      setOpen(true);
+                    }}
                     aria-expanded={Boolean(open && active?.label === i.label)}
                   >
                     {i.label}
-                  </button>
-                  {idx === 2 && <span className="ml-5 h-5 w-px bg-white/15 rounded-full" aria-hidden />}
+                  </Link>
+                  {idx === 2 && (
+                    <span
+                      className="ml-5 h-5 w-px bg-white/15 rounded-full"
+                      aria-hidden
+                    />
+                  )}
                 </li>
               ))}
             </ul>
@@ -97,23 +167,40 @@ export default function NavBar(): JSX.Element {
             <button
               aria-label={mOpen ? "Close menu" : "Open menu"}
               aria-expanded={mOpen}
-              onClick={() => { setMOpen(v => !v); setOpen(false); }}
+              onClick={() => {
+                setMOpen((v) => !v);
+                setOpen(false);
+              }}
               className="md:hidden inline-flex h-10 w-10 items-center justify-center rounded-full text-white/90 hover:bg-white/10 ring-1 ring-white/10"
             >
-              {mOpen ? <X size={18} strokeWidth={2.2} /> : <Menu size={18} strokeWidth={2.2} />}
+              {mOpen ? (
+                <X size={18} strokeWidth={2.2} />
+              ) : (
+                <Menu size={18} strokeWidth={2.2} />
+              )}
             </button>
 
             {/* Auth (desktop) */}
             {!user ? (
               <>
-                <a href="/login" className="hidden md:inline text-sm text-white/85 hover:text-white">Login</a>
+                <a
+                  href="/login"
+                  className="hidden md:inline text-sm text-white/85 hover:text-white"
+                >
+                  Login
+                </a>
               </>
             ) : (
               <>
-                <Link href="/dashboard" className="hidden md:inline text-sm text-white/85 hover:text-white">Dashboard</Link>
+                <Link
+                  href="/dashboard"
+                  className="hidden md:inline text-sm text-white/85 hover:text-white"
+                >
+                  Dashboard
+                </Link>
                 <div className="relative hidden md:block">
                   <button
-                    onClick={() => setUserMenuOpen(v => !v)}
+                    onClick={() => setUserMenuOpen((v) => !v)}
                     aria-haspopup="menu"
                     aria-expanded={userMenuOpen}
                     className="inline-flex h-8 w-8 items-center justify-center rounded-full text-white ring-1 ring-white/20 hover:bg-white/10"
@@ -132,8 +219,12 @@ export default function NavBar(): JSX.Element {
                         onMouseLeave={() => setUserMenuOpen(false)}
                       >
                         <div className="px-4 py-3">
-                          <div className="text-sm text-neutral-500">Signed in</div>
-                          <div className="text-sm text-neutral-800 truncate">{user.displayName || user.email}</div>
+                          <div className="text-sm text-neutral-500">
+                            Signed in
+                          </div>
+                          <div className="text-sm text-neutral-800 truncate">
+                            {user.displayName || user.email}
+                          </div>
                         </div>
                         <div className="h-px bg-neutral-200/70" />
                         <div className="py-1 text-sm">
@@ -180,7 +271,7 @@ export default function NavBar(): JSX.Element {
           </AnimatePresence>
         </div>
 
-        {/* Mobile Menu (new sheet) */}
+        {/* Mobile Menu */}
         <AnimatePresence>
           {mOpen && (
             <>
@@ -208,10 +299,15 @@ export default function NavBar(): JSX.Element {
                 {/* Header */}
                 <div className="flex items-center justify-between px-4 pt-3 pb-2">
                   <div className="flex items-center gap-2">
-                    <span className="inline-grid h-7 w-7 place-items-center rounded-xl" style={{ background: ACCENT }}>
+                    <span
+                      className="inline-grid h-7 w-7 place-items-center rounded-xl"
+                      style={{ background: ACCENT }}
+                    >
                       <LayoutGrid className="h-3.5 w-3.5 text-white" />
                     </span>
-                    <span className="text-sm font-semibold text-neutral-800">Menu</span>
+                    <span className="text-sm font-semibold text-neutral-800">
+                      Menu
+                    </span>
                   </div>
                   <button
                     onClick={() => setMOpen(false)}
@@ -226,21 +322,55 @@ export default function NavBar(): JSX.Element {
 
                 {/* Quick actions */}
                 <div className="grid grid-cols-3 gap-3 px-4 py-3">
-                  <QuickAction href="/#how" icon={ScanSearch} label="Crawl" onNavigate={() => setMOpen(false)} />
-                  <QuickAction href="/dashboard/view" icon={Camera} label="Screenshots" onNavigate={() => setMOpen(false)} />
-                  <QuickAction href="/dashboard/view" icon={Hammer} label="Generate" onNavigate={() => setMOpen(false)} />
-                  <QuickAction href="/dashboard" icon={Eye} label="Customize" onNavigate={() => setMOpen(false)} />
-                  <QuickAction href="/docs" icon={Wand2} label="Docs" onNavigate={() => setMOpen(false)} />
-                  <QuickAction href="/price" icon={Rocket} label="Deploy" onNavigate={() => setMOpen(false)} />
+                  <QuickAction
+                    href="/#how"
+                    icon={ScanSearch}
+                    label="Crawl"
+                    onNavigate={() => setMOpen(false)}
+                  />
+                  <QuickAction
+                    href="/dashboard/view"
+                    icon={Camera}
+                    label="Screenshots"
+                    onNavigate={() => setMOpen(false)}
+                  />
+                  <QuickAction
+                    href="/dashboard/view"
+                    icon={Hammer}
+                    label="Generate"
+                    onNavigate={() => setMOpen(false)}
+                  />
+                  <QuickAction
+                    href="/dashboard"
+                    icon={Eye}
+                    label="Customize"
+                    onNavigate={() => setMOpen(false)}
+                  />
+                  <QuickAction
+                    href="/docs"
+                    icon={Wand2}
+                    label="Docs"
+                    onNavigate={() => setMOpen(false)}
+                  />
+                  <QuickAction
+                    href="/price"
+                    icon={Rocket}
+                    label="Deploy"
+                    onNavigate={() => setMOpen(false)}
+                  />
                 </div>
 
                 <div className="h-px bg-neutral-200/70" />
 
                 {/* Links */}
                 <ul className="px-2 py-2">
-                  {br.nav.map((i) => (
+                  {navItems.map((i) => (
                     <li key={i.label}>
-                      <MobileLink href={i.href} label={i.label} onNavigate={() => setMOpen(false)} />
+                      <MobileLink
+                        href={i.href}
+                        label={i.label}
+                        onNavigate={() => setMOpen(false)}
+                      />
                     </li>
                   ))}
                 </ul>
@@ -254,7 +384,7 @@ export default function NavBar(): JSX.Element {
                       <a
                         href="/login"
                         onClick={() => setMOpen(false)}
-                        className="inline-flex flex-1 items-center justify-center rounded-full border border-neutral-300 bg-white px-4 py-2.5 text-sm font-medium text-neutral-800"
+                        className="inline-flex flex-1 items-center justify-center rounded-full border border-neutral-300 bg.white px-4 py-2.5 text-sm font-medium text-neutral-800"
                       >
                         <User2 className="mr-2 h-4 w-4" /> Login
                       </a>
@@ -272,13 +402,16 @@ export default function NavBar(): JSX.Element {
                       <a
                         href="/dashboard"
                         onClick={() => setMOpen(false)}
-                        className="inline-flex flex-1 items-center justify-center rounded-full border border-neutral-300 bg-white px-4 py-2.5 text-sm font-medium text-neutral-800"
+                        className="inline-flex flex-1 items-center justify-center rounded-full border border-neutral-300 bg.white px-4 py-2.5 text-sm font-medium text-neutral-800"
                       >
                         <Home className="mr-2 h-4 w-4" /> Dashboard
                       </a>
                       <button
-                        onClick={async () => { await onSignOut(); setMOpen(false); }}
-                        className="inline-flex flex-1 items-center justify-center rounded-full px-4 py-2.5 text-sm font-semibold text-white"
+                        onClick={async () => {
+                          await onSignOut();
+                          setMOpen(false);
+                        }}
+                        className="inline-flex flex-1 items-center justify-center rounded-full px-4 py-2.5 text-sm font-semibold text.white"
                         style={{ background: ACCENT }}
                       >
                         <LogOut className="mr-2 h-4 w-4" /> Sign out
@@ -287,7 +420,6 @@ export default function NavBar(): JSX.Element {
                   )}
                 </div>
 
-                {/* Safe bottom padding */}
                 <div className="pb-[max(10px,env(safe-area-inset-bottom))]" />
               </motion.nav>
             </>
@@ -300,7 +432,15 @@ export default function NavBar(): JSX.Element {
 
 /* ------------------------------- pieces -------------------------------- */
 
-function MobileLink({ href, label, onNavigate }: { href: string; label: string; onNavigate: () => void }) {
+function MobileLink({
+  href,
+  label,
+  onNavigate,
+}: {
+  href: string;
+  label: string;
+  onNavigate: () => void;
+}) {
   return (
     <a
       href={href}
@@ -330,7 +470,10 @@ function QuickAction({
       onClick={onNavigate}
       className="group grid place-items-center gap-2 rounded-2xl border border-neutral-200 bg-white/70 px-3 py-4 text-center hover:border-neutral-300"
     >
-      <div className="grid h-10 w-10 place-items-center rounded-xl" style={{ background: ACCENT }}>
+      <div
+        className="grid h-10 w-10 place-items-center rounded-xl"
+        style={{ background: ACCENT }}
+      >
         <Icon className="h-5 w-5 text-white" />
       </div>
       <span className="text-xs font-semibold text-neutral-800">{label}</span>
@@ -338,10 +481,12 @@ function QuickAction({
   );
 }
 
-/* keep your existing MegaPanel/AnimatedPromoCard/etc below (unchanged) */
 function MenuLink({ href, label }: { href: string; label: string }) {
   return (
-    <a href={href} className="block px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100 transition">
+    <a
+      href={href}
+      className="block px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100 transition"
+    >
       {label}
     </a>
   );
@@ -350,9 +495,10 @@ function MenuLink({ href, label }: { href: string; label: string }) {
 function MegaPanel({ active }: { active: NavItem | null }): JSX.Element {
   return (
     <div className="rounded-3xl border border-white/10 bg-white/95 backdrop-blur shadow-2xl overflow-hidden">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 p-6 md:p-8 text-neutral-800">
+      <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))] gap-8 p-6 md:p-8 text-neutral-800">
+        {/* Left: promo card */}
         <Link
-          href={active?.href || "#"}
+          href={active?.href || "/#how"}
           className="hidden md:block rounded-2xl overflow-hidden ring-1 ring-black/10 bg-white shadow-sm"
           aria-label="Explore"
         >
@@ -363,28 +509,35 @@ function MegaPanel({ active }: { active: NavItem | null }): JSX.Element {
           </div>
         </Link>
 
+        {/* PRODUCT */}
         <div className="space-y-4">
           <div className="text-sm text-neutral-500 tracking-wider">PRODUCT</div>
-          <SimpleLink href="#how" label="How it Works" />
-          <SimpleLink href="#templates" label="Templates" />
-          <SimpleLink href="#pricing" label="Pricing" />
-          <SimpleLink href="#docs" label="Docs" />
+          <SimpleLink href="/#how" label="How it Works" />
+          <SimpleLink href="/price" label="Pricing" />
+          <SimpleLink href="/docs" label="Docs overview" />
+          <SimpleLink href="/docs#features" label="Capture → Preview flow" />
+          <SimpleLink href="/docs#quick-start" label="10-minute Quickstart" />
         </div>
 
-        <div className="grid grid-cols-2 gap-8">
-          <div className="space-y-3">
-            <div className="text-sm text-neutral-500 tracking-wider">LEARN</div>
-            <SimpleLink href="#stories" label="Customer Stories" />
-            <SimpleLink href="#faq" label="FAQs" />
-            <SimpleLink href="#changelog" label="Changelog" />
-            <SimpleLink href="#blog" label="Blog" />
-          </div>
-          <div className="space-y-3">
-            <div className="text-sm text-neutral-500 tracking-wider">OTHER</div>
-            <SimpleLink href="#privacy" label="Privacy Policy" />
-            <SimpleLink href="#terms" label="Terms & Conditions" />
-            <SimpleLink href="#security" label="Security" />
-          </div>
+        {/* LEARN */}
+        <div className="space-y-4">
+          <div className="text-sm text-neutral-500 tracking-wider">LEARN</div>
+          <SimpleLink href="/docs#credits" label="Credit system" />
+          <SimpleLink href="/docs#plans" label="Plan overview" />
+          <SimpleLink href="/docs#safety" label="Safety & fairness" />
+          <SimpleLink href="/docs#export-options" label="Export & library" />
+          <SimpleLink href="/#faq" label="FAQs" />
+          <SimpleLink href="/#changelog" label="Changelog" />
+        </div>
+
+        {/* OTHER */}
+        <div className="space-y-4">
+          <div className="text-sm text-neutral-500 tracking-wider">OTHER</div>
+          <SimpleLink href="/terms" label="Terms & Conditions" />
+          <SimpleLink href="/privacy" label="Privacy Policy" />
+          <SimpleLink href="/docs#routing-guides" label="Routing Guides" />
+          <SimpleLink href="/docs#seo-templates" label="SEO Templates" />
+          <SimpleLink href="/docs#deploy-checklists" label="Deploy Checklists" />
         </div>
       </div>
     </div>
@@ -393,7 +546,10 @@ function MegaPanel({ active }: { active: NavItem | null }): JSX.Element {
 
 function SimpleLink({ href, label }: { href: string; label: string }) {
   return (
-    <a href={href} className="block hover:text-neutral-800 text-neutral-700 rounded-pill transition text-[13px]">
+    <a
+      href={href}
+      className="block hover:text-neutral-800 text-neutral-700 rounded-pill transition text-[13px]"
+    >
       {label}
     </a>
   );
@@ -405,7 +561,9 @@ export function AnimatedPromoCard(): JSX.Element {
       <div className="pointer-events-none absolute -inset-x-1/2 -top-1/3 h-1/2 rotate-12 bg-white/50 blur-2xl animate-[sheen_5s_linear_infinite]" />
       <div className="flex items-center gap-2 px-4 pt-4">
         <Wand2 className="h-4 w-4" style={{ color: ACCENT }} />
-        <h3 className="text-sm font-semibold text-neutral-800 tracking-tight">Kloner Workflow</h3>
+        <h3 className="text-sm font-semibold text-neutral-800 tracking-tight">
+          Kloner Workflow
+        </h3>
       </div>
       <div className="absolute left-4 top-12 space-y-2 ">
         <MetricPill icon={ScanSearch} label="Crawl" delay={0} />
@@ -415,8 +573,30 @@ export function AnimatedPromoCard(): JSX.Element {
         <MetricPill icon={Rocket} label="Deploy" delay={1.0} />
       </div>
       <style jsx>{`
-        @keyframes sheen { 0%{transform:translateX(-20%) rotate(12deg);opacity:.6} 50%{transform:translateX(40%) rotate(12deg);opacity:.2} 100%{transform:translateX(100%) rotate(12deg);opacity:.6} }
-        @keyframes popin { 0%{transform:translateY(6px) scale(.98);opacity:0} 100%{transform:translateY(0) scale(1);opacity:1} }
+        @keyframes sheen {
+          0% {
+            transform: translateX(-20%) rotate(12deg);
+            opacity: 0.6;
+          }
+          50% {
+            transform: translateX(40%) rotate(12deg);
+            opacity: 0.2;
+          }
+          100% {
+            transform: translateX(100%) rotate(12deg);
+            opacity: 0.6;
+          }
+        }
+        @keyframes popin {
+          0% {
+            transform: translateY(6px) scale(0.98);
+            opacity: 0;
+          }
+          100% {
+            transform: translateY(0) scale(1);
+            opacity: 1;
+          }
+        }
       `}</style>
     </div>
   );
@@ -434,7 +614,11 @@ function MetricPill({
   return (
     <div
       className="flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-neutral-700 shadow-sm backdrop-blur"
-      style={{ animation: "popin .4s ease forwards", animationDelay: `${delay}s`, opacity: 0 }}
+      style={{
+        animation: "popin .4s ease forwards",
+        animationDelay: `${delay}s`,
+        opacity: 0,
+      }}
     >
       <Icon className="h-3.5 w-3.5" />
       {label}
