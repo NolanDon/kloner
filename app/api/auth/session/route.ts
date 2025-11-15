@@ -1,11 +1,20 @@
 // src/app/api/auth/session/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth } from "../../_lib/auth";
+import { getAdminAuth, assertCsrf } from "../../_lib/auth";
 
 const COOKIE = "__session";
 const MAX_AGE_MS = 5 * 24 * 60 * 60 * 1000; // 5 days
 
 export async function POST(req: NextRequest) {
+    // enforce CSRF for non-GET methods
+    try {
+        assertCsrf(req);
+    } catch (err: any) {
+        const status = typeof err?.status === "number" ? err.status : 403;
+        const msg = err?.message || "Forbidden (csrf)";
+        return NextResponse.json({ error: msg }, { status });
+    }
+
     const { idToken } = await req.json().catch(() => ({}));
     if (!idToken) {
         return NextResponse.json({ error: "idToken required" }, { status: 400 });
