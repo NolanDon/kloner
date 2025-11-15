@@ -2548,9 +2548,7 @@ export default function PreviewPage(): JSX.Element {
                                     )}
                                     Step 3
                                 </strong>
-                                <span className="text-neutral-400">
-                                    —
-                                </span>
+                                <span className="text-neutral-400">—</span>
                                 <span className="ml-1">
                                     Customize your website preview, then click{" "}
                                 </span>
