@@ -55,6 +55,7 @@ import {
     Timer,
     Lock,
     Crown,
+    BrushIcon,
 } from "lucide-react";
 import {
     isHttpUrl,
@@ -1898,8 +1899,7 @@ export default function PreviewPage(): JSX.Element {
                                                     disabled={
                                                         disableOpen || isDeleting
                                                     }
-                                                    className="shrink-0 rounded-md px-4 py-2 text-[0.75rem] text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
-                                                    style={{ backgroundColor: ACCENT }}
+                                                    className="inline-flex items-center gap-2 rounded-md border border-neutral-400 px-3 py-1 text-xs font-semibold text-neutral-800 shadow-sm"
                                                     title={
                                                         isQueued
                                                             ? "Still building preview"
@@ -1913,6 +1913,9 @@ export default function PreviewPage(): JSX.Element {
                                                         : isFailed
                                                             ? "Customize (fix)"
                                                             : "Customize"}
+                                                    <BrushIcon
+                                                        className="h-4 w-4"
+                                                    />
                                                 </button>
                                             )}
                                         </div>
@@ -2068,7 +2071,7 @@ export default function PreviewPage(): JSX.Element {
                                 className="block"
                                 title="Open full-size screenshot"
                             >
-                                <div className="w-full aspect-[4/3] bg-neutral-50 flex items-center justify-center rounded-t-xl relative">
+                                <div className="w-full aspect-[3/3] bg-neutral-50 flex items-center justify-center rounded-t-xl relative">
                                     <img
                                         src={s.url}
                                         alt={s.fileName}
@@ -2080,7 +2083,7 @@ export default function PreviewPage(): JSX.Element {
                                         }
                                     />
                                     <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
-                                        <div className="pointer-events-auto flex flex-col sm:flex-row items-center gap-2 rounded-xl bg-white/90 p-2 ring-1 ring-neutral-200 backdrop-blur">
+                                        <div className="pointer-events-auto flex flex-col md:flex-row items-center gap-2 rounded-xl bg-white/90 p-2 ring-1 ring-neutral-200 backdrop-blur">
                                             <button
                                                 onClick={(e) => {
                                                     e.preventDefault();
@@ -2091,7 +2094,7 @@ export default function PreviewPage(): JSX.Element {
                                             >
                                                 <span>View</span>
                                                 <Eye
-                                                    className="h-3 w-3 opacity-90"
+                                                    className="h-4 w-4"
                                                     aria-hidden
                                                 />
                                             </button>
@@ -2103,8 +2106,7 @@ export default function PreviewPage(): JSX.Element {
                                                 }}
                                                 disabled={locked || isDeleting}
                                                 aria-busy={locked}
-                                                className="shrink-0 rounded-md px-4 py-2 text-[0.75rem] text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
-                                                style={{ backgroundColor: ACCENT }}
+                                                className="shrink-0 rounded-md px-2 py-1 text-[0.75rem] border border-neutral-400 text-neutral-800 hover:bg-neutral-50 inline-flex items-center gap-1.5"
                                                 title="Create editable preview from this screenshot"
                                             >
                                                 <span>
@@ -2158,8 +2160,8 @@ export default function PreviewPage(): JSX.Element {
 
     const step1Done = !!activeUrlDoc;
     const step2Done = shots.length > 0;
-    const step3Done = renders.length > 0;
-    const step4Done = renders.some(
+    const step3Done = renders.length > 0 && Object.keys(optimisticByKey).length === 0;
+    const step4Done = step3Done && renders.some(
         (r) => (r as any).lastExportedAt
     );
 
@@ -2276,14 +2278,13 @@ export default function PreviewPage(): JSX.Element {
                                 ref={urlMenuRef}
                             >
                                 <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
-                                    <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1">
+                                    <strong className="text-neutral-800 font-semibold inline-flex  gap-1">
                                         {step1Done && (
                                             <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                                         )}
                                         Step 1
                                     </strong>{" "}
-                                    — You have chosen the following URL, you can
-                                    select a different one from the dropdown.
+                                    — You have chosen the following URL — Select a different project from the dropdown.
                                 </div>
 
                                 <button
@@ -2373,28 +2374,30 @@ export default function PreviewPage(): JSX.Element {
                     <h2 className="text-1xl sm:text-3xl font-semibold tracking-tight text-neutral-700">
                         Screenshots
                     </h2>
-                    <p className="mt-2 text-xs text-neutral-500">
+                    <p className="my-2 text-xs text-neutral-500">
                         These are the original screenshots captured
                         directly from your entered URL.
                     </p>
 
                     {!targetUrl ? (
                         <>
-                            <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
+                            {/* <div className="flex items-center justify-between gap-4"> */}
+                            <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 flex items-center gap-3">
                                 <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1">
                                     {step2Done ? (
                                         <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                                     ) : (
                                         <Timer className="h-4 w-4 text-orange-400" />
                                     )}
-                                    Step 2
-                                </strong>{" "}
-                                — Below will host your base images.
+                                    <span>Step 2</span>
+                                </strong>
+                                <span className="text-sm">— Below will host your base images.</span>
                             </div>
-                            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-6 my-4 text-sm text-neutral-700">
-                                Select a URL above to manage its screenshots and
-                                previews.
+
+                            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-6 text-sm text-neutral-700">
+                                Select a URL above to manage its screenshots and previews.
                             </div>
+                            {/* </div> */}
                         </>
                     ) : loading ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -2408,7 +2411,7 @@ export default function PreviewPage(): JSX.Element {
                     ) : shots.length === 0 ? (
                         <>
                             <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
-                                <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1">
+                                <strong className="text-neutral-800 inline-flex font-semibold gap-1">
                                     {step2Done ? (
                                         <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                                     ) : (
@@ -2416,7 +2419,11 @@ export default function PreviewPage(): JSX.Element {
                                     )}
                                     Step 2
                                 </strong>{" "}
-                                — The section below will host your base images.
+                                — Generate your first screenshot by clicking
+                                <span className="inline-flex h-5 w-5 items-center justify-center mx-1 rounded-full border border-neutral-200 bg-neutral-50">
+                                    <Plus className="h-3 w-3 text-neutral-600" />
+                                </span>
+                                below.
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                 <GhostActionCard
@@ -2436,7 +2443,7 @@ export default function PreviewPage(): JSX.Element {
                     ) : (
                         <>
                             <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
-                                <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1">
+                                <strong className="text-neutral-800 font-semibold inline-flex gap-1">
                                     {step2Done ? (
                                         <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                                     ) : (
@@ -2449,13 +2456,13 @@ export default function PreviewPage(): JSX.Element {
                                     <div className="x-1 inline-flex ml-1 mt-5 text-sm flex items-center text-neutral-700">
                                         Click{" "}
                                         <span
-                                            className="mx-2 whitespace-nowrap rounded-md px-4 py-1.5 text-[0.75rem] flex flex-inline items-center text-white"
-                                            style={{ backgroundColor: ACCENT }}
+                                            className="mx-2 shrink-0 rounded-md px-2 py-1 text-[0.75rem] border border-neutral-400 text-neutral-800 hover:bg-neutral-50 inline-flex items-center gap-1.5"
+                                        // style={{ backgroundColor: ACCENT }}
                                         >
                                             Generate preview{" "}
-                                            <Hammer className="mx-1 h-4 w-4" />
+                                            <Hammer className="h-4 w-4" />
                                         </span>{" "}
-                                        to create a website preview.
+                                        to create your first website preview.
                                     </div>
                                 )}
                             </div>
@@ -2520,18 +2527,19 @@ export default function PreviewPage(): JSX.Element {
                     {renders.length === 0 ? (
                         <>
                             <div className="mt-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-3 text-sm text-neutral-700 flex flex-wrap items-center gap-2 my-4">
-                                <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1 mr-1">
-                                    {step3Done ? (
-                                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                                    ) : (
-                                        <Timer className="h-4 w-4 text-orange-400" />
-                                    )}
-                                    Step 3
-                                </strong>
-                                <span className="text-neutral-800">
-                                    — Generate a preview above to start customizing before deployment.
-                                </span>
-
+                                <div className="flex items-center gap-1 p-2">
+                                    <strong className="inline-flex items-center gap-2 text-neutral-800 font-semibold">
+                                        {step3Done ? (
+                                            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                                        ) : (
+                                            <Timer className="h-4 w-4 text-orange-400" />
+                                        )}
+                                        <span>Step 3</span>
+                                    </strong>
+                                    <span className="text-neutral-800">
+                                        — Generate a preview from your screenshot options above.
+                                    </span>
+                                </div>
                             </div>
                             <div className="mt-1 rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-700 my-4">
                                 No previews yet.
@@ -2540,7 +2548,7 @@ export default function PreviewPage(): JSX.Element {
                     ) : (
                         <>
                             <div className="mt-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-3 text-sm text-neutral-700 flex flex-wrap items-center gap-2 my-4">
-                                <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1 mr-1">
+                                <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1">
                                     {step3Done ? (
                                         <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                                     ) : (
@@ -2548,21 +2556,59 @@ export default function PreviewPage(): JSX.Element {
                                     )}
                                     Step 3
                                 </strong>
-                                <span className="text-neutral-400">—</span>
-                                <span className="ml-1">
-                                    Customize your website preview, then click{" "}
-                                </span>
-                                <button
-                                    type="button"
-                                    className="inline-flex items-center rounded-md border border-neutral-400 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm"
-                                    disabled
-                                >
-                                    Deploy
-                                    <Rocket className="ml-1 h-3 w-3" />
-                                </button>
+
+                                {step4Done && (
+                                    <>
+                                        <span>
+                                            — Continue customizing your deployment by clicking{" "}
+                                        </span>
+
+                                        <button
+                                            type="button"
+                                            className="inline-flex items-center rounded-md border border-neutral-400 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm"
+                                            disabled
+                                        >
+                                            Modify Deployment
+                                            <Rocket className="ml-1 h-3 w-3" />
+                                        </button>
+                                        <span>below.</span>
+                                    </>
+                                )}
+
+                                {step3Done ? (
+                                    <>
+                                        <span>
+                                            — Customize your website preview, when it's ready click{" "}
+                                        </span>
+
+                                        <button
+                                            type="button"
+                                            className="inline-flex items-center rounded-md border border-neutral-400 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm"
+                                            disabled
+                                        >
+                                            Deploy
+                                            <Rocket className="ml-1 h-3 w-3" />
+                                        </button>
+                                        {/* <span> You can still customize your website in{" "}</span>
+                                        <a
+                                            href="/dashboard/deployments"
+                                            title="Open Deployments"
+                                            className="inline-flex items-center gap-2 rounded-md border border-neutral-400 px-3 py-1 text-xs font-semibold text-neutral-800 shadow-sm"
+                                        >
+                                            <Rocket className="h-3 w-3" />
+                                            <span>Deployments</span>
+                                        </a>
+                                        <span>after it's live.</span> */}
+                                    </>
+                                ) :
+                                    <span className="text-neutral-800">
+                                        — Generate a preview from your screenshot options above.
+                                    </span>
+                                }
+
                             </div>
                             <p className="mt-1 text-xs text-neutral-500">
-                                Tip: Reference the original with the version
+                                Tip: Reference the original screenshot with the version
                                 badge{" "}
                                 <span
                                     className="ml-2 rounded-md px-2 py-1 text-[10px] font-semibold text-white shadow"
@@ -2816,7 +2862,7 @@ export default function PreviewPage(): JSX.Element {
                         <div className="max-w-xl rounded-2xl border border-neutral-400 bg-white shadow-lg px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 text-xs sm:text-sm text-neutral-800">
                             <div className="flex-1">
                                 <div className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-800">
-                                    <CheckCircle2 className="text-green-600"/>
+                                    <CheckCircle2 className="text-green-600" />
                                     <span>New deployment in progress</span>
                                 </div>
                                 <p className="mt-1 text-[11px] sm:text-xs text-neutral-600">

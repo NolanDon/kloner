@@ -57,6 +57,14 @@ type ActionState = {
     };
 };
 
+type ProjectGroup = {
+    key: string;
+    projectId: string | null;
+    projectName: string;
+    sampleUrl: string | null;
+    count: number;
+};
+
 function toDate(v: any): Date | null {
     if (!v) return null;
     if (typeof v.toDate === "function") return v.toDate();
@@ -255,6 +263,9 @@ export default function DeploymentsPage(): JSX.Element {
 
     const BUILDING_STATES = ["building", "queued", "pending"];
 
+    // project/url scoping dropdown
+    const [selectedProjectKey, setSelectedProjectKey] = useState<string>("all");
+
     useEffect(() => {
         const off = onAuthStateChanged(auth, (u) => {
             setUser(u);
@@ -318,13 +329,82 @@ export default function DeploymentsPage(): JSX.Element {
         return () => off();
     }, [user]);
 
+    // derive project/url groups for dropdown
+    const projectGroups: ProjectGroup[] = useMemo(() => {
+        if (items.length === 0) return [];
+        const map = new Map<string, ProjectGroup>();
+
+        for (const d of items) {
+            const pid = d.vercelProjectId || "no-id";
+            const pname = d.vercelProjectName || "Unknown project";
+            const key = `${pid}::${pname}`;
+
+            const existing = map.get(key);
+            if (!existing) {
+                let hostname = null;
+                if (d.vercelUrl) {
+                    try {
+                        hostname = new URL(d.vercelUrl).hostname;
+                    } catch {
+                        hostname = d.vercelUrl;
+                    }
+                }
+
+                map.set(key, {
+                    key,
+                    projectId: d.vercelProjectId ?? null,
+                    projectName: pname,
+                    sampleUrl: hostname,
+                    count: 1,
+                });
+            } else {
+                existing.count += 1;
+                if (!existing.sampleUrl && d.vercelUrl) {
+                    try {
+                        existing.sampleUrl = new URL(d.vercelUrl).hostname;
+                    } catch {
+                        existing.sampleUrl = d.vercelUrl;
+                    }
+                }
+            }
+        }
+
+        return Array.from(map.values()).sort((a, b) =>
+            a.projectName.localeCompare(b.projectName)
+        );
+    }, [items]);
+
+    // keep selection stable when items/projects change
+    useEffect(() => {
+        if (projectGroups.length === 0) {
+            setSelectedProjectKey("all");
+            return;
+        }
+        if (selectedProjectKey === "all") return;
+        const stillExists = projectGroups.some((g) => g.key === selectedProjectKey);
+        if (!stillExists) {
+            setSelectedProjectKey("all");
+        }
+    }, [projectGroups, selectedProjectKey]);
+
+    // apply project/url filter
+    const scopedItems = useMemo(() => {
+        if (selectedProjectKey === "all") return items;
+        return items.filter((d) => {
+            const pid = d.vercelProjectId || "no-id";
+            const pname = d.vercelProjectName || "Unknown project";
+            const key = `${pid}::${pname}`;
+            return key === selectedProjectKey;
+        });
+    }, [items, selectedProjectKey]);
+
     // auto-refresh stale "building" states via backend helper
     useEffect(() => {
-        if (!user || items.length === 0) return;
+        if (!user || scopedItems.length === 0) return;
 
         const now = Date.now();
 
-        const staleBuildingIds = items
+        const staleBuildingIds = scopedItems
             .filter((d) => {
                 const state = deriveStateFromDoc(d);
                 if (!BUILDING_STATES.includes(state)) return false;
@@ -347,31 +427,31 @@ export default function DeploymentsPage(): JSX.Element {
         }).catch(() => {
             // ignore
         });
-    }, [user, items]);
+    }, [user, scopedItems]);
 
-    const total = items.length;
+    const total = scopedItems.length;
 
     const readyCount = useMemo(
         () =>
-            items.filter((d) =>
+            scopedItems.filter((d) =>
                 ["ready", "succeeded"].includes(
                     deriveStateFromDoc(d) === "ready" ? "ready" : (d.vercelState || "").toLowerCase()
                 )
             ).length,
-        [items]
+        [scopedItems]
     );
 
     const latestFromPreview = useMemo(() => {
-        if (!hasNewMeta || items.length === 0) return null;
+        if (!hasNewMeta || scopedItems.length === 0) return null;
 
         return (
-            items.find(
+            scopedItems.find(
                 (d) =>
                     (hasNewMeta.projectId && d.vercelProjectId === hasNewMeta.projectId) ||
                     (hasNewMeta.projectName && d.vercelProjectName === hasNewMeta.projectName)
             ) || null
         );
-    }, [hasNewMeta, items]);
+    }, [hasNewMeta, scopedItems]);
 
     const latestState = deriveStateFromDoc(latestFromPreview);
     const isErrorState = latestState === "error";
@@ -690,8 +770,8 @@ export default function DeploymentsPage(): JSX.Element {
         }
     };
 
-    const latestDeployment = items[0] || null;
-    const history = items.slice(1);
+    const latestDeployment = scopedItems[0] || null;
+    const history = scopedItems.slice(1);
 
     return (
         <main className="min-h-screen bg-white">
@@ -701,7 +781,7 @@ export default function DeploymentsPage(): JSX.Element {
                     <div className="h-px flex-1 bg-neutral-200/70" />
                 </div>
 
-                <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+                <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
                     <div>
                         <div className="flex flex-col gap-3">
                             <div className="flex items-center gap-2">
@@ -768,16 +848,41 @@ export default function DeploymentsPage(): JSX.Element {
                         </div>
                     </div>
 
-                    <div className="inline-flex flex-col items-end gap-1 text-right">
-                        <div className="inline-flex items-center gap-2 text-xs text-neutral-600">
-                            <Rocket className="h-3.5 w-3.5 text-neutral-500" />
-                            <span>
-                                {total} deployment{total === 1 ? "" : "s"}
-                            </span>
-                        </div>
-                        <div className="inline-flex items-center gap-2 text-xs text-neutral-600">
-                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                            <span>{readyCount} live / ready</span>
+                    <div className="flex flex-col items-end gap-3">
+                        {projectGroups.length > 0 && (
+                            <div className="w-full sm:w-64">
+                                <label className="block text-[11px] font-medium text-neutral-500 mb-1">
+                                    Project / URL scope
+                                </label>
+                                <select
+                                    value={selectedProjectKey}
+                                    onChange={(e) => setSelectedProjectKey(e.target.value)}
+                                    className="w-full rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-[11px] sm:text-xs text-neutral-800 shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400"
+                                >
+                                    <option value="all">
+                                        All projects ({items.length} deployment{items.length === 1 ? "" : "s"})
+                                    </option>
+                                    {projectGroups.map((g) => (
+                                        <option key={g.key} value={g.key}>
+                                            {g.projectName}
+                                            {g.sampleUrl ? ` · ${g.sampleUrl}` : ""} ({g.count})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
+                        <div className="inline-flex flex-col items-end gap-1 text-right">
+                            <div className="inline-flex items-center gap-2 text-xs text-neutral-600">
+                                <Rocket className="h-3.5 w-3.5 text-neutral-500" />
+                                <span>
+                                    {total} deployment{total === 1 ? "" : "s"} in view
+                                </span>
+                            </div>
+                            <div className="inline-flex items-center gap-2 text-xs text-neutral-600">
+                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                                <span>{readyCount} live / ready</span>
+                            </div>
                         </div>
                     </div>
                 </header>
@@ -787,15 +892,15 @@ export default function DeploymentsPage(): JSX.Element {
                         <div className="h-40 rounded-xl bg-neutral-100 animate-pulse" />
                         <div className="h-40 rounded-xl bg-neutral-100 animate-pulse" />
                     </div>
-                ) : items.length === 0 ? (
+                ) : scopedItems.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-4 text-sm text-neutral-700">
                         <div className="flex items-center gap-2 text-neutral-800 font-semibold mb-1">
                             <Clock className="h-4 w-4 text-neutral-500" />
-                            <span>No deployments yet</span>
+                            <span>No deployments in this scope yet</span>
                         </div>
                         <p className="text-xs text-neutral-600">
                             Trigger a deployment from the Preview Builder. When Vercel finishes building, the webhook
-                            will populate this view automatically.
+                            will populate this view automatically for the selected project / URL.
                         </p>
                     </div>
                 ) : (
@@ -871,19 +976,6 @@ export default function DeploymentsPage(): JSX.Element {
                                         </div>
 
                                         <div className="flex flex-wrap items-center gap-3 mt-1">
-                                            <a
-                                                href={d.vercelUrl || "#"}
-                                                target={d.vercelUrl ? "_blank" : undefined}
-                                                rel={d.vercelUrl ? "noreferrer" : undefined}
-                                                className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-[11px] font-medium ${d.vercelUrl
-                                                    ? "border-neutral-200 text-neutral-800 hover:bg-neutral-50"
-                                                    : "border-neutral-200 text-neutral-400 cursor-default"
-                                                    }`}
-                                            >
-                                                <span>Open live site</span>
-                                                <ArrowUpRight className="h-3 w-3" />
-                                            </a>
-
                                             {state === "error" && (
                                                 <div className="inline-flex items-center gap-1 text-[11px] text-red-600">
                                                     <AlertTriangle className="h-3 w-3" />
@@ -891,10 +983,11 @@ export default function DeploymentsPage(): JSX.Element {
                                                 </div>
                                             )}
                                         </div>
+                                        {/* 
                                         <p className="text-xs mt-3 text-neutral-600 max-w-prose">
                                             To publish your latest changes, open the <strong>Preview Editor</strong> and use the
                                             <strong> Export to Vercel </strong> button.
-                                        </p>
+                                        </p> */}
 
                                         {/* Controls always visible for latest deployment */}
                                         <div className="border-t border-neutral-100 pt-3">
@@ -932,7 +1025,7 @@ export default function DeploymentsPage(): JSX.Element {
                                                         <span>Deploy edited HTML</span>
                                                     </button>
 
-                                                    <button
+                                                    {/* <button
                                                         type="button"
                                                         onClick={() => handleRedeploy(d)}
                                                         disabled={true}
@@ -944,7 +1037,18 @@ export default function DeploymentsPage(): JSX.Element {
                                                             <RefreshCw className="h-3.5 w-3.5 text-neutral-500" />
                                                         )}
                                                         <span>Redeploy latest</span>
-                                                    </button>
+                                                    </button> */}
+
+                                                    <a
+                                                        href={d.vercelUrl || "#"}
+                                                        target={d.vercelUrl ? "_blank" : undefined}
+                                                        rel={d.vercelUrl ? "noreferrer" : undefined}
+                                                        className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-[11px] font-medium text-neutral-800 hover:bg-neutral-50"
+                                                    >
+                                                        <span>Open live site</span>
+                                                        <ArrowUpRight className="h-3 w-3" />
+                                                    </a>
+
                                                 </div>
 
                                                 {(act.customError || act.redeployError) && (
