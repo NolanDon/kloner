@@ -2225,7 +2225,7 @@ export default function PreviewPage(): JSX.Element {
 
                         <button
                             type="button"
-                            onClick={() => router.push("/pricing")}
+                            onClick={() => router.push("/price")}
                             className="inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 hover:border-amber-300 transition-colors"
                         >
                             <Crown className="h-3.5 w-3.5" />
@@ -2767,7 +2767,7 @@ export default function PreviewPage(): JSX.Element {
                                         type="button"
                                         onClick={() => {
                                             setShowCreditsPaywall(null);
-                                            router.push("/pricing");
+                                            router.push("/price");
                                         }}
                                         className="rounded-md px-3 py-1.5 text-xs font-semibold text-white"
                                         style={{ backgroundColor: ACCENT }}
@@ -2822,7 +2822,7 @@ export default function PreviewPage(): JSX.Element {
                                         type="button"
                                         onClick={() => {
                                             setShowUpgradeAfterCustomize(false);
-                                            router.push("/pricing");
+                                            router.push("/price");
                                         }}
                                         className="rounded-md px-3 py-1.5 text-xs font-semibold text-white"
                                         style={{ backgroundColor: ACCENT }}

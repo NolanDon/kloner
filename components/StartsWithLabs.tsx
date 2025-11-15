@@ -14,7 +14,7 @@ type PageCard = { name: string; path: string; hint?: string };
 const PAGES: PageCard[] = [
     { name: 'Home', path: '/' },
     { name: 'About', path: '/about', hint: 'Team • Mission' },
-    { name: 'Pricing', path: '/pricing', hint: 'Plans • Tiers' },
+    { name: 'Pricing', path: '/price', hint: 'Plans • Tiers' },
 ] as const;
 
 type Phase =
@@ -92,7 +92,7 @@ export default function PreviewDashboard({
         highlightMs: timings.highlightMs ?? 400,
         deployingMs: timings.deployingMs ?? 700,
         successMs: timings.successMs ?? 700,
-        cooldownMs: timings.cooldownMs ?? 1800,
+        cooldownMs: timings.cooldownMs ?? 1000,
     };
 
     const [phase, setPhase] = useState<Phase>('idle');

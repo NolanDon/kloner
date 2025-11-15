@@ -177,7 +177,7 @@ export default function PricingPage(): JSX.Element {
                         ))}
                     </div>
 
-                    {/* Credit system explainer */}
+                    {/* Credit system explainer
                     <section className="mt-12 grid gap-8 md:grid-cols-2">
                         <div className="rounded-2xl border border-black/10 bg-neutral-50 p-6">
                             <h2 className="text-sm font-semibold text-neutral-900">
@@ -223,7 +223,8 @@ export default function PricingPage(): JSX.Element {
                                 flow can be used until the self-serve billing UI is live.
                             </p>
                         </div>
-                    </section>
+                    </section> 
+                     */}
                 </section>
             </div>
         </main>

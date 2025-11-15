@@ -66,10 +66,10 @@ Errors or timeouts must not consume credits.
 - On free plans:
   - When user runs out of screenshot credits:
     - `Rescan` is blocked client side.
-    - Paywall modal appears with CTA to `/pricing`.
+    - Paywall modal appears with CTA to `/price`.
   - When user runs out of preview credits:
     - `Generate preview` is blocked client side.
-    - Paywall modal appears with CTA to `/pricing`.
+    - Paywall modal appears with CTA to `/price`.
   - `Deploy` is visually locked and replaced with a paid upsell.
 
 Client credits are soft limits; backend must still enforce hard limits.

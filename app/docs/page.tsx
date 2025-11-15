@@ -271,7 +271,7 @@ export default function DocsPage() {
                                 "Support for streamlined launch workflows",
                             ]}
                             cta="See Pro details"
-                            href="/pricing"
+                            href="/price"
                         />
                         <PlanCard
                             label="Agency"
@@ -284,7 +284,7 @@ export default function DocsPage() {
                                 "Flexible options for custom agreements",
                             ]}
                             cta="Explore Agency options"
-                            href="/pricing"
+                            href="/price"
                         />
                     </div>
 
