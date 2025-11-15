@@ -356,7 +356,7 @@ export default function LoginPage(): JSX.Element {
                 </div>
 
                 {pendingUrl ? (
-                    <div className="mb-4 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-700">
+                    <div className="mb-4 rounded-lg bg-amber-50 text-amber-700 ring-1 ring-amber-200 px-3 py-2 text-xs ">
                         We will add this URL after you{" "}
                         {mode === "signin" ? "sign in" : "sign up"}:{" "}
                         <span className="font-medium break-all">{pendingUrl}</span>

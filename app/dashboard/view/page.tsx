@@ -1763,18 +1763,14 @@ export default function PreviewPage(): JSX.Element {
 
                     const versionLabel = shortVersionFromShotPath(
                         r.key ?? "",
-                        (docData?.urlHash as
-                            | string
-                            | undefined) ?? null
+                        (docData?.urlHash as string | undefined) ?? null
                     );
 
                     const deployThis = async () => {
                         if (!r.html?.trim()) return;
                         if (isDeployed) return; // hard lock re-deploy from card
 
-                        const ok = window.confirm(
-                            "Deploy this preview to Vercel?"
-                        );
+                        const ok = window.confirm("Deploy this preview to Vercel?");
                         if (!ok) return;
                         try {
                             await exportToVercel({
@@ -1798,17 +1794,20 @@ export default function PreviewPage(): JSX.Element {
                                     {versionLabel}
                                 </span>
 
-                                <button
-                                    onClick={() => discardRender(r.id)}
-                                    disabled={isDeleting}
-                                    aria-label="Discard preview"
-                                    title="Delete this editable preview"
-                                    className="absolute top-0 right-0 z-40 grid h-5 w-5 place-items-center -translate-y-1/2 translate-x-1/2 rounded-full bg-red-600 text-white shadow-md ring-1 ring-white hover:bg-red-700 hover:ring-red-300 disabled:opacity-50"
-                                >
-                                    <span className="text-lg mb-0.5 leading-none">
-                                        ×
-                                    </span>
-                                </button>
+                                {/* hide discard if this render has ever been deployed */}
+                                {!isDeployed && (
+                                    <button
+                                        onClick={() => discardRender(r.id)}
+                                        disabled={isDeleting}
+                                        aria-label="Discard preview"
+                                        title="Delete this editable preview"
+                                        className="absolute top-0 right-0 z-40 grid h-5 w-5 place-items-center -translate-y-1/2 translate-x-1/2 rounded-full bg-red-600 text-white shadow-md ring-1 ring-white hover:bg-red-700 hover:ring-red-300 disabled:opacity-50"
+                                    >
+                                        <span className="text-lg mb-0.5 leading-none">
+                                            ×
+                                        </span>
+                                    </button>
+                                )}
 
                                 <div className="relative">
                                     {!refImgUrl ? (
@@ -1848,7 +1847,9 @@ export default function PreviewPage(): JSX.Element {
                                                         }
                                                         : isDeployed
                                                             ? () => {
-                                                                router.push("/dashboard/deployments");
+                                                                router.push(
+                                                                    "/dashboard/deployments"
+                                                                );
                                                             }
                                                             : deployThis
                                                 }
@@ -1879,7 +1880,7 @@ export default function PreviewPage(): JSX.Element {
                                                     </>
                                                 ) : isDeployed ? (
                                                     <>
-                                                        <span>Modify deployment</span>
+                                                        <span>View deployment</span>
                                                         <Rocket className="h-4 w-4" />
                                                     </>
                                                 ) : (
@@ -1913,9 +1914,7 @@ export default function PreviewPage(): JSX.Element {
                                                         : isFailed
                                                             ? "Customize (fix)"
                                                             : "Customize"}
-                                                    <BrushIcon
-                                                        className="h-4 w-4"
-                                                    />
+                                                    <BrushIcon className="h-4 w-4" />
                                                 </button>
                                             )}
                                         </div>
@@ -1931,9 +1930,7 @@ export default function PreviewPage(): JSX.Element {
                                                 ? "Preview ready"
                                                 : "Awaiting HTML"}
                                     </span>
-                                    <span
-                                        className="absolute bottom-2 right-2 z-20 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-neutral-600 ring-1 ring-neutral-200"
-                                    >
+                                    <span className="absolute bottom-2 right-2 z-20 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-neutral-600 ring-1 ring-neutral-200">
                                         {isDeploying
                                             ? "Deploying…"
                                             : isDeployed
@@ -1941,23 +1938,19 @@ export default function PreviewPage(): JSX.Element {
                                                 : r.status}
                                     </span>
 
-                                    {isDeleting && (
-                                        <CenterSpinner label="Deleting…" />
-                                    )}
+                                    {isDeleting && <CenterSpinner label="Deleting…" />}
 
-                                    {(isQueued ||
-                                        hardLocked ||
-                                        isDeploying) && (
-                                            <CenterSpinner
-                                                label={
-                                                    isDeploying
-                                                        ? "Deploying…"
-                                                        : isQueued
-                                                            ? "Rendering…"
-                                                            : "Locked…"
-                                                }
-                                            />
-                                        )}
+                                    {(isQueued || hardLocked || isDeploying) && (
+                                        <CenterSpinner
+                                            label={
+                                                isDeploying
+                                                    ? "Deploying…"
+                                                    : isQueued
+                                                        ? "Rendering…"
+                                                        : "Locked…"
+                                            }
+                                        />
+                                    )}
                                 </div>
 
                                 {/* hidden iframe keeps old behaviour but not visible */}
@@ -1987,8 +1980,7 @@ export default function PreviewPage(): JSX.Element {
                         a.status === b.status &&
                         (a.html || "") === (b.html || "") &&
                         (a.key || "") === (b.key || "") &&
-                        (a.nameHint || "") ===
-                        (b.nameHint || "")
+                        (a.nameHint || "") === (b.nameHint || "")
                     );
                 }
             ),
@@ -2005,6 +1997,7 @@ export default function PreviewPage(): JSX.Element {
             setShowCreditsPaywall,
         ]
     );
+
 
     const ShotCard = useMemo(
         () =>
@@ -2071,7 +2064,7 @@ export default function PreviewPage(): JSX.Element {
                                 className="block"
                                 title="Open full-size screenshot"
                             >
-                                <div className="w-full aspect-[3/3] bg-neutral-50 flex items-center justify-center rounded-t-xl relative">
+                                <div className="w-full aspect-[4/3] bg-neutral-50 flex items-center justify-center rounded-t-xl relative">
                                     <img
                                         src={s.url}
                                         alt={s.fileName}
@@ -2284,7 +2277,7 @@ export default function PreviewPage(): JSX.Element {
                                         )}
                                         Step 1
                                     </strong>{" "}
-                                    — You have chosen the following URL
+                                    — You have chosen a URL.
                                 </div>
 
                                 <button
@@ -2451,7 +2444,7 @@ export default function PreviewPage(): JSX.Element {
                                     )}
                                     Step 2
                                 </strong>{" "}
-                                — Base images captured. <br />
+                                — Base screenshots captured. <br />
                                 {renders.length === 0 && (
                                     <div className="x-1 inline-flex ml-1 mt-5 text-sm flex items-center text-neutral-700">
                                         Click{" "}
@@ -2560,7 +2553,7 @@ export default function PreviewPage(): JSX.Element {
                                 {step4Done ? (
                                     <>
                                         <span>
-                                        — Continue customizing your deployment by clicking{" "}
+                                            — Your render has been deployed. Modify or modify your website by clicking{" "}
                                         </span>
 
                                         <button
@@ -2568,7 +2561,7 @@ export default function PreviewPage(): JSX.Element {
                                             className="inline-flex items-center rounded-md border border-neutral-400 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm"
                                             disabled
                                         >
-                                            Modify Deployment
+                                            View Deployment
                                             <Rocket className="ml-1 h-3 w-3" />
                                         </button>
                                         <span>below.</span>
