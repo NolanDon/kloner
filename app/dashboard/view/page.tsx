@@ -1857,7 +1857,7 @@ export default function PreviewPage(): JSX.Element {
                                                     isQueued ||
                                                     isDeploying
                                                 }
-                                                className="shrink-0 rounded-md px-2 py-1 text-[0.9rem] border border-neutral-400 text-neutral-800 hover:bg-neutral-50 inline-flex items-center gap-1.5 disabled:opacity-60"
+                                                className="shrink-0 rounded-md px-2 py-1 text-[0.75rem] border border-neutral-400 text-neutral-800 hover:bg-neutral-50 inline-flex items-center gap-1.5 disabled:opacity-60"
                                                 title={
                                                     deployLocked
                                                         ? "Upgrade to publish live sites"
@@ -1898,7 +1898,7 @@ export default function PreviewPage(): JSX.Element {
                                                     disabled={
                                                         disableOpen || isDeleting
                                                     }
-                                                    className="shrink-0 rounded-md px-4 py-2 text-[0.9rem] text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+                                                    className="shrink-0 rounded-md px-4 py-2 text-[0.75rem] text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
                                                     style={{ backgroundColor: ACCENT }}
                                                     title={
                                                         isQueued
@@ -2086,7 +2086,7 @@ export default function PreviewPage(): JSX.Element {
                                                     e.preventDefault();
                                                     onView(index);
                                                 }}
-                                                className="shrink-0 rounded-md px-2 py-1 text-[0.9rem] border border-neutral-400 text-neutral-800 hover:bg-neutral-50 inline-flex items-center gap-1.5"
+                                                className="shrink-0 rounded-md px-2 py-1 text-[0.75rem] border border-neutral-400 text-neutral-800 hover:bg-neutral-50 inline-flex items-center gap-1.5"
                                                 title="View full-screen"
                                             >
                                                 <span>View</span>
@@ -2103,7 +2103,7 @@ export default function PreviewPage(): JSX.Element {
                                                 }}
                                                 disabled={locked || isDeleting}
                                                 aria-busy={locked}
-                                                className="shrink-0 rounded-md px-4 py-2 text-[0.9rem] text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+                                                className="shrink-0 rounded-md px-4 py-2 text-[0.75rem] text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
                                                 style={{ backgroundColor: ACCENT }}
                                                 title="Create editable preview from this screenshot"
                                             >
@@ -2449,7 +2449,7 @@ export default function PreviewPage(): JSX.Element {
                                     <div className="x-1 inline-flex ml-1 mt-5 text-sm flex items-center text-neutral-700">
                                         Click{" "}
                                         <span
-                                            className="mx-2 whitespace-nowrap rounded-md px-4 py-1.5 text-[0.9rem] flex flex-inline items-center text-white"
+                                            className="mx-2 whitespace-nowrap rounded-md px-4 py-1.5 text-[0.75rem] flex flex-inline items-center text-white"
                                             style={{ backgroundColor: ACCENT }}
                                         >
                                             Generate preview{" "}
