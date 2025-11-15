@@ -2284,7 +2284,7 @@ export default function PreviewPage(): JSX.Element {
                                         )}
                                         Step 1
                                     </strong>{" "}
-                                    — You have chosen the following URL — Select a different project from the dropdown.
+                                    — You have chosen the following URL
                                 </div>
 
                                 <button
@@ -2451,7 +2451,7 @@ export default function PreviewPage(): JSX.Element {
                                     )}
                                     Step 2
                                 </strong>{" "}
-                                — We’ve captured your base image. <br />
+                                — Base images captured. <br />
                                 {renders.length === 0 && (
                                     <div className="x-1 inline-flex ml-1 mt-5 text-sm flex items-center text-neutral-700">
                                         Click{" "}
@@ -2547,7 +2547,7 @@ export default function PreviewPage(): JSX.Element {
                         </>
                     ) : (
                         <>
-                            <div className="mt-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-3 text-sm text-neutral-700 flex flex-wrap items-center gap-2 my-4">
+                            <div className="mt-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-3 text-sm text-neutral-700 flex flex-wrap items-center gap-1 my-4">
                                 <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1">
                                     {step3Done ? (
                                         <CheckCircle2 className="h-4 w-4 text-emerald-500" />
@@ -2557,10 +2557,10 @@ export default function PreviewPage(): JSX.Element {
                                     Step 3
                                 </strong>
 
-                                {step4Done && (
+                                {step4Done ? (
                                     <>
                                         <span>
-                                            — Continue customizing your deployment by clicking{" "}
+                                        — Continue customizing your deployment by clicking{" "}
                                         </span>
 
                                         <button
@@ -2573,9 +2573,7 @@ export default function PreviewPage(): JSX.Element {
                                         </button>
                                         <span>below.</span>
                                     </>
-                                )}
-
-                                {step3Done ? (
+                                ) : step3Done ? (
                                     <>
                                         <span>
                                             — Customize your website preview, when it's ready click{" "}
@@ -2589,22 +2587,10 @@ export default function PreviewPage(): JSX.Element {
                                             Deploy
                                             <Rocket className="ml-1 h-3 w-3" />
                                         </button>
-                                        {/* <span> You can still customize your website in{" "}</span>
-                                        <a
-                                            href="/dashboard/deployments"
-                                            title="Open Deployments"
-                                            className="inline-flex items-center gap-2 rounded-md border border-neutral-400 px-3 py-1 text-xs font-semibold text-neutral-800 shadow-sm"
-                                        >
-                                            <Rocket className="h-3 w-3" />
-                                            <span>Deployments</span>
-                                        </a>
-                                        <span>after it's live.</span> */}
                                     </>
-                                ) :
-                                    <span className="text-neutral-800">
-                                        — Generate a preview from your screenshot options above.
-                                    </span>
-                                }
+                                ) : <span className="text-neutral-800">
+                                    — Generate a preview from your screenshot options above.
+                                </span>}
 
                             </div>
                             <p className="mt-1 text-xs text-neutral-500">
