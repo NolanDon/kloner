@@ -15,16 +15,17 @@ import {
     createUserWithEmailAndPassword,
     sendPasswordResetEmail,
     getIdToken,
+    getAdditionalUserInfo,
     type User,
 } from "firebase/auth";
 import type { FirebaseError } from "firebase/app";
 import {
-    addDoc,
     collection,
-    serverTimestamp,
     getDocs,
     query,
     where,
+    addDoc,
+    serverTimestamp,
 } from "firebase/firestore";
 import Image from "next/image";
 
@@ -36,40 +37,25 @@ function isFirebaseError(e: unknown): e is FirebaseError {
     return typeof e === "object" && e !== null && "code" in e;
 }
 
-async function setSessionCookie(): Promise<void> {
-    const u: User | null = auth.currentUser;
-    if (!u) return;
-    const idToken = await getIdToken(u, true);
-    await fetch("/api/auth/session", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ idToken }),
-        credentials: "include",
-    });
-}
-
 function normalizeError(e: unknown): string {
     if (isFirebaseError(e)) {
         const code = e.code || "";
         if (code.includes("auth/popup-closed-by-user")) return "Sign-in popup closed.";
-        if (code.includes("auth/cancelled-popup-request"))
-            return "Popup already open.";
-        if (code.includes("auth/popup-blocked"))
-            return "Popup was blocked by the browser.";
+        if (code.includes("auth/cancelled-popup-request")) return "Popup already open.";
+        if (code.includes("auth/popup-blocked")) return "Popup was blocked by the browser.";
         if (code.includes("auth/invalid-email")) return "Invalid email.";
         if (code.includes("auth/missing-password")) return "Password required.";
-        if (code.includes("auth/wrong-password"))
-            return "Incorrect email or password.";
+        if (code.includes("auth/wrong-password")) return "Incorrect email or password.";
         if (code.includes("auth/user-not-found")) return "Account not found.";
-        if (code.includes("auth/email-already-in-use"))
-            return "Email already registered.";
-        if (code.includes("auth/too-many-requests"))
-            return "Too many attempts. Try again later.";
+        if (code.includes("auth/email-already-in-use")) return "Email already registered.";
+        if (code.includes("auth/too-many-requests")) return "Too many attempts. Try again later.";
         return e.message ?? "Request failed.";
     }
     if (e instanceof Error) return e.message;
     return "Request failed.";
 }
+
+/* ───────── URL helpers ───────── */
 
 function normUrl(s: string): string {
     try {
@@ -97,6 +83,45 @@ function hash64(s: string): string {
     return Math.abs(h).toString(36);
 }
 
+/* ───────── CSRF helper ───────── */
+
+async function ensureSessionAndCsrf(): Promise<string | null> {
+    try {
+        const res = await fetch("/api/auth/csrf", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            credentials: "same-origin",
+        });
+        if (!res.ok) return null;
+        const data = await res.json().catch(() => null);
+        return (data && data.csrf) || null;
+    } catch {
+        return null;
+    }
+}
+
+/* ───────── Session cookie with CSRF ───────── */
+
+async function setSessionCookie(): Promise<void> {
+    const u: User | null = auth.currentUser;
+    if (!u) return;
+
+    const idToken = await getIdToken(u, true);
+    const csrf = await ensureSessionAndCsrf();
+
+    await fetch("/api/auth/session", {
+        method: "POST",
+        headers: {
+            "content-type": "application/json",
+            ...(csrf ? { "x-csrf": csrf } : {}),
+        },
+        body: JSON.stringify({ idToken }),
+        credentials: "include",
+    });
+}
+
+/* ───────── Add URL + start capture with CSRF ───────── */
+
 async function addAndStart(uid: string, url: string) {
     const cleaned = normUrl(url);
     if (!isHttpUrl(cleaned)) throw new Error("Invalid URL.");
@@ -120,10 +145,16 @@ async function addAndStart(uid: string, url: string) {
         });
     }
 
+    const csrf = await ensureSessionAndCsrf();
+
     const r = await fetch("/api/private/generate", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+            "content-type": "application/json",
+            ...(csrf ? { "x-csrf": csrf } : {}),
+        },
         body: JSON.stringify({ url: cleaned }),
+        credentials: "same-origin",
     });
 
     if (!r.ok) {
@@ -132,6 +163,52 @@ async function addAndStart(uid: string, url: string) {
     }
     return cleaned;
 }
+
+/* ───────── Signup notification + welcome mail (with CSRF) ───────── */
+
+async function notifyKlonerSignup(
+    user: User,
+    method: "google" | "email" | "apple" = "email"
+): Promise<void> {
+    try {
+        const csrf = await ensureSessionAndCsrf();
+        const headers: HeadersInit = {
+            "content-type": "application/json",
+            ...(csrf ? { "x-csrf": csrf } : {}),
+        };
+
+        const payload = {
+            uid: user.uid,
+            email: user.email || "",
+            name: user.displayName || "",
+            plan: "free",
+            createdAt: new Date().toISOString(),
+            source: "kloner_login_page",
+            method,
+        };
+
+        await Promise.allSettled([
+            fetch("/api/private/send-signup-alert", {
+                method: "POST",
+                headers,
+                credentials: "same-origin",
+                cache: "no-store",
+                body: JSON.stringify(payload),
+            }),
+            fetch("/api/private/send-welcome-email", {
+                method: "POST",
+                headers,
+                credentials: "same-origin",
+                cache: "no-store",
+                body: JSON.stringify(payload),
+            }),
+        ]);
+    } catch (err) {
+        console.error("❌ Failed to send Kloner signup notifications", err);
+    }
+}
+
+/* ───────── Page component ───────── */
 
 export default function LoginPage(): JSX.Element {
     const router = useRouter();
@@ -146,7 +223,6 @@ export default function LoginPage(): JSX.Element {
     const [pw, setPw] = useState<string>("");
     const [showPw, setShowPw] = useState<boolean>(false);
 
-    // explicit terms attestation
     const [acceptedTerms, setAcceptedTerms] = useState<boolean>(false);
 
     const pendingUrl = useMemo(() => {
@@ -167,16 +243,15 @@ export default function LoginPage(): JSX.Element {
 
                 const pending = pendingUrl?.trim();
                 if (pending) {
-                    let cleaned = "";
                     try {
-                        cleaned = await addAndStart(u.uid, pending);
+                        const cleaned = await addAndStart(u.uid, pending);
                         try {
                             localStorage.removeItem("kloner.pendingUrl");
                         } catch { }
-                        router.replace(`/dashboard?u=${encodeURIComponent(cleaned)}`);
+                        router.replace(`/dashboard/view?u=${encodeURIComponent(cleaned)}`);
                         return;
                     } catch {
-                        // ignore, fall through to normal redirect
+                        // fall through
                     }
                 }
 
@@ -192,7 +267,6 @@ export default function LoginPage(): JSX.Element {
     const signInWithGoogle = async (): Promise<void> => {
         setErr("");
 
-        // prevent creating a new account without terms acceptance
         if (mode === "signup" && !acceptedTerms) {
             setErr("You must accept the Terms and Conditions to create an account.");
             return;
@@ -203,8 +277,15 @@ export default function LoginPage(): JSX.Element {
             await setPersistence(auth, browserLocalPersistence);
             const provider = new GoogleAuthProvider();
             provider.setCustomParameters({ prompt: "select_account" });
-            await signInWithPopup(auth, provider);
+
+            const cred = await signInWithPopup(auth, provider);
+            const isNew = !!getAdditionalUserInfo(cred)?.isNewUser;
+
             await setSessionCookie();
+
+            if (isNew) {
+                await notifyKlonerSignup(cred.user, "google");
+            }
         } catch (e) {
             setErr(normalizeError(e));
             setLoading(false);
@@ -215,7 +296,6 @@ export default function LoginPage(): JSX.Element {
         e.preventDefault();
         setErr("");
 
-        // hard gate for signup via email
         if (mode === "signup" && !acceptedTerms) {
             setErr("You must accept the Terms and Conditions to create an account.");
             return;
@@ -225,12 +305,15 @@ export default function LoginPage(): JSX.Element {
         try {
             await setPersistence(auth, browserLocalPersistence);
             if (!email || !pw) throw new Error("Enter email and password.");
+
             if (mode === "signin") {
                 await signInWithEmailAndPassword(auth, email.trim(), pw);
+                await setSessionCookie();
             } else {
-                await createUserWithEmailAndPassword(auth, email.trim(), pw);
+                const cred = await createUserWithEmailAndPassword(auth, email.trim(), pw);
+                await setSessionCookie();
+                await notifyKlonerSignup(cred.user, "email");
             }
-            await setSessionCookie();
         } catch (e2) {
             setErr(normalizeError(e2));
             setLoading(false);
@@ -268,7 +351,7 @@ export default function LoginPage(): JSX.Element {
                     <p className="mt-1 text-sm text-neutral-600">
                         {mode === "signin"
                             ? "Use Google or email to access your Kloner dashboard."
-                            : "Quick signup with email or Google. Free plan includes limited daily previews."}
+                            : "Clone websites in minutes. Quick signup with email or Google, then one-click deploy."}
                     </p>
                 </div>
 
@@ -330,7 +413,7 @@ export default function LoginPage(): JSX.Element {
                                     type="checkbox"
                                     checked={acceptedTerms}
                                     onChange={(e) => setAcceptedTerms(e.target.checked)}
-                                    className="mt-0.5 h-3.5 w-3.5 rounded border-neutral-300 text-[inherit]"
+                                    className="mt-0.5 h-3.5 w-3.5 rounded border-neutral-300"
                                 />
                                 <span>
                                     I have read and agree to the{" "}
@@ -397,7 +480,6 @@ export default function LoginPage(): JSX.Element {
                     />
                     {loading ? "Please wait…" : "Continue with Google"}
                 </button>
-
 
                 {err ? (
                     <p className="mt-4 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">

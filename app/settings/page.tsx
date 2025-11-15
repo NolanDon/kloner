@@ -5,9 +5,6 @@ import { useEffect, useMemo, useState } from "react";
 import { auth } from "@/lib/firebase";
 import {
     onAuthStateChanged,
-    deleteUser,
-    reauthenticateWithPopup,
-    GoogleAuthProvider,
     type User,
 } from "firebase/auth";
 import {
@@ -16,23 +13,17 @@ import {
     Bell,
     Rocket,
     Plug,
-    AlertTriangle,
-    Trash2,
     Gauge,
 } from "lucide-react";
 import NavBar from "@/components/NavBar";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 
 const ACCENT = "#f55f2a";
-
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
 
 export default function SettingsPage(): JSX.Element {
     const [user, setUser] = useState<User | null>(null);
-    const [busy, setBusy] = useState(false);
-    const [msg, setMsg] = useState<string>("");
-
     const [disconnectBusy, setDisconnectBusy] = useState(false);
 
     const {
@@ -51,31 +42,6 @@ export default function SettingsPage(): JSX.Element {
         const base = user.displayName || user.email || "Me";
         return base.slice(0, 2).toUpperCase();
     }, [user]);
-
-    async function handleDelete() {
-        if (!user) return;
-        const ok = window.confirm(
-            "Delete your account and all associated data? This cannot be undone.",
-        );
-        if (!ok) return;
-        setBusy(true);
-        setMsg("");
-        try {
-            try {
-                const provider = new GoogleAuthProvider();
-                await reauthenticateWithPopup(user, provider);
-            } catch {
-                // deleteUser will still enforce reauth if actually needed
-            }
-            await deleteUser(user);
-            setMsg("Account deleted.");
-            window.location.href = "/goodbye";
-        } catch (e: any) {
-            setMsg(e?.message || "Delete failed. Re-login required.");
-        } finally {
-            setBusy(false);
-        }
-    }
 
     function handleConnectVercel() {
         if (!VERCEL_INTEGRATION_SLUG || !user) {
@@ -110,7 +76,6 @@ export default function SettingsPage(): JSX.Element {
                 credentials: "include",
             });
             if (res.ok) {
-                // Re-ping status to ensure local state is aligned with backend + Vercel
                 await refreshVercelStatus();
             } else {
                 console.error("Failed to disconnect Vercel");
@@ -129,7 +94,7 @@ export default function SettingsPage(): JSX.Element {
                 ? "checking…"
                 : vercelStatus === "error"
                     ? "error"
-                    : "connect";
+                    : "not connected";
 
     const vercelBadgeClasses =
         vercelStatus === "connected"
@@ -308,32 +273,30 @@ export default function SettingsPage(): JSX.Element {
                         </div>
                     </section>
 
-                    {/* Danger */}
-                    <section className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-4">
-                        <div className="flex items-center gap-2 text-red-700">
-                            <AlertTriangle className="h-4 w-4" />
-                            <h2 className="text-sm font-semibold">Danger Zone</h2>
+                    {/* Account & data (no self-serve hard delete) */}
+                    <section className="mt-6 rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
+                        <div className="flex items-center gap-2 text-neutral-800">
+                            <h2 className="text-sm font-semibold">
+                                Account and data
+                            </h2>
                         </div>
 
-                        <p className="mt-2 text-xs text-red-700/80">
-                            Deleting your account is permanent. All screenshots and previews
-                            will be removed.
+                        <p className="mt-2 text-xs text-neutral-600">
+                            If you want to close your Kloner account or request data deletion,
+                            contact our team. We&apos;ll help export your data, review any active
+                            deployments, and process deletion safely.
                         </p>
 
-                        <div className="mt-3 flex items-center gap-2">
-                            <button
-                                onClick={handleDelete}
-                                disabled={busy}
-                                className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <a
+                                href="mailto:support@kloner.app?subject=Kloner%20account%20closure%20or%20data%20deletion%20request"
+                                className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-neutral-800 border border-neutral-200 hover:bg-neutral-50"
                             >
-                                <Trash2 className="h-4 w-4" />
-                                {busy ? "Deleting…" : "Delete Account"}
-                            </button>
-                            {msg && (
-                                <span className="text-xs text-red-700">
-                                    {msg}
-                                </span>
-                            )}
+                                Contact support about my account
+                            </a>
+                            <span className="text-[11px] text-neutral-500">
+                                Support: support@kloner.app
+                            </span>
                         </div>
                     </section>
 

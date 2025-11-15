@@ -10,7 +10,16 @@ import Image from "next/image";
 import logo from "@/public/images/logo.png";
 import CenterLoader from "@/components/ui/CenterLoader";
 import { AnimatePresence, motion } from "framer-motion";
-import { MoreHorizontal, X, Home, LayoutTemplate, BookText, Settings as SettingsIcon, LogOut, Eye } from "lucide-react";
+import {
+    MoreHorizontal,
+    X,
+    Home,
+    LayoutTemplate,
+    BookText,
+    Settings as SettingsIcon,
+    LogOut,
+    Eye,
+} from "lucide-react";
 
 const ACCENT = "#f55f2a";
 
@@ -109,7 +118,6 @@ function AccountBlock() {
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
     const router = useRouter();
-    const [user, setUser] = useState<FirebaseUser | null>(null);
     const [ready, setReady] = useState(false);
 
     useEffect(() => {
@@ -118,7 +126,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 router.replace("/login?next=/dashboard");
                 return;
             }
-            setUser(u);
             setReady(true);
         });
         return () => off();
@@ -136,6 +143,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         const pathname = usePathname();
         const inDashboard = pathname === "/dashboard";
         const inPreview = pathname.startsWith("/dashboard/view") || pathname === "/dashboard";
+        const inDeployments = pathname.startsWith("/dashboard/deployments");
 
         return (
             <div className="flex h-full flex-col w-full">
@@ -165,6 +173,13 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                         </NavItem>
                         <NavItem href="/dashboard/view" active={inPreview && !inDashboard}>
                             Preview Builder
+                        </NavItem>
+                    </div>
+
+                    <SectionLabel>Deploy</SectionLabel>
+                    <div className="space-y-1">
+                        <NavItem href="/dashboard/deployments" active={inDeployments}>
+                            Deployments
                         </NavItem>
                     </div>
 
@@ -203,6 +218,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             { href: "/", label: "Home", icon: Home },
             { href: "/dashboard", label: "Dashboard", icon: LayoutTemplate },
             { href: "/dashboard/view", label: "Preview Builder", icon: Eye },
+            { href: "/dashboard/deployments", label: "Deployments", icon: LayoutTemplate },
             { href: "/docs", label: "Docs", icon: BookText },
             { href: "/settings", label: "Settings", icon: SettingsIcon },
         ];

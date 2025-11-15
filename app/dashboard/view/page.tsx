@@ -1,9 +1,20 @@
 // app/dashboard/view/page.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState, useCallback, useRef, memo } from "react";
+import React, {
+    useEffect,
+    useMemo,
+    useState,
+    useCallback,
+    useRef,
+    memo,
+} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { onAuthStateChanged, User as FirebaseUser, getIdTokenResult } from "firebase/auth";
+import {
+    onAuthStateChanged,
+    User as FirebaseUser,
+    getIdTokenResult,
+} from "firebase/auth";
 import {
     collection,
     query,
@@ -25,7 +36,13 @@ import {
     arrayRemove,
     Timestamp,
 } from "firebase/firestore";
-import { ref as sRef, listAll, getDownloadURL, deleteObject, type StorageReference } from "firebase/storage";
+import {
+    ref as sRef,
+    listAll,
+    getDownloadURL,
+    deleteObject,
+    type StorageReference,
+} from "firebase/storage";
 import { auth, db, storage } from "@/lib/firebase";
 import PreviewEditor from "@/components/PreviewEditor";
 import {
@@ -39,7 +56,6 @@ import {
     Lock,
     Crown,
 } from "lucide-react";
-
 import {
     isHttpUrl,
     normUrl,
@@ -52,8 +68,9 @@ import {
     type UserTier,
 } from "./page.helpers";
 
-
 const ACCENT = "#f55f2a";
+
+/* ───────── types ───────── */
 
 type UrlDoc = {
     url: string;
@@ -64,7 +81,14 @@ type UrlDoc = {
     createdAt?: any;
     controllerVersion?: string;
 };
-type Shot = { path: string; url: string; fileName: string; createdAt?: Date };
+
+type Shot = {
+    path: string;
+    url: string;
+    fileName: string;
+    createdAt?: Date;
+};
+
 type RenderDoc = {
     url?: string | null;
     urlHash?: string | null;
@@ -80,25 +104,47 @@ type RenderDoc = {
     version?: number;
     controllerVersion?: string | null;
     lastExportedAt?: any;
+    vercelProjectId?: string | null;
+    vercelProjectName?: string | null;
+    lastDeployUrl?: string | null;
 };
 
-type ToastMsg = { id: string; text: string; tone?: "ok" | "warn" | "err" };
+type ToastMsg = {
+    id: string;
+    text: string;
+    tone?: "ok" | "warn" | "err";
+};
+
+/* ───────── toasts ───────── */
+
 function useToasts() {
     const [toasts, setToasts] = useState<ToastMsg[]>([]);
-    const push = useCallback((text: string, tone: "ok" | "warn" | "err" = "ok") => {
-        const id = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        setToasts((t) => [...t, { id, text, tone }]);
-        setTimeout(() => setToasts((t) => t.filter((m) => m.id !== id)), 2800);
-    }, []);
+
+    const push = useCallback(
+        (text: string, tone: "ok" | "warn" | "err" = "ok") => {
+            const id = `${Date.now()}_${Math.random()
+                .toString(36)
+                .slice(2, 8)}`;
+            setToasts((t) => [...t, { id, text, tone }]);
+            setTimeout(
+                () =>
+                    setToasts((t) => t.filter((m) => m.id !== id)),
+                2800
+            );
+        },
+        []
+    );
+
     return { toasts, push };
 }
+
 function Toasts({ toasts }: { toasts: ToastMsg[] }) {
     return (
         <div className="fixed bottom-3 right-3 z-50 flex flex-col gap-2">
             {toasts.map((t) => (
                 <div
                     key={t.id}
-                    className={`rounded-lg border px-3 py-2 text-sm shadow-sm bg-white ${t.tone === "ok"
+                    className={`rounded-md border px-3 py-2 text-sm shadow-sm bg-white ${t.tone === "ok"
                         ? "border-emerald-200 text-emerald-700"
                         : t.tone === "warn"
                             ? "border-amber-200 text-amber-700"
@@ -112,6 +158,8 @@ function Toasts({ toasts }: { toasts: ToastMsg[] }) {
     );
 }
 
+/* ───────── shared UI ───────── */
+
 const CenterSpinner = memo(function CenterSpinner({
     label = "Loading…",
     dim = true,
@@ -122,7 +170,10 @@ const CenterSpinner = memo(function CenterSpinner({
     size?: number;
 }) {
     return (
-        <div className={`absolute inset-0 z-30 grid place-items-center ${dim ? "bg-white/85" : ""}`}>
+        <div
+            className={`absolute inset-0 z-30 grid place-items-center ${dim ? "bg-white/85" : ""
+                }`}
+        >
             <div
                 className="flex items-center gap-2 rounded border px-3 py-1.5 text-xs text-neutral-800 bg-white"
                 role="status"
@@ -160,7 +211,9 @@ const GhostActionCard = memo(function GhostActionCard({
             type="button"
             onClick={onClick}
             disabled={disabled}
-            className={`group relative px-6 flex aspect-[4/3] w-full items-center justify-center rounded-xl border-2 border-dashed bg-white text-center transition ${disabled ? "opacity-60 cursor-not-allowed" : "hover:border-neutral-400"
+            className={`group relative px-6 flex aspect-[4/3] w-full items-center justify-center rounded-xl border-2 border-dashed bg-white text-center transition ${disabled
+                ? "opacity-60 cursor-not-allowed"
+                : "hover:border-neutral-400"
                 }`}
             title={title}
             aria-disabled={disabled}
@@ -169,12 +222,20 @@ const GhostActionCard = memo(function GhostActionCard({
                 <div className="grid h-14 w-14 place-items-center rounded-full border border-neutral-200 bg-neutral-50 transition group-hover:scale-105">
                     <Plus className="h-7 w-7 text-neutral-600" />
                 </div>
-                <div className="mt-3 text-sm font-semibold text-neutral-800">{title}</div>
-                {subtitle ? <div className="mt-1 text-xs text-neutral-500">{subtitle}</div> : null}
+                <div className="mt-3 text-sm font-semibold text-neutral-800">
+                    {title}
+                </div>
+                {subtitle ? (
+                    <div className="mt-1 text-xs text-neutral-500">
+                        {subtitle}
+                    </div>
+                ) : null}
             </div>
         </button>
     );
 });
+
+/* ───────── main page ───────── */
 
 export default function PreviewPage(): JSX.Element {
     const router = useRouter();
@@ -183,13 +244,22 @@ export default function PreviewPage(): JSX.Element {
 
     const [user, setUser] = useState<FirebaseUser | null>(null);
     const [userTier, setUserTier] = useState<UserTier>("unknown");
-    const [credits, setCredits] = useState<{ screenshotUsed: number; previewUsed: number; dateKey: string }>({
+
+    const [credits, setCredits] = useState<{
+        screenshotUsed: number;
+        previewUsed: number;
+        dateKey: string;
+    }>({
         screenshotUsed: 0,
         previewUsed: 0,
         dateKey: "",
     });
-    const [showCreditsPaywall, setShowCreditsPaywall] = useState<null | "screenshot" | "preview" | "deploy">(null);
-    const [showUpgradeAfterCustomize, setShowUpgradeAfterCustomize] = useState(false);
+
+    const [showCreditsPaywall, setShowCreditsPaywall] = useState<
+        null | "screenshot" | "preview" | "deploy"
+    >(null);
+    const [showUpgradeAfterCustomize, setShowUpgradeAfterCustomize] =
+        useState(false);
 
     const [urls, setUrls] = useState<Array<{ id: string } & UrlDoc>>([]);
     const [urlsLoading, setUrlsLoading] = useState<boolean>(true);
@@ -198,37 +268,74 @@ export default function PreviewPage(): JSX.Element {
     const [info, setInfo] = useState<string>("");
 
     const [loading, setLoading] = useState<boolean>(true);
-    const [docSnap, setDocSnap] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+
+    const [docSnap, setDocSnap] =
+        useState<QueryDocumentSnapshot<DocumentData> | null>(null);
     const [docData, setDocData] = useState<UrlDoc | null>(null);
+
     const [shots, setShots] = useState<Shot[]>([]);
     const [rescanning, setRescanning] = useState<boolean>(false);
 
-    const [pendingByKey, setPendingByKey] = useState<Record<string, boolean>>({});
-    const [deletingByKey, setDeletingByKey] = useState<Record<string, boolean>>({});
-    const [deletingRender, setDeletingRender] = useState<Record<string, boolean>>({});
+    const [pendingByKey, setPendingByKey] = useState<
+        Record<string, boolean>
+    >({});
+    const [deletingByKey, setDeletingByKey] = useState<
+        Record<string, boolean>
+    >({});
+    const [deletingRender, setDeletingRender] = useState<
+        Record<string, boolean>
+    >({});
 
     const [editorOpen, setEditorOpen] = useState(false);
     const [editorHtml, setEditorHtml] = useState<string>("");
     const [editorRefImg, setEditorRefImg] = useState<string>("");
-    const [activeRenderId, setActiveRenderId] = useState<string | undefined>(undefined);
+    const [activeRenderId, setActiveRenderId] = useState<
+        string | undefined
+    >(undefined);
 
-    const [renders, setRenders] = useState<Array<{ id: string } & RenderDoc>>([]);
+    const [renders, setRenders] = useState<
+        Array<{ id: string } & RenderDoc>
+    >([]);
     const [loadingRenders, setLoadingRenders] = useState(false);
 
-    const [lockUntilByKey, setLockUntilByKey] = useState<Record<string, number>>({});
-    const [lockUntilByRender, setLockUntilByRender] = useState<Record<string, number>>({});
+    const [lockUntilByKey, setLockUntilByKey] = useState<
+        Record<string, number>
+    >({});
+    const [lockUntilByRender, setLockUntilByRender] = useState<
+        Record<string, number>
+    >({});
+
     const [viewerOpen, setViewerOpen] = useState(false);
     const [viewerIdx, setViewerIdx] = useState(0);
 
-    const [optimisticByKey, setOptimisticByKey] = useState<Record<string, { id: string } & RenderDoc>>({});
+    const [optimisticByKey, setOptimisticByKey] = useState<
+        Record<string, { id: string } & RenderDoc>
+    >({});
 
     const didAutoSelectRef = useRef(false);
 
-    const todayKey = useMemo(() => new Date().toISOString().slice(0, 10), []);
-    const tierLimits = useMemo(() => CREDIT_LIMITS[userTier] || CREDIT_LIMITS.free, [userTier]);
+    // new: track which render is currently deploying, and show "next steps"
+    const [deployingRenderId, setDeployingRenderId] = useState<
+        string | null
+    >(null);
+    const [showDeployNextSteps, setShowDeployNextSteps] =
+        useState(false);
 
+    const todayKey = useMemo(
+        () => new Date().toISOString().slice(0, 10),
+        []
+    );
 
-    async function listAllDeep(root: StorageReference): Promise<StorageReference[]> {
+    const tierLimits = useMemo(
+        () => CREDIT_LIMITS[userTier] || CREDIT_LIMITS.free,
+        [userTier]
+    );
+
+    /* ───────── credits ───────── */
+
+    async function listAllDeep(
+        root: StorageReference
+    ): Promise<StorageReference[]> {
         const out: StorageReference[] = [];
         async function walk(ref: StorageReference) {
             const l = await listAll(ref);
@@ -242,41 +349,70 @@ export default function PreviewPage(): JSX.Element {
     const screenshotRemaining = tierLimits.screenshotDaily
         ? Math.max(tierLimits.screenshotDaily - credits.screenshotUsed, 0)
         : null;
+
     const previewRemaining = tierLimits.previewDaily
         ? Math.max(tierLimits.previewDaily - credits.previewUsed, 0)
         : null;
 
-    function persistCredits(next: { screenshotUsed: number; previewUsed: number }) {
+    function persistCredits(next: {
+        screenshotUsed: number;
+        previewUsed: number;
+    }) {
         if (!user) {
-            setCredits({ screenshotUsed: next.screenshotUsed, previewUsed: next.previewUsed, dateKey: todayKey });
+            setCredits({
+                screenshotUsed: next.screenshotUsed,
+                previewUsed: next.previewUsed,
+                dateKey: todayKey,
+            });
             return;
         }
+
         const key = `kloner.credits.${user.uid}.${todayKey}`;
+
         try {
             localStorage.setItem(
                 key,
-                JSON.stringify({ screenshotUsed: next.screenshotUsed, previewUsed: next.previewUsed })
+                JSON.stringify({
+                    screenshotUsed: next.screenshotUsed,
+                    previewUsed: next.previewUsed,
+                })
             );
-        } catch { }
-        setCredits({ screenshotUsed: next.screenshotUsed, previewUsed: next.previewUsed, dateKey: todayKey });
+        } catch {
+            // ignore
+        }
+
+        setCredits({
+            screenshotUsed: next.screenshotUsed,
+            previewUsed: next.previewUsed,
+            dateKey: todayKey,
+        });
     }
 
     function canUseScreenshotCredit(): boolean {
         if (!tierLimits.screenshotDaily) return true;
         return credits.screenshotUsed < tierLimits.screenshotDaily;
     }
+
     function canUsePreviewCredit(): boolean {
         if (!tierLimits.previewDaily) return true;
         return credits.previewUsed < tierLimits.previewDaily;
     }
+
     function markScreenshotSuccess() {
         if (!tierLimits.screenshotDaily) return;
-        const next = { screenshotUsed: credits.screenshotUsed + 1, previewUsed: credits.previewUsed };
+        const next = {
+            screenshotUsed: credits.screenshotUsed + 1,
+            previewUsed: credits.previewUsed,
+        };
         persistCredits(next);
     }
+
     function markPreviewSuccess() {
         if (!tierLimits.previewDaily) return;
-        const next = { screenshotUsed: credits.screenshotUsed, previewUsed: credits.previewUsed + 1 };
+        const next = {
+            screenshotUsed: credits.screenshotUsed,
+            previewUsed: credits.previewUsed + 1,
+        };
         persistCredits(next);
     }
 
@@ -286,22 +422,42 @@ export default function PreviewPage(): JSX.Element {
         }
     }, [todayKey, credits.dateKey]);
 
-    async function loadShotsForDoc(u: FirebaseUser, targetUrl: string, data: UrlDoc) {
-        const prefix = data.screenshotsPrefix || `kloner-screenshots/${u.uid}/${data.urlHash || hash64(targetUrl)}`;
+    /* ───────── storage helpers ───────── */
+
+    async function loadShotsForDoc(
+        u: FirebaseUser,
+        targetUrl: string,
+        data: UrlDoc
+    ) {
+        const prefix =
+            data.screenshotsPrefix ||
+            `kloner-screenshots/${u.uid}/${data.urlHash || hash64(targetUrl)}`;
+
         let fileRefs: StorageReference[] = [];
+
         if (Array.isArray(data.screenshotPaths) && data.screenshotPaths.length) {
             fileRefs = data.screenshotPaths.map((p) => sRef(storage, p));
         } else {
             fileRefs = await listAllDeep(sRef(storage, prefix));
         }
+
         const entries = await Promise.all(
             fileRefs.map(async (r) => {
                 const url = await getDownloadURL(r);
-                const name = r.name || r.fullPath.split("/").pop() || "image";
-                return { path: r.fullPath, url, fileName: name } as Shot;
+                const name =
+                    r.name || r.fullPath.split("/").pop() || "image";
+                return {
+                    path: r.fullPath,
+                    url,
+                    fileName: name,
+                } as Shot;
             })
         );
-        entries.sort((a, b) => (a.fileName < b.fileName ? 1 : a.fileName > b.fileName ? -1 : 0));
+
+        entries.sort((a, b) =>
+            a.fileName < b.fileName ? 1 : a.fileName > b.fileName ? -1 : 0
+        );
+
         setShots(entries);
     }
 
@@ -310,22 +466,30 @@ export default function PreviewPage(): JSX.Element {
         setViewerOpen(true);
         try {
             document.documentElement.style.overflow = "hidden";
-        } catch { }
+        } catch {
+            // ignore
+        }
     }, []);
+
     const closeViewer = useCallback(() => {
         setViewerOpen(false);
         try {
             document.documentElement.style.overflow = "";
-        } catch { }
+        } catch {
+            // ignore
+        }
     }, []);
+
     const nextShot = useCallback(() => {
         if (!shots.length) return;
         setViewerIdx((i) => (i + 1) % shots.length);
     }, [shots.length]);
+
     const prevShot = useCallback(() => {
         if (!shots.length) return;
         setViewerIdx((i) => (i - 1 + shots.length) % shots.length);
     }, [shots.length]);
+
     useEffect(() => {
         if (!viewerOpen) return;
         const onKey = (e: KeyboardEvent) => {
@@ -337,7 +501,9 @@ export default function PreviewPage(): JSX.Element {
         return () => window.removeEventListener("keydown", onKey);
     }, [viewerOpen, closeViewer, nextShot, prevShot]);
 
-    async function resolveStorageUrl(pathOrUrl: string): Promise<string> {
+    async function resolveStorageUrl(
+        pathOrUrl: string
+    ): Promise<string> {
         if (!pathOrUrl) return "";
         if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
         try {
@@ -346,33 +512,53 @@ export default function PreviewPage(): JSX.Element {
             return "";
         }
     }
+
     function useResolvedImg(pathOrUrl: string) {
         const [src, setSrc] = React.useState("");
         const retriedRef = React.useRef(false);
+
         const refresh = React.useCallback(async () => {
             const u = await resolveStorageUrl(pathOrUrl);
             if (u) setSrc(u);
         }, [pathOrUrl]);
+
         React.useEffect(() => {
             refresh();
         }, [refresh]);
+
         const onError = React.useCallback(() => {
             if (!retriedRef.current) {
                 retriedRef.current = true;
                 refresh();
             }
         }, [refresh]);
+
         return { src, onError };
     }
 
-    const startHardLock = useCallback((key: string, renderId?: string, ms = 60_000) => {
-        const until = Date.now() + ms;
-        setLockUntilByKey((m) => ({ ...m, [key]: Math.max(m[key] || 0, until) }));
-        if (renderId) setLockUntilByRender((m) => ({ ...m, [renderId]: Math.max(m[renderId] || 0, until) }));
-    }, []);
+    const startHardLock = useCallback(
+        (key: string, renderId?: string, ms = 60_000) => {
+            const until = Date.now() + ms;
+            setLockUntilByKey((m) => ({
+                ...m,
+                [key]: Math.max(m[key] || 0, until),
+            }));
+            if (renderId) {
+                setLockUntilByRender((m) => ({
+                    ...m,
+                    [renderId]: Math.max(m[renderId] || 0, until),
+                }));
+            }
+        },
+        []
+    );
 
-    const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+    const pollTimer = useRef<ReturnType<typeof setInterval> | null>(
+        null
+    );
     const pollStopAt = useRef<number>(0);
+
+    /* ───────── url + tier ───────── */
 
     const targetUrl = useMemo(() => {
         const raw = search.get("u");
@@ -387,10 +573,13 @@ export default function PreviewPage(): JSX.Element {
 
     const [urlMenuOpen, setUrlMenuOpen] = useState(false);
     const urlMenuRef = useRef<HTMLDivElement | null>(null);
+
     useEffect(() => {
         function onDocClick(e: MouseEvent) {
             if (!urlMenuRef.current) return;
-            if (!urlMenuRef.current.contains(e.target as Node)) setUrlMenuOpen(false);
+            if (!urlMenuRef.current.contains(e.target as Node)) {
+                setUrlMenuOpen(false);
+            }
         }
         document.addEventListener("click", onDocClick);
         return () => document.removeEventListener("click", onDocClick);
@@ -398,7 +587,11 @@ export default function PreviewPage(): JSX.Element {
 
     const activeUrlDoc = useMemo(() => {
         if (!urls.length) return null;
-        const match = targetUrl ? urls.find((u) => normUrl(u.url) === normUrl(targetUrl)) : null;
+        const match = targetUrl
+            ? urls.find(
+                (u) => normUrl(u.url) === normUrl(targetUrl)
+            )
+            : null;
         return match ?? urls[0];
     }, [urls, targetUrl]);
 
@@ -408,30 +601,52 @@ export default function PreviewPage(): JSX.Element {
         return [activeUrlDoc, ...rest];
     }, [urls, activeUrlDoc]);
 
-    const targetHash = useMemo(() => (isHttpUrl(targetUrl) ? hash64(targetUrl) : null), [targetUrl]);
+    const targetHash = useMemo(
+        () => (isHttpUrl(targetUrl) ? hash64(targetUrl) : null),
+        [targetUrl]
+    );
 
     useEffect(() => {
         const unsub = onAuthStateChanged(auth, async (u) => {
             if (!u) {
-                const next = encodeURIComponent(`/dashboard/view?u=${encodeURIComponent(targetUrl || "")}`);
+                const next = encodeURIComponent(
+                    `/dashboard/view?u=${encodeURIComponent(
+                        targetUrl || ""
+                    )}`
+                );
                 router.replace(`/login?next=${next}`);
                 return;
             }
+
             setUser(u);
+
             try {
                 const result = await getIdTokenResult(u, true);
-                const claimTier = (result.claims.userTier as string) || "free";
+                const claimTier =
+                    (result.claims.userTier as string) || "free";
                 const normalized: UserTier =
-                    claimTier === "pro" || claimTier === "agency" || claimTier === "enterprise"
+                    claimTier === "pro" ||
+                        claimTier === "agency" ||
+                        claimTier === "enterprise"
                         ? (claimTier as UserTier)
                         : "free";
                 setUserTier(normalized);
+
                 const key = `kloner.credits.${u.uid}.${todayKey}`;
                 let parsed = { screenshotUsed: 0, previewUsed: 0 };
+
                 try {
                     const raw = localStorage.getItem(key);
-                    if (raw) parsed = JSON.parse(raw) as { screenshotUsed: number; previewUsed: number };
-                } catch { }
+                    if (raw) {
+                        parsed = JSON.parse(raw) as {
+                            screenshotUsed: number;
+                            previewUsed: number;
+                        };
+                    }
+                } catch {
+                    // ignore
+                }
+
                 setCredits({
                     screenshotUsed: parsed.screenshotUsed || 0,
                     previewUsed: parsed.previewUsed || 0,
@@ -439,9 +654,14 @@ export default function PreviewPage(): JSX.Element {
                 });
             } catch {
                 setUserTier("free");
-                setCredits({ screenshotUsed: 0, previewUsed: 0, dateKey: todayKey });
+                setCredits({
+                    screenshotUsed: 0,
+                    previewUsed: 0,
+                    dateKey: todayKey,
+                });
             }
         });
+
         return () => unsub();
     }, [router, targetUrl, todayKey]);
 
@@ -452,6 +672,7 @@ export default function PreviewPage(): JSX.Element {
                 setUrlsLoading(false);
                 return;
             }
+
             setUrlsLoading(true);
             try {
                 const qy = query(
@@ -460,7 +681,10 @@ export default function PreviewPage(): JSX.Element {
                     limit(50)
                 );
                 const snap = await getDocs(qy);
-                const list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as UrlDoc) }));
+                const list = snap.docs.map((d) => ({
+                    id: d.id,
+                    ...(d.data() as UrlDoc),
+                }));
                 setUrls(list);
             } finally {
                 setUrlsLoading(false);
@@ -468,11 +692,13 @@ export default function PreviewPage(): JSX.Element {
         })();
     }, [user]);
 
-    // Track last screenshot-related state to avoid reloading shots on every doc update
+    /* ───────── url doc + screenshots ───────── */
+
     const lastDocShotsKeyRef = useRef<string>("");
 
     useEffect(() => {
         let unsubUrlDoc: Unsubscribe | null = null;
+
         (async () => {
             setErr("");
             setInfo("");
@@ -485,6 +711,7 @@ export default function PreviewPage(): JSX.Element {
                 setLoading(false);
                 return;
             }
+
             if (!isHttpUrl(targetUrl)) {
                 setErr("Invalid URL.");
                 setLoading(false);
@@ -497,59 +724,79 @@ export default function PreviewPage(): JSX.Element {
                     where("url", "==", targetUrl)
                 );
                 const snap = await getDocs(qy);
+
                 if (snap.empty) {
                     setErr("No record for this URL under your account.");
                     setLoading(false);
                     return;
                 }
+
                 const first = snap.docs[0];
                 setDocSnap(first);
+
                 const initial = (first.data() || {}) as UrlDoc;
                 setDocData(initial);
 
-                // seed key and load once
                 lastDocShotsKeyRef.current = JSON.stringify({
                     paths: initial.screenshotPaths || [],
                     prefix: initial.screenshotsPrefix || "",
                 });
+
                 await loadShotsForDoc(user, targetUrl, initial);
 
-                // live updates: only reload shots if screenshot-related fields changed
-                unsubUrlDoc = onSnapshot(first.ref, async (fresh) => {
-                    const data = (fresh.data() || {}) as UrlDoc;
-                    setDocData(data);
+                unsubUrlDoc = onSnapshot(
+                    first.ref,
+                    async (fresh) => {
+                        const data = (fresh.data() || {}) as UrlDoc;
+                        setDocData(data);
 
-                    const currentKey = JSON.stringify({
-                        paths: data.screenshotPaths || [],
-                        prefix: data.screenshotsPrefix || "",
-                    });
+                        const currentKey = JSON.stringify({
+                            paths: data.screenshotPaths || [],
+                            prefix: data.screenshotsPrefix || "",
+                        });
 
-                    if (currentKey !== lastDocShotsKeyRef.current) {
-                        lastDocShotsKeyRef.current = currentKey;
-                        await loadShotsForDoc(user, targetUrl, data);
+                        if (
+                            currentKey !== lastDocShotsKeyRef.current
+                        ) {
+                            lastDocShotsKeyRef.current = currentKey;
+                            await loadShotsForDoc(user, targetUrl, data);
+                        }
                     }
-                });
+                );
             } catch (e: any) {
-                setErr(e?.message || "Failed to load screenshots.");
+                setErr(
+                    e?.message || "Failed to load screenshots."
+                );
             } finally {
                 setLoading(false);
             }
         })();
+
         return () => {
             unsubUrlDoc?.();
         };
     }, [user, targetUrl]);
 
+    /* ───────── renders (editable previews) ───────── */
+
     const refreshRenders = useCallback(
         async () => {
             if (!user) return;
             if (!targetUrl || !isHttpUrl(targetUrl)) {
-                setRenders((prev) => (prev.length ? [] : prev));
+                setRenders((prev) =>
+                    prev.length ? [] : prev
+                );
                 return;
             }
+
             setLoadingRenders(true);
             try {
-                const base = collection(db, "kloner_users", user.uid, "kloner_renders");
+                const base = collection(
+                    db,
+                    "kloner_users",
+                    user.uid,
+                    "kloner_renders"
+                );
                 const qs = query(
                     base,
                     where("archived", "in", [false, null]),
@@ -557,31 +804,50 @@ export default function PreviewPage(): JSX.Element {
                     limit(100)
                 );
                 const snap = await getDocs(qs);
-                const all = snap.docs.map((d) => ({ id: d.id, ...(d.data() as RenderDoc) }));
+                const all = snap.docs.map((d) => ({
+                    id: d.id,
+                    ...(d.data() as RenderDoc),
+                }));
 
                 const filtered = all.filter((r) => {
                     const byUrl = (r.url || "") === targetUrl;
-                    const byHash = !!targetHash && r.urlHash === targetHash;
-                    const byKeyHash = !!targetHash && extractHashFromKey(r.key) === targetHash;
+                    const byHash =
+                        !!targetHash && r.urlHash === targetHash;
+                    const byKeyHash =
+                        !!targetHash &&
+                        extractHashFromKey(r.key) === targetHash;
                     return byUrl || byHash || byKeyHash;
                 });
 
                 const now = Date.now();
                 for (const r of filtered) {
                     const key = r.key || "";
-                    if (key && lockUntilByKey[key] && lockUntilByKey[key] > now) {
+                    if (
+                        key &&
+                        lockUntilByKey[key] &&
+                        lockUntilByKey[key] > now
+                    ) {
                         setLockUntilByRender((m) => ({
                             ...m,
-                            [r.id]: Math.max(m[r.id] || 0, lockUntilByKey[key]),
+                            [r.id]: Math.max(
+                                m[r.id] || 0,
+                                lockUntilByKey[key]
+                            ),
                         }));
                     }
                 }
 
                 const withOptimistic = [...filtered];
-                for (const [k, opt] of Object.entries(optimisticByKey)) {
-                    const exists = filtered.some((r) => r.key === k);
-                    if (!exists) withOptimistic.unshift(opt);
-                    else {
+
+                for (const [k, opt] of Object.entries(
+                    optimisticByKey
+                )) {
+                    const exists = filtered.some(
+                        (r) => r.key === k
+                    );
+                    if (!exists) {
+                        withOptimistic.unshift(opt);
+                    } else {
                         setOptimisticByKey((m) => {
                             const n = { ...m };
                             delete n[k];
@@ -590,21 +856,35 @@ export default function PreviewPage(): JSX.Element {
                     }
                 }
 
-                setRenders((prev) => (rendersEqual(prev, withOptimistic) ? prev : withOptimistic));
+                setRenders((prev) =>
+                    rendersEqual(prev, withOptimistic)
+                        ? prev
+                        : withOptimistic
+                );
 
-                const anyQueued = withOptimistic.some((r) => r.status === "queued");
+                const anyQueued = withOptimistic.some(
+                    (r) => r.status === "queued"
+                );
+
                 if (anyQueued) {
+                    const now2 = Date.now();
                     if (!pollTimer.current) {
-                        pollStopAt.current = now + 10 * 60 * 1000;
+                        pollStopAt.current = now2 + 10 * 60 * 1000;
                         pollTimer.current = setInterval(async () => {
                             await refreshRenders();
-                            if (Date.now() > pollStopAt.current && pollTimer.current) {
+                            if (
+                                Date.now() > pollStopAt.current &&
+                                pollTimer.current
+                            ) {
                                 clearInterval(pollTimer.current);
                                 pollTimer.current = null;
                             }
                         }, 5000);
                     } else {
-                        pollStopAt.current = Math.max(pollStopAt.current, now + 5 * 60 * 1000);
+                        pollStopAt.current = Math.max(
+                            pollStopAt.current,
+                            now2 + 5 * 60 * 1000
+                        );
                     }
                 } else if (pollTimer.current) {
                     clearInterval(pollTimer.current);
@@ -614,7 +894,11 @@ export default function PreviewPage(): JSX.Element {
                 setPendingByKey((prev) => {
                     const next = { ...prev };
                     withOptimistic.forEach((r) => {
-                        if (r.key && (r.status === "ready" || r.status === "failed")) {
+                        if (
+                            r.key &&
+                            (r.status === "ready" ||
+                                r.status === "failed")
+                        ) {
                             delete next[r.key];
                             setOptimisticByKey((m) => {
                                 if (!m[r.key!]) return m;
@@ -630,7 +914,13 @@ export default function PreviewPage(): JSX.Element {
                 setLoadingRenders(false);
             }
         },
-        [user, targetUrl, targetHash, optimisticByKey, lockUntilByKey]
+        [
+            user,
+            targetUrl,
+            targetHash,
+            optimisticByKey,
+            lockUntilByKey,
+        ]
     );
 
     useEffect(() => {
@@ -638,36 +928,65 @@ export default function PreviewPage(): JSX.Element {
             setRenders([]);
             return;
         }
-        const base = collection(db, "kloner_users", user.uid, "kloner_renders");
+
+        const base = collection(
+            db,
+            "kloner_users",
+            user.uid,
+            "kloner_renders"
+        );
         const qs = query(
             base,
             where("archived", "in", [false, null]),
             orderBy("createdAt", "desc"),
             limit(100)
         );
+
         const unsub = onSnapshot(qs, (snap) => {
-            const all = snap.docs.map((d) => ({ id: d.id, ...(d.data() as RenderDoc) }));
+            const all = snap.docs.map((d) => ({
+                id: d.id,
+                ...(d.data() as RenderDoc),
+            }));
+
             const filtered = all.filter((r) => {
                 const byUrl = (r.url || "") === targetUrl;
-                const byHash = !!targetHash && r.urlHash === targetHash;
-                const byKeyHash = !!targetHash && extractHashFromKey(r.key) === targetHash;
+                const byHash =
+                    !!targetHash && r.urlHash === targetHash;
+                const byKeyHash =
+                    !!targetHash &&
+                    extractHashFromKey(r.key) === targetHash;
                 return byUrl || byHash || byKeyHash;
             });
+
             const now = Date.now();
             for (const r of filtered) {
                 const key = r.key || "";
-                if (key && lockUntilByKey[key] && lockUntilByKey[key] > now) {
+                if (
+                    key &&
+                    lockUntilByKey[key] &&
+                    lockUntilByKey[key] > now
+                ) {
                     setLockUntilByRender((m) => ({
                         ...m,
-                        [r.id]: Math.max(m[r.id] || 0, lockUntilByKey[key]),
+                        [r.id]: Math.max(
+                            m[r.id] || 0,
+                            lockUntilByKey[key]
+                        ),
                     }));
                 }
             }
+
             const withOptimistic = [...filtered];
-            for (const [k, opt] of Object.entries(optimisticByKey)) {
-                const exists = filtered.some((r) => r.key === k);
-                if (!exists) withOptimistic.unshift(opt);
-                else {
+
+            for (const [k, opt] of Object.entries(
+                optimisticByKey
+            )) {
+                const exists = filtered.some(
+                    (r) => r.key === k
+                );
+                if (!exists) {
+                    withOptimistic.unshift(opt);
+                } else {
                     setOptimisticByKey((m) => {
                         const n = { ...m };
                         delete n[k];
@@ -675,11 +994,21 @@ export default function PreviewPage(): JSX.Element {
                     });
                 }
             }
-            setRenders((prev) => (rendersEqual(prev, withOptimistic) ? prev : withOptimistic));
+
+            setRenders((prev) =>
+                rendersEqual(prev, withOptimistic)
+                    ? prev
+                    : withOptimistic
+            );
+
             setPendingByKey((prev) => {
                 const next = { ...prev };
                 withOptimistic.forEach((r) => {
-                    if (r.key && (r.status === "ready" || r.status === "failed")) {
+                    if (
+                        r.key &&
+                        (r.status === "ready" ||
+                            r.status === "failed")
+                    ) {
                         delete next[r.key];
                         setOptimisticByKey((m) => {
                             if (!m[r.key!]) return m;
@@ -692,14 +1021,26 @@ export default function PreviewPage(): JSX.Element {
                 return next;
             });
         });
+
         return () => unsub();
-    }, [user, targetUrl, targetHash, optimisticByKey, lockUntilByKey]);
+    }, [
+        user,
+        targetUrl,
+        targetHash,
+        optimisticByKey,
+        lockUntilByKey,
+    ]);
+
+    /* ───────── actions ───────── */
 
     const selectUrl = useCallback(
         (u: string) => {
             const next = ensureHttp(u.trim());
             if (!next) return;
-            router.push(`/dashboard/view?u=${encodeURIComponent(next)}`, { scroll: false });
+            router.push(
+                `/dashboard/view?u=${encodeURIComponent(next)}`,
+                { scroll: false }
+            );
         },
         [router]
     );
@@ -707,18 +1048,35 @@ export default function PreviewPage(): JSX.Element {
     const buildFromKey = useCallback(
         async (storageKey: string) => {
             if (!user) return;
-            const alreadyQueued = renders.find((r) => r.key === storageKey && r.status === "queued" && !r.archived);
+
+            const alreadyQueued = renders.find(
+                (r) =>
+                    r.key === storageKey &&
+                    r.status === "queued" &&
+                    !r.archived
+            );
             if (alreadyQueued || pendingByKey[storageKey]) return;
 
             if (!canUsePreviewCredit()) {
-                push("You have used all available preview credits for today on this plan.", "warn");
+                push(
+                    "You have used all available preview credits for today on this plan.",
+                    "warn"
+                );
                 setShowCreditsPaywall("preview");
                 return;
             }
 
-            if (!window.confirm("Generate an editable preview from this screenshot?")) return;
+            if (
+                !window.confirm(
+                    "Generate an editable preview from this screenshot?"
+                )
+            )
+                return;
 
-            const optimisticId = `local_${hash64(`${user.uid}|${storageKey}|${Date.now()}`)}`;
+            const optimisticId = `local_${hash64(
+                `${user.uid}|${storageKey}|${Date.now()}`
+            )}`;
+
             const optimistic: { id: string } & RenderDoc = {
                 id: optimisticId,
                 key: storageKey,
@@ -727,7 +1085,9 @@ export default function PreviewPage(): JSX.Element {
                 status: "queued",
                 url: targetUrl || null,
                 urlHash: targetUrl ? hash64(targetUrl) : null,
-                nameHint: targetUrl ? new URL(targetUrl).hostname : null,
+                nameHint: targetUrl
+                    ? new URL(targetUrl).hostname
+                    : null,
                 model: null,
                 archived: false,
                 version: 1,
@@ -737,9 +1097,16 @@ export default function PreviewPage(): JSX.Element {
             } as any;
 
             startHardLock(storageKey, optimisticId, 60_000);
+
             setRenders((prev) => [optimistic, ...prev]);
-            setOptimisticByKey((m) => ({ ...m, [storageKey]: optimistic }));
-            setPendingByKey((m) => ({ ...m, [storageKey]: true }));
+            setOptimisticByKey((m) => ({
+                ...m,
+                [storageKey]: optimistic,
+            }));
+            setPendingByKey((m) => ({
+                ...m,
+                [storageKey]: true,
+            }));
             setErr("");
             setInfo("Preview queued.");
 
@@ -750,42 +1117,83 @@ export default function PreviewPage(): JSX.Element {
                     body.urlHash = hash64(targetUrl);
                     body.nameHint = new URL(targetUrl).hostname;
                 }
+
                 const r = await fetch("/api/preview/render", {
                     method: "POST",
-                    headers: { "content-type": "application/json" },
+                    headers: {
+                        "content-type": "application/json",
+                    },
                     credentials: "include",
                     body: JSON.stringify(body),
                 });
-                const j = await r.json().catch(() => ({} as any));
+
+                const j = (await r
+                    .json()
+                    .catch(() => ({}))) as any;
+
                 if (r.status === 202) {
                     push("Server accepted preview job", "ok");
                     markPreviewSuccess();
                     await refreshRenders();
                     return;
                 }
-                if (!r.ok || !j?.ok) throw new Error(j?.error || "Render failed");
+
+                if (!r.ok || !j?.ok)
+                    throw new Error(
+                        j?.error || "Render failed"
+                    );
+
                 markPreviewSuccess();
                 await refreshRenders();
             } catch (e: any) {
-                setRenders((prev) => prev.map((r) => (r.id === optimisticId ? { ...r, status: "failed" } : r)));
+                setRenders((prev) =>
+                    prev.map((r) =>
+                        r.id === optimisticId
+                            ? { ...r, status: "failed" }
+                            : r
+                    )
+                );
                 setOptimisticByKey((m) => {
                     const v = m[storageKey];
                     if (!v) return m;
-                    return { ...m, [storageKey]: { ...v, status: "failed" } };
+                    return {
+                        ...m,
+                        [storageKey]: { ...v, status: "failed" },
+                    };
                 });
-                setErr(e?.message || "Failed to start preview.");
+                setErr(
+                    e?.message || "Failed to start preview."
+                );
                 push("Preview failed to start", "err");
             }
         },
-        [user, targetUrl, renders, refreshRenders, push, startHardLock, pendingByKey, canUsePreviewCredit, markPreviewSuccess]
+        [
+            user,
+            targetUrl,
+            renders,
+            refreshRenders,
+            push,
+            startHardLock,
+            pendingByKey,
+            canUsePreviewCredit,
+            markPreviewSuccess,
+        ]
     );
 
     const continueRender = useCallback(
         async (renderId: string) => {
             if (!user) return;
+
             setErr("");
             setLoading(true);
-            const dref = doc(db, "kloner_users", user.uid, "kloner_renders", renderId);
+
+            const dref = doc(
+                db,
+                "kloner_users",
+                user.uid,
+                "kloner_renders",
+                renderId
+            );
             const snap = await getDoc(dref);
             if (!snap.exists()) {
                 setErr("Preview not found.");
@@ -793,15 +1201,25 @@ export default function PreviewPage(): JSX.Element {
                 setLoading(false);
                 return;
             }
+
             const data = snap.data() as RenderDoc;
+
             let refSrc =
-                (data.referenceImage && (await resolveStorageUrl(data.referenceImage))) ||
-                (data.key && (await resolveStorageUrl(data.key))) ||
+                (data.referenceImage &&
+                    (await resolveStorageUrl(
+                        data.referenceImage
+                    ))) ||
+                (data.key &&
+                    (await resolveStorageUrl(data.key))) ||
                 "";
+
             if (!refSrc) {
-                const byKey = data.key ? shots.find((s) => s.path === data.key) : undefined;
+                const byKey = data.key
+                    ? shots.find((s) => s.path === data.key)
+                    : undefined;
                 refSrc = byKey?.url || shots[0]?.url || "";
             }
+
             setEditorHtml(data.html || "");
             setEditorRefImg(refSrc);
             setActiveRenderId(renderId);
@@ -814,15 +1232,34 @@ export default function PreviewPage(): JSX.Element {
     const discardRender = useCallback(
         async (renderId: string) => {
             if (!user) return;
-            const ok = window.confirm("Discard this editable preview?");
+            const ok = window.confirm(
+                "Discard this editable preview?"
+            );
             if (!ok) return;
-            setDeletingRender((m) => ({ ...m, [renderId]: true }));
+
+            setDeletingRender((m) => ({
+                ...m,
+                [renderId]: true,
+            }));
+
             try {
-                await deleteDoc(doc(db, "kloner_users", user.uid, "kloner_renders", renderId));
-                setRenders((prev) => prev.filter((r) => r.id !== renderId));
+                await deleteDoc(
+                    doc(
+                        db,
+                        "kloner_users",
+                        user.uid,
+                        "kloner_renders",
+                        renderId
+                    )
+                );
+                setRenders((prev) =>
+                    prev.filter((r) => r.id !== renderId)
+                );
                 push("Preview discarded", "ok");
             } catch (e: any) {
-                setErr(e?.message || "Failed to discard preview.");
+                setErr(
+                    e?.message || "Failed to discard preview."
+                );
                 push("Failed to discard preview", "err");
             } finally {
                 setDeletingRender((m) => {
@@ -838,36 +1275,70 @@ export default function PreviewPage(): JSX.Element {
     const discardShot = useCallback(
         async (shot: Shot) => {
             if (!user || !docSnap) return;
-            const ok = window.confirm("Delete this screenshot and all its previews?");
+            const ok = window.confirm(
+                "Delete this screenshot and all its previews?"
+            );
             if (!ok) return;
+
             setErr("");
-            setDeletingByKey((m) => ({ ...m, [shot.path]: true }));
+            setDeletingByKey((m) => ({
+                ...m,
+                [shot.path]: true,
+            }));
+
             try {
-                await deleteObject(sRef(storage, shot.path)).catch(() => { });
-                const rCol = collection(db, "kloner_users", user.uid, "kloner_renders");
-                const rSnap = await getDocs(query(rCol, where("key", "==", shot.path)));
-                if (rSnap.empty === false) await Promise.all(rSnap.docs.map((d) => deleteDoc(d.ref)));
+                await deleteObject(
+                    sRef(storage, shot.path)
+                ).catch(() => { });
+
+                const rCol = collection(
+                    db,
+                    "kloner_users",
+                    user.uid,
+                    "kloner_renders"
+                );
+                const rSnap = await getDocs(
+                    query(rCol, where("key", "==", shot.path))
+                );
+                if (rSnap.empty === false) {
+                    await Promise.all(
+                        rSnap.docs.map((d) => deleteDoc(d.ref))
+                    );
+                }
+
                 try {
                     await updateDoc(docSnap.ref, {
                         screenshotPaths: arrayRemove(shot.path),
                         updatedAt: serverTimestamp(),
                     } as any);
-                } catch { }
-                setShots((prev) => prev.filter((s) => s.path !== shot.path));
-                setRenders((prev) => prev.filter((r) => r.key !== shot.path));
+                } catch {
+                    // ignore
+                }
+
+                setShots((prev) =>
+                    prev.filter((s) => s.path !== shot.path)
+                );
+                setRenders((prev) =>
+                    prev.filter((r) => r.key !== shot.path)
+                );
+
                 setPendingByKey((m) => {
                     const n = { ...m };
                     delete n[shot.path];
                     return n;
                 });
+
                 setOptimisticByKey((m) => {
                     const n = { ...m };
                     delete n[shot.path];
                     return n;
                 });
+
                 push("Screenshot deleted", "ok");
             } catch (e: any) {
-                setErr(e?.message || "Failed to delete screenshot.");
+                setErr(
+                    e?.message || "Failed to delete screenshot."
+                );
                 push("Failed to delete screenshot", "err");
             } finally {
                 setDeletingByKey((m) => {
@@ -880,69 +1351,163 @@ export default function PreviewPage(): JSX.Element {
         [user, docSnap, push]
     );
 
-    async function exportToVercel(html: string, name?: string) {
+    /* ───────── export / deploy ───────── */
+
+    async function exportToVercel(opts: {
+        html: string;
+        name?: string;
+        renderId?: string;
+    }) {
+        const { html, name, renderId } = opts;
+
         if (userTier === "free") {
             setShowCreditsPaywall("preview");
-            push("Export and deploy are reserved for paid plans.", "warn");
+            push(
+                "Export and deploy are reserved for paid plans.",
+                "warn"
+            );
             return;
         }
-        const r = await fetch("/api/user-deploy", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ html, projectName: name }),
-        });
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok || !j?.url) {
-            push(j?.error || "Vercel deploy failed", "err");
-            throw new Error(j?.error || "Vercel deploy failed");
+
+        // visual feedback: mark this render as deploying
+        const idForState =
+            renderId || activeRenderId || null;
+        if (idForState) {
+            setDeployingRenderId(idForState);
         }
-        if (user && activeRenderId) {
-            await updateDoc(doc(db, "kloner_users", user.uid, "kloner_renders", activeRenderId), {
-                lastExportedAt: serverTimestamp(),
+        push("Starting deployment…", "ok");
+
+        try {
+            const r = await fetch("/api/user-deploy", {
+                method: "POST",
+                headers: {
+                    "content-type": "application/json",
+                },
+                credentials: "include",
+                body: JSON.stringify({
+                    html,
+                    projectName: name,
+                    renderId,
+                }),
             });
+
+            const j = (await r
+                .json()
+                .catch(() => ({}))) as any;
+
+            if (!r.ok || !j?.url) {
+                push(
+                    j?.error || "Vercel deploy failed",
+                    "err"
+                );
+                throw new Error(
+                    j?.error || "Vercel deploy failed"
+                );
+            }
+
+            if (user && renderId) {
+                await updateDoc(
+                    doc(
+                        db,
+                        "kloner_users",
+                        user.uid,
+                        "kloner_renders",
+                        renderId
+                    ),
+                    { lastExportedAt: serverTimestamp() }
+                );
+            }
+
+            navigator.clipboard
+                ?.writeText(j.url)
+                .catch(() => void 0);
+
+            // mark there is a new deployment to check
+            try {
+                localStorage.setItem(
+                    "kloner.deployments.hasUnseen",
+                    "1"
+                );
+            } catch {
+                // ignore
+            }
+
+            setShowDeployNextSteps(true);
+            push("Deployed. URL copied.", "ok");
+
+            await refreshRenders();
+        } finally {
+            setDeployingRenderId(null);
         }
-        navigator.clipboard?.writeText(j.url).catch(() => void 0);
-        push("Deployed. URL copied.", "ok");
-        await refreshRenders();
     }
 
     const saveDraft = useCallback(
         async (payload: {
             draftId?: string;
             html: string;
-            meta: { nameHint?: string; device: string; mode: string };
+            meta: {
+                nameHint?: string;
+                device: string;
+                mode: string;
+            };
             version: number;
         }) => {
             if (!user) return;
+
             const rid = payload.draftId || activeRenderId;
+
             if (!rid) {
-                const created = await addDoc(collection(db, "kloner_users", user.uid, "kloner_renders"), {
-                    url: targetUrl || null,
-                    urlHash: targetUrl ? hash64(targetUrl) : null,
-                    key: null,
-                    referenceImage: editorRefImg || null,
-                    html: payload.html,
-                    nameHint: payload.meta?.nameHint || (targetUrl ? new URL(targetUrl).hostname : null),
-                    status: "ready",
-                    archived: false,
-                    version: payload.version || 1,
-                    createdAt: serverTimestamp(),
-                    updatedAt: serverTimestamp(),
-                } as any);
+                const created = await addDoc(
+                    collection(
+                        db,
+                        "kloner_users",
+                        user.uid,
+                        "kloner_renders"
+                    ),
+                    {
+                        url: targetUrl || null,
+                        urlHash: targetUrl
+                            ? hash64(targetUrl)
+                            : null,
+                        key: null,
+                        referenceImage: editorRefImg || null,
+                        html: payload.html,
+                        nameHint:
+                            payload.meta?.nameHint ||
+                            (targetUrl
+                                ? new URL(targetUrl).hostname
+                                : null),
+                        status: "ready",
+                        archived: false,
+                        version: payload.version || 1,
+                        createdAt: serverTimestamp(),
+                        updatedAt: serverTimestamp(),
+                    } as any
+                );
                 setActiveRenderId(created.id);
                 push("Draft saved", "ok");
                 await refreshRenders();
             } else {
                 await setDoc(
-                    doc(db, "kloner_users", user.uid, "kloner_renders", rid),
+                    doc(
+                        db,
+                        "kloner_users",
+                        user.uid,
+                        "kloner_renders",
+                        rid
+                    ),
                     {
                         url: targetUrl || null,
-                        urlHash: targetUrl ? hash64(targetUrl) : null,
+                        urlHash: targetUrl
+                            ? hash64(targetUrl)
+                            : null,
                         html: payload.html,
                         referenceImage: editorRefImg || null,
                         nameHint:
-                            payload.meta?.nameHint || (targetUrl ? new URL(targetUrl).hostname : null),
+                            payload.meta?.nameHint ||
+                            (targetUrl
+                                ? new URL(targetUrl).hostname
+                                : null),
                         version: payload.version || 1,
                         updatedAt: serverTimestamp(),
                     },
@@ -955,110 +1520,205 @@ export default function PreviewPage(): JSX.Element {
             try {
                 if (user) {
                     const flagKey = `kloner.firstCustomize.${user.uid}`;
-                    const seen = typeof window !== "undefined" ? localStorage.getItem(flagKey) : "1";
+                    const seen =
+                        typeof window !== "undefined"
+                            ? localStorage.getItem(flagKey)
+                            : "1";
                     if (!seen) {
-                        if (typeof window !== "undefined") localStorage.setItem(flagKey, "1");
+                        if (typeof window !== "undefined") {
+                            localStorage.setItem(flagKey, "1");
+                        }
                         setShowUpgradeAfterCustomize(true);
                     }
                 }
-            } catch { }
+            } catch {
+                // ignore
+            }
         },
-        [user, activeRenderId, targetUrl, editorRefImg, refreshRenders, push]
+        [
+            user,
+            activeRenderId,
+            targetUrl,
+            editorRefImg,
+            refreshRenders,
+            push,
+        ]
     );
 
-    const shotsPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const shotsPollRef =
+        useRef<ReturnType<typeof setInterval> | null>(null);
+
     function beginShortShotsPoll(prefix: string) {
         if (shotsPollRef.current) {
             clearInterval(shotsPollRef.current);
             shotsPollRef.current = null;
         }
+
         const deadline = Date.now() + 60_000;
+
         shotsPollRef.current = setInterval(async () => {
             if (!user) return;
+
             try {
-                const refs = await listAllDeep(sRef(storage, prefix));
-                const map = new Map(refs.map((r) => [r.fullPath, r]));
-                const newOnes = Array.from(map.keys()).filter((p) => !shots.some((s) => s.path === p));
+                const refs = await listAllDeep(
+                    sRef(storage, prefix)
+                );
+                const map = new Map(
+                    refs.map((r) => [r.fullPath, r])
+                );
+
+                const newOnes = Array.from(map.keys()).filter(
+                    (p) => !shots.some((s) => s.path === p)
+                );
+
                 if (newOnes.length) {
                     const added = await Promise.all(
                         newOnes.map(async (p) => {
                             const r = map.get(p)!;
                             const url = await getDownloadURL(r);
-                            const name = r.name || r.fullPath.split("/").pop() || "image";
-                            return { path: r.fullPath, url, fileName: name } as Shot;
+                            const name =
+                                r.name ||
+                                r.fullPath.split("/").pop() ||
+                                "image";
+                            return {
+                                path: r.fullPath,
+                                url,
+                                fileName: name,
+                            } as Shot;
                         })
                     );
+
                     setShots((prev) =>
                         [...added, ...prev].sort((a, b) =>
-                            a.fileName < b.fileName ? 1 : a.fileName > b.fileName ? -1 : 0
+                            a.fileName < b.fileName
+                                ? 1
+                                : a.fileName > b.fileName
+                                    ? -1
+                                    : 0
                         )
                     );
+
                     clearInterval(shotsPollRef.current!);
                     shotsPollRef.current = null;
                 }
             } finally {
-                if (Date.now() > deadline && shotsPollRef.current) {
+                if (
+                    Date.now() > deadline &&
+                    shotsPollRef.current
+                ) {
                     clearInterval(shotsPollRef.current);
                     shotsPollRef.current = null;
                 }
             }
         }, 3000);
     }
+
     useEffect(
         () => () => {
-            if (shotsPollRef.current) clearInterval(shotsPollRef.current);
+            if (shotsPollRef.current)
+                clearInterval(shotsPollRef.current);
         },
         []
     );
 
-    const rescan = useCallback(async () => {
-        if (!isHttpUrl(targetUrl) || !user || !docData) return;
+    const rescan = useCallback(
+        async () => {
+            if (
+                !isHttpUrl(targetUrl) ||
+                !user ||
+                !docData
+            )
+                return;
 
-        if (!canUseScreenshotCredit()) {
-            push("You have used all available screenshot credits for today on this plan.", "warn");
-            setShowCreditsPaywall("screenshot");
-            return;
-        }
-
-        if (!window.confirm("Rescan this URL now? This queues a fresh screenshot.")) return;
-        setRescanning(true);
-        setErr("");
-        try {
-            const r = await fetch("/api/private/generate", {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify({ url: targetUrl }),
-            });
-            if (!r.ok) {
-                const j = await r.json().catch(() => ({}));
-                setErr(j?.error || "Rescan failed.");
-                push("Rescan failed", "err");
-            } else {
-                push("Rescan started", "ok");
-                markScreenshotSuccess();
+            if (!canUseScreenshotCredit()) {
+                push(
+                    "You have used all available screenshot credits for today on this plan.",
+                    "warn"
+                );
+                setShowCreditsPaywall("screenshot");
+                return;
             }
-        } catch (e: any) {
-            setErr(e?.message || "Rescan failed.");
-            push("Rescan failed", "err");
-        } finally {
-            setRescanning(false);
-        }
-    }, [targetUrl, user, docData, push, canUseScreenshotCredit, markScreenshotSuccess]);
+
+            if (
+                !window.confirm(
+                    "Rescan this URL now? This queues a fresh screenshot."
+                )
+            )
+                return;
+
+            setRescanning(true);
+            setErr("");
+
+            try {
+                const r = await fetch(
+                    "/api/private/generate",
+                    {
+                        method: "POST",
+                        headers: {
+                            "content-type": "application/json",
+                        },
+                        credentials: "include",
+                        body: JSON.stringify({ url: targetUrl }),
+                    }
+                );
+
+                if (!r.ok) {
+                    const j = (await r
+                        .json()
+                        .catch(() => ({}))) as any;
+                    setErr(
+                        j?.error || "Rescan failed."
+                    );
+                    push("Rescan failed", "err");
+                } else {
+                    push("Rescan started", "ok");
+                    markScreenshotSuccess();
+                }
+            } catch (e: any) {
+                setErr(
+                    e?.message || "Rescan failed."
+                );
+                push("Rescan failed", "err");
+            } finally {
+                setRescanning(false);
+            }
+        },
+        [
+            targetUrl,
+            user,
+            docData,
+            push,
+            canUseScreenshotCredit,
+            markScreenshotSuccess,
+        ]
+    );
 
     useEffect(() => {
         if (didAutoSelectRef.current) return;
-        if (!urlsLoading && !targetUrl && urls.length > 0) {
+        if (
+            !urlsLoading &&
+            !targetUrl &&
+            urls.length > 0
+        ) {
             didAutoSelectRef.current = true;
             const first = ensureHttp(urls[0].url);
-            router.replace(`/dashboard/view?u=${encodeURIComponent(first)}`, { scroll: false });
+            router.replace(
+                `/dashboard/view?u=${encodeURIComponent(
+                    first
+                )}`,
+                { scroll: false }
+            );
         }
     }, [urlsLoading, targetUrl, urls, router]);
+
+    /* ───────── cards ───────── */
 
     const RenderCard = useMemo(
         () =>
             memo(
                 function RenderCardInner({ r }: { r: { id: string } & RenderDoc }) {
+                    const router = useRouter();
+
                     const isQueued = r.status === "queued";
                     const isFailed = r.status === "failed";
                     const isDeleting = !!deletingRender[r.id];
@@ -1066,35 +1726,65 @@ export default function PreviewPage(): JSX.Element {
 
                     const prevHtmlRef = useRef<string | undefined>(undefined);
                     const [srcDoc, setSrcDoc] = useState<string>("");
+
                     useEffect(() => {
                         if (prevHtmlRef.current === r.html) return;
                         prevHtmlRef.current = r.html;
+
                         const safeHtml = (r.html || "").trim();
-                        const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob: https: http:; style-src 'unsafe-inline'; font-src data: https:; script-src 'unsafe-inline'; connect-src 'none';">`;
-                        const base = r.html ? `<base target="_blank" rel="noopener noreferrer">` : "";
+                        const csp =
+                            "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src data: blob: https: http:; style-src 'unsafe-inline'; font-src data: https:; script-src 'unsafe-inline'; connect-src 'none';\">";
+                        const base = r.html
+                            ? "<base target=\"_blank\" rel=\"noopener noreferrer\">"
+                            : "";
+
                         setSrcDoc(`${csp}${base}${safeHtml}`);
                     }, [r.html]);
 
                     const hardLocked =
-                        !!lockUntilByRender[r.id] && lockUntilByRender[r.id] > Date.now();
-                    const disableOpen = isOpening || isQueued || isFailed || hardLocked;
+                        !!lockUntilByRender[r.id] &&
+                        lockUntilByRender[r.id] > Date.now();
 
-                    const { src: refImgUrl, onError: refImgErr } = useResolvedImg(r.key || "");
+                    const isDeploying = deployingRenderId === r.id;
+                    const isDeployed = !!r.lastExportedAt;
+
+                    const deployLocked = userTier === "free";
+
+                    const disableOpen =
+                        isOpening ||
+                        isQueued ||
+                        isFailed ||
+                        hardLocked ||
+                        isDeploying;
+
+                    const { src: refImgUrl, onError: refImgErr } =
+                        useResolvedImg(r.key || "");
+
                     const versionLabel = shortVersionFromShotPath(
                         r.key ?? "",
-                        (docData?.urlHash as string | undefined) ?? null
+                        (docData?.urlHash as
+                            | string
+                            | undefined) ?? null
                     );
 
                     const deployThis = async () => {
                         if (!r.html?.trim()) return;
-                        const ok = window.confirm("Deploy this preview to Vercel?");
+                        if (isDeployed) return; // hard lock re-deploy from card
+
+                        const ok = window.confirm(
+                            "Deploy this preview to Vercel?"
+                        );
                         if (!ok) return;
                         try {
-                            await exportToVercel(r.html!, r.nameHint || undefined);
-                        } catch { }
+                            await exportToVercel({
+                                html: r.html!,
+                                name: r.nameHint || undefined,
+                                renderId: r.id,
+                            });
+                        } catch {
+                            // handled in exportToVercel
+                        }
                     };
-
-                    const deployLocked = userTier === "free";
 
                     return (
                         <>
@@ -1114,7 +1804,9 @@ export default function PreviewPage(): JSX.Element {
                                     title="Delete this editable preview"
                                     className="absolute top-0 right-0 z-40 grid h-5 w-5 place-items-center -translate-y-1/2 translate-x-1/2 rounded-full bg-red-600 text-white shadow-md ring-1 ring-white hover:bg-red-700 hover:ring-red-300 disabled:opacity-50"
                                 >
-                                    <span className="text-lg mb-0.5 leading-none">×</span>
+                                    <span className="text-lg mb-0.5 leading-none">
+                                        ×
+                                    </span>
                                 </button>
 
                                 <div className="relative">
@@ -1153,20 +1845,41 @@ export default function PreviewPage(): JSX.Element {
                                                                 "warn"
                                                             );
                                                         }
-                                                        : deployThis
+                                                        : isDeployed
+                                                            ? () => {
+                                                                router.push("/dashboard/deployments");
+                                                            }
+                                                            : deployThis
                                                 }
-                                                disabled={!r.html || isDeleting || isQueued}
-                                                className="shrink-0 rounded-md px-2 py-1 text-[0.75rem] border border-neutral-200 text-neutral-800 hover:bg-neutral-50 inline-flex items-center gap-1.5"
+                                                disabled={
+                                                    (!r.html && !isDeployed) ||
+                                                    isDeleting ||
+                                                    isQueued ||
+                                                    isDeploying
+                                                }
+                                                className="shrink-0 rounded-md px-2 py-1 text-[0.9rem] border border-neutral-400 text-neutral-800 hover:bg-neutral-50 inline-flex items-center gap-1.5 disabled:opacity-60"
                                                 title={
                                                     deployLocked
                                                         ? "Upgrade to publish live sites"
-                                                        : "Deploy current HTML to Vercel"
+                                                        : isDeployed
+                                                            ? "View and modify this deployment"
+                                                            : "Deploy current HTML to Vercel"
                                                 }
                                             >
                                                 {deployLocked ? (
                                                     <>
                                                         <Lock className="h-4 w-4" />
                                                         <span>Deploy (locked)</span>
+                                                    </>
+                                                ) : isDeploying ? (
+                                                    <>
+                                                        <span>Deploying…</span>
+                                                        <Rocket className="h-4 w-4 animate-pulse" />
+                                                    </>
+                                                ) : isDeployed ? (
+                                                    <>
+                                                        <span>Modify deployment</span>
+                                                        <Rocket className="h-4 w-4" />
                                                     </>
                                                 ) : (
                                                     <>
@@ -1175,25 +1888,33 @@ export default function PreviewPage(): JSX.Element {
                                                     </>
                                                 )}
                                             </button>
-                                            <button
-                                                onClick={() => continueRender(r.id)}
-                                                disabled={disableOpen || isDeleting}
-                                                className="shrink-0 rounded-md px-4 py-2 text-[0.75rem] text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
-                                                style={{ backgroundColor: ACCENT }}
-                                                title={
-                                                    isQueued
-                                                        ? "Still building preview"
+
+                                            {/* Only show customize if not deployed */}
+                                            {!isDeployed && (
+                                                <button
+                                                    onClick={() =>
+                                                        continueRender(r.id)
+                                                    }
+                                                    disabled={
+                                                        disableOpen || isDeleting
+                                                    }
+                                                    className="shrink-0 rounded-md px-4 py-2 text-[0.9rem] text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+                                                    style={{ backgroundColor: ACCENT }}
+                                                    title={
+                                                        isQueued
+                                                            ? "Still building preview"
+                                                            : isFailed
+                                                                ? "Open editor to fix"
+                                                                : "Open editor to customize"
+                                                    }
+                                                >
+                                                    {isQueued
+                                                        ? "Queued"
                                                         : isFailed
-                                                            ? "Open editor to fix"
-                                                            : "Open editor to customize"
-                                                }
-                                            >
-                                                {isQueued
-                                                    ? "Queued"
-                                                    : isFailed
-                                                        ? "Customize (fix)"
-                                                        : "Customize"}
-                                            </button>
+                                                            ? "Customize (fix)"
+                                                            : "Customize"}
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
 
@@ -1207,17 +1928,40 @@ export default function PreviewPage(): JSX.Element {
                                                 ? "Preview ready"
                                                 : "Awaiting HTML"}
                                     </span>
-                                    <span className="absolute bottom-2 right-2 z-20 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-neutral-600 ring-1 ring-neutral-200">
-                                        {r.status}
+                                    <span
+                                        className="absolute bottom-2 right-2 z-20 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-neutral-600 ring-1 ring-neutral-200"
+                                    >
+                                        {isDeploying
+                                            ? "Deploying…"
+                                            : isDeployed
+                                                ? "Deployed"
+                                                : r.status}
                                     </span>
 
-                                    {isDeleting && <CenterSpinner label="Deleting…" />}
-                                    {(isQueued || hardLocked) && (
-                                        <CenterSpinner label={isQueued ? "Rendering…" : "Locked…"} />
+                                    {isDeleting && (
+                                        <CenterSpinner label="Deleting…" />
                                     )}
+
+                                    {(isQueued ||
+                                        hardLocked ||
+                                        isDeploying) && (
+                                            <CenterSpinner
+                                                label={
+                                                    isDeploying
+                                                        ? "Deploying…"
+                                                        : isQueued
+                                                            ? "Rendering…"
+                                                            : "Locked…"
+                                                }
+                                            />
+                                        )}
                                 </div>
 
-                                <div className="relative h-0 overflow-hidden" aria-hidden>
+                                {/* hidden iframe keeps old behaviour but not visible */}
+                                <div
+                                    className="relative h-0 overflow-hidden"
+                                    aria-hidden
+                                >
                                     <iframe
                                         title={`r-${r.id}`}
                                         className="w-full h-0"
@@ -1240,11 +1984,23 @@ export default function PreviewPage(): JSX.Element {
                         a.status === b.status &&
                         (a.html || "") === (b.html || "") &&
                         (a.key || "") === (b.key || "") &&
-                        (a.nameHint || "") === (b.nameHint || "")
+                        (a.nameHint || "") ===
+                        (b.nameHint || "")
                     );
                 }
             ),
-        [continueRender, discardRender, deletingRender, docData?.controllerVersion, exportToVercel, userTier, push]
+        [
+            continueRender,
+            discardRender,
+            deletingRender,
+            docData?.urlHash,
+            exportToVercel,
+            userTier,
+            push,
+            lockUntilByRender,
+            deployingRenderId,
+            setShowCreditsPaywall,
+        ]
     );
 
     const ShotCard = useMemo(
@@ -1261,13 +2017,23 @@ export default function PreviewPage(): JSX.Element {
                     index: number;
                     onView: (i: number) => void;
                 }) {
-                    const [imgLoading, setImgLoading] = useState<boolean>(true);
+                    const [imgLoading, setImgLoading] =
+                        useState<boolean>(true);
                     const isDeleting = !!deletingByKey[s.path];
-                    const hardLocked = (lockUntilByKey[s.path] || 0) > Date.now();
-                    const showOverlay = locked || imgLoading || hardLocked || isDeleting;
+                    const hardLocked =
+                        (lockUntilByKey[s.path] || 0) >
+                        Date.now();
+                    const showOverlay =
+                        locked ||
+                        imgLoading ||
+                        hardLocked ||
+                        isDeleting;
+
                     const versionLabel = shortVersionFromShotPath(
                         s.path,
-                        (docData?.urlHash as string | undefined) ?? null
+                        (docData?.urlHash as
+                            | string
+                            | undefined) ?? null
                     );
 
                     return (
@@ -1279,7 +2045,6 @@ export default function PreviewPage(): JSX.Element {
                             >
                                 {versionLabel}
                             </span>
-
                             <button
                                 onClick={() => discardShot(s)}
                                 disabled={locked || isDeleting}
@@ -1287,10 +2052,14 @@ export default function PreviewPage(): JSX.Element {
                                 title="Delete this screenshot and all previews from it"
                                 className="absolute top-0 right-0 z-40 grid h-5 w-5 place-items-center -translate-y-1/2 translate-x-1/2 rounded-full bg-red-600 text-white shadow-md ring-1 ring-white hover:bg-red-700 hover:ring-red-300 disabled:opacity-50"
                             >
-                                <span className="text-lg mb-0.5 leading-none">×</span>
+                                <span className="text-lg mb-0.5 leading-none">
+                                    ×
+                                </span>
                             </button>
 
-                            {isDeleting && <CenterSpinner label="Deleting…" />}
+                            {isDeleting && (
+                                <CenterSpinner label="Deleting…" />
+                            )}
 
                             <a
                                 href={s.url}
@@ -1306,9 +2075,10 @@ export default function PreviewPage(): JSX.Element {
                                         className="h-full w-full object-cover opacity-30"
                                         loading="lazy"
                                         onLoad={() => setImgLoading(false)}
-                                        onError={() => setImgLoading(false)}
+                                        onError={() =>
+                                            setImgLoading(false)
+                                        }
                                     />
-
                                     <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
                                         <div className="pointer-events-auto flex flex-col sm:flex-row items-center gap-2 rounded-xl bg-white/90 p-2 ring-1 ring-neutral-200 backdrop-blur">
                                             <button
@@ -1316,11 +2086,14 @@ export default function PreviewPage(): JSX.Element {
                                                     e.preventDefault();
                                                     onView(index);
                                                 }}
-                                                className="shrink-0 rounded-md px-2 py-1 text-[0.75rem] border border-neutral-200 text-neutral-800 hover:bg-neutral-50 inline-flex items-center gap-1.5"
+                                                className="shrink-0 rounded-md px-2 py-1 text-[0.9rem] border border-neutral-400 text-neutral-800 hover:bg-neutral-50 inline-flex items-center gap-1.5"
                                                 title="View full-screen"
                                             >
-                                                <Eye className="h-3 w-3 opacity-90" aria-hidden />
                                                 <span>View</span>
+                                                <Eye
+                                                    className="h-3 w-3 opacity-90"
+                                                    aria-hidden
+                                                />
                                             </button>
 
                                             <button
@@ -1330,15 +2103,20 @@ export default function PreviewPage(): JSX.Element {
                                                 }}
                                                 disabled={locked || isDeleting}
                                                 aria-busy={locked}
-                                                className="shrink-0 rounded-md px-4 py-2 text-[0.7rem] text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+                                                className="shrink-0 rounded-md px-4 py-2 text-[0.9rem] text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
                                                 style={{ backgroundColor: ACCENT }}
                                                 title="Create editable preview from this screenshot"
                                             >
                                                 <span>
-                                                    {locked ? "In progress" : "Generate preview"}
+                                                    {locked
+                                                        ? "In progress"
+                                                        : "Generate preview"}
                                                 </span>
                                                 <Hammer
-                                                    className={`h-4 w-4 ${locked ? "animate-pulse" : ""}`}
+                                                    className={`h-4 w-4 ${locked
+                                                        ? "animate-pulse"
+                                                        : ""
+                                                        }`}
                                                     aria-hidden
                                                 />
                                             </button>
@@ -1347,7 +2125,11 @@ export default function PreviewPage(): JSX.Element {
 
                                     {showOverlay && (
                                         <CenterSpinner
-                                            label={locked ? "Queued preview…" : "Loading…"}
+                                            label={
+                                                locked
+                                                    ? "Queued preview…"
+                                                    : "Loading…"
+                                            }
                                         />
                                     )}
                                 </div>
@@ -1372,10 +2154,14 @@ export default function PreviewPage(): JSX.Element {
         [buildFromKey, discardShot, deletingByKey, lockUntilByKey, docData?.urlHash]
     );
 
+    /* ───────── UI state / labels ───────── */
+
     const step1Done = !!activeUrlDoc;
     const step2Done = shots.length > 0;
     const step3Done = renders.length > 0;
-    const step4Done = renders.some((r) => (r as any).lastExportedAt);
+    const step4Done = renders.some(
+        (r) => (r as any).lastExportedAt
+    );
 
     const planLabel =
         userTier === "unknown"
@@ -1388,6 +2174,8 @@ export default function PreviewPage(): JSX.Element {
                         ? "Agency plan"
                         : "Enterprise plan";
 
+    /* ───────── render ───────── */
+
     return (
         <main className="min-h-screen bg-white">
             <div className="mx-auto max-w-[1200px] px-4 sm:px-6 lg:px-10 py-8">
@@ -1396,9 +2184,9 @@ export default function PreviewPage(): JSX.Element {
                     <div className="h-px flex-1 bg-neutral-200/70" />
                 </div>
 
+                {/* plan + credits banner */}
                 <div className="mb-4 rounded-2xl border border-neutral-200 bg-gradient-to-r from-neutral-50 to-white px-4 py-3 sm:px-5 sm:py-4 text-xs sm:text-sm text-neutral-700 shadow-sm">
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                        {/* Left: plan info */}
                         <div className="space-y-2">
                             <div className="flex items-center gap-2">
                                 <div className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1">
@@ -1411,9 +2199,7 @@ export default function PreviewPage(): JSX.Element {
                                     {planLabel}
                                 </span>
                             </div>
-
                             <div className="flex flex-wrap gap-2">
-                                {/* Screenshot credits pill */}
                                 <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] sm:text-xs text-neutral-700">
                                     Screenshot credits today:&nbsp;
                                     <span className="font-semibold text-neutral-900">
@@ -1423,7 +2209,6 @@ export default function PreviewPage(): JSX.Element {
                                     </span>
                                 </span>
 
-                                {/* Preview credits pill */}
                                 <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] sm:text-xs text-neutral-700">
                                     Preview credits today:&nbsp;
                                     <span className="font-semibold text-neutral-900">
@@ -1436,33 +2221,39 @@ export default function PreviewPage(): JSX.Element {
 
                             {userTier === "free" && (
                                 <p className="text-[11px] leading-relaxed text-neutral-500">
-                                    Free plans include a limited number of screenshots and previews per
-                                    day. Upgrading unlocks higher limits and one-click deploy.
+                                    Free plans include a limited number of
+                                    screenshots and previews per day. Upgrading
+                                    unlocks higher limits and one-click deploy.
                                 </p>
                             )}
                         </div>
 
-                        {/* Right: upgrade / manage */}
                         <button
                             type="button"
                             onClick={() => router.push("/pricing")}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 hover:border-amber-300 transition-colors"
+                            className="inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 hover:border-amber-300 transition-colors"
                         >
                             <Crown className="h-3.5 w-3.5" />
-                            <span>{userTier === "free" ? "View upgrade options" : "Manage plan"}</span>
+                            <span>
+                                {userTier === "free"
+                                    ? "View upgrade options"
+                                    : "Manage plan"}
+                            </span>
                         </button>
                     </div>
                 </div>
 
+                {/* header */}
                 <div className="mb-5">
                     <div className="flex items-center justify-between gap-3 flex-wrap">
                         <div>
                             <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-700">
-                                Preview Builder
+                                URL Selection
                             </h1>
                         </div>
                     </div>
 
+                    {/* url selector / step 1 */}
                     <div className="mt-3">
                         {urlsLoading ? (
                             <div className="h-10 rounded-xl bg-neutral-100 animate-pulse" />
@@ -1476,11 +2267,14 @@ export default function PreviewPage(): JSX.Element {
                                     )}
                                     Step 1
                                 </strong>{" "}
-                                — Add a URL in Dashboard. Return here to capture screenshots and build
-                                previews.
+                                — Add a URL in Dashboard. Return here to
+                                capture screenshots and build previews.
                             </div>
                         ) : (
-                            <div className="relative inline-block" ref={urlMenuRef}>
+                            <div
+                                className="relative inline-block"
+                                ref={urlMenuRef}
+                            >
                                 <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
                                     <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1">
                                         {step1Done && (
@@ -1488,19 +2282,23 @@ export default function PreviewPage(): JSX.Element {
                                         )}
                                         Step 1
                                     </strong>{" "}
-                                    — You have chosen the following URL, you can select a different one
-                                    from the dropdown.
+                                    — You have chosen the following URL, you can
+                                    select a different one from the dropdown.
                                 </div>
+
                                 <button
                                     type="button"
-                                    onClick={() => setUrlMenuOpen((v) => !v)}
-                                    className="inline-flex max-w-[540px] items-center gap-2 truncate rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-800 hover:bg-neutral-50"
+                                    onClick={() =>
+                                        setUrlMenuOpen((v) => !v)
+                                    }
+                                    className="inline-flex max-w-[540px] items-center gap-2 truncate rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-800 hover:bg-neutral-50"
                                     title={activeUrlDoc?.url}
                                     aria-haspopup="listbox"
                                     aria-expanded={urlMenuOpen}
                                 >
                                     <span className="truncate">
-                                        {activeUrlDoc?.url || "Select a URL"}
+                                        {activeUrlDoc?.url ||
+                                            "Select a URL"}
                                     </span>
                                     <ChevronDown className="h-4 w-4 shrink-0 text-neutral-500" />
                                 </button>
@@ -1508,12 +2306,15 @@ export default function PreviewPage(): JSX.Element {
                                 {urlMenuOpen && (
                                     <div
                                         role="listbox"
-                                        aria-activedescendant={activeUrlDoc?.id}
-                                        className="absolute z-40 mt-2 w-[min(640px,90vw)] overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-lg"
+                                        aria-activedescendant={
+                                            activeUrlDoc?.id
+                                        }
+                                        className="absolute z-40 mt-2 w-[min(640px,90vw)] overflow-hidden rounded-md border border-neutral-200 bg-white shadow-lg"
                                     >
                                         <ul className="max-h-[280px] overflow-auto py-1">
                                             {orderedUrls.map((u) => {
-                                                const isActive = activeUrlDoc?.id === u.id;
+                                                const isActive =
+                                                    activeUrlDoc?.id === u.id;
                                                 return (
                                                     <li key={u.id}>
                                                         <button
@@ -1535,7 +2336,9 @@ export default function PreviewPage(): JSX.Element {
                                                                     : "bg-neutral-300"
                                                                     }`}
                                                             />
-                                                            <span className="truncate">{u.url}</span>
+                                                            <span className="truncate">
+                                                                {u.url}
+                                                            </span>
                                                         </button>
                                                     </li>
                                                 );
@@ -1549,26 +2352,30 @@ export default function PreviewPage(): JSX.Element {
                 </div>
 
                 {err ? (
-                    <div className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    <div className="mt-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
                         {err}
                     </div>
                 ) : null}
+
                 {info ? (
-                    <div className="mt-2 rounded-lg border border-neutral-300 bg-neutral-50 px-3 py-2 text-sm text-neutral-800">
+                    <div className="mt-2 rounded-md border border-neutral-300 bg-neutral-50 px-3 py-2 text-sm text-neutral-800">
                         {info}
                     </div>
                 ) : null}
 
-                <div className="mt-20">
+                {/* screenshots */}
+                <div className="mt-10">
                     <div className="mb-4 flex items-center gap-2">
                         <div className="h-px flex-1 bg-neutral-200/70" />
                         <div className="h-px flex-1 bg-neutral-200/70" />
                     </div>
+
                     <h2 className="text-1xl sm:text-3xl font-semibold tracking-tight text-neutral-700">
                         Screenshots
                     </h2>
                     <p className="mt-2 text-xs text-neutral-500">
-                        These are the original screenshots captured directly from your entered URL.
+                        These are the original screenshots captured
+                        directly from your entered URL.
                     </p>
 
                     {!targetUrl ? (
@@ -1585,7 +2392,8 @@ export default function PreviewPage(): JSX.Element {
                                 — Below will host your base images.
                             </div>
                             <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-6 my-4 text-sm text-neutral-700">
-                                Select a URL above to manage its screenshots and previews.
+                                Select a URL above to manage its screenshots and
+                                previews.
                             </div>
                         </>
                     ) : loading ? (
@@ -1620,8 +2428,7 @@ export default function PreviewPage(): JSX.Element {
                                     subtitle="Captures a fresh screenshot for this URL. Safe; does not remove prior versions."
                                     onClick={rescan}
                                     disabled={
-                                        rescanning ||
-                                        !isHttpUrl(targetUrl)
+                                        rescanning || !isHttpUrl(targetUrl)
                                     }
                                 />
                             </div>
@@ -1637,12 +2444,12 @@ export default function PreviewPage(): JSX.Element {
                                     )}
                                     Step 2
                                 </strong>{" "}
-                                — We’ve captured your base image.
+                                — We’ve captured your base image. <br />
                                 {renders.length === 0 && (
-                                    <div className="x-1 inline-flex ml-1 mt-1 text-sm flex items-center text-neutral-700">
-                                        Click
+                                    <div className="x-1 inline-flex ml-1 mt-5 text-sm flex items-center text-neutral-700">
+                                        Click{" "}
                                         <span
-                                            className="mx-2 whitespace-nowrap rounded-md px-4 py-1.5 text-[0.75rem] flex flex-inline items-center text-white"
+                                            className="mx-2 whitespace-nowrap rounded-md px-4 py-1.5 text-[0.9rem] flex flex-inline items-center text-white"
                                             style={{ backgroundColor: ACCENT }}
                                         >
                                             Generate preview{" "}
@@ -1673,6 +2480,7 @@ export default function PreviewPage(): JSX.Element {
                                         />
                                     );
                                 })}
+
                                 <GhostActionCard
                                     title={
                                         rescanning
@@ -1682,8 +2490,7 @@ export default function PreviewPage(): JSX.Element {
                                     subtitle="Capture a fresh screenshot for this page."
                                     onClick={rescan}
                                     disabled={
-                                        rescanning ||
-                                        !isHttpUrl(targetUrl)
+                                        rescanning || !isHttpUrl(targetUrl)
                                     }
                                 />
                             </div>
@@ -1691,11 +2498,13 @@ export default function PreviewPage(): JSX.Element {
                     )}
                 </div>
 
+                {/* previews */}
                 <div className="mt-20">
                     <div className="mb-4 flex items-center gap-2">
                         <div className="h-px flex-1 bg-neutral-200/70" />
                         <div className="h-px flex-1 bg-neutral-200/70" />
                     </div>
+
                     <div className="flex items-center justify-between">
                         <div>
                             <h2 className="text-1xl sm:text-3xl font-semibold tracking-tight text-neutral-700">
@@ -1703,14 +2512,13 @@ export default function PreviewPage(): JSX.Element {
                             </h2>
                         </div>
                     </div>
-
                     <p className="mt-2 text-xs text-neutral-500">
-                        These are the concept sites generated from your chosen snapshot.
+                        These are the concept sites generated from your
+                        chosen snapshot.
                     </p>
 
                     {renders.length === 0 ? (
                         <>
-                            {/* Step 3 – empty state */}
                             <div className="mt-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-3 text-sm text-neutral-700 flex flex-wrap items-center gap-2 my-4">
                                 <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1 mr-1">
                                     {step3Done ? (
@@ -1720,20 +2528,17 @@ export default function PreviewPage(): JSX.Element {
                                     )}
                                     Step 3
                                 </strong>
-                                <span className="text-neutral-400">—</span>
-                                <span>
-                                    Website previews are created from your base screenshots. Generate a
-                                    preview above to start customizing before deployment.
+                                <span className="text-neutral-800">
+                                    — Generate a preview above to start customizing before deployment.
                                 </span>
-                            </div>
 
-                            <div className="mt-1 rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-700 my-4">
-                                No previews yet. Generate one from a base screenshot above.
+                            </div>
+                            <div className="mt-1 rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-700 my-4">
+                                No previews yet.
                             </div>
                         </>
                     ) : (
                         <>
-                            {/* Step 3 – previews present */}
                             <div className="mt-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-3 text-sm text-neutral-700 flex flex-wrap items-center gap-2 my-4">
                                 <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1 mr-1">
                                     {step3Done ? (
@@ -1743,30 +2548,24 @@ export default function PreviewPage(): JSX.Element {
                                     )}
                                     Step 3
                                 </strong>
-
-                                <span className="text-neutral-400">—</span>
-
-                                <span className="ml-1">
-                                    Customize your website preview, then click
+                                <span className="text-neutral-400">
+                                    —
                                 </span>
-
+                                <span className="ml-1">
+                                    Customize your website preview, then click{" "}
+                                </span>
                                 <button
                                     type="button"
-                                    className="inline-flex items-center rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm"
+                                    className="inline-flex items-center rounded-md border border-neutral-400 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm"
                                     disabled
                                 >
                                     Deploy
                                     <Rocket className="ml-1 h-3 w-3" />
                                 </button>
-
-                                <span className="ml-1">
-                                    to begin publishing. On free plans, deploy is locked and becomes
-                                    available after upgrading.
-                                </span>
                             </div>
-
                             <p className="mt-1 text-xs text-neutral-500">
-                                Tip: Reference the original with the version badge
+                                Tip: Reference the original with the version
+                                badge{" "}
                                 <span
                                     className="ml-2 rounded-md px-2 py-1 text-[10px] font-semibold text-white shadow"
                                     style={{ backgroundColor: "#1d4ed8" }}
@@ -1787,213 +2586,273 @@ export default function PreviewPage(): JSX.Element {
                     )}
                 </div>
 
+                {/* (optional deployments summary step kept commented in this page) */}
                 <div className="mt-20">
                     <div className="mb-4 flex items-center gap-2">
                         <div className="h-px flex-1 bg-neutral-200/70" />
                         <div className="h-px flex-1 bg-neutral-200/70" />
                     </div>
-
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <h2 className="text-1xl sm:text-3xl font-semibold tracking-tight text-neutral-700">
-                                Deployments
-                            </h2>
-                            <p className="mt-2 text-xs text-neutral-500">
-                                These are the live websites you currently have published.
-                            </p>
-                        </div>
-                        {userTier === "free" && (
-                            <div className="inline-flex items-center gap-1 text-[11px] text-neutral-600">
-                                <Lock className="h-3 w-3" />
-                                <span>Deployment management unlocks on paid plans.</span>
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-700 my-4">
-                        <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1">
-                            {step4Done && (
-                                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                            )}
-                            Step 4
-                        </strong>{" "}
-                        — Track or modify your deployments here. Deployment tools for free plans
-                        are limited to preview only.
-                    </div>
                 </div>
-            </div>
 
-            {editorOpen && (
-                <PreviewEditor
-                    initialHtml={editorHtml}
-                    sourceImage={editorRefImg}
-                    onClose={() => {
-                        setEditorOpen(false);
-                        setActiveRenderId(undefined);
-                    }}
-                    onExport={exportToVercel}
-                    draftId={activeRenderId}
-                    saveDraft={saveDraft}
-                    onLiveHtml={(html) => {
-                        if (!activeRenderId) return;
-                        setRenders((prev) =>
-                            prev.map((r) => (r.id === activeRenderId ? { ...r, html } : r))
-                        );
-                    }}
-                />
-            )}
-
-            <Toasts toasts={toasts} />
-            <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-
-            {viewerOpen && shots[viewerIdx] && (
-                <div className="fixed inset-0 z-[10000]">
-                    <div
-                        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-                        onClick={closeViewer}
+                {/* editor overlay */}
+                {editorOpen && (
+                    <PreviewEditor
+                        initialHtml={editorHtml}
+                        sourceImage={editorRefImg}
+                        onClose={() => {
+                            setEditorOpen(false);
+                            setActiveRenderId(undefined);
+                        }}
+                        onExport={(html, name) =>
+                            exportToVercel({
+                                html,
+                                name,
+                                renderId: activeRenderId,
+                            })
+                        }
+                        draftId={activeRenderId}
+                        saveDraft={saveDraft}
+                        onLiveHtml={(html) => {
+                            if (!activeRenderId) return;
+                            setRenders((prev) =>
+                                prev.map((r) =>
+                                    r.id === activeRenderId
+                                        ? { ...r, html }
+                                        : r
+                                )
+                            );
+                        }}
                     />
-                    <div className="absolute inset-0 p-4 sm:p-6 md:p-8 grid place-items-center">
-                        <div className="relative w-full h-full max-w-[min(95vw,1400px)]">
-                            <div className="absolute top-0 bg-black/70 h-20 left-0 right-0 z-10 flex items-center justify-between gap-2 p-2 sm:p-3">
-                                <div className="text-[11px] sm:text-xs text-white/80 truncate">
-                                    {shots[viewerIdx].fileName}
-                                </div>
-                                <button
-                                    onClick={closeViewer}
-                                    className="rounded-md"
-                                    style={{
-                                        background: ACCENT,
-                                        color: "#fff",
-                                        padding: "6px 10px",
-                                        fontSize: "12px",
-                                    }}
-                                >
-                                    Close
-                                </button>
-                            </div>
-                            <div className="absolute inset-0 mt-8 mb-8 overflow-auto rounded-lg ring-1 ring-white/10 bg-black/40">
-                                <div className="min-h-full w-full grid place-items-center p-4">
-                                    <img
-                                        src={shots[viewerIdx].url}
-                                        alt={shots[viewerIdx].fileName}
-                                        className="max-w-none"
+                )}
+
+                <Toasts toasts={toasts} />
+
+                <style>
+                    {`@keyframes spin{to{transform:rotate(360deg)}}`}
+                </style>
+
+                {/* screenshot viewer */}
+                {viewerOpen && shots[viewerIdx] && (
+                    <div className="fixed inset-0 z-[10000]">
+                        <div
+                            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+                            onClick={closeViewer}
+                        />
+                        <div className="absolute inset-0 p-4 sm:p-6 md:p-8 grid place-items-center">
+                            <div className="relative w-full h-full max-w-[min(95vw,1400px)]">
+                                <div className="absolute top-0 bg-black/70 h-20 left-0 right-0 z-10 flex items-center justify-between gap-2 p-2 sm:p-3">
+                                    <div className="text-[11px] sm:text-xs text-white/80 truncate">
+                                        {shots[viewerIdx].fileName}
+                                    </div>
+                                    <button
+                                        onClick={closeViewer}
+                                        className="rounded-md"
                                         style={{
-                                            width: "auto",
-                                            height: "auto",
-                                            maxWidth: "none",
+                                            background: ACCENT,
+                                            color: "#fff",
+                                            padding: "6px 10px",
+                                            fontSize: "12px",
                                         }}
-                                    />
+                                    >
+                                        Close
+                                    </button>
+                                </div>
+                                <div className="absolute inset-0 mt-8 mb-8 overflow-auto rounded-md ring-1 ring-white/10 bg-black/40">
+                                    <div className="min-h-full w-full grid place-items-center p-4">
+                                        <img
+                                            src={shots[viewerIdx].url}
+                                            alt={shots[viewerIdx].fileName}
+                                            className="max-w-none"
+                                            style={{
+                                                width: "auto",
+                                                height: "auto",
+                                                maxWidth: "none",
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={prevShot}
+                                    className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full text-white h-9 w-9 grid place-items-center shadow ring-1 ring-neutral-200"
+                                    style={{ background: ACCENT }}
+                                    aria-label="Previous screenshot"
+                                >
+                                    ‹
+                                </button>
+                                <button
+                                    onClick={nextShot}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full text-white h-9 w-9 grid place-items-center shadow ring-1 ring-neutral-200"
+                                    style={{ background: ACCENT }}
+                                    aria-label="Next screenshot"
+                                >
+                                    ›
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* generic paywall */}
+                {showCreditsPaywall && (
+                    <div className="fixed inset-0 z-[12000]">
+                        <div className="absolute inset-0 bg-black/60" />
+                        <div className="absolute inset-0 flex items-center justify-center p-4">
+                            <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border border-neutral-200 p-6 text-sm text-neutral-800">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <Crown className="h-4 w-4 text-amber-500" />
+                                    <h3 className="text-base font-semibold">
+                                        You’ve hit the limit on your{" "}
+                                        {userTier === "free"
+                                            ? "free"
+                                            : userTier}{" "}
+                                        plan
+                                    </h3>
+                                </div>
+                                <p className="text-xs text-neutral-600 mb-3">
+                                    {showCreditsPaywall ===
+                                        "screenshot" &&
+                                        "You have used all daily screenshot credits. Upgrade to capture more pages and monitor more sites."}
+                                    {showCreditsPaywall ===
+                                        "preview" &&
+                                        "You have used all daily preview credits. Upgrade to generate more designs and unlock one-click deploy."}
+                                    {showCreditsPaywall === "deploy" &&
+                                        "To deploy your website live, upgrade to a paid plan to unlock one-click deploy."}
+                                </p>
+                                <ul className="mb-4 list-disc list-inside text-xs text-neutral-700 space-y-1">
+                                    <li>
+                                        Higher daily limits for screenshots
+                                        and previews
+                                    </li>
+                                    <li>
+                                        Unlock deploy to Vercel and live URLs
+                                    </li>
+                                    <li>
+                                        Priority rendering and faster queues
+                                    </li>
+                                </ul>
+                                <div className="flex items-center justify-end gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            setShowCreditsPaywall(null)
+                                        }
+                                        className="rounded-md border border-neutral-300 px-3 py-1.5 text-xs text-neutral-700 hover:bg-neutral-50"
+                                    >
+                                        Not now
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowCreditsPaywall(null);
+                                            router.push("/pricing");
+                                        }}
+                                        className="rounded-md px-3 py-1.5 text-xs font-semibold text-white"
+                                        style={{ backgroundColor: ACCENT }}
+                                    >
+                                        View upgrade options
+                                    </button>
                                 </div>
                             </div>
-                            <button
-                                onClick={prevShot}
-                                className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full text-white h-9 w-9 grid place-items-center shadow ring-1 ring-neutral-200"
-                                style={{ background: ACCENT }}
-                                aria-label="Previous screenshot"
-                            >
-                                ‹
-                            </button>
-                            <button
-                                onClick={nextShot}
-                                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full text-white h-9 w-9 grid place-items-center shadow ring-1 ring-neutral-200"
-                                style={{ background: ACCENT }}
-                                aria-label="Next screenshot"
-                            >
-                                ›
-                            </button>
                         </div>
                     </div>
-                </div>
-            )}
+                )}
 
-            {showCreditsPaywall && (
-                <div className="fixed inset-0 z-[12000]">
-                    <div className="absolute inset-0 bg-black/60" />
-                    <div className="absolute inset-0 flex items-center justify-center p-4">
-                        <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border border-neutral-200 p-6 text-sm text-neutral-800">
-                            <div className="flex items-center gap-2 mb-2">
-                                <Crown className="h-4 w-4 text-amber-500" />
-                                <h3 className="text-base font-semibold">
-                                    You’ve hit the limit on your {userTier === "free" ? "free" : userTier} plan
-                                </h3>
+                {/* post-customize upgrade prompt */}
+                {showUpgradeAfterCustomize && (
+                    <div className="fixed inset-0 z-[12050]">
+                        <div className="absolute inset-0 bg-black/60" />
+                        <div className="absolute inset-0 flex items-center justify-center p-4">
+                            <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border border-neutral-200 p-6 text-sm text-neutral-800">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <Crown className="h-4 w-4 text-amber-500" />
+                                    <h3 className="text-base font-semibold">
+                                        Make this website yours
+                                    </h3>
+                                </div>
+                                <p className="text-xs text-neutral-600 mb-3">
+                                    You’ve customized your first preview. The next
+                                    step is to turn it into a live site with your
+                                    own URL and branding.
+                                </p>
+                                <ul className="mb-4 list-disc list-inside text-xs text-neutral-700 space-y-1">
+                                    <li>
+                                        Publish to a live URL in a few clicks
+                                    </li>
+                                    <li>
+                                        Connect your own domain and logo
+                                    </li>
+                                    <li>
+                                        Keep iterating without touching code
+                                    </li>
+                                </ul>
+                                <div className="flex items-center justify-end gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            setShowUpgradeAfterCustomize(false)
+                                        }
+                                        className="rounded-md border border-neutral-300 px-3 py-1.5 text-xs text-neutral-700 hover:bg-neutral-50"
+                                    >
+                                        Maybe later
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowUpgradeAfterCustomize(false);
+                                            router.push("/pricing");
+                                        }}
+                                        className="rounded-md px-3 py-1.5 text-xs font-semibold text-white"
+                                        style={{ backgroundColor: ACCENT }}
+                                    >
+                                        Upgrade and publish
+                                    </button>
+                                </div>
                             </div>
-                            <p className="text-xs text-neutral-600 mb-3">
-                                {showCreditsPaywall === "screenshot" && "You have used all daily screenshot credits. Upgrade to capture more pages and monitor more sites."}
-                                {showCreditsPaywall === "preview" && "You have used all daily preview credits. Upgrade to generate more designs and unlock one-click deploy."}
-                                {showCreditsPaywall === "deploy" && "To deploy your website live, upgrade to a paid plan to unlock one-click deploy."}
-                            </p>
-                            <ul className="mb-4 list-disc list-inside text-xs text-neutral-700 space-y-1">
-                                <li>Higher daily limits for screenshots and previews</li>
-                                <li>Unlock deploy to Vercel and live URLs</li>
-                                <li>Priority rendering and faster queues</li>
-                            </ul>
-                            <div className="flex items-center justify-end gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowCreditsPaywall(null)}
-                                    className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs text-neutral-700 hover:bg-neutral-50"
-                                >
-                                    Not now
-                                </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* deploy next-steps banner */}
+                {showDeployNextSteps && (
+                    <div className="fixed bottom-4 left-1/2 z-[9000] -translate-x-1/2 px-4">
+                        <div className="max-w-xl rounded-2xl border border-neutral-400 bg-white shadow-lg px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 text-xs sm:text-sm text-neutral-800">
+                            <div className="flex-1">
+                                <div className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-800">
+                                    <CheckCircle2 className="text-green-600"/>
+                                    <span>New deployment in progress</span>
+                                </div>
+                                <p className="mt-1 text-[11px] sm:text-xs text-neutral-600">
+                                    Watch build status, logs, and history on the
+                                    Deployments tab. Your latest deploy has just
+                                    been created.
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
                                 <button
                                     type="button"
                                     onClick={() => {
-                                        setShowCreditsPaywall(null);
-                                        router.push("/pricing");
+                                        setShowDeployNextSteps(false);
+                                        router.push("/dashboard/deployments");
                                     }}
-                                    className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white"
+                                    className="rounded-md px-3 py-1.5 text-[11px] sm:text-xs text-white"
                                     style={{ backgroundColor: ACCENT }}
                                 >
-                                    View upgrade options
+                                    Open deployments
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        setShowDeployNextSteps(false)
+                                    }
+                                    className="rounded-md border border-neutral-300 px-3 py-1.5 text-[11px] sm:text-xs text-neutral-700 hover:bg-neutral-50"
+                                >
+                                    Dismiss
                                 </button>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
-
-            {showUpgradeAfterCustomize && (
-                <div className="fixed inset-0 z-[12050]">
-                    <div className="absolute inset-0 bg-black/60" />
-                    <div className="absolute inset-0 flex items-center justify-center p-4">
-                        <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border border-neutral-200 p-6 text-sm text-neutral-800">
-                            <div className="flex items-center gap-2 mb-2">
-                                <Crown className="h-4 w-4 text-amber-500" />
-                                <h3 className="text-base font-semibold">Make this website yours</h3>
-                            </div>
-                            <p className="text-xs text-neutral-600 mb-3">
-                                You’ve customized your first preview. The next step is to turn it into
-                                a live site with your own URL and branding.
-                            </p>
-                            <ul className="mb-4 list-disc list-inside text-xs text-neutral-700 space-y-1">
-                                <li>Publish to a live URL in a few clicks</li>
-                                <li>Connect your own domain and logo</li>
-                                <li>Keep iterating without touching code</li>
-                            </ul>
-                            <div className="flex items-center justify-end gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowUpgradeAfterCustomize(false)}
-                                    className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs text-neutral-700 hover:bg-neutral-50"
-                                >
-                                    Maybe later
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setShowUpgradeAfterCustomize(false);
-                                        router.push("/pricing");
-                                    }}
-                                    className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white"
-                                    style={{ backgroundColor: ACCENT }}
-                                >
-                                    Upgrade and publish
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+                )}
+            </div>
         </main>
     );
 }
