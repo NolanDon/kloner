@@ -6,8 +6,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-    // Require authenticated user via Firebase session cookie
     const user = await verifySession(req);
+
     const {
         html,
         projectName,
@@ -26,13 +26,13 @@ export async function POST(req: NextRequest) {
     const db = getAdminDb();
     const uid = user.uid;
 
-    let renderDoc: FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData> | null = null;
+    let renderDoc:
+        | FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData>
+        | null = null;
 
-    // Start from whatever project info we already know (Deployments page)
     let vercelProjectId: string | null = bodyProjectId ?? null;
     let vercelProjectName: string | null = bodyProjectName ?? null;
 
-    // Optional: reuse project info from the render doc, overrides body if present
     if (renderId) {
         const ref = db.doc(`kloner_users/${uid}/kloner_renders/${renderId}`);
         renderDoc = await ref.get();
@@ -47,7 +47,6 @@ export async function POST(req: NextRequest) {
         vercelProjectName = (data.vercelProjectName as string) || vercelProjectName;
     }
 
-    // Load Vercel integration credentials
     const integrationRef = db.doc(`kloner_users/${uid}/integrations/vercel`);
     const integrationSnap = await integrationRef.get();
     if (!integrationSnap.exists) {
@@ -62,7 +61,6 @@ export async function POST(req: NextRequest) {
         vercelTeamId?: string;
     };
 
-    // Derive project base name
     const nameFromRender =
         vercelProjectName ||
         projectName ||
@@ -78,8 +76,8 @@ export async function POST(req: NextRequest) {
 
     const projectSlug = slugBase;
 
-    // Use a valid Vercel framework enum
-    const FRAMEWORK = "express";
+    // We want a pure static site
+    const FRAMEWORK: null = null;
 
     // ───────────────────────── create project if needed ─────────────────────────
     if (!vercelProjectId) {
@@ -97,21 +95,21 @@ export async function POST(req: NextRequest) {
             },
             body: JSON.stringify({
                 name: projectSlug,
-                framework: FRAMEWORK,
+                framework: FRAMEWORK, // static / no framework
                 buildCommand: null,
                 devCommand: null,
                 outputDirectory: null,
             }),
         });
 
-        const projectJson = await projectRes.json().catch(() => ({}));
+        const projectJson = await projectRes.json().catch(() => ({} as any));
 
         if (!projectRes.ok) {
             return NextResponse.json(
                 {
                     ok: false,
                     error:
-                        projectJson?.error?.message ||
+                        (projectJson as any)?.error?.message ||
                         "Failed to create Vercel project",
                 },
                 { status: 400 }
@@ -130,23 +128,60 @@ export async function POST(req: NextRequest) {
                 { merge: true }
             );
         }
+    } else {
+        // Project already exists (possibly created earlier as "express")
+        // Force it to static / no framework so the builder stops expecting Node/Express files.
+        const patchUrl = vercelTeamId
+            ? `https://api.vercel.com/v10/projects/${vercelProjectId}?teamId=${encodeURIComponent(
+                vercelTeamId
+            )}`
+            : `https://api.vercel.com/v10/projects/${vercelProjectId}`;
+
+        const patchRes = await fetch(patchUrl, {
+            method: "PATCH",
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                framework: FRAMEWORK,
+                buildCommand: null,
+                devCommand: null,
+                outputDirectory: null,
+                rootDirectory: null,
+            }),
+        });
+
+        // Ignore patch failure here, deployment will still attempt; but this
+        // stops old "express" configs from persisting.
+        await patchRes.text().catch(() => undefined);
     }
 
     // ─────────────────────── create deployment to project ───────────────────────
 
-    const files = [
-        {
-            file: "index.html",
-            data: Buffer.from(html, "utf8").toString("base64"),
-            encoding: "base64" as const,
-        },
-    ];
+    const indexFile = {
+        file: "index.html",
+        data: Buffer.from(html, "utf8").toString("base64"),
+        encoding: "base64" as const,
+    };
+
+    const vercelJsonFile = {
+        file: "vercel.json",
+        data: Buffer.from(
+            JSON.stringify({
+                rewrites: [{ source: "/(.*)", destination: "/index.html" }],
+            }),
+            "utf8"
+        ).toString("base64"),
+        encoding: "base64" as const,
+    };
+
+    const files = [indexFile, vercelJsonFile];
 
     const deployParams = new URLSearchParams();
     if (vercelTeamId) {
         deployParams.set("teamId", vercelTeamId);
     }
-    // Avoid auto-detection confirmation
     deployParams.set("skipAutoDetectionConfirmation", "1");
 
     const deployUrl = `https://api.vercel.com/v13/deployments?${deployParams.toString()}`;
@@ -161,6 +196,7 @@ export async function POST(req: NextRequest) {
             name: vercelProjectName,
             project: vercelProjectId,
             files,
+            // Keep this minimal for a static project
             projectSettings: {
                 framework: FRAMEWORK,
                 buildCommand: null,
@@ -170,14 +206,14 @@ export async function POST(req: NextRequest) {
         }),
     });
 
-    const deployJson = await deployRes.json().catch(() => ({}));
+    const deployJson = await deployRes.json().catch(() => ({} as any));
 
     if (!deployRes.ok) {
         return NextResponse.json(
             {
                 ok: false,
                 error:
-                    deployJson?.error?.message ||
+                    (deployJson as any)?.error?.message ||
                     "Deployment failed",
             },
             { status: 400 }
@@ -189,7 +225,6 @@ export async function POST(req: NextRequest) {
     const vercelState = vercelStateRaw.toLowerCase();
     const url = deployJson.url ? `https://${deployJson.url}` : null;
 
-    // Update render doc with last deploy info
     if (renderDoc && url) {
         await renderDoc.ref.set(
             {
@@ -200,7 +235,6 @@ export async function POST(req: NextRequest) {
         );
     }
 
-    // ─────────────────────── record deployment document ────────────────────────
     if (vercelDeploymentId) {
         const now = Date.now();
 
