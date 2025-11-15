@@ -61,20 +61,9 @@ export async function POST(req: NextRequest) {
         vercelTeamId?: string;
     };
 
-    const nameFromRender =
-        vercelProjectName ||
-        projectName ||
-        (renderDoc?.data()?.nameHint as string | undefined) ||
-        "kloner-site";
-
-    const slugBase =
-        nameFromRender
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "-")
-            .replace(/^-+|-+$/g, "")
-            .slice(0, 20) || "kloner-site";
-
-    const projectSlug = slugBase;
+    // Keep this as simple as possible: either use an explicit projectName
+    // or just "kloner-site". Do NOT base it on reference domains / nameHint.
+    const projectBaseName = projectName || "kloner-site";
 
     // We want a pure static site
     const FRAMEWORK: null = null;
@@ -94,7 +83,8 @@ export async function POST(req: NextRequest) {
                 "Content-Type": "application/json",
             },
             body: JSON.stringify({
-                name: projectSlug,
+                // Simple, stable name – Vercel will handle slug/URL
+                name: projectBaseName,
                 framework: FRAMEWORK, // static / no framework
                 buildCommand: null,
                 devCommand: null,
@@ -152,8 +142,7 @@ export async function POST(req: NextRequest) {
             }),
         });
 
-        // Ignore patch failure here, deployment will still attempt; but this
-        // stops old "express" configs from persisting.
+        // Ignore patch failure here; deployment will still attempt
         await patchRes.text().catch(() => undefined);
     }
 
@@ -193,10 +182,9 @@ export async function POST(req: NextRequest) {
             "Content-Type": "application/json",
         },
         body: JSON.stringify({
-            name: vercelProjectName,
+            // Let Vercel derive deployment name from the project.
             project: vercelProjectId,
             files,
-            // Keep this minimal for a static project
             projectSettings: {
                 framework: FRAMEWORK,
                 buildCommand: null,
