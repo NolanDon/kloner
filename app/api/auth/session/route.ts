@@ -6,7 +6,6 @@ const COOKIE = "__session";
 const MAX_AGE_MS = 5 * 24 * 60 * 60 * 1000; // 5 days
 
 export async function POST(req: NextRequest) {
-    // enforce CSRF for non-GET methods
     try {
         assertCsrf(req);
     } catch (err: any) {
@@ -21,8 +20,6 @@ export async function POST(req: NextRequest) {
     }
 
     const auth = getAdminAuth();
-
-    // Validate ID token first (revocation check)
     await auth.verifyIdToken(idToken, true);
 
     const cookie = await auth.createSessionCookie(idToken, {
@@ -33,7 +30,7 @@ export async function POST(req: NextRequest) {
 
     res.cookies.set(COOKIE, cookie, {
         httpOnly: true,
-        secure: true,
+        secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
         path: "/",
         maxAge: Math.floor(MAX_AGE_MS / 1000),
@@ -46,7 +43,7 @@ export async function DELETE() {
     const res = NextResponse.json({ ok: true }, { status: 200 });
     res.cookies.set(COOKIE, "", {
         httpOnly: true,
-        secure: true,
+        secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
         path: "/",
         maxAge: 0,

@@ -5,13 +5,17 @@ import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import crypto from "node:crypto";
 
+/* ───────── Shared constants ───────── */
+
+export const CSRF_HEADER = "x-csrf";
+export const CSRF_COOKIE = "csrf";
+export const SESSION_COOKIE_NAME = "__session";
+
+/* ───────── Helpers ───────── */
+
 export function bad(status: number, error: string) {
     return NextResponse.json({ error }, { status });
 }
-
-const CSRF_HEADER = "x-csrf";
-const CSRF_COOKIE = "csrf";
-const SESSION_COOKIE_NAME = "__session";
 
 function safeEqual(a: string, b: string) {
     const A = Buffer.from(a, "utf8");
@@ -19,6 +23,13 @@ function safeEqual(a: string, b: string) {
     return A.length === B.length && crypto.timingSafeEqual(A, B);
 }
 
+/**
+ * Enforce CSRF for all non-idempotent methods.
+ * Expects the CSRF token in:
+ *   - cookie:  `csrf`
+ *   - header:  `x-csrf`
+ * The `/api/auth/csrf` route must NOT call this (it issues the token).
+ */
 export function assertCsrf(req: NextRequest) {
     const m = req.method.toUpperCase();
     if (m === "GET" || m === "HEAD" || m === "OPTIONS") return;
@@ -30,6 +41,8 @@ export function assertCsrf(req: NextRequest) {
         throw Object.assign(new Error("Forbidden (csrf)"), { status: 403 });
     }
 }
+
+/* ───────── firebase-admin bootstrap ───────── */
 
 /**
  * Single source of truth for firebase-admin initialization.

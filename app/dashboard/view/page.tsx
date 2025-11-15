@@ -1900,7 +1900,7 @@ export default function PreviewPage(): JSX.Element {
                                                     disabled={
                                                         disableOpen || isDeleting
                                                     }
-                                                    className="inline-flex items-center gap-2 rounded-md border border-neutral-400 px-3 py-1 text-xs font-semibold text-neutral-800 shadow-sm"
+                                                    className="inline-flex items-center gap-2 rounded-md border border-neutral-400 px-3 py-1 text-xs text-neutral-800 shadow-sm"
                                                     title={
                                                         isQueued
                                                             ? "Still building preview"
@@ -2553,7 +2553,7 @@ export default function PreviewPage(): JSX.Element {
                                 {step4Done ? (
                                     <>
                                         <span>
-                                            — Your render has been deployed. Modify or modify your website by clicking{" "}
+                                            — Your render has been deployed. Modify your website by clicking{" "}
                                         </span>
 
                                         <button

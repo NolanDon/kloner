@@ -3,16 +3,20 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import crypto from "node:crypto";
 
-// must match CSRF_COOKIE in _lib/auth.ts ("csrf")
 const CSRF_COOKIE = "csrf";
 
 export async function POST() {
-    const token = crypto.randomBytes(32).toString("hex");
+    const jar = cookies();
+    let token = jar.get(CSRF_COOKIE)?.value;
 
-    cookies().set(CSRF_COOKIE, token, {
+    if (!token) {
+        token = crypto.randomBytes(32).toString("hex");
+    }
+
+    jar.set(CSRF_COOKIE, token, {
         httpOnly: true,
         sameSite: "lax",
-        secure: true,
+        secure: process.env.NODE_ENV === "production",
         path: "/",
         maxAge: 60 * 60 * 24, // 1 day
     });
