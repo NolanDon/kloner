@@ -92,7 +92,7 @@ export default function PreviewDashboard({
         highlightMs: timings.highlightMs ?? 400,
         deployingMs: timings.deployingMs ?? 700,
         successMs: timings.successMs ?? 700,
-        cooldownMs: timings.cooldownMs ?? 1000,
+        cooldownMs: timings.cooldownMs ?? 300,
     };
 
     const [phase, setPhase] = useState<Phase>('idle');
