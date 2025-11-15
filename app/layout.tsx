@@ -64,12 +64,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <head>
-        <meta
-          httpEquiv="Content-Security-Policy"
-          content="frame-src 'self' https://accounts.google.com https://*.google.com https://*.gstatic.com https://tracksitechanges-5743f.firebaseapp.com;"
-        />
-      </head>
+      <head />
       <body className="bg-white scroll-smooth snap-y snap-mandatory">
         <AuthProviderServer>{children}</AuthProviderServer>
       </body>
