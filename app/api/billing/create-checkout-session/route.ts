@@ -18,25 +18,27 @@ export async function POST(req: NextRequest) {
         const { plan } = body as { plan?: "pro" | "agency" };
 
         if (!plan) {
-            return NextResponse.json(
-                { error: "Missing plan" },
-                { status: 400 }
-            );
+            return NextResponse.json({ error: "Missing plan" }, { status: 400 });
         }
+
+        const isProd = process.env.NODE_ENV === "production";
 
         const priceId =
             plan === "pro"
-                ? process.env.STRIPE_PRICE_PRO
-                : process.env.STRIPE_PRICE_AGENCY;
+                ? isProd
+                    ? process.env.STRIPE_PRICE_PRO_PRO // live Pro
+                    : process.env.STRIPE_PRICE_PRO_TEST // test Pro
+                : isProd
+                    ? process.env.STRIPE_PRICE_PRO_AGENCY // live Agency
+                    : process.env.STRIPE_PRICE_AGENCY_TEST; // test Agency
 
         if (!priceId) {
             return NextResponse.json(
-                { error: "Stripe price not configured" },
+                { error: "Stripe price not configured for current environment" },
                 { status: 500 }
             );
         }
 
-        // get or create Stripe customer
         const userRef = db.collection("kloner_users").doc(uid);
         const snap = await userRef.get();
         const userData = snap.exists ? (snap.data() as any) : {};
@@ -50,22 +52,30 @@ export async function POST(req: NextRequest) {
                 email,
                 metadata: { firebaseUid: uid },
             });
+
             customerId = customer.id;
+
             await userRef.set(
                 {
                     stripeCustomerId: customerId,
                 },
                 { merge: true }
             );
+
             await linkCustomerToUid(customerId, uid);
         }
 
-        const successUrl =
-            process.env.STRIPE_SUCCESS_URL ??
-            "https://kloner.app/dashboard?billing=success";
-        const cancelUrl =
-            process.env.STRIPE_CANCEL_URL ??
-            "https://kloner.app/price?billing=cancelled";
+        const successUrl = isProd
+            ? process.env.STRIPE_SUCCESS_URL_PROD ||
+            "https://kloner.app/dashboard?billing=success"
+            : process.env.STRIPE_SUCCESS_URL_TEST ||
+            "http://localhost:3000/dashboard?billing=success";
+
+        const cancelUrl = isProd
+            ? process.env.STRIPE_CANCEL_URL_PROD ||
+            "https://kloner.app/price?billing=cancelled"
+            : process.env.STRIPE_CANCEL_URL_TEST ||
+            "http://localhost:3000/price?billing=cancelled";
 
         const session = await stripe.checkout.sessions.create({
             mode: "subscription",

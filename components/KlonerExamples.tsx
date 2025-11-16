@@ -5,7 +5,6 @@ import { useEffect, useState, useMemo } from "react";
 import Image from "next/image";
 import logo from "@/public/favicon.ico";
 
-// replace your existing h2 with:
 type Slide = {
     src: string;
     alt?: string;
@@ -71,11 +70,10 @@ export default function DeckImageCarousel({
     const layout = useMemo(() => {
         const len = data.length;
         return data.map((_, idx) => {
-            // normalize distance on circular track to a signed delta (-floor(len/2) .. +floor(len/2))
             let delta = (idx - activeIndex + len) % len;
             if (delta > len / 2) delta -= len;
 
-            // clamp to at most 2 cards to each side for visuals
+            // completely hidden cards (keep same "state" but we won't render them)
             if (delta < -2 || delta > 2) {
                 return {
                     translateX: 0,
@@ -99,11 +97,9 @@ export default function DeckImageCarousel({
                 };
             }
 
-            // side cards
             const sign = delta > 0 ? 1 : -1;
             const abs = Math.abs(delta);
 
-            // position and depth falloff
             const translateX = sign * (abs === 1 ? 40 : 70); // px
             const translateY = abs === 1 ? 10 : 24;
             const scale = abs === 1 ? 0.96 : 0.92;
@@ -127,10 +123,6 @@ export default function DeckImageCarousel({
             <div className="mx-auto flex w-full max-w-6xl flex-col items-center px-4 sm:px-6 lg:px-8">
                 <div className="mb-6 flex w-full items-center justify-between gap-4">
                     <div className="min-w-0">
-                        {/* <p className="text-[11px] uppercase tracking-[0.3em] text-neutral-500">
-                            LIVE
-                        </p> */}
-
                         <h2 className="mt-1 flex items-center justify-center gap-2 text-lg text-neutral-600">
                             <span className="relative inline-block h-8 w-8">
                                 <Image
@@ -144,7 +136,6 @@ export default function DeckImageCarousel({
                                 Built With Kloner
                             </span>
                         </h2>
-
                     </div>
                     <div className="hidden items-center gap-2 sm:flex">
                         {data.map((_, idx) => {
@@ -176,6 +167,10 @@ export default function DeckImageCarousel({
 
                         {data.map((item, idx) => {
                             const state = layout[idx];
+                            if (!state) return null;
+
+                            // do not render fully hidden cards (same visual, less work)
+                            if (state.opacity === 0) return null;
 
                             return (
                                 <button
@@ -185,9 +180,11 @@ export default function DeckImageCarousel({
                                     className={[
                                         "absolute inset-0 mx-auto flex h-full max-w-[96%] items-stretch justify-center",
                                         "rounded-[28px] border border-white/6 bg-gradient-to-br from-neutral-900 via-neutral-950 to-black",
-                                        "shadow-[0_26px_80px_rgba(0,0,0,0.65)]",
-                                        "transition-all duration-[1300ms]",
-                                        "ease-[cubic-bezier(0.25,0.8,0.3,1)] will-change-transform will-change-opacity",
+                                        // slightly lighter / tighter shadow to reduce GPU load
+                                        "shadow-[0_24px_60px_rgba(0,0,0,0.5)]",
+                                        // only animate transform + opacity (keeps motion identical, avoids animating shadow/filter)
+                                        "transition-[transform,opacity] duration-[1300ms]",
+                                        "ease-[cubic-bezier(0.25,0.8,0.3,1)] will-change-transform",
                                         "overflow-hidden",
                                         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-900",
                                     ].join(" ")}
@@ -195,8 +192,11 @@ export default function DeckImageCarousel({
                                         transform: `translate3d(${state.translateX}px, ${state.translateY}px, 0) scale(${state.scale})`,
                                         opacity: state.opacity,
                                         zIndex: state.zIndex,
-                                        filter: state.blur ? `blur(${state.blur}px)` : "none",
-                                        pointerEvents: state.opacity < 0.15 ? "none" : "auto",
+                                        // drop runtime filter animation (major perf win), but keep deck motion identical
+                                        // if you really want the blur back, you can re-add:
+                                        // filter: state.blur ? `blur(${state.blur}px)` : "none",
+                                        pointerEvents:
+                                            state.opacity < 0.15 ? "none" : "auto",
                                     }}
                                 >
                                     <div className="flex w-full flex-col">
@@ -205,7 +205,7 @@ export default function DeckImageCarousel({
                                                 src={item.src}
                                                 alt={item.alt || item.label || "Showcase image"}
                                                 fill
-                                                priority={idx === activeIndex}
+                                                priority={idx === 0}
                                                 className="object-cover object-top"
                                             />
                                             <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/45 via-transparent to-black/80" />

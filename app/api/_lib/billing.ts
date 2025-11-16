@@ -2,7 +2,8 @@
 import admin from "firebase-admin";
 import { stripe } from "@/lib/stripe";
 
-type Tier = "free" | "pro" | "agency";
+export type UserTier = "free" | "pro" | "agency";
+export type Tier = UserTier;
 
 if (!admin.apps.length) {
     const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
@@ -23,18 +24,28 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
-/** Map Stripe price ID to internal tier */
-export function mapPriceToTier(priceId: string | null | undefined): Tier {
+/** Map Stripe price IDs (test + live) to an internal tier string. */
+export function mapPriceToTier(priceId: string | null | undefined): UserTier {
     if (!priceId) return "free";
 
-    if (priceId === process.env.STRIPE_PRICE_PRO) return "pro";
-    if (priceId === process.env.STRIPE_PRICE_AGENCY) return "agency";
+    const proIds = [
+        process.env.STRIPE_PRICE_PRO_TEST,
+        process.env.STRIPE_PRICE_PRO_PRO,
+    ].filter(Boolean) as string[];
 
-    // default fallback if you later add more plans
+    const agencyIds = [
+        process.env.STRIPE_PRICE_AGENCY_TEST,
+        process.env.STRIPE_PRICE_PRO_AGENCY,
+    ].filter(Boolean) as string[];
+
+    if (proIds.includes(priceId)) return "pro";
+    if (agencyIds.includes(priceId)) return "agency";
+
+    console.warn("mapPriceToTier: unknown price id", priceId);
     return "free";
 }
 
-/** Update Firestore + customClaims.tier in a single place */
+/** Update Firestore + customClaims in a single place */
 export async function setUserTierFromStripe(
     uid: string,
     tier: Tier,
@@ -49,7 +60,6 @@ export async function setUserTierFromStripe(
 ): Promise<void> {
     const userRef = db.collection("kloner_users").doc(uid);
 
-    // merge tier + billing fields into user doc
     const payload: Record<string, unknown> = {
         tier,
         tierSource: "stripe",
@@ -73,7 +83,13 @@ export async function setUserTierFromStripe(
     // update custom claims without nuking others
     const user = await admin.auth().getUser(uid);
     const existingClaims = user.customClaims || {};
-    const newClaims = { ...existingClaims, tier };
+
+    // keep both keys to stay compatible with existing client code
+    const newClaims = {
+        ...existingClaims,
+        tier,
+        userTier: tier,
+    };
 
     await admin.auth().setCustomUserClaims(uid, newClaims);
 }
@@ -101,7 +117,6 @@ export async function linkCustomerToUid(customerId: string, uid: string) {
     );
 }
 
-/** Fetch latest subscription from Stripe for a customer, derive tier, persist */
 export async function refreshTierFromStripeForUid(uid: string): Promise<Tier> {
     const userRef = db.collection("kloner_users").doc(uid);
     const snap = await userRef.get();
@@ -109,7 +124,6 @@ export async function refreshTierFromStripeForUid(uid: string): Promise<Tier> {
     const customerId: string | undefined = data.stripeCustomerId;
 
     if (!customerId) {
-        // no Stripe customer yet -> free tier
         await setUserTierFromStripe(uid, "free");
         return "free";
     }
@@ -127,20 +141,34 @@ export async function refreshTierFromStripeForUid(uid: string): Promise<Tier> {
         return "free";
     }
 
-    const sub = subs.data[0];
-    const firstItem = sub.items.data[0];
-    const priceId = typeof firstItem?.price?.id === "string" ? firstItem.price.id : null;
+    // Cast to any for snake_case Stripe fields that TS doesn't know about
+    const subAny = subs.data[0] as any;
+
+    const firstItem = subAny.items?.data?.[0];
+    const priceId =
+        typeof firstItem?.price?.id === "string" ? firstItem.price.id : null;
 
     const tier = mapPriceToTier(priceId);
 
+    const currentPeriodEnd: number | undefined =
+        typeof subAny.current_period_end === "number"
+            ? subAny.current_period_end
+            : undefined;
+
+    const cancelAtPeriodEnd: boolean | null =
+        typeof subAny.cancel_at_period_end === "boolean"
+            ? subAny.cancel_at_period_end
+            : null;
+
     await setUserTierFromStripe(uid, tier, {
         customerId,
-        subscriptionId: sub.id,
+        subscriptionId: subAny.id as string,
         priceId,
-        status: sub.status,
-        currentPeriodEnd: sub.current_period_end,
-        cancelAtPeriodEnd: sub.cancel_at_period_end,
+        status: subAny.status as string,
+        currentPeriodEnd,
+        cancelAtPeriodEnd,
     });
 
     return tier;
 }
+

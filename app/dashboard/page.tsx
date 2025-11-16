@@ -1,8 +1,9 @@
-'use client';
+// app/dashboard/page.tsx (full component with billing notifications wired in)
+"use client";
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import {
     addDoc,
     collection,
@@ -17,36 +18,30 @@ import {
     where,
     writeBatch,
     type Unsubscribe,
-} from 'firebase/firestore';
+} from "firebase/firestore";
 import {
     ref as sRef,
     listAll,
     deleteObject,
     getDownloadURL,
     type ListResult,
-} from 'firebase/storage';
-import { auth, db, storage } from '@/lib/firebase';
-import { CheckCircle2, Clock3, AlertTriangle, Loader2 } from 'lucide-react';
+} from "firebase/storage";
+import { auth, db, storage } from "@/lib/firebase";
+import { CheckCircle2, Clock3, AlertTriangle, Loader2 } from "lucide-react";
 
-const ACCENT = '#f55f2a';
+const ACCENT = "#f55f2a";
 
 type UrlStatusRaw =
-    | 'queued'
-    | 'uploaded'
-    | 'done'
-    | 'ready'
-    | 'in_progress'
-    | 'error'
-    | 'stale'
-    | 'unknown';
+    | "queued"
+    | "uploaded"
+    | "done"
+    | "ready"
+    | "in_progress"
+    | "error"
+    | "stale"
+    | "unknown";
 
-type UrlStatusUi =
-    | 'queued'
-    | 'processing'
-    | 'ready'
-    | 'stale'
-    | 'error'
-    | 'unknown';
+type UrlStatusUi = "queued" | "processing" | "ready" | "stale" | "error" | "unknown";
 
 interface UrlDoc {
     url: string;
@@ -76,7 +71,7 @@ interface UrlRowProps {
 function isHttpUrl(s: string): s is string {
     try {
         const u = new URL(s);
-        return u.protocol === 'http:' || u.protocol === 'https:';
+        return u.protocol === "http:" || u.protocol === "https:";
     } catch {
         return false;
     }
@@ -84,7 +79,7 @@ function isHttpUrl(s: string): s is string {
 function normUrl(s: string): string {
     try {
         const u = new URL(s);
-        u.hash = '';
+        u.hash = "";
         return u.toString();
     } catch {
         return s.trim();
@@ -104,30 +99,30 @@ function normalizeUrlStatus(
     shotCount?: number,
     updatedAt?: any
 ): UrlStatusUi {
-    const s = (raw || 'unknown').toLowerCase() as UrlStatusRaw | UrlStatusUi;
+    const s = (raw || "unknown").toLowerCase() as UrlStatusRaw | UrlStatusUi;
 
-    if (s === 'stale') return 'stale';
-    if (s === 'error') return 'error';
-    if (s === 'uploaded' || s === 'done' || s === 'ready') return 'ready';
-    if (s === 'in_progress' || s === 'processing') return 'processing';
+    if (s === "stale") return "stale";
+    if (s === "error") return "error";
+    if (s === "uploaded" || s === "done" || s === "ready") return "ready";
+    if (s === "in_progress" || s === "processing") return "processing";
 
-    if (s === 'queued') {
+    if (s === "queued") {
         const STALE_MIN_MS = 6 * 60 * 1000;
         const ts =
-            typeof updatedAt?.toMillis === 'function'
+            typeof updatedAt?.toMillis === "function"
                 ? updatedAt.toMillis()
-                : Date.parse(updatedAt || '');
-        if (Number.isFinite(ts) && Date.now() - ts > STALE_MIN_MS) return 'stale';
-        return (shotCount || 0) > 0 ? 'processing' : 'queued';
+                : Date.parse(updatedAt || "");
+        if (Number.isFinite(ts) && Date.now() - ts > STALE_MIN_MS) return "stale";
+        return (shotCount || 0) > 0 ? "processing" : "queued";
     }
-    return 'unknown';
+    return "unknown";
 }
 
 function StatusBadge({ status }: { status: UrlStatusUi }) {
     const base =
-        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium';
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium";
     switch (status) {
-        case 'ready':
+        case "ready":
             return (
                 <span
                     className={`${base} bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200`}
@@ -137,7 +132,7 @@ function StatusBadge({ status }: { status: UrlStatusUi }) {
                     Ready
                 </span>
             );
-        case 'processing':
+        case "processing":
             return (
                 <span
                     className={`${base} bg-amber-50 text-amber-700 ring-1 ring-amber-200`}
@@ -147,7 +142,7 @@ function StatusBadge({ status }: { status: UrlStatusUi }) {
                     Processing
                 </span>
             );
-        case 'queued':
+        case "queued":
             return (
                 <span
                     className={`${base} bg-sky-50 text-sky-700 ring-1 ring-sky-200`}
@@ -157,7 +152,7 @@ function StatusBadge({ status }: { status: UrlStatusUi }) {
                     Queued
                 </span>
             );
-        case 'stale':
+        case "stale":
             return (
                 <span
                     className={`${base} bg-rose-50 text-rose-700 ring-1 ring-rose-200`}
@@ -166,7 +161,7 @@ function StatusBadge({ status }: { status: UrlStatusUi }) {
                     Stale
                 </span>
             );
-        case 'error':
+        case "error":
             return (
                 <span
                     className={`${base} bg-rose-50 text-rose-700 ring-1 ring-rose-200`}
@@ -201,13 +196,13 @@ function pickLatestPath(paths: string[]): string | null {
 /* shared add+start */
 async function addAndStart(uid: string, rawUrl: string) {
     const cleaned = normUrl(rawUrl);
-    if (!isHttpUrl(cleaned)) throw new Error('Invalid URL.');
+    if (!isHttpUrl(cleaned)) throw new Error("Invalid URL.");
     const urlHash = hash64(cleaned);
 
-    const col = collection(db, 'kloner_users', uid, 'kloner_urls');
+    const col = collection(db, "kloner_users", uid, "kloner_urls");
     const [byHash, byUrl] = await Promise.all([
-        getDocs(query(col, where('urlHash', '==', urlHash))),
-        getDocs(query(col, where('url', '==', cleaned))),
+        getDocs(query(col, where("urlHash", "==", urlHash))),
+        getDocs(query(col, where("url", "==", cleaned))),
     ]);
     const exists = !byHash.empty || !byUrl.empty;
 
@@ -217,40 +212,40 @@ async function addAndStart(uid: string, rawUrl: string) {
             urlHash,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
-            status: 'queued',
+            status: "queued",
             screenshotsPrefix: `screenshots/${uid}/${urlHash}`,
             screenshotPaths: [],
         } as UrlDoc);
     }
 
-    const r = await fetch('/api/private/generate', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
+    const r = await fetch("/api/private/generate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ url: cleaned }),
     });
     if (!r.ok) {
         const j: any = await r.json().catch(() => ({}));
-        throw new Error(j?.error || 'Failed to queue screenshot job.');
+        throw new Error(j?.error || "Failed to queue screenshot job.");
     }
     return cleaned;
 }
 
 /* form */
 function UrlForm({ uid, onAdded }: UrlFormProps) {
-    const [url, setUrl] = useState<string>('');
-    const [err, setErr] = useState<string>('');
+    const [url, setUrl] = useState<string>("");
+    const [err, setErr] = useState<string>("");
     const [busy, setBusy] = useState<boolean>(false);
 
     async function handleAdd(e: React.FormEvent) {
         e.preventDefault();
-        setErr('');
+        setErr("");
         try {
             setBusy(true);
             await addAndStart(uid, url);
             onAdded?.();
-            setUrl('');
+            setUrl("");
         } catch (e: any) {
-            setErr(e?.message || 'Could not start capture.');
+            setErr(e?.message || "Could not start capture.");
         } finally {
             setBusy(false);
         }
@@ -269,9 +264,9 @@ function UrlForm({ uid, onAdded }: UrlFormProps) {
                     onChange={(e) => setUrl(e.target.value)}
                     className="flex-1 rounded-xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:ring-4"
                     style={{
-                        boxShadow: '0 0 0 0 rgba(0,0,0,0)',
+                        boxShadow: "0 0 0 0 rgba(0,0,0,0)",
                         caretColor: ACCENT,
-                        WebkitTapHighlightColor: 'transparent',
+                        WebkitTapHighlightColor: "transparent",
                     }}
                 />
                 <button
@@ -280,7 +275,7 @@ function UrlForm({ uid, onAdded }: UrlFormProps) {
                     className="inline-flex items-center justify-center rounded-xl px-5 py-3 text-sm font-medium text-white shadow-sm disabled:opacity-60"
                     style={{ backgroundColor: ACCENT }}
                 >
-                    {busy ? 'Saving…' : 'Add URL'}
+                    {busy ? "Saving…" : "Add URL"}
                 </button>
             </div>
             {err ? <p className="mt-2 text-sm text-red-600">{err}</p> : null}
@@ -317,7 +312,7 @@ function UrlRowSkeleton() {
 /* row */
 function UrlRow({ uid, r }: UrlRowProps) {
     const [busy, setBusy] = useState<boolean>(false);
-    const [err, setErr] = useState<string>('');
+    const [err, setErr] = useState<string>("");
 
     const uiStatus = normalizeUrlStatus(
         r.status as UrlStatusRaw | UrlStatusUi | undefined,
@@ -325,7 +320,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
         r.updatedAt
     );
 
-    const locked = uiStatus === 'processing';
+    const locked = uiStatus === "processing";
 
     const [thumbUrl, setThumbUrl] = useState<string | null>(null);
     useEffect(() => {
@@ -363,9 +358,9 @@ function UrlRow({ uid, r }: UrlRowProps) {
     async function handleRescanClick() {
         if (busy || locked) return;
         const ok =
-            typeof window !== 'undefined'
+            typeof window !== "undefined"
                 ? window.confirm(
-                    'Rescan this URL now? This will queue a new capture and may overwrite the latest screenshot.'
+                    "Rescan this URL now? This will queue a new capture and may overwrite the latest screenshot."
                 )
                 : true;
         if (!ok) return;
@@ -374,36 +369,36 @@ function UrlRow({ uid, r }: UrlRowProps) {
 
     async function rescan() {
         if (locked) return;
-        setErr('');
+        setErr("");
         setBusy(true);
         try {
-            await updateDoc(doc(db, 'kloner_users', uid, 'kloner_urls', r.id), {
-                status: 'queued',
+            await updateDoc(doc(db, "kloner_users", uid, "kloner_urls", r.id), {
+                status: "queued",
                 updatedAt: serverTimestamp(),
                 lastError: null,
                 retry: null,
             } as any);
-            const res = await fetch('/api/private/generate', {
-                method: 'POST',
-                headers: { 'content-type': 'application/json' },
+            const res = await fetch("/api/private/generate", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
                 body: JSON.stringify({ url: r.url }),
             });
             if (!res.ok) {
                 const j: any = await res.json().catch(() => ({}));
-                setErr(j?.error || 'Failed to start capture.');
-                await updateDoc(doc(db, 'kloner_users', uid, 'kloner_urls', r.id), {
-                    status: 'stale',
+                setErr(j?.error || "Failed to start capture.");
+                await updateDoc(doc(db, "kloner_users", uid, "kloner_urls", r.id), {
+                    status: "stale",
                     updatedAt: serverTimestamp(),
-                    lastError: j?.error || 'queue_failed',
+                    lastError: j?.error || "queue_failed",
                     retry: true,
                 } as any);
             }
         } catch (e: any) {
-            setErr(e?.message || 'Rescan failed.');
-            await updateDoc(doc(db, 'kloner_users', uid, 'kloner_urls', r.id), {
-                status: 'stale',
+            setErr(e?.message || "Rescan failed.");
+            await updateDoc(doc(db, "kloner_users", uid, "kloner_urls", r.id), {
+                status: "stale",
                 updatedAt: serverTimestamp(),
-                lastError: e?.message || 'rescan_exception',
+                lastError: e?.message || "rescan_exception",
                 retry: true,
             } as any);
         } finally {
@@ -413,7 +408,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
 
     async function remove() {
         if (locked) return;
-        setErr('');
+        setErr("");
         setBusy(true);
         try {
             const urlHash = r.urlHash || hash64(r.url);
@@ -443,9 +438,14 @@ function UrlRow({ uid, r }: UrlRowProps) {
                 }
             }
 
-            const rendersCol = collection(db, 'kloner_users', uid, 'kloner_renders');
-            const qHash = query(rendersCol, where('urlHash', '==', urlHash));
-            const qUrl = query(rendersCol, where('url', '==', r.url));
+            const rendersCol = collection(
+                db,
+                "kloner_users",
+                uid,
+                "kloner_renders"
+            );
+            const qHash = query(rendersCol, where("urlHash", "==", urlHash));
+            const qUrl = query(rendersCol, where("url", "==", r.url));
             const [snapHash, snapUrl] = await Promise.all([
                 getDocs(qHash),
                 getDocs(qUrl),
@@ -456,13 +456,15 @@ function UrlRow({ uid, r }: UrlRowProps) {
             if (toDeleteIds.size > 0) {
                 const batch = writeBatch(db);
                 for (const id of toDeleteIds)
-                    batch.delete(doc(db, 'kloner_users', uid, 'kloner_renders', id));
+                    batch.delete(
+                        doc(db, "kloner_users", uid, "kloner_renders", id)
+                    );
                 await batch.commit();
             }
 
-            await deleteDoc(doc(db, 'kloner_users', uid, 'kloner_urls', r.id));
+            await deleteDoc(doc(db, "kloner_users", uid, "kloner_urls", r.id));
         } catch (e: any) {
-            setErr(e?.message || 'Delete failed.');
+            setErr(e?.message || "Delete failed.");
         } finally {
             setBusy(false);
         }
@@ -470,24 +472,24 @@ function UrlRow({ uid, r }: UrlRowProps) {
 
     return (
         <div
-            className={`rounded-xl border border-neutral-200 bg-white p-4 sm:p-5 shadow-sm relative ${locked ? 'opacity-60' : ''
+            className={`rounded-xl border border-neutral-200 bg-white p-4 sm:p-5 shadow-sm relative ${locked ? "opacity-60" : ""
                 }`}
             aria-busy={locked}
             aria-disabled={locked}
         >
             <div className="flex flex-col sm:flex-row gap-4 sm:gap-5">
                 {thumbUrl ? (
-                    <div className="h-16 w-full sm:w-20 rounded-lg overflow-hidden border border-neutral-200 bg-neutral-100 shrink-0 sm:h-16">
+                    <div className="h-12 w-12 rounded-lg overflow-hidden border border-neutral-200 bg-neutral-100 shrink-0">
                         <img
                             src={thumbUrl}
                             alt=""
-                            className="h-full w-full object-cover"
+                            className="object-cover"
                             draggable={false}
                         />
                     </div>
                 ) : (
                     <div
-                        className="h-10 w-10 rounded-lg grid place-items-center text-white shrink-0"
+                        className="h-12 w-12 rounded-lg grid place-items-center text-white shrink-0"
                         style={{ backgroundColor: ACCENT }}
                     >
                         {(r.urlHash ?? hash64(r.url)).slice(0, 2).toUpperCase()}
@@ -498,11 +500,11 @@ function UrlRow({ uid, r }: UrlRowProps) {
                     <div className="flex flex-wrap items-center gap-2 justify-between">
                         <a
                             href={locked ? undefined : r.url}
-                            target={locked ? undefined : '_blank'}
-                            rel={locked ? undefined : 'noreferrer'}
+                            target={locked ? undefined : "_blank"}
+                            rel={locked ? undefined : "noreferrer"}
                             className={`truncate max-w-full sm:max-w-[70%] text-sm ${locked
-                                    ? 'text-neutral-400 pointer-events-none'
-                                    : 'text-neutral-800 hover:underline'
+                                    ? "text-neutral-400 pointer-events-none"
+                                    : "text-neutral-800 hover:underline"
                                 }`}
                             aria-disabled={locked}
                             tabIndex={locked ? -1 : 0}
@@ -512,7 +514,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
                         <StatusBadge status={uiStatus} />
                     </div>
 
-                    {r.lastError && (uiStatus === 'stale' || uiStatus === 'error') ? (
+                    {r.lastError && (uiStatus === "stale" || uiStatus === "error") ? (
                         <div className="text-xs text-rose-600">
                             Last error: {r.lastError}
                         </div>
@@ -526,10 +528,10 @@ function UrlRow({ uid, r }: UrlRowProps) {
                             className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
                         >
                             {busy
-                                ? 'Working…'
-                                : uiStatus === 'stale'
-                                    ? 'Retry'
-                                    : 'Rescan'}
+                                ? "Working…"
+                                : uiStatus === "stale"
+                                    ? "Retry"
+                                    : "Rescan"}
                         </button>
 
                         <a
@@ -539,8 +541,8 @@ function UrlRow({ uid, r }: UrlRowProps) {
                                     : `/dashboard/view?u=${encodeURIComponent(r.url)}`
                             }
                             className={`rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs ${locked
-                                    ? 'text-neutral-400 pointer-events-none'
-                                    : 'text-neutral-700 hover:bg-neutral-50'
+                                    ? "text-neutral-400 pointer-events-none"
+                                    : "text-neutral-700 hover:bg-neutral-50"
                                 }`}
                             aria-disabled={locked}
                             tabIndex={locked ? -1 : 0}
@@ -573,20 +575,28 @@ export default function DashboardPage() {
     const [rows, setRows] = useState<Array<UrlDoc & { id: string }>>([]);
     const [rowsLoading, setRowsLoading] = useState<boolean>(true);
     const unsubRef = useRef<Unsubscribe | null>(null);
-    const [bootstrapErr, setBootstrapErr] = useState<string>('');
+    const [bootstrapErr, setBootstrapErr] = useState<string>("");
+
+    const [billingMsg, setBillingMsg] = useState<
+        | null
+        | {
+            type: "success" | "cancelled";
+            text: string;
+        }
+    >(null);
 
     const addOnceRef = useRef(false);
 
     useEffect(() => {
         const off = onAuthStateChanged(auth, (u) => {
             if (!u) {
-                router.replace('/login?next=/dashboard');
+                router.replace("/login?next=/dashboard");
                 return;
             }
             setUser(u);
             const qy = query(
-                collection(db, 'kloner_users', u.uid, 'kloner_urls'),
-                orderBy('createdAt', 'desc')
+                collection(db, "kloner_users", u.uid, "kloner_urls"),
+                orderBy("createdAt", "desc")
             );
             unsubRef.current?.();
             unsubRef.current = onSnapshot(
@@ -600,7 +610,7 @@ export default function DashboardPage() {
                     setRowsLoading(false);
                 },
                 (err) => {
-                    setBootstrapErr(err.message || 'Failed to load URLs.');
+                    setBootstrapErr(err.message || "Failed to load URLs.");
                     setRowsLoading(false);
                 }
             );
@@ -611,18 +621,42 @@ export default function DashboardPage() {
         };
     }, [router]);
 
+    // Handle billing=success / billing=cancelled notifications
+    useEffect(() => {
+        const status = search.get("billing");
+        if (!status) return;
+
+        if (status === "success") {
+            setBillingMsg({
+                type: "success",
+                text: "Billing updated. Your subscription is now active. Limits may take a few seconds to refresh.",
+            });
+        } else if (status === "cancelled") {
+            setBillingMsg({
+                type: "cancelled",
+                text: "Checkout cancelled. Your existing plan is unchanged.",
+            });
+        }
+
+        if (typeof window !== "undefined") {
+            const url = new URL(window.location.href);
+            url.searchParams.delete("billing");
+            router.replace(url.pathname + url.search);
+        }
+    }, [search, router]);
+
     useEffect(() => {
         const u = user;
         if (!u) return;
         if (addOnceRef.current) return;
 
-        const paramUrl = search.get('u');
+        const paramUrl = search.get("u");
         if (!paramUrl) return;
 
         const cleaned = normUrl(paramUrl);
         const key = `kloner:addOnce:${u.uid}:${hash64(cleaned)}`;
-        if (typeof window !== 'undefined' && localStorage.getItem(key)) {
-            router.replace('/dashboard');
+        if (typeof window !== "undefined" && localStorage.getItem(key)) {
+            router.replace("/dashboard");
             return;
         }
 
@@ -630,13 +664,13 @@ export default function DashboardPage() {
         (async () => {
             try {
                 await addAndStart(u.uid, paramUrl);
-                if (typeof window !== 'undefined') {
+                if (typeof window !== "undefined") {
                     localStorage.setItem(key, String(Date.now()));
                 }
             } catch (e: any) {
-                setBootstrapErr(e?.message || 'Failed to add URL.');
+                setBootstrapErr(e?.message || "Failed to add URL.");
             } finally {
-                router.replace('/dashboard');
+                router.replace("/dashboard");
             }
         })();
     }, [search, user, router]);
@@ -650,6 +684,22 @@ export default function DashboardPage() {
                 Add a URL to capture. We queue screenshots and keep them under your
                 account.
             </p>
+
+            {billingMsg && (
+                <div
+                    className={`mt-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${billingMsg.type === "success"
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                            : "border-amber-200 bg-amber-50 text-amber-800"
+                        }`}
+                >
+                    {billingMsg.type === "success" ? (
+                        <CheckCircle2 className="h-4 w-4 mt-[2px]" />
+                    ) : (
+                        <AlertTriangle className="h-4 w-4 mt-[2px]" />
+                    )}
+                    <span>{billingMsg.text}</span>
+                </div>
+            )}
 
             {bootstrapErr ? (
                 <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">

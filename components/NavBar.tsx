@@ -168,7 +168,7 @@ export default function NavBar(): JSX.Element {
 
           {/* Right side */}
           <div className="ml-auto flex items-center gap-2 md:gap-4">
-            {/* Mobile burger */}
+            {/* Mobile hamburger menu */}
             <button
               aria-label={mOpen ? "Close menu" : "Open menu"}
               aria-expanded={mOpen}

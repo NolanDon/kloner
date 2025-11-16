@@ -45,8 +45,8 @@ function NavItem({
             onClick={handleClick}
             aria-disabled={active}
             className={`block rounded-lg px-3 py-2 text-sm ${active
-                    ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
-                    : "text-neutral-700 hover:bg-neutral-50"
+                ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
+                : "text-neutral-700 hover:bg-neutral-50"
                 }`}
         >
             {children}
@@ -149,12 +149,29 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             <div className="flex h-full flex-col w-full">
                 {/* Brand */}
                 <div className="px-5 py-5 border-b border-neutral-200">
-                    <Link href="/" className="inline-flex items-center gap-2">
-                        <div className="relative h-12 w-12 overflow-hidden rounded-full bg-white/20 ring-1 ring-white/40">
-                            <Image src={logo} alt="" fill priority className="object-cover" />
+                    <Link
+                        href="/"
+                        className="ml-5 flex items-center gap-2 font-black tracking-tight text-xl md:text-2xl shrink-0"
+                    >
+                        <div className="relative h-10 w-10">
+                            <Image
+                                src={logo}
+                                alt="kloner logo"
+                                fill
+                                priority
+                                className="object-contain"
+                            />
                         </div>
-                        <div className="font-semibold text-[20px] tracking-tight">Kloner</div>
+
+                        {/* 3: Accent text with white outline */}
+                        <span className="text-[rgb(245,95,42)] [text-shadow:0_0_4px_rgba(255,255,255,0.9)]">
+                            kloner
+                        </span>
+
+              
                     </Link>
+
+
                 </div>
 
                 {/* Nav */}
@@ -312,8 +329,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                                                     onClick={handleClick}
                                                     aria-disabled={active}
                                                     className={`flex items-center gap-3 rounded-xl px-3 py-3 text-[15px] ${active
-                                                            ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
-                                                            : "text-neutral-800 hover:bg-neutral-50"
+                                                        ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
+                                                        : "text-neutral-800 hover:bg-neutral-50"
                                                         }`}
                                                 >
                                                     <span className="grid h-8 w-8 place-items-center rounded-lg border border-neutral-200 bg-white">

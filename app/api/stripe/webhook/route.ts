@@ -6,7 +6,7 @@ import {
     linkCustomerToUid,
     mapPriceToTier,
     setUserTierFromStripe,
-} from "../_lib/billing";
+} from "../../_lib/billing";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
