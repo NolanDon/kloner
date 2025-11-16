@@ -1,9 +1,11 @@
 // app/api/_lib/billing.ts
 import admin from "firebase-admin";
-import { stripe } from "@/lib/stripe";
+import { getStripe } from "@/lib/stripe";
 
 export type UserTier = "free" | "pro" | "agency";
 export type Tier = UserTier;
+
+const stripe = getStripe();
 
 if (!admin.apps.length) {
     const raw = process.env.FIREBASE_SERVICE_ACCOUNT;

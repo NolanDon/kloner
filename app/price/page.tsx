@@ -50,7 +50,7 @@ const tiers = [
             "Change tracking and audit history",
             "Priority support and onboarding call",
         ],
-        cta: "Talk to sales",
+        cta: "Upgrade with Stripe",
     },
 ];
 

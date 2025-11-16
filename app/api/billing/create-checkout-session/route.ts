@@ -1,9 +1,11 @@
 // app/api/billing/create-checkout-session/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { stripe } from "@/lib/stripe";
+import { getStripe } from "@/lib/stripe";
 import { verifySession } from "../../_lib/auth";
 import { linkCustomerToUid } from "../../_lib/billing";
 import admin from "firebase-admin";
+
+const stripe = getStripe();
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,6 +46,7 @@ export async function POST(req: NextRequest) {
         const userData = snap.exists ? (snap.data() as any) : {};
         let customerId: string | undefined = userData.stripeCustomerId;
 
+        // Ensure Stripe customer exists
         if (!customerId) {
             const authUser = await admin.auth().getUser(uid);
             const email = authUser.email ?? undefined;
@@ -77,6 +80,54 @@ export async function POST(req: NextRequest) {
             : process.env.STRIPE_CANCEL_URL_TEST ||
             "http://localhost:3000/price?billing=cancelled";
 
+        // 1) Check for an existing active subscription
+        const existingSubs = await stripe.subscriptions.list({
+            customer: customerId,
+            status: "active",
+            limit: 1,
+        });
+
+        if (existingSubs.data.length > 0) {
+            const sub = existingSubs.data[0];
+            const firstItem = sub.items.data[0];
+
+            const currentPriceId =
+                typeof firstItem?.price?.id === "string"
+                    ? firstItem.price.id
+                    : null;
+
+            // If already on this price, just bounce back to dashboard
+            if (currentPriceId === priceId) {
+                return NextResponse.json(
+                    { url: successUrl, alreadyOnPlan: true },
+                    { status: 200 }
+                );
+            }
+
+            // 2) Upgrade/downgrade in-place with proration
+            await stripe.subscriptions.update(sub.id, {
+                items: [
+                    {
+                        id: firstItem.id,
+                        price: priceId,
+                    },
+                ],
+                proration_behavior: "create_prorations",
+                metadata: {
+                    firebaseUid: uid,
+                    plan,
+                },
+            });
+
+            // Your webhook / tier refresh logic will pick this up.
+            // Send user back to dashboard with success flag.
+            return NextResponse.json(
+                { url: successUrl, upgraded: true },
+                { status: 200 }
+            );
+        }
+
+        // 3) No existing subscription -> first-time purchase via Checkout
         const session = await stripe.checkout.sessions.create({
             mode: "subscription",
             customer: customerId,
