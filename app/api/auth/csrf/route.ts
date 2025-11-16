@@ -9,6 +9,7 @@ export async function POST() {
     const jar = cookies();
     let token = jar.get(CSRF_COOKIE)?.value;
 
+    // Only generate if no cookie exists yet
     if (!token) {
         token = crypto.randomBytes(32).toString("hex");
     }

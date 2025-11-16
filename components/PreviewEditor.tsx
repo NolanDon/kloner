@@ -239,21 +239,29 @@ export default function PreviewEditor({
         if (savingDraft) return;
         setSavingDraft(true);
         try {
+            const nextHtml = htmlDraft;
             if (!saveDraft) {
-                setPreviewHtml(htmlDraft);
+                setPreviewHtml(nextHtml);
                 setDirty(false);
                 return;
             }
+
+            const nextVersion = version + 1;
+
             await saveDraft({
                 draftId,
-                html: htmlDraft,
+                html: nextHtml,
                 meta: { nameHint: nameHint || undefined, device, mode },
-                version: version + 1,
+                version: nextVersion,
             });
-            setVersion((v) => v + 1);
+
+            setVersion(nextVersion);
+            setPreviewHtml(nextHtml);
+
             if (options?.applyToPreview) {
-                setPreviewHtml(htmlDraft);
+                emitLive(nextHtml);
             }
+
             setDirty(false);
         } finally {
             setSavingDraft(false);
@@ -393,6 +401,37 @@ export default function PreviewEditor({
         [closing, dirty, doSave, onClose, tryClearIframeSelection]
     );
 
+    // view-tab change guard
+    const handleModeClick = useCallback(
+        (next: ViewMode) => {
+            if (closing || mode === next) return;
+
+            if (!dirty) {
+                setMode(next);
+                tryClearIframeSelection();
+                return;
+            }
+
+            const wantsSave = window.confirm(
+                "You have unsaved changes in this draft. Save them before switching view?"
+            );
+
+            if (!wantsSave) {
+                // switch without saving
+                setMode(next);
+                tryClearIframeSelection();
+                return;
+            }
+
+            (async () => {
+                await doSave();
+                setMode(next);
+                tryClearIframeSelection();
+            })();
+        },
+        [closing, mode, dirty, doSave, tryClearIframeSelection]
+    );
+
     return (
         <div
             ref={containerRef}
@@ -434,20 +473,14 @@ export default function PreviewEditor({
                             <div className="flex flex-wrap gap-1">
                                 <UiBtn
                                     pressed={mode === "code"}
-                                    onClick={() =>
-                                        !closing &&
-                                        (setMode("code"), tryClearIframeSelection())
-                                    }
+                                    onClick={() => handleModeClick("code")}
                                     disabled={closing}
                                 >
                                     Code
                                 </UiBtn>
                                 <UiBtn
                                     pressed={mode === "preview"}
-                                    onClick={() =>
-                                        !closing &&
-                                        (setMode("preview"), tryClearIframeSelection())
-                                    }
+                                    onClick={() => handleModeClick("preview")}
                                     disabled={closing}
                                 >
                                     Editable preview
@@ -455,8 +488,7 @@ export default function PreviewEditor({
                                 <UiBtn
                                     pressed={mode === "screenshot"}
                                     onClick={() =>
-                                        !closing &&
-                                        (setMode("screenshot"), tryClearIframeSelection())
+                                        handleModeClick("screenshot")
                                     }
                                     disabled={closing}
                                 >
@@ -534,7 +566,10 @@ export default function PreviewEditor({
                                         className="px-1.5 py-0.5 border rounded hover:bg-neutral-50 active:scale-[.99] focus:outline-none focus:ring-2 focus:ring-neutral-300"
                                         onClick={() =>
                                             setUiScale((s) =>
-                                                Math.max(0.5, +(s - 0.05).toFixed(2))
+                                                Math.max(
+                                                    0.5,
+                                                    +(s - 0.05).toFixed(2)
+                                                )
                                             )
                                         }
                                         disabled={closing}
@@ -548,7 +583,10 @@ export default function PreviewEditor({
                                         className="px-1.5 py-0.5 border rounded hover:bg-neutral-50 active:scale-[.99] focus:outline-none focus:ring-2 focus:ring-neutral-300"
                                         onClick={() =>
                                             setUiScale((s) =>
-                                                Math.min(1.25, +(s + 0.05).toFixed(2))
+                                                Math.min(
+                                                    1.25,
+                                                    +(s + 0.05).toFixed(2)
+                                                )
                                             )
                                         }
                                         disabled={closing}
@@ -572,18 +610,17 @@ export default function PreviewEditor({
                                 onClick={applyDraftToPreview}
                                 disabled={closing || !dirty}
                                 aria-busy={applyingPreview}
-                                className={`rounded px-3 py-1.5 text-sm w-full transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${
-                                    dirty
+                                className={`rounded px-3 py-1.5 text-sm w-full transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${dirty
                                         ? "bg-emerald-600 text-white hover:brightness-95"
                                         : "bg-emerald-50 text-emerald-700"
-                                }`}
+                                    }`}
                                 title="Apply current draft to the live preview"
                             >
                                 {applyingPreview
                                     ? "Updating preview…"
                                     : dirty
-                                    ? "Apply changes to preview"
-                                    : "Preview is up to date"}
+                                        ? "Apply changes to preview"
+                                        : "Preview is up to date"}
                             </button>
                         </div>
 
@@ -1116,11 +1153,10 @@ function UiBtn({
             onClick={onClick}
             disabled={disabled}
             aria-busy={ariaBusy}
-            className={`${base} px-2.5 py-1 rounded-full border text-xs ${
-                pressed
+            className={`${base} px-2.5 py-1 rounded-full border text-xs ${pressed
                     ? "bg-slate-900 text-white border-slate-900"
                     : "bg-white text-neutral-800 border-neutral-300 hover:bg-neutral-50"
-            }`}
+                }`}
         >
             {withBusy}
         </button>
@@ -1306,9 +1342,9 @@ function injectEditableOverlay(doc: Document, onChange: (updatedHtml: string) =>
     function publishSelection() {
         const payload = selected
             ? {
-                  has: true,
-                  tagName: selected.tagName,
-              }
+                has: true,
+                tagName: selected.tagName,
+            }
             : { has: false };
         doc.defaultView?.parent?.postMessage(
             { type: "kloner:selection", meta: payload },
@@ -1563,7 +1599,7 @@ function injectEditableOverlay(doc: Document, onChange: (updatedHtml: string) =>
             return;
         }
         if (act === "img-insert") {
-            insertImageIntoBlock(selected).catch(() => {});
+            insertImageIntoBlock(selected).catch(() => { });
             return;
         }
         if (act === "img-replace") {

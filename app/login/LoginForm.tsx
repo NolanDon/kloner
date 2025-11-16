@@ -85,12 +85,15 @@ function hash64(s: string): string {
 
 /* ───────── CSRF helper ───────── */
 
-async function ensureSessionAndCsrf(): Promise<string | null> {
+let csrfPromise: Promise<string | null> | null = null;
+
+async function fetchCsrf(): Promise<string | null> {
     try {
         const res = await fetch("/api/auth/csrf", {
             method: "POST",
             headers: { "content-type": "application/json" },
-            credentials: "same-origin",
+            credentials: "include",   // important
+            cache: "no-store",
         });
         if (!res.ok) return null;
         const data = await res.json().catch(() => null);
@@ -99,6 +102,14 @@ async function ensureSessionAndCsrf(): Promise<string | null> {
         return null;
     }
 }
+
+async function ensureSessionAndCsrf(): Promise<string | null> {
+    if (!csrfPromise) {
+        csrfPromise = fetchCsrf();
+    }
+    return csrfPromise;
+}
+
 
 /* ───────── Session cookie with CSRF ───────── */
 

@@ -1783,6 +1783,9 @@ export default function PreviewPage(): JSX.Element {
                         }
                     };
 
+                    const controllerVersion =
+                        typeof r.controllerVersion === "string" ? r.controllerVersion : "";
+
                     return (
                         <>
                             <div className="relative flex min-w-[300px] flex-col overflow-visible rounded-xl border border-neutral-200 bg-white shadow-sm">
@@ -1793,6 +1796,15 @@ export default function PreviewPage(): JSX.Element {
                                 >
                                     {versionLabel}
                                 </span>
+
+                                {controllerVersion && (
+                                    <span
+                                        className="absolute right-2 top-2 z-30 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-neutral-900 shadow bg-amber-300"
+                                        title={`Controller v${controllerVersion}`}
+                                    >
+                                        ctrl v{controllerVersion}
+                                    </span>
+                                )}
 
                                 {/* hide discard if this render has ever been deployed */}
                                 {!isDeployed && (
@@ -1816,9 +1828,9 @@ export default function PreviewPage(): JSX.Element {
                                         </div>
                                     ) : (
                                         <a
-                                            href={refImgUrl}
-                                            target="_blank"
-                                            rel="noreferrer"
+                                            // href={refImgUrl}
+                                            // target="_blank"
+                                            // rel="noreferrer"
                                             className="block"
                                             title="Open the base screenshot"
                                         >
@@ -2058,9 +2070,9 @@ export default function PreviewPage(): JSX.Element {
                             )}
 
                             <a
-                                href={s.url}
-                                target="_blank"
-                                rel="noreferrer"
+                                // href={s.url}
+                                // target="_blank"
+                                // rel="noreferrer"
                                 className="block"
                                 title="Open full-size screenshot"
                             >
@@ -2558,7 +2570,7 @@ export default function PreviewPage(): JSX.Element {
 
                                         <button
                                             type="button"
-                                            className="inline-flex items-center rounded-md border border-neutral-400 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm"
+                                            className="mx-1 inline-flex items-center rounded-md border border-neutral-400 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm"
                                             disabled
                                         >
                                             View Deployment

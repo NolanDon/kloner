@@ -46,11 +46,17 @@ function buildSupportHtml(p: Required<SignupPayload>) {
             <tr>
               <td style="padding:20px 24px;border-bottom:1px solid #f3f4f6;background:linear-gradient(135deg,#ffffff,#fef2e2);">
                 <div style="display:flex;align-items:center;gap:10px;">
-                  <div style="width:32px;height:32px;border-radius:12px;background:${accent};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:18px;">K</div>
-                  <div>
+                <div style="width:32px;height:32px;border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:${accent};">
+                    <img
+                    src="https://kloner.app/images/logo.png"
+                    alt="Kloner"
+                    style="width:100%;height:100%;object-fit:cover;display:block;"
+                    />
+                </div>
+                <div>
                     <div style="font-size:14px;font-weight:600;color:#111827;">Kloner · New signup</div>
                     <div style="font-size:12px;color:${muted};margin-top:2px;">A new user just created an account.</div>
-                  </div>
+                </div>
                 </div>
               </td>
             </tr>
