@@ -3,6 +3,7 @@
 
 import Image from 'next/image';
 import SectionReveal from './SectionReveal';
+import logo from "@/public/favicon.ico";
 
 type Reel = {
   src: string;
@@ -75,10 +76,19 @@ export default function Stories() {
   return (
     <section className="section bg-white mt-20 mb-20 text-black" id="reviews">
       <div className="container-soft">
-        <div className="mb-6 flex items-end justify-between gap-4">
-          <h2 className="text-3xl md:text-3xl leading-tight">
-            Teams ship faster with <strong className="text-accent/90 text-4xl tracking-[-1.5px]">kloner</strong>
+        <div className="mb-6 flex items-center justify-between gap-4">
+          <h2 className="flex items-center text-3xl md:text-3xl leading-tight">
+            <span>Teams ship faster with</span>
+            <span className="relative inline-flex h-12 w-12 items-center justify-center">
+              <Image
+                src={logo}
+                alt="Kloner logo"
+                fill
+                className="pt-2 object-contain"
+              />
+            </span>
           </h2>
+
           <a
             href="#all-reviews"
             className="hidden md:inline-flex items-center rounded-full border border-black/10 bg-white px-4 py-2 text-sm text-black/70 hover:text-black hover:shadow-sm"

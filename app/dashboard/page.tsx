@@ -487,7 +487,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
                     </div>
                 ) : (
                     <div
-                        className="h-16 w-full sm:w-20 rounded-lg grid place-items-center text-white font-semibold shrink-0 sm:h-16"
+                        className="h-10 w-10 rounded-lg grid place-items-center text-white shrink-0"
                         style={{ backgroundColor: ACCENT }}
                     >
                         {(r.urlHash ?? hash64(r.url)).slice(0, 2).toUpperCase()}

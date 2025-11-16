@@ -23,6 +23,8 @@ import {
 import { useAuth } from "@/src/hooks/useAuth";
 import { signOut, type User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import Image from 'next/image'
+import logo from "@/public/favicon.ico";
 
 const ACCENT = "#f55f2a";
 
@@ -122,13 +124,16 @@ export default function NavBar(): JSX.Element {
           className={`relative flex items-center gap-3 px-3 py-1 md:px-1 mx-2 ${shellClasses}`}
           style={{ height: "4rem" }}
         >
-          {/* Logo */}
           <Link
             href="/"
-            className="ml-5 font-black tracking-tight text-xl md:text-2xl shrink-0 text-white"
+            className="ml-5 flex items-center gap-2 font-black tracking-tight text-xl md:text-2xl shrink-0 text-white"
           >
+            <div className="relative h-10 w-10">
+              <Image src={logo} alt="kloner logo" fill priority className="object-contain" />
+            </div>
             <span className="text-white">kloner</span>
           </Link>
+
 
           {/* Desktop nav */}
           <nav className="hidden md:flex flex-1 items-center justify-center">
@@ -232,7 +237,7 @@ export default function NavBar(): JSX.Element {
                           <MenuLink href="/settings" label="Settings" />
                           <button
                             onClick={() => void onSignOut()}
-                            className="w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100 transition"
+                            className="w-full text-left px-4 py-2 text-sm text-white hover:bg-neutral-100 transition"
                           >
                             Sign out
                           </button>
@@ -411,7 +416,7 @@ export default function NavBar(): JSX.Element {
                           await onSignOut();
                           setMOpen(false);
                         }}
-                        className="inline-flex flex-1 items-center justify-center rounded-full px-4 py-2.5 text-sm font-semibold text.white"
+                        className="inline-flex flex-1 items-center justify-center rounded-full px-4 py-2.5 text-sm font-semibold text-white"
                         style={{ background: ACCENT }}
                       >
                         <LogOut className="mr-2 h-4 w-4" /> Sign out

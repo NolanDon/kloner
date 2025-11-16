@@ -162,18 +162,18 @@ const CARDS: CardData[] = [
 ------------------------------------------------------------------*/
 export default function MembershipSticky() {
   return (
-    <section className="bg-white text-neutral-800 pt-30 md:pt-60">
+    <section className="bg-white text-neutral-800 pt-30">
       <div className="container-soft">
         <div className="relative grid grid-cols-1 gap-8 lg:grid-cols-12 lg:gap-12">
           {/* LEFT (sticky) */}
           <div className="lg:col-span-4">
-            <div className="sticky top-24">
+            <div className="md:sticky top-24">
 
-              <div className="sticky top-44">
-                <h2 className="text-4xl md:text-6xl mb-10 text-black/80 bg-white pt-40 pb-5 md:py-10 mt-20">What's included</h2>
-              </div>
+              {/* <div className=" md:sticky md:top-44"> */}
+                <h2 className="text-4xl md:text-6xl md:mb-10 text-black/80 bg-white pt-40 md:py-15 mt-20">What's included</h2>
+              {/* </div> */}
               <div className="mt-20">
-                <p className="mt-3 max-w-md text-neutral-600">
+                <p className="mt-[-40px] md:mt-3 max-w-md text-neutral-600">
 
                   Capture any public site, edit in a live preview, export a clean Next.js project, and deploy with one click.
                 </p>

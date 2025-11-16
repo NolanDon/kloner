@@ -10,6 +10,7 @@ import FAQSection from "@/components/FaqSection";
 import ParallaxTypeHero from "@/components/ParallaxTypeHero";
 import MembershipHero from "@/components/MembershipHero";
 import PreviewDashboard from "@/components/StartsWithLabs";
+import KlonerExamples from "@/components/KlonerExamples"
 
 export default function Page() {
   return (
@@ -49,9 +50,16 @@ export default function Page() {
 
         <section
           id="stories"
-          className="snap-start snap-always min-h-screen flex flex-col"
+          className="snap-start snap-always"
         >
           <Stories />
+        </section>
+
+        <section
+          id="examples"
+          className="snap-start snap-always"
+        >
+          <KlonerExamples />
         </section>
 
         <section

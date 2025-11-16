@@ -611,9 +611,7 @@ export default function PreviewPage(): JSX.Element {
         const unsub = onAuthStateChanged(auth, async (u) => {
             if (!u) {
                 const next = encodeURIComponent(
-                    `/dashboard/view?u=${encodeURIComponent(
-                        targetUrl || ""
-                    )}`
+                    `/dashboard/view?u=${encodeURIComponent(targetUrl || "")}`
                 );
                 router.replace(`/login?next=${next}`);
                 return;
@@ -621,50 +619,87 @@ export default function PreviewPage(): JSX.Element {
 
             setUser(u);
 
+            let effectiveTier: UserTier = "free";
+
             try {
-                const result = await getIdTokenResult(u, true);
-                const claimTier =
-                    (result.claims.userTier as string) || "free";
-                const normalized: UserTier =
-                    claimTier === "pro" ||
+                // 1) Primary source: backend billing API (Stripe + Firestore)
+                const res = await fetch("/api/billing/tier", {
+                    method: "GET",
+                    credentials: "include",
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    const t = data?.tier as string | undefined;
+
+                    if (t === "pro" || t === "agency" || t === "enterprise") {
+                        effectiveTier = t as UserTier;
+                    } else {
+                        effectiveTier = "free";
+                    }
+                } else {
+                    // 2) Fallback: custom claims (same logic you had before)
+                    const result = await getIdTokenResult(u, true);
+                    const claimTier = (result.claims.userTier as string) || "free";
+                    if (
+                        claimTier === "pro" ||
                         claimTier === "agency" ||
                         claimTier === "enterprise"
-                        ? (claimTier as UserTier)
-                        : "free";
-                setUserTier(normalized);
-
-                const key = `kloner.credits.${u.uid}.${todayKey}`;
-                let parsed = { screenshotUsed: 0, previewUsed: 0 };
-
+                    ) {
+                        effectiveTier = claimTier as UserTier;
+                    } else {
+                        effectiveTier = "free";
+                    }
+                }
+            } catch {
+                // 3) Hard fallback: try claims, otherwise stay on "free"
                 try {
-                    const raw = localStorage.getItem(key);
-                    if (raw) {
-                        parsed = JSON.parse(raw) as {
-                            screenshotUsed: number;
-                            previewUsed: number;
-                        };
+                    const result = await getIdTokenResult(u, true);
+                    const claimTier = (result.claims.userTier as string) || "free";
+                    if (
+                        claimTier === "pro" ||
+                        claimTier === "agency" ||
+                        claimTier === "enterprise"
+                    ) {
+                        effectiveTier = claimTier as UserTier;
+                    } else {
+                        effectiveTier = "free";
                     }
                 } catch {
-                    // ignore
+                    effectiveTier = "free";
                 }
-
-                setCredits({
-                    screenshotUsed: parsed.screenshotUsed || 0,
-                    previewUsed: parsed.previewUsed || 0,
-                    dateKey: todayKey,
-                });
-            } catch {
-                setUserTier("free");
-                setCredits({
-                    screenshotUsed: 0,
-                    previewUsed: 0,
-                    dateKey: todayKey,
-                });
             }
+
+            setUserTier(effectiveTier);
+
+            // ---- existing credits logic, unchanged ----
+            const key = `kloner.credits.${u.uid}.${todayKey}`;
+            let parsed = { screenshotUsed: 0, previewUsed: 0 };
+
+            try {
+                const raw = localStorage.getItem(key);
+                if (raw) {
+                    parsed = JSON.parse(raw) as {
+                        screenshotUsed: number;
+                        previewUsed: number;
+                    };
+                }
+            } catch {
+                // ignore
+            }
+
+            setCredits({
+                screenshotUsed: parsed.screenshotUsed || 0,
+                previewUsed: parsed.previewUsed || 0,
+                dateKey: todayKey,
+            });
         });
 
         return () => unsub();
-    }, [router, targetUrl, todayKey]);
+        // router + todayKey keep old behavior (redirect + daily credits reset)
+        // targetUrl is not needed to re-run auth/tier logic and causes extra calls
+    }, [router, todayKey]);
+
 
     useEffect(() => {
         (async () => {

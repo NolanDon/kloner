@@ -3,10 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { auth } from "@/lib/firebase";
-import {
-    onAuthStateChanged,
-    type User,
-} from "firebase/auth";
+import { onAuthStateChanged, type User } from "firebase/auth";
 import {
     CheckCircle2,
     Shield,
@@ -22,9 +19,29 @@ const ACCENT = "#f55f2a";
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
 
+type BillingTier = "free" | "pro" | "agency";
+
+type TierResponse = {
+    uid: string;
+    tier: BillingTier;
+    stripeStatus: string | null;
+    currentPeriodEnd: number | null;
+    cancelAtPeriodEnd: boolean | null;
+    source: string;
+};
+
 export default function SettingsPage(): JSX.Element {
     const [user, setUser] = useState<User | null>(null);
     const [disconnectBusy, setDisconnectBusy] = useState(false);
+
+    const [tier, setTier] = useState<BillingTier>("free");
+    const [tierLoading, setTierLoading] = useState(false);
+    const [tierError, setTierError] = useState<string | null>(null);
+    const [stripeStatus, setStripeStatus] = useState<string | null>(null);
+    const [cancelAtPeriodEnd, setCancelAtPeriodEnd] = useState<boolean | null>(
+        null,
+    );
+    const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
 
     const {
         status: vercelStatus,
@@ -36,6 +53,59 @@ export default function SettingsPage(): JSX.Element {
         const off = onAuthStateChanged(auth, (u) => setUser(u));
         return () => off();
     }, []);
+
+    useEffect(() => {
+        if (!user) return;
+
+        let aborted = false;
+
+        const loadTier = async () => {
+            setTierLoading(true);
+            setTierError(null);
+            try {
+                const res = await fetch("/api/billing/tier?refresh=1", {
+                    method: "GET",
+                    credentials: "include",
+                });
+
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}`);
+                }
+
+                const data: TierResponse = await res.json();
+
+                if (aborted) return;
+
+                setTier(data.tier);
+                setStripeStatus(data.stripeStatus);
+                setCancelAtPeriodEnd(data.cancelAtPeriodEnd ?? null);
+
+                if (data.currentPeriodEnd) {
+                    const nowSec = Date.now() / 1000;
+                    const deltaDays = Math.max(
+                        0,
+                        Math.ceil((data.currentPeriodEnd - nowSec) / 86400),
+                    );
+                    setDaysRemaining(deltaDays);
+                } else {
+                    setDaysRemaining(null);
+                }
+            } catch (err) {
+                if (!aborted) {
+                    console.error("Failed to load billing tier", err);
+                    setTierError("Unable to load subscription details right now.");
+                }
+            } finally {
+                if (!aborted) setTierLoading(false);
+            }
+        };
+
+        void loadTier();
+
+        return () => {
+            aborted = true;
+        };
+    }, [user]);
 
     const initials = useMemo(() => {
         if (!user) return "ME";
@@ -101,6 +171,21 @@ export default function SettingsPage(): JSX.Element {
             ? "bg-emerald-50 text-emerald-700 border-emerald-200"
             : "bg-neutral-100 text-neutral-600 border-neutral-200";
 
+    const tierLabel =
+        tier === "agency" ? "Agency" : tier === "pro" ? "Pro" : "Free";
+
+    const tierBadgeClasses =
+        tier === "agency"
+            ? "bg-violet-50 text-violet-700 border-violet-200"
+            : tier === "pro"
+                ? "bg-[rgba(245,95,42,0.08)] text-[rgba(245,95,42,1)] border-[rgba(245,95,42,0.4)]"
+                : "bg-neutral-100 text-neutral-600 border-neutral-200";
+
+    const stripeStatusLabel = stripeStatus ?? "no active subscription";
+
+    const downgradeNotice =
+        stripeStatus === "canceled" || stripeStatus === "unpaid";
+
     return (
         <>
             <NavBar />
@@ -110,7 +195,7 @@ export default function SettingsPage(): JSX.Element {
                         Settings
                     </h1>
                     <p className="mt-1 text-sm text-neutral-600">
-                        Manage account, connections, and notifications.
+                        Manage account, subscription, connections, and notifications.
                     </p>
 
                     {/* subtle divider */}
@@ -135,6 +220,87 @@ export default function SettingsPage(): JSX.Element {
                                 <div className="text-xs text-neutral-500">
                                     User ID: {user?.uid.slice(0, 8)}…
                                 </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* Subscription / plan */}
+                    <section className="mt-6 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+                        <div className="flex items-center gap-2">
+                            <Rocket className="h-4 w-4 text-neutral-700" />
+                            <h2 className="text-sm font-semibold text-neutral-800">
+                                Subscription
+                            </h2>
+                        </div>
+
+                        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm font-medium text-neutral-800">
+                                        Current plan:
+                                    </span>
+                                    <span
+                                        className={
+                                            "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold " +
+                                            tierBadgeClasses
+                                        }
+                                    >
+                                        {tierLoading ? "Checking..." : tierLabel}
+                                    </span>
+                                </div>
+                                <p className="mt-1 text-xs text-neutral-600">
+                                    {tier === "free" &&
+                                        "Free tier with low daily preview and snapshot limits."}
+                                    {tier === "pro" &&
+                                        "Pro tier with higher limits and priority processing."}
+                                    {tier === "agency" &&
+                                        "Agency tier for higher volume and team workflows."}
+                                </p>
+
+                                {tierError && (
+                                    <p className="mt-1 text-xs text-red-600">
+                                        {tierError}
+                                    </p>
+                                )}
+
+                                {!tierError && !tierLoading && (
+                                    <p className="mt-2 text-[11px] text-neutral-500">
+                                        Stripe status:{" "}
+                                        <span className="font-semibold">
+                                            {stripeStatusLabel}
+                                        </span>
+                                        {cancelAtPeriodEnd && daysRemaining !== null && (
+                                            <>
+                                                {" "}
+                                                · subscription ends in{" "}
+                                                <span className="font-semibold">
+                                                    {daysRemaining} day
+                                                    {daysRemaining === 1 ? "" : "s"}
+                                                </span>
+                                            </>
+                                        )}
+                                        {downgradeNotice && (
+                                            <>
+                                                {" "}
+                                                · your account will fall back to the Free tier
+                                                after this period.
+                                            </>
+                                        )}
+                                    </p>
+                                )}
+                            </div>
+
+                            <div className="flex flex-col items-start gap-2 sm:items-end">
+                                <a
+                                    href="/price"
+                                    className="inline-flex items-center rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs font-semibold text-neutral-800 hover:bg-neutral-100"
+                                >
+                                    View plans
+                                </a>
+                                <span className="text-[11px] text-neutral-500">
+                                    Billing managed by Stripe. Upgrades and cancellations are
+                                    handled from the pricing page and Stripe portal.
+                                </span>
                             </div>
                         </div>
                     </section>
