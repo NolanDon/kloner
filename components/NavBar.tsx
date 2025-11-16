@@ -23,7 +23,7 @@ import {
 import { useAuth } from "@/src/hooks/useAuth";
 import { signOut, type User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import Image from 'next/image'
+import Image from "next/image";
 import logo from "@/public/favicon.ico";
 
 const ACCENT = "#f55f2a";
@@ -47,7 +47,6 @@ export default function NavBar(): JSX.Element {
     return () => window.removeEventListener("scroll", on);
   }, []);
 
-  // lock body scroll when mobile menu open
   useEffect(() => {
     const el = document.documentElement;
     const prev = el.style.overflow;
@@ -85,23 +84,21 @@ export default function NavBar(): JSX.Element {
       });
       await signOut(auth);
       setUserMenuOpen(false);
-    } catch { }
+    } catch {
+      // ignore
+    }
   };
 
   const br = brand as unknown as BrandShape;
 
-  // base nav from config
   const baseNav: NavItem[] = br?.nav ?? [];
 
-  // extra items users expect
   const extraNav: NavItem[] = [
     { label: "Product", href: "/#how" },
     { label: "Docs", href: "/docs" },
     { label: "Pricing", href: "/price" },
-    // { label: "Changelog", href: "/#changelog" },
   ];
 
-  // merge, avoid duplicate labels
   const navItems: NavItem[] = useMemo(() => {
     const seen = new Set(baseNav.map((i) => i.label));
     const merged = [...baseNav];
@@ -126,17 +123,24 @@ export default function NavBar(): JSX.Element {
         >
           <Link
             href="/"
-            className="ml-5 flex items-center gap-2 font-black tracking-tight text-xl md:text-2xl shrink-0 text-white"
+            className="ml-5 flex items-center gap-2 font-black tracking-tight text-xl md:text-2xl shrink-0"
           >
             <div className="relative h-10 w-10">
-              <Image src={logo} alt="kloner logo" fill priority className="object-contain" />
+              <Image
+                src={logo}
+                alt="kloner logo"
+                fill
+                priority
+                className="object-contain"
+              />
             </div>
-            <span className="text-white">kloner</span>
+            <span className="text-white">
+              kloner
+            </span>
           </Link>
 
-
-          {/* Desktop nav */}
-          <nav className="hidden md:flex flex-1 items-center justify-center">
+          {/* Desktop nav (now lg and up) */}
+          <nav className="hidden lg:flex flex-1 items-center justify-center">
             <ul className="flex items-center gap-6 text-[15px] text-white/85">
               {navItems.map((i, idx) => (
                 <li key={i.label} className="flex items-center">
@@ -168,7 +172,7 @@ export default function NavBar(): JSX.Element {
 
           {/* Right side */}
           <div className="ml-auto flex items-center gap-2 md:gap-4">
-            {/* Mobile hamburger menu */}
+            {/* Mobile hamburger (visible until lg) */}
             <button
               aria-label={mOpen ? "Close menu" : "Open menu"}
               aria-expanded={mOpen}
@@ -176,7 +180,7 @@ export default function NavBar(): JSX.Element {
                 setMOpen((v) => !v);
                 setOpen(false);
               }}
-              className="md:hidden inline-flex h-10 w-10 items-center justify-center rounded-full text-white/90 hover:bg-white/10 ring-1 ring-white/10"
+              className="lg:hidden inline-flex h-10 w-10 items-center justify-center rounded-full text-white/90 hover:bg-white/10 ring-1 ring-white/10"
             >
               {mOpen ? (
                 <X size={18} strokeWidth={2.2} />
@@ -185,12 +189,12 @@ export default function NavBar(): JSX.Element {
               )}
             </button>
 
-            {/* Auth (desktop) */}
+            {/* Auth (desktop: lg and up) */}
             {!user ? (
               <>
                 <a
                   href="/login"
-                  className="hidden md:inline text-sm text-white/85 hover:text-white"
+                  className="hidden lg:inline text-sm text-white/85 hover:text-white"
                 >
                   Login
                 </a>
@@ -199,11 +203,11 @@ export default function NavBar(): JSX.Element {
               <>
                 <Link
                   href="/dashboard"
-                  className="hidden md:inline text-sm text-white/85 hover:text-white"
+                  className="hidden lg:inline text-sm text-white/85 hover:text-white"
                 >
                   Dashboard
                 </Link>
-                <div className="relative hidden md:block">
+                <div className="relative hidden lg:block">
                   <button
                     onClick={() => setUserMenuOpen((v) => !v)}
                     aria-haspopup="menu"
@@ -237,7 +241,7 @@ export default function NavBar(): JSX.Element {
                           <MenuLink href="/settings" label="Settings" />
                           <button
                             onClick={() => void onSignOut()}
-                            className="w-full text-left px-4 py-2 text-sm text-white hover:bg-neutral-100 transition"
+                            className="w-full text-left px-4 py-2 text-sm text-neutral-800 hover:bg-neutral-100 transition"
                           >
                             Sign out
                           </button>
@@ -251,14 +255,14 @@ export default function NavBar(): JSX.Element {
 
             <a
               href="/dashboard/new"
-              className="hidden md:inline-flex items-center justify-center h-14 rounded-full px-5 text-[15px] text-white  whitespace-nowrap"
+              className="hidden lg:inline-flex items-center justify-center h-14 rounded-full px-5 text-[15px] text-white whitespace-nowrap"
               style={{ backgroundColor: ACCENT }}
             >
               Start project
             </a>
           </div>
 
-          {/* Desktop mega dropdown */}
+          {/* Desktop mega dropdown (lg and up) */}
           <AnimatePresence>
             {open && (
               <motion.div
@@ -267,7 +271,7 @@ export default function NavBar(): JSX.Element {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -6, scale: 0.98 }}
                 transition={{ duration: 0.18, ease: "easeOut" }}
-                className="absolute left-4 right-4 top-full mt-3 hidden md:block"
+                className="absolute left-4 right-4 top-full mt-3 hidden lg:block"
                 onMouseEnter={() => setOpen(true)}
               >
                 <MegaPanel active={active} />
@@ -280,7 +284,6 @@ export default function NavBar(): JSX.Element {
         <AnimatePresence>
           {mOpen && (
             <>
-              {/* Backdrop */}
               <motion.div
                 key="mb-backdrop"
                 initial={{ opacity: 0 }}
@@ -290,7 +293,6 @@ export default function NavBar(): JSX.Element {
                 className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm"
                 onClick={() => setMOpen(false)}
               />
-              {/* Sheet */}
               <motion.nav
                 key="mb-sheet"
                 initial={{ y: -16, opacity: 0 }}
@@ -301,7 +303,6 @@ export default function NavBar(): JSX.Element {
                 role="dialog"
                 aria-modal="true"
               >
-                {/* Header */}
                 <div className="flex items-center justify-between px-4 pt-3 pb-2">
                   <div className="flex items-center gap-2">
                     <span
@@ -325,7 +326,6 @@ export default function NavBar(): JSX.Element {
 
                 <div className="h-px bg-neutral-200/70" />
 
-                {/* Quick actions */}
                 <div className="grid grid-cols-3 gap-3 px-4 py-3">
                   <QuickAction
                     href="/#how"
@@ -367,7 +367,6 @@ export default function NavBar(): JSX.Element {
 
                 <div className="h-px bg-neutral-200/70" />
 
-                {/* Links */}
                 <ul className="px-2 py-2">
                   {navItems.map((i) => (
                     <li key={i.label}>
@@ -382,7 +381,6 @@ export default function NavBar(): JSX.Element {
 
                 <div className="h-px bg-neutral-200/70" />
 
-                {/* Auth section */}
                 <div className="px-4 py-3">
                   {!user ? (
                     <div className="flex gap-2">
@@ -501,7 +499,6 @@ function MegaPanel({ active }: { active: NavItem | null }): JSX.Element {
   return (
     <div className="rounded-3xl border border-white/10 bg-white/95 backdrop-blur shadow-2xl overflow-hidden">
       <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))] gap-8 p-6 md:p-8 text-neutral-800">
-        {/* Left: promo card */}
         <Link
           href={active?.href || "/#how"}
           className="hidden md:block rounded-2xl overflow-hidden ring-1 ring-black/10 bg-white shadow-sm"
@@ -514,7 +511,6 @@ function MegaPanel({ active }: { active: NavItem | null }): JSX.Element {
           </div>
         </Link>
 
-        {/* PRODUCT */}
         <div className="space-y-4">
           <div className="text-sm text-neutral-500 tracking-wider">PRODUCT</div>
           <SimpleLink href="/#how" label="How it Works" />
@@ -524,7 +520,6 @@ function MegaPanel({ active }: { active: NavItem | null }): JSX.Element {
           <SimpleLink href="/docs#quick-start" label="10-minute Quickstart" />
         </div>
 
-        {/* LEARN */}
         <div className="space-y-4">
           <div className="text-sm text-neutral-500 tracking-wider">LEARN</div>
           <SimpleLink href="/docs#credits" label="Credit system" />
@@ -532,10 +527,8 @@ function MegaPanel({ active }: { active: NavItem | null }): JSX.Element {
           <SimpleLink href="/docs#safety" label="Safety & fairness" />
           <SimpleLink href="/docs#export-options" label="Export & library" />
           <SimpleLink href="/#faq" label="FAQs" />
-          {/* <SimpleLink href="/#changelog" label="Changelog" /> */}
         </div>
 
-        {/* OTHER */}
         <div className="space-y-4">
           <div className="text-sm text-neutral-500 tracking-wider">OTHER</div>
           <SimpleLink href="/terms" label="Terms & Conditions" />

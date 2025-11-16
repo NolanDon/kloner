@@ -5,16 +5,20 @@ export type CreditKind = "screenshot" | "preview";
 
 export const CREDIT_LIMITS: Record<UserTier, { screenshotDaily: number; previewDaily: number }> = {
     free: {
+        // Enough to try the flow without giving away serious usage
         screenshotDaily: 3,
-        previewDaily: 5,
+        previewDaily: 3,
     },
     pro: {
-        screenshotDaily: 100,
-        previewDaily: 200,
+        // ~1200 screenshots + ~600 previews per month at max usage
+        screenshotDaily: 40,
+        previewDaily: 20,
     },
     agency: {
-        screenshotDaily: 400,
-        previewDaily: 800,
+        // Higher-volume clients, but still finite
+        // ~4500 screenshots + ~2250 previews per month
+        screenshotDaily: 150,
+        previewDaily: 75,
     },
     // 0 here means “unlimited” in canConsumeCredit
     enterprise: {

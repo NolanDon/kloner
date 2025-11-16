@@ -37,12 +37,12 @@ function FeatureFrame({
       initial={{ opacity: 0, y: 12 }}
       animate={inView ? { opacity: 1, y: 0 } : undefined}
       transition={{ ...soft, delay: i * 0.05 }}
-      className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm"
+      className="overflow-hidden rounded-2xl border border-neutral-200 bg-accent shadow-sm"
     >
       {children}
       <div className="p-4" id="included">
-        <div className="font-semibold text-neutral-800">{title}</div>
-        <div className="mt-1 text-sm text-neutral-500">{sub}</div>
+        <div className="font-semibold text-2xl text-white">{title}</div>
+        <div className="mt-1 text-xs text-neutral-50">{sub}</div>
       </div>
     </motion.div>
   );

@@ -2,7 +2,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySession } from "../../_lib/auth";
 import admin from "firebase-admin";
-import { refreshTierFromStripeForUid } from "../../_lib/billing";
+import {
+    refreshTierFromStripeForUid,
+    type UserTier,
+} from "../../_lib/billing";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,23 +16,31 @@ export async function GET(req: NextRequest) {
     try {
         const { uid } = await verifySession(req);
 
-        // Optional query param ?refresh=1 to force Stripe hit
         const { searchParams } = new URL(req.url);
         const refresh = searchParams.get("refresh") === "1";
 
-        let tier: "free" | "pro" | "agency";
+        let tier: UserTier = "free";
         let userData: any = {};
 
         const userRef = db.collection("kloner_users").doc(uid);
         const snap = await userRef.get();
-        if (snap.exists) userData = snap.data();
+        if (snap.exists) {
+            userData = snap.data();
+        }
 
-        if (refresh || userData.tierSource !== "stripe") {
+        const source: string | undefined = userData.tierSource;
+
+        // force refresh, or if we don't yet trust that Firestore tier
+        if (
+            refresh ||
+            !source || // no source set yet
+            source !== "stripe" // make Stripe the source of truth
+        ) {
             tier = await refreshTierFromStripeForUid(uid);
             const freshSnap = await userRef.get();
             userData = freshSnap.exists ? freshSnap.data() : {};
         } else {
-            tier = (userData.tier as any) ?? "free";
+            tier = (userData.tier as UserTier) || "free";
         }
 
         return NextResponse.json(
@@ -43,7 +54,7 @@ export async function GET(req: NextRequest) {
             },
             { status: 200 }
         );
-    } catch (err: any) {
+    } catch (err) {
         console.error("billing/tier error", err);
         return NextResponse.json(
             { error: "Unauthorized or internal error" },

@@ -77,14 +77,16 @@ export default function Stories() {
     <section className="section bg-white mt-20 mb-20 text-black" id="reviews">
       <div className="container-soft">
         <div className="mb-6 flex items-center justify-between gap-4">
-          <h2 className="flex items-center text-3xl md:text-3xl leading-tight">
-            <span>Teams ship faster with</span>
-            <span className="relative inline-flex h-12 w-12 items-center justify-center">
+          <h2 className="mt-1 flex items-center justify-center text-lg text-neutral-600">
+            <span className="text-[16px] uppercase tracking-[0.1em] text-neutral-500">
+              Teams Ship Faster With
+            </span>
+            <span className="relative inline-block h-8 w-8">
               <Image
                 src={logo}
                 alt="Kloner logo"
                 fill
-                className="pt-2 object-contain"
+                className="object-contain"
               />
             </span>
           </h2>

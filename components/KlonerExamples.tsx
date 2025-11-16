@@ -123,7 +123,10 @@ export default function DeckImageCarousel({
             <div className="mx-auto flex w-full max-w-6xl flex-col items-center px-4 sm:px-6 lg:px-8">
                 <div className="mb-6 flex w-full items-center justify-between gap-4">
                     <div className="min-w-0">
-                        <h2 className="mt-1 flex items-center justify-center gap-2 text-lg text-neutral-600">
+                        <h2 className="mt-1 flex items-center justify-center text-lg text-neutral-600">
+                            <span className="text-[16px] uppercase tracking-[0.1em] text-neutral-500">
+                                Built With Kloner
+                            </span>
                             <span className="relative inline-block h-8 w-8">
                                 <Image
                                     src={logo}
@@ -131,9 +134,6 @@ export default function DeckImageCarousel({
                                     fill
                                     className="object-contain"
                                 />
-                            </span>
-                            <span className="text-[16px] uppercase tracking-[0.1em] text-neutral-500">
-                                Built With Kloner
                             </span>
                         </h2>
                     </div>
