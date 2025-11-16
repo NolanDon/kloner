@@ -6,6 +6,33 @@ import NavBar from "@/components/NavBar";
 
 const ACCENT = "#f55f2a";
 
+/* ───────── CSRF helper (reuse / centralize later) ───────── */
+
+let csrfPromise: Promise<string | null> | null = null;
+
+async function fetchCsrf(): Promise<string | null> {
+    try {
+        const res = await fetch("/api/auth/csrf", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            credentials: "include",
+            cache: "no-store",
+        });
+        if (!res.ok) return null;
+        const data = await res.json().catch(() => null);
+        return (data && data.csrf) || null;
+    } catch {
+        return null;
+    }
+}
+
+async function ensureCsrf(): Promise<string | null> {
+    if (!csrfPromise) csrfPromise = fetchCsrf();
+    return csrfPromise;
+}
+
+/* ───────── Pricing config ───────── */
+
 const tiers = [
     {
         name: "Free",
@@ -62,9 +89,14 @@ export default function PricingPage(): JSX.Element {
         setLoadingPlan(plan);
 
         try {
+            const csrf = await ensureCsrf();
+
             const res = await fetch("/api/billing/create-checkout-session", {
                 method: "POST",
-                headers: { "content-type": "application/json" },
+                headers: {
+                    "content-type": "application/json",
+                    ...(csrf ? { "x-csrf": csrf } : {}),
+                },
                 credentials: "include",
                 body: JSON.stringify({ plan }),
             });
@@ -75,7 +107,10 @@ export default function PricingPage(): JSX.Element {
                 return;
             }
 
-            const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
+            const data = (await res.json().catch(() => ({}))) as {
+                url?: string;
+                error?: string;
+            };
 
             if (!res.ok || !data.url) {
                 console.error("Stripe checkout error", data?.error || res.statusText);
@@ -95,7 +130,6 @@ export default function PricingPage(): JSX.Element {
         } else if (tierName === "Agency") {
             void startCheckout("agency");
         } else {
-            // Free – send to dashboard or signup; adjust if you want different behaviour
             window.location.href = "/dashboard";
         }
     }
@@ -167,7 +201,9 @@ export default function PricingPage(): JSX.Element {
                                     </div>
 
                                     <div className="mt-4 flex items-baseline gap-1">
-                                        <span className="text-2xl font-semibold">{tier.price}</span>
+                                        <span className="text-2xl font-semibold">
+                                            {tier.price}
+                                        </span>
                                         <span className="text-xs text-neutral-500">
                                             {tier.period}
                                         </span>

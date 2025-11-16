@@ -1,7 +1,8 @@
 // app/api/private/send-signup-alert/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
-import { assertCsrf, verifySession } from "../../_lib/auth";
+import { verifySession } from "../../_lib/auth";
+import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -11,27 +12,27 @@ export const runtime = "nodejs";
 const SUPPORT_TO = process.env.SUPPORT_TO || "support@kloner.app";
 
 function getResend() {
-    const key = process.env.RESEND_API_KEY;
-    if (!key) throw new Error("RESEND_API_KEY env not set");
-    return new Resend(key);
+  const key = process.env.RESEND_API_KEY;
+  if (!key) throw new Error("RESEND_API_KEY env not set");
+  return new Resend(key);
 }
 
 type SignupPayload = {
-    uid?: string;
-    email?: string;
-    name?: string;
-    plan?: string;
-    createdAt?: string | number;
-    source?: string;
-    method?: string;
-    notes?: string;
+  uid?: string;
+  email?: string;
+  name?: string;
+  plan?: string;
+  createdAt?: string | number;
+  source?: string;
+  method?: string;
+  notes?: string;
 };
 
 function buildSupportHtml(p: Required<SignupPayload>) {
-    const accent = "#f55f2a";
-    const muted = "#4b5563";
+  const accent = "#f55f2a";
+  const muted = "#4b5563";
 
-    return `
+  return `
 <!doctype html>
 <html lang="en">
   <head>
@@ -121,109 +122,121 @@ function buildSupportHtml(p: Required<SignupPayload>) {
 }
 
 export async function POST(req: NextRequest) {
-    try {
-        assertCsrf(req);
-    } catch (e: any) {
-        const status = e?.status || 403;
-        return NextResponse.json(
-            { error: e?.message || "Forbidden (csrf)" },
-            { status }
-        );
-    }
-
-    let decoded;
-    try {
+  return requireSessionAndMaybeCsrf(
+    req,
+    async ({ req }) => {
+      let decoded: any;
+      try {
         decoded = await verifySession(req);
-    } catch (e: any) {
+      } catch (e: any) {
         const status = e?.status || 401;
         return NextResponse.json(
-            { error: e?.message || "Unauthorized" },
-            { status }
+          { error: e?.message || "Unauthorized" },
+          { status }
         );
-    }
+      }
 
-    try {
+      try {
         const body = (await req.json()) as SignupPayload;
 
         if (body.uid && body.uid !== decoded.uid) {
-            return NextResponse.json({ error: "UID mismatch" }, { status: 403 });
+          return NextResponse.json(
+            { error: "UID mismatch" },
+            { status: 403 }
+          );
         }
         if (!body.email && decoded.email) {
-            body.email = decoded.email;
+          body.email = decoded.email;
         }
         if (!body.uid) body.uid = decoded.uid;
 
         if (!body?.email && !body?.uid) {
-            return NextResponse.json(
-                { error: "Missing email or uid" },
-                { status: 400 }
-            );
+          return NextResponse.json(
+            { error: "Missing email or uid" },
+            { status: 400 }
+          );
         }
 
-        const from = process.env.ALERT_EMAIL_FROM || "support@kloner.app";
+        const from =
+          process.env.ALERT_EMAIL_FROM || "support@kloner.app";
         if (!from) {
-            return NextResponse.json(
-                { error: "ALERT_EMAIL_FROM env not set" },
-                { status: 500 }
-            );
+          return NextResponse.json(
+            { error: "ALERT_EMAIL_FROM env not set" },
+            { status: 500 }
+          );
         }
 
         const {
-            uid = "-",
-            email = "-",
-            name = "-",
-            plan = "free",
-            createdAt = new Date().toISOString(),
-            source = "kloner_login_page",
-            method = "email",
-            notes = "-",
+          uid = "-",
+          email = "-",
+          name = "-",
+          plan = "free",
+          createdAt = new Date().toISOString(),
+          source = "kloner_login_page",
+          method = "email",
+          notes = "-",
         } = body;
 
-        const subject = `Kloner · New signup: ${email !== "-" ? email : uid}`;
+        const subject = `Kloner · New signup: ${email !== "-" ? email : uid
+          }`;
         const text =
-            `New Kloner signup\n` +
-            `UID: ${uid}\nEmail: ${email}\nName: ${name}\nPlan: ${plan}\nMethod: ${method}\n` +
-            `Created At: ${createdAt}\nSource: ${source}\nNotes: ${notes}\n`;
+          `New Kloner signup\n` +
+          `UID: ${uid}\nEmail: ${email}\nName: ${name}\nPlan: ${plan}\nMethod: ${method}\n` +
+          `Created At: ${createdAt}\nSource: ${source}\nNotes: ${notes}\n`;
 
         const resend = getResend();
         const html = buildSupportHtml({
-            uid,
-            email,
-            name,
-            plan,
-            createdAt,
-            source,
-            method,
-            notes,
+          uid,
+          email,
+          name,
+          plan,
+          createdAt,
+          source,
+          method,
+          notes,
         });
 
         const result = await resend.emails.send({
-            from,
-            to: SUPPORT_TO,
-            subject,
-            text,
-            html,
+          from,
+          to: SUPPORT_TO,
+          subject,
+          text,
+          html,
         });
 
         if ("error" in result && result.error) {
-            console.error("Resend error (support):", result.error);
-            return NextResponse.json(
-                { error: result.error.message || "Email send failed" },
-                { status: 502 }
-            );
+          console.error("Resend error (support):", result.error);
+          return NextResponse.json(
+            {
+              error:
+                result.error.message ||
+                "Email send failed",
+            },
+            { status: 502 }
+          );
         }
 
         return NextResponse.json(
-            { ok: true, id: result.data?.id ?? null },
-            { headers: { "Cache-Control": "no-store" } }
+          { ok: true, id: result.data?.id ?? null },
+          { headers: { "Cache-Control": "no-store" } }
         );
-    } catch (err: any) {
+      } catch (err: any) {
         console.error("send-signup-alert failed:", err);
-        const msg = typeof err?.message === "string" ? err.message : "Internal error";
-        const status = /env not set|RESEND_API_KEY|ALERT_EMAIL_FROM/i.test(msg) ? 500 : 400;
+        const msg =
+          typeof err?.message === "string"
+            ? err.message
+            : "Internal error";
+        const status = /env not set|RESEND_API_KEY|ALERT_EMAIL_FROM/i.test(
+          msg
+        )
+          ? 500
+          : 400;
         return NextResponse.json(
-            { error: msg },
-            { status, headers: { "Cache-Control": "no-store" } }
+          { error: msg },
+          { status, headers: { "Cache-Control": "no-store" } }
         );
-    }
+      }
+    },
+    { methods: ["POST"], csrf: true }
+  );
 }

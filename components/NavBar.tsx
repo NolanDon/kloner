@@ -171,7 +171,7 @@ export default function NavBar(): JSX.Element {
           </nav>
 
           {/* Right side */}
-          <div className="ml-auto flex items-center gap-2 md:gap-4">
+          <div className="ml-auto flex items-center gap-2 md:gap-4 mr-2">
             {/* Mobile hamburger (visible until lg) */}
             <button
               aria-label={mOpen ? "Close menu" : "Open menu"}

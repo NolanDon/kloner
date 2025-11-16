@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callBackend } from "@/src/lib/callBackend";
 import { verifySession } from "../../_lib/auth";
+import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,62 +20,85 @@ function isHttpUrl(s?: string): s is string {
 }
 
 export async function POST(req: NextRequest) {
-    let decoded;
-    try {
-        decoded = await verifySession(req);
-    } catch (e: any) {
-        return NextResponse.json({ error: e?.message || "Unauthorized" }, { status: 401 });
-    }
+    return requireSessionAndMaybeCsrf(
+        req,
+        async ({ req }) => {
+            let decoded: any;
+            try {
+                decoded = await verifySession(req);
+            } catch (e: any) {
+                return NextResponse.json(
+                    { error: e?.message || "Unauthorized" },
+                    { status: 401 }
+                );
+            }
 
-    const body = (await req.json().catch(() => ({}))) as { url?: string; tier?: string };
-    const { url } = body;
+            const body = (await req
+                .json()
+                .catch(() => ({}))) as { url?: string; tier?: string };
+            const { url } = body;
 
-    if (!isHttpUrl(url)) {
-        return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
-    }
+            if (!isHttpUrl(url)) {
+                return NextResponse.json(
+                    { error: "Invalid URL" },
+                    { status: 400 }
+                );
+            }
 
-    const safeTier =
-        (decoded as any)?.userTier ??
-        (decoded as any)?.claims?.userTier ??
-        null;
+            const safeTier =
+                decoded?.userTier ??
+                decoded?.claims?.userTier ??
+                null;
 
-    try {
-        const r = await callBackend(req, {
-            path: "/generate-screenshots",
-            method: "POST",
-            body: { url },
-            timeoutMs: 60_000,
-            acceptOnTimeout: true,
-            userCtx: {
-                uid: decoded.uid,
-                email: (decoded as any)?.email || "",
-                tier: safeTier,
-            },
-        });
+            try {
+                const r = await callBackend(req, {
+                    path: "/generate-screenshots",
+                    method: "POST",
+                    body: { url },
+                    timeoutMs: 60_000,
+                    acceptOnTimeout: true,
+                    userCtx: {
+                        uid: decoded.uid,
+                        email: decoded?.email || "",
+                        tier: safeTier,
+                    },
+                });
 
-        if (!r.upstream.ok) {
-            return NextResponse.json(
-                { error: r.json?.error || "Backend error" },
-                {
-                    status: r.status,
+                if (!r.upstream.ok) {
+                    return NextResponse.json(
+                        { error: r.json?.error || "Backend error" },
+                        {
+                            status: r.status,
+                            headers: {
+                                "x-request-id": r.reqId,
+                                "cache-control": "no-store",
+                            },
+                        }
+                    );
+                }
+
+                const payload =
+                    r.json && Object.keys(r.json).length
+                        ? r.json
+                        : {
+                            ok: true,
+                            queued: r.status === 202 || r.status === 204,
+                        };
+
+                return NextResponse.json(payload, {
+                    status: 200,
                     headers: {
                         "x-request-id": r.reqId,
                         "cache-control": "no-store",
                     },
-                }
-            );
-        }
-
-        const payload =
-            r.json && Object.keys(r.json).length
-                ? r.json
-                : { ok: true, queued: r.status === 202 || r.status === 204 };
-
-        return NextResponse.json(payload, {
-            status: 200,
-            headers: { "x-request-id": r.reqId, "cache-control": "no-store" },
-        });
-    } catch (e: any) {
-        return NextResponse.json({ error: e?.message || "Proxy failed" }, { status: 502 });
-    }
+                });
+            } catch (e: any) {
+                return NextResponse.json(
+                    { error: e?.message || "Proxy failed" },
+                    { status: 502 }
+                );
+            }
+        },
+        { methods: ["POST"] }
+    );
 }

@@ -1,26 +1,22 @@
-// src/app/api/auth/csrf/route.ts
-import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import crypto from "node:crypto";
+// app/api/auth/csrf/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
+import { CSRF_COOKIE } from "../../_lib/auth";
 
-const CSRF_COOKIE = "csrf";
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-export async function POST() {
-    const jar = cookies();
-    let token = jar.get(CSRF_COOKIE)?.value;
+export async function POST(req: NextRequest) {
+    const token = crypto.randomBytes(32).toString("hex");
 
-    // Only generate if no cookie exists yet
-    if (!token) {
-        token = crypto.randomBytes(32).toString("hex");
-    }
-
-    jar.set(CSRF_COOKIE, token, {
-        httpOnly: true,
-        sameSite: "lax",
+    const res = NextResponse.json({ csrf: token }, { status: 200 });
+    res.cookies.set(CSRF_COOKIE, token, {
+        httpOnly: false, // must be JS-readable
         secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
         path: "/",
         maxAge: 60 * 60 * 24, // 1 day
     });
 
-    return NextResponse.json({ csrf: token });
+    return res;
 }

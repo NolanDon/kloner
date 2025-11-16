@@ -28,17 +28,51 @@ function safeEqual(a: string, b: string) {
  * Expects the CSRF token in:
  *   - cookie:  `csrf`
  *   - header:  `x-csrf`
- * The `/api/auth/csrf` route must NOT call this (it issues the token).
+ *
+ * IMPORTANT:
+ *  - Logs what the server actually sees so you can debug mismatches.
  */
 export function assertCsrf(req: NextRequest) {
     const m = req.method.toUpperCase();
     if (m === "GET" || m === "HEAD" || m === "OPTIONS") return;
 
-    const cookie = req.cookies.get(CSRF_COOKIE)?.value || "";
-    const header = req.headers.get(CSRF_HEADER) || "";
+    const cookieRaw = req.cookies.get(CSRF_COOKIE)?.value ?? "";
+    const headerRaw = req.headers.get(CSRF_HEADER) ?? "";
 
-    if (!cookie || !header || !safeEqual(cookie, header)) {
-        throw Object.assign(new Error("Forbidden (csrf)"), { status: 403 });
+    const cookie = cookieRaw.trim();
+    const header = headerRaw.trim();
+
+    // Debug log: what the server sees
+    console.log("[csrf-debug]", {
+        method: m,
+        cookieRaw,
+        headerRaw,
+        cookie,
+        header,
+        cookieLen: cookie.length,
+        headerLen: header.length,
+    });
+
+    if (!cookie || !header) {
+        console.warn("[csrf] missing token", { cookie, header });
+        throw Object.assign(new Error("CSRF check failed"), { status: 403 });
+    }
+
+    // First: strict string equality (cheap / clear)
+    if (cookie === header) {
+        return;
+    }
+
+    // Second: timing-safe comparison (in case of weird encodings)
+    const equal = safeEqual(cookie, header);
+    if (!equal) {
+        console.warn("[csrf] mismatch", {
+            cookie,
+            header,
+            cookieLen: cookie.length,
+            headerLen: header.length,
+        });
+        throw Object.assign(new Error("CSRF check failed"), { status: 403 });
     }
 }
 

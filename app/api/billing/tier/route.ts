@@ -1,11 +1,11 @@
 // app/api/billing/tier/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { verifySession } from "../../_lib/auth";
 import admin from "firebase-admin";
 import {
     refreshTierFromStripeForUid,
     type UserTier,
 } from "../../_lib/billing";
+import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,52 +13,56 @@ export const dynamic = "force-dynamic";
 const db = admin.firestore();
 
 export async function GET(req: NextRequest) {
-    try {
-        const { uid } = await verifySession(req);
+    return requireSessionAndMaybeCsrf(
+        req,
+        async ({ uid }) => {
+            try {
+                const { searchParams } = new URL(req.url);
+                const refresh = searchParams.get("refresh") === "1";
 
-        const { searchParams } = new URL(req.url);
-        const refresh = searchParams.get("refresh") === "1";
+                let tier: UserTier = "free";
+                let userData: any = {};
 
-        let tier: UserTier = "free";
-        let userData: any = {};
+                const userRef = db.collection("kloner_users").doc(uid);
+                const snap = await userRef.get();
+                if (snap.exists) {
+                    userData = snap.data();
+                }
 
-        const userRef = db.collection("kloner_users").doc(uid);
-        const snap = await userRef.get();
-        if (snap.exists) {
-            userData = snap.data();
-        }
+                const source: string | undefined = userData.tierSource;
 
-        const source: string | undefined = userData.tierSource;
+                // force refresh, or if we don't yet trust that Firestore tier
+                if (
+                    refresh ||
+                    !source || // no source set yet
+                    source !== "stripe" // make Stripe the source of truth
+                ) {
+                    tier = await refreshTierFromStripeForUid(uid);
+                    const freshSnap = await userRef.get();
+                    userData = freshSnap.exists ? freshSnap.data() : {};
+                } else {
+                    tier = (userData.tier as UserTier) || "free";
+                }
 
-        // force refresh, or if we don't yet trust that Firestore tier
-        if (
-            refresh ||
-            !source || // no source set yet
-            source !== "stripe" // make Stripe the source of truth
-        ) {
-            tier = await refreshTierFromStripeForUid(uid);
-            const freshSnap = await userRef.get();
-            userData = freshSnap.exists ? freshSnap.data() : {};
-        } else {
-            tier = (userData.tier as UserTier) || "free";
-        }
-
-        return NextResponse.json(
-            {
-                uid,
-                tier,
-                stripeStatus: userData.stripeStatus ?? null,
-                currentPeriodEnd: userData.stripeCurrentPeriodEnd ?? null,
-                cancelAtPeriodEnd: userData.stripeCancelAtPeriodEnd ?? null,
-                source: userData.tierSource ?? "stripe",
-            },
-            { status: 200 }
-        );
-    } catch (err) {
-        console.error("billing/tier error", err);
-        return NextResponse.json(
-            { error: "Unauthorized or internal error" },
-            { status: 401 }
-        );
-    }
+                return NextResponse.json(
+                    {
+                        uid,
+                        tier,
+                        stripeStatus: userData.stripeStatus ?? null,
+                        currentPeriodEnd: userData.stripeCurrentPeriodEnd ?? null,
+                        cancelAtPeriodEnd: userData.stripeCancelAtPeriodEnd ?? null,
+                        source: userData.tierSource ?? "stripe",
+                    },
+                    { status: 200 }
+                );
+            } catch (err) {
+                console.error("billing/tier error", err);
+                return NextResponse.json(
+                    { error: "Internal error" },
+                    { status: 500 }
+                );
+            }
+        },
+        { methods: ["GET"] }
+    );
 }

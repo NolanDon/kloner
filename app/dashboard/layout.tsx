@@ -3,7 +3,7 @@
 
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { onAuthStateChanged, signOut as fbSignOut, type User as FirebaseUser } from "firebase/auth";
+import { onAuthStateChanged, type User as FirebaseUser, signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import Link from "next/link";
 import Image from "next/image";
@@ -86,9 +86,23 @@ function AccountBlock() {
     }, [user]);
 
     async function handleSignOut() {
-        await fbSignOut(auth);
+        await onSignOut();
         router.replace("/login");
     }
+
+    const onSignOut = async (): Promise<void> => {
+        try {
+            await fetch("/api/auth/session", {
+                method: "DELETE",
+                credentials: "include",
+            });
+            await signOut(auth);
+            router.replace("/login");
+        } catch {
+            // ignore
+        }
+    };
+
 
     return (
         <div className="mt-auto p-4 border-top border-neutral-200">
@@ -168,7 +182,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                             kloner
                         </span>
 
-              
+
                     </Link>
 
 
@@ -240,10 +254,18 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             { href: "/settings", label: "Settings", icon: SettingsIcon },
         ];
 
-        const onSignOut = async () => {
-            await fbSignOut(auth);
-            close();
-            router.replace("/login");
+        const onSignOut = async (): Promise<void> => {
+            try {
+                await fetch("/api/auth/session", {
+                    method: "DELETE",
+                    credentials: "include",
+                });
+                await signOut(auth);
+                close();
+                router.replace("/login");
+            } catch {
+                // ignore
+            }
         };
 
         return (
@@ -277,7 +299,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
                                 transition={{ duration: 0.18 }}
-                                className="fixed inset-0 z-[80] bg-black/40 backdrop-blur-sm"
+                                className="fixed inset-0 z-[80]"
                                 onClick={close}
                             />
                             <motion.div

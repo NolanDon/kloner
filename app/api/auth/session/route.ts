@@ -1,19 +1,11 @@
 // src/app/api/auth/session/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, assertCsrf } from "../../_lib/auth";
+import { getAdminAuth, CSRF_COOKIE, SESSION_COOKIE_NAME } from "../../_lib/auth";
 
-const COOKIE = "__session";
+const COOKIE = SESSION_COOKIE_NAME;
 const MAX_AGE_MS = 5 * 24 * 60 * 60 * 1000; // 5 days
 
 export async function POST(req: NextRequest) {
-    try {
-        assertCsrf(req);
-    } catch (err: any) {
-        const status = typeof err?.status === "number" ? err.status : 403;
-        const msg = err?.message || "Forbidden (csrf)";
-        return NextResponse.json({ error: msg }, { status });
-    }
-
     const { idToken } = await req.json().catch(() => ({}));
     if (!idToken) {
         return NextResponse.json({ error: "idToken required" }, { status: 400 });
@@ -41,6 +33,8 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE() {
     const res = NextResponse.json({ ok: true }, { status: 200 });
+
+    // kill Firebase session
     res.cookies.set(COOKIE, "", {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
@@ -48,5 +42,15 @@ export async function DELETE() {
         path: "/",
         maxAge: 0,
     });
+
+    // kill CSRF token
+    res.cookies.set(CSRF_COOKIE, "", {
+        httpOnly: false,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 0,
+    });
+
     return res;
 }

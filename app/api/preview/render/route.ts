@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callBackend } from "@/src/lib/callBackend";
 import { verifySession } from "../../_lib/auth";
+import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,16 +22,28 @@ function isNonEmptyString(s: unknown): s is string {
 }
 function isHttpUrl(s?: string): s is string {
     if (!s) return false;
-    try { const u = new URL(s); return u.protocol === "http:" || u.protocol === "https:"; }
-    catch { return false; }
+    try {
+        const u = new URL(s);
+        return u.protocol === "http:" || "https:" === u.protocol;
+    } catch {
+        return false;
+    }
 }
 function normUrl(s: string): string {
-    try { const u = new URL(s); u.hash = ""; return u.toString(); }
-    catch { return s.trim(); }
+    try {
+        const u = new URL(s);
+        u.hash = "";
+        return u.toString();
+    } catch {
+        return s.trim();
+    }
 }
 function hash64(s: string): string {
     let h = 0;
-    for (let i = 0; i < s.length; i++) { h = (h << 5) - h + s.charCodeAt(i); h |= 0; }
+    for (let i = 0; i < s.length; i++) {
+        h = (h << 5) - h + s.charCodeAt(i);
+        h |= 0;
+    }
     return Math.abs(h).toString(36);
 }
 /** kloner-screenshots/<uid>/url-scans/<urlHash>/<urlHash>-<ts>.jpeg */
@@ -49,111 +62,180 @@ function keyBelongsToUser(key: string, uid: string) {
 }
 
 export async function POST(req: NextRequest) {
-    let decoded: any;
-    try {
-        decoded = await verifySession(req); // { uid, email, claims?: { userTier? } }
-    } catch (e: any) {
-        return NextResponse.json({ error: e?.message || "Unauthorized" }, { status: 401 });
-    }
-
-    const json = (await req.json().catch(() => ({}))) as Body;
-
-    // Normalize inputs
-    const controllerVersion = isNonEmptyString(json.controllerVersion) ? json.controllerVersion.trim() : undefined;
-    const incomingUrl = isHttpUrl(json.url) ? normUrl(json.url!) : undefined;
-    const incomingNameHint = isNonEmptyString(json.nameHint) ? json.nameHint!.trim() : undefined;
-
-    let key = isNonEmptyString(json.key) ? json.key.trim() : undefined;
-    let keys = Array.isArray(json.keys) ? json.keys.filter(isNonEmptyString).map(k => k.trim()) : undefined;
-
-    // If no keys but a URL is present, generate first (longer preflight)
-    if (!key && !(keys && keys.length) && incomingUrl) {
-        try {
-            const gen = await callBackend(req, {
-                path: "/generate-screenshots",
-                method: "POST",
-                body: { url: incomingUrl },
-                timeoutMs: 180_000,
-                acceptOnTimeout: true,
-                userCtx: {
-                    uid: decoded.uid,
-                    email: decoded?.email || "",
-                    tier: decoded?.userTier ?? decoded?.claims?.userTier ?? null,
-                },
-            });
-
-            if (!gen.upstream.ok && gen.status !== 504) {
+    return requireSessionAndMaybeCsrf(
+        req,
+        async ({ req }) => {
+            let decoded: any;
+            try {
+                decoded = await verifySession(req); // { uid, email, claims?: { userTier? } }
+            } catch (e: any) {
                 return NextResponse.json(
-                    { error: gen.json?.error || "Backend error (generate)" },
-                    { status: gen.status, headers: { "x-request-id": gen.reqId, "cache-control": "no-store" } }
+                    { error: e?.message || "Unauthorized" },
+                    { status: 401 }
                 );
             }
 
-            const g = gen.json ?? {};
-            if (Array.isArray(g.keys) && g.keys.length) keys = g.keys.filter(isNonEmptyString);
-            else if (isNonEmptyString(g.key)) key = g.key;
-            else if (isNonEmptyString(g?.result?.key)) key = g.result.key;
-            else if (Array.isArray(g?.result?.keys) && g.result.keys.length) keys = g.result.keys.filter(isNonEmptyString);
-        } catch (e: any) {
-            return NextResponse.json({ error: e?.message || "Proxy failed (generate)" }, { status: 502 });
-        }
-    }
+            const json = (await req.json().catch(() => ({}))) as Body;
 
-    // Consolidate keys
-    const outKeys = (keys && keys.length ? keys : (key ? [key] : []))
-        .map(k => k.trim())
-        .filter(Boolean)
-        .slice(0, 25); // hard cap to avoid abuse
+            // Normalize inputs
+            const controllerVersion = isNonEmptyString(json.controllerVersion)
+                ? json.controllerVersion.trim()
+                : undefined;
+            const incomingUrl = isHttpUrl(json.url) ? normUrl(json.url!) : undefined;
+            const incomingNameHint = isNonEmptyString(json.nameHint)
+                ? json.nameHint!.trim()
+                : undefined;
 
-    if (!outKeys.length) {
-        return NextResponse.json({ error: "Missing storage key(s); provide key/keys or a valid url" }, { status: 400 });
-    }
+            let key = isNonEmptyString(json.key) ? json.key.trim() : undefined;
+            let keys = Array.isArray(json.keys)
+                ? json.keys.filter(isNonEmptyString).map((k) => k.trim())
+                : undefined;
 
-    // Namespace check: keys must belong to this user
-    for (const k of outKeys) {
-        if (!keyBelongsToUser(k, decoded.uid)) {
-            return NextResponse.json({ error: "Forbidden key namespace" }, { status: 403 });
-        }
-    }
+            // If no keys but a URL is present, generate first (longer preflight)
+            if (!key && !(keys && keys.length) && incomingUrl) {
+                try {
+                    const gen = await callBackend(req, {
+                        path: "/generate-screenshots",
+                        method: "POST",
+                        body: { url: incomingUrl },
+                        timeoutMs: 180_000,
+                        acceptOnTimeout: true,
+                        userCtx: {
+                            uid: decoded.uid,
+                            email: decoded?.email || "",
+                            tier:
+                                decoded?.userTier ??
+                                decoded?.claims?.userTier ??
+                                null,
+                        },
+                    });
 
-    // Infer urlHash and nameHint if possible
-    const urlHash =
-        incomingUrl ? hash64(incomingUrl) :
-            extractHashFromKey(outKeys[0]) || undefined;
+                    if (!gen.upstream.ok && gen.status !== 504) {
+                        return NextResponse.json(
+                            { error: gen.json?.error || "Backend error (generate)" },
+                            {
+                                status: gen.status,
+                                headers: {
+                                    "x-request-id": gen.reqId,
+                                    "cache-control": "no-store",
+                                },
+                            }
+                        );
+                    }
 
-    const nameHint =
-        incomingNameHint ||
-        (incomingUrl ? new URL(incomingUrl).hostname : undefined);
+                    const g = gen.json ?? {};
+                    if (Array.isArray(g.keys) && g.keys.length) {
+                        keys = g.keys.filter(isNonEmptyString);
+                    } else if (isNonEmptyString(g.key)) {
+                        key = g.key;
+                    } else if (isNonEmptyString(g?.result?.key)) {
+                        key = g.result.key;
+                    } else if (
+                        Array.isArray(g?.result?.keys) &&
+                        g.result.keys.length
+                    ) {
+                        keys = g.result.keys.filter(isNonEmptyString);
+                    }
+                } catch (e: any) {
+                    return NextResponse.json(
+                        { error: e?.message || "Proxy failed (generate)" },
+                        { status: 502 }
+                    );
+                }
+            }
 
-    try {
-        const r = await callBackend(req, {
-            path: "/preview-render",
-            method: "POST",
-            body: {
-                url: incomingUrl,
-                keys: outKeys,
-                nameHint: nameHint ?? null,
-                urlHint: incomingUrl,             // allows backend to persist url
-                urlHash: urlHash,             // allows backend to persist urlHash
-                controllerVersion,                // transparent forward if provided
-            },
-            timeoutMs: 240_000,
-            acceptOnTimeout: true,
-            userCtx: {
-                uid: decoded.uid,
-                email: decoded?.email || "",
-                tier: decoded?.userTier ?? decoded?.claims?.userTier ?? null,
-            },
-        });
+            // Consolidate keys
+            const outKeys = (keys && keys.length ? keys : key ? [key] : [])
+                .map((k) => k.trim())
+                .filter(Boolean)
+                .slice(0, 25); // hard cap to avoid abuse
 
-        const okJson = r.json && Object.keys(r.json).length ? r.json : { ok: true };
-        const status = r.upstream.ok ? 200 : (r.status === 504 || r.status === 524 ? 202 : r.status);
+            if (!outKeys.length) {
+                return NextResponse.json(
+                    {
+                        error:
+                            "Missing storage key(s); provide key/keys or a valid url",
+                    },
+                    { status: 400 }
+                );
+            }
 
-        return NextResponse.json(
-            status === 202 ? { ...okJson, queued: true } : (r.upstream.ok ? okJson : { error: r.json?.error || "Backend error (render)" }),
-            { status, headers: { "x-request-id": r.reqId, "cache-control": "no-store" } }
-        );
-    } catch (e: any) {
-        return NextResponse.json({ error: e?.message || "Proxy failed (render)" }, { status: 502 });
-    }
+            // Namespace check: keys must belong to this user
+            for (const k of outKeys) {
+                if (!keyBelongsToUser(k, decoded.uid)) {
+                    return NextResponse.json(
+                        { error: "Forbidden key namespace" },
+                        { status: 403 }
+                    );
+                }
+            }
+
+            // Infer urlHash and nameHint if possible
+            const urlHash = incomingUrl
+                ? hash64(incomingUrl)
+                : extractHashFromKey(outKeys[0]) || undefined;
+
+            const nameHint =
+                incomingNameHint ||
+                (incomingUrl ? new URL(incomingUrl).hostname : undefined);
+
+            try {
+                const r = await callBackend(req, {
+                    path: "/preview-render",
+                    method: "POST",
+                    body: {
+                        url: incomingUrl,
+                        keys: outKeys,
+                        nameHint: nameHint ?? null,
+                        urlHint: incomingUrl, // allows backend to persist url
+                        urlHash: urlHash, // allows backend to persist urlHash
+                        controllerVersion, // transparent forward if provided
+                    },
+                    timeoutMs: 240_000,
+                    acceptOnTimeout: true,
+                    userCtx: {
+                        uid: decoded.uid,
+                        email: decoded?.email || "",
+                        tier:
+                            decoded?.userTier ??
+                            decoded?.claims?.userTier ??
+                            null,
+                    },
+                });
+
+                const okJson =
+                    r.json && Object.keys(r.json).length ? r.json : { ok: true };
+                const status = r.upstream.ok
+                    ? 200
+                    : r.status === 504 || r.status === 524
+                        ? 202
+                        : r.status;
+
+                return NextResponse.json(
+                    status === 202
+                        ? { ...okJson, queued: true }
+                        : r.upstream.ok
+                            ? okJson
+                            : {
+                                error:
+                                    r.json?.error ||
+                                    "Backend error (render)",
+                            },
+                    {
+                        status,
+                        headers: {
+                            "x-request-id": r.reqId,
+                            "cache-control": "no-store",
+                        },
+                    }
+                );
+            } catch (e: any) {
+                return NextResponse.json(
+                    { error: e?.message || "Proxy failed (render)" },
+                    { status: 502 }
+                );
+            }
+        },
+        { methods: ["POST"] }
+    );
 }
