@@ -1,7 +1,7 @@
 // app/dashboard/view/page.helpers.test.tsx
 
-import { act } from "react";
-import { isHttpUrl, normUrl, ensureHttp, hash64, tsToMs, extractHashFromKey, shortVersionFromShotPath, rendersEqual, CREDIT_LIMITS, useCooldown } from "./page.helpers";
+import { isHttpUrl, normUrl, ensureHttp, hash64, tsToMs, extractHashFromKey, shortVersionFromShotPath, rendersEqual, useCooldown } from "./page.helpers";
+import { CREDIT_LIMITS } from "../../../src/lib/credits";
 
 describe("URL helpers", () => {
     it("isHttpUrl returns true for http/https and false otherwise", () => {
