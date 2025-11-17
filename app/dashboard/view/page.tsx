@@ -211,7 +211,7 @@ const GhostActionCard = memo(function GhostActionCard({
             type="button"
             onClick={onClick}
             disabled={disabled}
-            className={`group relative px-6 flex aspect-[4/3] w-full items-center justify-center rounded-xl border-2 border-dashed bg-white text-center transition ${disabled
+            className={`group relative p-6 flex aspect-[4/3] w-full items-center justify-center rounded-xl border-2 border-dashed bg-white text-center transition ${disabled
                 ? "opacity-60 cursor-not-allowed"
                 : "hover:border-neutral-400"
                 }`}
@@ -346,12 +346,12 @@ export default function PreviewPage(): JSX.Element {
         return out;
     }
 
-    const screenshotRemaining = tierLimits.screenshotDaily
-        ? Math.max(tierLimits.screenshotDaily - credits.screenshotUsed, 0)
+    const screenshotRemaining = tierLimits.screenshotMonthly
+        ? Math.max(tierLimits.screenshotMonthly - credits.screenshotUsed, 0)
         : null;
 
-    const previewRemaining = tierLimits.previewDaily
-        ? Math.max(tierLimits.previewDaily - credits.previewUsed, 0)
+    const previewRemaining = tierLimits.previewMonthly
+        ? Math.max(tierLimits.previewMonthly - credits.previewUsed, 0)
         : null;
 
     function persistCredits(next: {
@@ -389,17 +389,17 @@ export default function PreviewPage(): JSX.Element {
     }
 
     function canUseScreenshotCredit(): boolean {
-        if (!tierLimits.screenshotDaily) return true;
-        return credits.screenshotUsed < tierLimits.screenshotDaily;
+        if (!tierLimits.screenshotMonthly) return true;
+        return credits.screenshotUsed < tierLimits.screenshotMonthly;
     }
 
     function canUsePreviewCredit(): boolean {
-        if (!tierLimits.previewDaily) return true;
-        return credits.previewUsed < tierLimits.previewDaily;
+        if (!tierLimits.previewMonthly) return true;
+        return credits.previewUsed < tierLimits.previewMonthly;
     }
 
     function markScreenshotSuccess() {
-        if (!tierLimits.screenshotDaily) return;
+        if (!tierLimits.screenshotMonthly) return;
         const next = {
             screenshotUsed: credits.screenshotUsed + 1,
             previewUsed: credits.previewUsed,
@@ -408,7 +408,7 @@ export default function PreviewPage(): JSX.Element {
     }
 
     function markPreviewSuccess() {
-        if (!tierLimits.previewDaily) return;
+        if (!tierLimits.previewMonthly) return;
         const next = {
             screenshotUsed: credits.screenshotUsed,
             previewUsed: credits.previewUsed + 1,
@@ -1822,7 +1822,7 @@ export default function PreviewPage(): JSX.Element {
 
                     return (
                         <>
-                            <div className="relative flex min-w-[300px] flex-col overflow-visible rounded-xl border border-neutral-200 bg-white shadow-sm">
+                            <div className="relative flex flex-col overflow-visible rounded-xl border border-neutral-200 bg-white shadow-sm">
                                 <span
                                     className="absolute left-2 top-2 z-30 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow"
                                     style={{ backgroundColor: "#1d4ed8" }}
@@ -2122,7 +2122,7 @@ export default function PreviewPage(): JSX.Element {
                                         }
                                     />
                                     <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
-                                        <div className="pointer-events-auto flex flex-col md:flex-row items-center gap-2 rounded-xl bg-white/90 p-2 ring-1 ring-neutral-200 backdrop-blur">
+                                        <div className="pointer-events-auto flex flex-col xl:flex-row items-center gap-2 rounded-xl bg-white/90 p-2 ring-1 ring-neutral-200 backdrop-blur">
                                             <button
                                                 onClick={(e) => {
                                                     e.preventDefault();
@@ -2242,20 +2242,22 @@ export default function PreviewPage(): JSX.Element {
                             </div>
                             <div className="flex flex-wrap gap-2">
                                 <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] sm:text-xs text-neutral-700">
-                                    Screenshot credits today:&nbsp;
+                                    Screenshots Remaining: &nbsp;
                                     <span className="font-semibold text-neutral-900">
-                                        {tierLimits.screenshotDaily
-                                            ? `${screenshotRemaining}/${tierLimits.screenshotDaily}`
+                                        {tierLimits.screenshotMonthly
+                                            ? `${screenshotRemaining}/${tierLimits.screenshotMonthly}`
                                             : "unlimited"}
                                     </span>
                                 </span>
 
                                 <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] sm:text-xs text-neutral-700">
-                                    Preview credits today:&nbsp;
+                                    Previews Remaining: &nbsp;
                                     <span className="font-semibold text-neutral-900">
-                                        {tierLimits.previewDaily
-                                            ? `${previewRemaining}/${tierLimits.previewDaily}`
-                                            : "unlimited"}
+                                        {
+                                            tierLimits.previewMonthly
+                                                ? `${previewRemaining}/${tierLimits.previewMonthly}`
+                                                : "unlimited"
+                                        }
                                     </span>
                                 </span>
                             </div>

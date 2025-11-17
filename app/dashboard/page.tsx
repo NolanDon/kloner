@@ -76,6 +76,7 @@ function isHttpUrl(s: string): s is string {
         return false;
     }
 }
+
 function normUrl(s: string): string {
     try {
         const u = new URL(s);
@@ -85,6 +86,7 @@ function normUrl(s: string): string {
         return s.trim();
     }
 }
+
 function hash64(s: string): string {
     let h = 0;
     for (let i = 0; i < s.length; i++) {
@@ -92,6 +94,13 @@ function hash64(s: string): string {
         h |= 0;
     }
     return Math.abs(h).toString(36);
+}
+
+function ensureProtocol(raw: string): string {
+    const trimmed = raw.trim();
+    if (!trimmed) return trimmed;
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return `https://${trimmed}`;
 }
 
 function normalizeUrlStatus(
@@ -195,7 +204,8 @@ function pickLatestPath(paths: string[]): string | null {
 
 /* shared add+start */
 async function addAndStart(uid: string, rawUrl: string) {
-    const cleaned = normUrl(rawUrl);
+    const withProtocol = ensureProtocol(rawUrl);
+    const cleaned = normUrl(withProtocol);
     if (!isHttpUrl(cleaned)) throw new Error("Invalid URL.");
     const urlHash = hash64(cleaned);
 
@@ -241,7 +251,9 @@ function UrlForm({ uid, onAdded }: UrlFormProps) {
         setErr("");
         try {
             setBusy(true);
-            await addAndStart(uid, url);
+            const normalized = ensureProtocol(url);
+            setUrl(normalized);
+            await addAndStart(uid, normalized);
             onAdded?.();
             setUrl("");
         } catch (e: any) {
@@ -258,7 +270,7 @@ function UrlForm({ uid, onAdded }: UrlFormProps) {
         >
             <div className="flex flex-col sm:flex-row gap-3">
                 <input
-                    type="url"
+                    // type="url"
                     placeholder="https://example.com"
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
@@ -653,7 +665,7 @@ export default function DashboardPage() {
         const paramUrl = search.get("u");
         if (!paramUrl) return;
 
-        const cleaned = normUrl(paramUrl);
+        const cleaned = normUrl(ensureProtocol(paramUrl));
         const key = `kloner:addOnce:${u.uid}:${hash64(cleaned)}`;
         if (typeof window !== "undefined" && localStorage.getItem(key)) {
             router.replace("/dashboard");

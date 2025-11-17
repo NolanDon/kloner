@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { callBackend } from "@/src/lib/callBackend";
 import { verifySession } from "../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
+import { getAuthoritativeUserTier } from "../../_lib/userTier";
+import { consumeUserCredit } from "../../_lib/credits-server";
+import type { UserTier } from "@/src/lib/credits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -75,6 +78,21 @@ export async function POST(req: NextRequest) {
                 );
             }
 
+            // Authoritative tier from Stripe/Firestore so credits + limits are in sync
+            let tier: UserTier;
+            try {
+                tier = await getAuthoritativeUserTier(decoded.uid);
+            } catch (e: any) {
+                return NextResponse.json(
+                    {
+                        error:
+                            e?.message ||
+                            "Unable to determine subscription tier. Try again shortly.",
+                    },
+                    { status: 500 }
+                );
+            }
+
             const json = (await req.json().catch(() => ({}))) as Body;
 
             // Normalize inputs
@@ -103,10 +121,7 @@ export async function POST(req: NextRequest) {
                         userCtx: {
                             uid: decoded.uid,
                             email: decoded?.email || "",
-                            tier:
-                                decoded?.userTier ??
-                                decoded?.claims?.userTier ??
-                                null,
+                            tier,
                         },
                     });
 
@@ -196,10 +211,7 @@ export async function POST(req: NextRequest) {
                     userCtx: {
                         uid: decoded.uid,
                         email: decoded?.email || "",
-                        tier:
-                            decoded?.userTier ??
-                            decoded?.claims?.userTier ??
-                            null,
+                        tier,
                     },
                 });
 
@@ -210,6 +222,19 @@ export async function POST(req: NextRequest) {
                     : r.status === 504 || r.status === 524
                         ? 202
                         : r.status;
+
+                // Burn ONE preview credit only on real success (200 from backend).
+                if (r.upstream.ok && status === 200) {
+                    try {
+                        await consumeUserCredit(decoded.uid, tier, "preview");
+                    } catch (err: any) {
+                        console.warn("consumeUserCredit failed (preview)", {
+                            uid: decoded.uid,
+                            err: err?.message || String(err),
+                        });
+                        // Do not fail the render just because credit write failed.
+                    }
+                }
 
                 return NextResponse.json(
                     status === 202

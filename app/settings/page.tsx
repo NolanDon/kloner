@@ -190,7 +190,7 @@ export default function SettingsPage(): JSX.Element {
         <>
             <NavBar />
             <main className="min-h-screen bg-white py-[80px]">
-                <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-10 py-16">
+                <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-10 py-16">
                     <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-800">
                         Settings
                     </h1>
@@ -298,8 +298,7 @@ export default function SettingsPage(): JSX.Element {
                                     View plans
                                 </a>
                                 <span className="text-[11px] text-neutral-500">
-                                    Billing managed by Stripe. Upgrades and cancellations are
-                                    handled from the pricing page and Stripe portal.
+                                    Billing managed by Stripe
                                 </span>
                             </div>
                         </div>

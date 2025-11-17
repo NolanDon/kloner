@@ -3,6 +3,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { callBackend } from "@/src/lib/callBackend";
 import { verifySession } from "../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
+import { getAuthoritativeUserTier } from "../../_lib/userTier";
+import type { UserTier } from "@/src/lib/credits";
+import {
+    peekUserCredit,
+    consumeUserCredit,
+} from "../../_lib/credits-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,9 +39,7 @@ export async function POST(req: NextRequest) {
                 );
             }
 
-            const body = (await req
-                .json()
-                .catch(() => ({}))) as { url?: string; tier?: string };
+            const body = (await req.json().catch(() => ({}))) as { url?: string };
             const { url } = body;
 
             if (!isHttpUrl(url)) {
@@ -45,10 +49,38 @@ export async function POST(req: NextRequest) {
                 );
             }
 
-            const safeTier =
-                decoded?.userTier ??
-                decoded?.claims?.userTier ??
-                null;
+            let tier: UserTier;
+            try {
+                tier = await getAuthoritativeUserTier(decoded.uid);
+            } catch (e: any) {
+                return NextResponse.json(
+                    {
+                        error:
+                            e?.message ||
+                            "Unable to determine subscription tier. Try again shortly.",
+                    },
+                    { status: 500 }
+                );
+            }
+
+            // Hard gate: do not even hit Fly if out of previews
+            try {
+                const peek = await peekUserCredit(decoded.uid, tier, "preview");
+                if (!peek.ok || (peek.remaining !== null && peek.remaining <= 0)) {
+                    return NextResponse.json(
+                        {
+                            error: "Monthly preview limit reached for your plan.",
+                            remaining: peek.remaining,
+                        },
+                        { status: 429 }
+                    );
+                }
+            } catch {
+                return NextResponse.json(
+                    { error: "Unable to check credits. Try again shortly." },
+                    { status: 503 }
+                );
+            }
 
             try {
                 const r = await callBackend(req, {
@@ -60,10 +92,11 @@ export async function POST(req: NextRequest) {
                     userCtx: {
                         uid: decoded.uid,
                         email: decoded?.email || "",
-                        tier: safeTier,
+                        tier,
                     },
                 });
 
+                // Backend failed → no credit burn
                 if (!r.upstream.ok) {
                     return NextResponse.json(
                         { error: r.json?.error || "Backend error" },
@@ -75,6 +108,13 @@ export async function POST(req: NextRequest) {
                             },
                         }
                     );
+                }
+
+                // Heavy work succeeded → burn one preview credit
+                try {
+                    await consumeUserCredit(decoded.uid, tier, "snapshot");
+                } catch {
+                    // If this fails you effectively gave a free run; fine for now.
                 }
 
                 const payload =

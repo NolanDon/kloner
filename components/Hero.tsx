@@ -25,9 +25,77 @@ function toAbsolute(u: string) {
   }
 }
 
+/**
+ * Normalize user input by stripping leading protocols (http:// or https://)
+ * and trimming whitespace.
+ */
+function stripProtocol(input: string) {
+  return input.replace(/^\s*https?:\/\//i, "").trim();
+}
+
+/**
+ * Validate and normalize a candidate URL string.
+ * Returns a normalized absolute URL string (with protocol) or null if invalid.
+ * Security checks:
+ *  - Only allows http/https schemes.
+ *  - Rejects obvious loopback/private IP hosts (localhost, 127.*, 10.*, 172.16-31.*, 192.168.*, ::1).
+ *  - Rejects empty hostnames and non-URL values.
+ *  - Enforces a reasonable max length.
+ */
+const DOMAIN_RE = /^(?!-)(?:[a-z0-9-]{1,63}\.)+[a-z]{2,63}$/i;
+
+function validateAndNormalize(u: string): string | null {
+  const s = u.trim();
+  if (!s) return null;
+  if (s.length > 2083) return null; // avoid extremely long inputs
+
+  const lower = s.toLowerCase();
+
+  // Reject obvious garbage / bare schemes
+  if (lower === "http" || lower === "https") return null;
+
+  const abs = toAbsolute(s);
+  if (!abs) return null;
+
+  try {
+    const parsed = new URL(abs);
+    const proto = parsed.protocol.toLowerCase();
+    if (proto !== "http:" && proto !== "https:") return null;
+
+    const host = parsed.hostname || "";
+    if (!host) return null;
+
+    const hostLower = host.toLowerCase();
+
+    // Block common local/private addresses to reduce SSRF/localhost attacks
+    if (
+      hostLower === "localhost" ||
+      hostLower === "::1" ||
+      hostLower === "0.0.0.0" ||
+      /^127(?:\.\d{1,3}){0,3}$/.test(hostLower) ||
+      /^10\./.test(hostLower) ||
+      /^192\.168\./.test(hostLower) ||
+      /^169\.254\./.test(hostLower) ||
+      /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostLower)
+    ) {
+      return null;
+    }
+
+    // Require proper domain structure: at least one dot, valid labels, letter TLD ≥ 2 chars
+    if (!DOMAIN_RE.test(hostLower)) {
+      return null;
+    }
+
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
 export default function Hero() {
   const router = useRouter();
   const [url, setUrl] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   // Detect mobile on the client and only render the small video on mobile.
@@ -51,19 +119,53 @@ export default function Hero() {
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const abs = toAbsolute(url);
-    if (!abs) return;
+
+    // Strip protocol if the user included it (requirement)
+    const stripped = stripProtocol(url);
+    const normalized = validateAndNormalize(stripped);
+
+    if (!normalized) {
+      setError("Please enter a valid public http(s) URL (no localhost or private IPs).");
+      return;
+    }
+
+    setError(null);
 
     const user = auth.currentUser;
     if (user) {
-      router.push(`/dashboard?u=${encodeURIComponent(abs)}`);
+      router.push(`/dashboard?u=${encodeURIComponent(normalized)}`);
       return;
     }
 
     try {
-      localStorage.setItem("kloner.pendingUrl", abs);
-    } catch { }
-    router.push(`/login?mode=signup&u=${encodeURIComponent(abs)}`);
+      localStorage.setItem("kloner.pendingUrl", normalized);
+    } catch {
+      // ignore storage failures
+    }
+    router.push(`/login?mode=signup&u=${encodeURIComponent(normalized)}`);
+  }
+
+  // Keep input free of leading protocol while typing/pasting
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const cleaned = stripProtocol(e.target.value);
+    setUrl(cleaned);
+    // live-validate lightly
+    if (!cleaned) {
+      setError(null);
+      return;
+    }
+    const ok = validateAndNormalize(cleaned);
+    setError(ok ? null : "Please enter a valid public http(s) URL.");
+  }
+
+  function handlePaste(e: React.ClipboardEvent<HTMLInputElement>) {
+    const pasted = e.clipboardData.getData("text");
+    if (!pasted) return;
+    const cleaned = stripProtocol(pasted);
+    e.preventDefault();
+    setUrl(cleaned);
+    const ok = validateAndNormalize(cleaned);
+    setError(ok ? null : "Please enter a valid public http(s) URL.");
   }
 
   return (
@@ -146,8 +248,10 @@ export default function Hero() {
                 autoComplete="url"
                 placeholder="example.com"
                 aria-label="Paste a website URL"
+                aria-invalid={error ? "true" : "false"}
                 value={url}
-                onChange={(e) => setUrl(e.target.value)}
+                onChange={handleChange}
+                onPaste={handlePaste}
                 ref={inputRef}
                 className="flex-1 bg-transparent outline-none text-neutral-600 placeholder:text-neutral-400 text-[16px] sm:text-[18px]"
               />
@@ -164,11 +268,20 @@ export default function Hero() {
                   transition
                 "
                 aria-label="Generate preview"
+                disabled={!url || !!error}
               >
                 Preview
               </button>
             </div>
-            <div className="mt-6 text-white/80 text-xs sm:text-sm">Free preview • No card required to generate previews</div>
+            <div className="mt-2">
+              {error ? (
+                <div role="alert" className="text-yellow-200 text-xs sm:text-sm">
+                  {error}
+                </div>
+              ) : (
+                <div className="text-white/80 text-xs sm:text-sm">Free preview • No card required to generate previews</div>
+              )}
+            </div>
           </form>
         </motion.div>
       </div>

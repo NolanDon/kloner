@@ -123,7 +123,7 @@ function RotatingCards() {
         return (
             <CardShell>
                 <div className="absolute inset-0 flex flex-col justify-center gap-3 p-5">
-                    <Row text="100 preview credits / month on Pro" delay={0.05} />
+                    <Row text="400 preview credits / month on Pro" delay={0.05} />
                     <Row text="Credits reset every month" delay={0.25} />
                     <Row text="Failed runs do not use credits" delay={0.45} />
                     <Row text="You keep full control of exports" delay={0.65} />

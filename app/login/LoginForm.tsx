@@ -349,17 +349,20 @@ export default function LoginPage(): JSX.Element {
         <main className="min-h-screen bg-white text-black grid place-items-center px-6">
             <NavBar />
             <div className="w-full max-w-md rounded-2xl border border-black/10 bg-white p-8 shadow-md">
-                <div className="mb-6 text-center">
-                    <div
-                        className="mx-auto mb-3 h-12 w-12 rounded-2xl grid place-items-center font-black text-xl"
-                        style={{ backgroundColor: ACCENT, color: "white" }}
-                    >
-                        K
-                    </div>
-                    <h1 className="text-2xl font-semibold tracking-tight">
+                <div className="text-center">
+                    {/* <div className="mx-auto relative h-[90px] w-[90px]">
+                        <Image
+                            src={logo}
+                            alt="kloner logo"
+                            fill
+                            priority
+                            className="object-contain"
+                        />
+                    </div> */}
+                    <h1 className="text-2xl mb-4 font-semibold tracking-tight">
                         {mode === "signin" ? "Sign in" : "Create account"}
                     </h1>
-                    <p className="mt-1 text-sm text-neutral-600">
+                    <p className="mt-1 mb-4 text-sm text-neutral-600">
                         {mode === "signin"
                             ? "Use Google or email to access your Kloner dashboard."
                             : "Clone websites in minutes. Quick signup with email or Google, then one-click deploy."}

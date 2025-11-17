@@ -176,28 +176,28 @@ describe("rendersEqual", () => {
 
 describe("CREDIT_LIMITS", () => {
     it("defines non-zero limits for free/pro/agency", () => {
-        expect(CREDIT_LIMITS.free.screenshotDaily).toBeGreaterThan(0);
-        expect(CREDIT_LIMITS.free.previewDaily).toBeGreaterThan(0);
+        expect(CREDIT_LIMITS.free.screenshotMonthly).toBeGreaterThan(0);
+        expect(CREDIT_LIMITS.free.previewMonthly).toBeGreaterThan(0);
 
-        expect(CREDIT_LIMITS.pro.screenshotDaily).toBeGreaterThan(
-            CREDIT_LIMITS.free.screenshotDaily
+        expect(CREDIT_LIMITS.pro.screenshotMonthly).toBeGreaterThan(
+            CREDIT_LIMITS.free.screenshotMonthly
         );
-        expect(CREDIT_LIMITS.pro.previewDaily).toBeGreaterThan(
-            CREDIT_LIMITS.free.previewDaily
+        expect(CREDIT_LIMITS.pro.previewMonthly).toBeGreaterThan(
+            CREDIT_LIMITS.free.previewMonthly
         );
 
-        expect(CREDIT_LIMITS.agency.screenshotDaily).toBeGreaterThan(
-            CREDIT_LIMITS.pro.screenshotDaily
+        expect(CREDIT_LIMITS.agency.screenshotMonthly).toBeGreaterThan(
+            CREDIT_LIMITS.pro.screenshotMonthly
         );
-        expect(CREDIT_LIMITS.agency.previewDaily).toBeGreaterThan(
-            CREDIT_LIMITS.pro.previewDaily
+        expect(CREDIT_LIMITS.agency.previewMonthly).toBeGreaterThan(
+            CREDIT_LIMITS.pro.previewMonthly
         );
     });
 
     it("treats enterprise and unknown as unlimited via zero sentinel", () => {
-        expect(CREDIT_LIMITS.enterprise.screenshotDaily).toBe(0);
-        expect(CREDIT_LIMITS.enterprise.previewDaily).toBe(0);
-        expect(CREDIT_LIMITS.unknown.screenshotDaily).toBe(0);
-        expect(CREDIT_LIMITS.unknown.previewDaily).toBe(0);
+        expect(CREDIT_LIMITS.enterprise.screenshotMonthly).toBe(0);
+        expect(CREDIT_LIMITS.enterprise.previewMonthly).toBe(0);
+        expect(CREDIT_LIMITS.unknown.screenshotMonthly).toBe(0);
+        expect(CREDIT_LIMITS.unknown.previewMonthly).toBe(0);
     });
 });
