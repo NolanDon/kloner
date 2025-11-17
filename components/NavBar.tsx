@@ -38,7 +38,7 @@ export default function NavBar(): JSX.Element {
   const [active, setActive] = useState<NavItem | null>(null);
   const [mOpen, setMOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-
+ 
   const { user } = (useAuth() ?? {}) as { user: User | null };
 
   useEffect(() => {
@@ -255,7 +255,7 @@ export default function NavBar(): JSX.Element {
             )}
 
             <a
-              href="/dashboard/new"
+              href="/dashboard"
               className="hidden lg:inline-flex items-center justify-center h-14 rounded-full px-5 text-[15px] text-white whitespace-nowrap"
               style={{ backgroundColor: ACCENT }}
             >

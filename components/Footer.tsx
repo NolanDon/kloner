@@ -1,7 +1,50 @@
-// components/Footer.tsx
 'use client';
 
 import { useEffect, useId, useState } from 'react';
+
+// Map footer labels → href. Only use /docs when there is no dedicated page.
+const FOOTER_LINKS: Record<string, string> = {
+  // Product
+  'How it Works': '/#how',
+  "What’s Included": '/docs#features',
+  'Live Preview': '/dashboard/view',
+
+  // Company
+  About: '/docs#about',
+  Contact: '/docs#contact',
+  FAQs: '/#faq',
+
+  // Compare
+  'Cloning vs Rebuild': '/docs#cloning-vs-rebuild',
+  'Vercel vs Netlify': '/docs#vercel-vs-netlify',
+  'Static vs SSR': '/docs#static-vs-ssr',
+  'Export Options': '/docs#export-options-card',
+  Pricing: '/price',
+
+  // Library (already present in docs)
+  'Routing Guides': '/docs#routing-guides',
+  'SEO Templates': '/docs#seo-templates',
+  'Font Subsetting': '/docs#font-subsetting',
+  'Image Optimization': '/docs#image-optimization',
+  'Deploy Checklists': '/docs#deploy-checklists',
+
+  // Partnerships
+  'For Creators': '/docs#for-creators',
+  Affiliates: '/docs#affiliates',
+  'For Business': '/docs#for-business',
+
+  // Connect – stub sections in docs
+  'X/Twitter': '/docs#x-twitter',
+  Instagram: '/docs#instagram',
+  LinkedIn: '/docs#linkedin',
+};
+
+function getFooterHref(label: string): string {
+  return (
+    FOOTER_LINKS[label] ??
+    `/docs#${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
+  );
+}
 
 export default function Footer() {
   return (
@@ -146,7 +189,7 @@ function Column({
             <li key={label} className="flex items-start gap-2">
               <Chevron />
               <a
-                href="#"
+                href={getFooterHref(label)}
                 className="
                   hover:text-neutral-800 text-neutral-800
                   text-[15px] md:text-[inherit]
@@ -173,7 +216,7 @@ function Column({
                 <li key={label} className="flex items-start gap-2">
                   <Chevron />
                   <a
-                    href="#"
+                    href={getFooterHref(label)}
                     className="hover:text-neutral-800 text-neutral-700 text-[15px]"
                   >
                     {label}

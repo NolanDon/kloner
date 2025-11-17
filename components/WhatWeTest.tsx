@@ -115,7 +115,7 @@ export default function WhatWeTest() {
     >
       <div className="flex items-center justify-center">
         <a
-          href="#join"
+          href="/dashboard"
           className="bg-accent hover:bg-accent2 items-center gap-2 rounded-full px-6 py-4 text-white"
         >
           Start your project <span aria-hidden>›</span>

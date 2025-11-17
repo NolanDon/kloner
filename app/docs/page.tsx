@@ -295,6 +295,111 @@ export default function DocsPage() {
                     </p>
                 </section>
 
+                {/* Compare: cloning, hosting, rendering */}
+                <section id="compare" className="mb-16">
+                    <SectionHeader
+                        eyebrow="Compare"
+                        title="How you ship and maintain your cloned projects"
+                        description="High-level tradeoffs between cloning vs rebuilding from scratch, different hosting providers, and static vs server-rendered setups."
+                    />
+
+                    <div className="mt-6 grid gap-5 md:grid-cols-3 text-xs text-neutral-800">
+                        <article
+                            id="cloning-vs-rebuild"
+                            className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
+                        >
+                            <h3 className="text-sm font-semibold text-neutral-900 mb-1">
+                                Cloning vs rebuild
+                            </h3>
+                            <ul className="space-y-1.5">
+                                <li className="flex gap-2">
+                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                    <span>
+                                        Cloning gives you a fast starting point that mirrors a layout you
+                                        already know works.
+                                    </span>
+                                </li>
+                                <li className="flex gap-2">
+                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                    <span>
+                                        Rebuilds are slower but can be tailored from the ground up to your
+                                        stack and standards.
+                                    </span>
+                                </li>
+                                <li className="flex gap-2">
+                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                    <span>
+                                        A common pattern: clone first to explore structure, then
+                                        selectively rebuild the pieces you keep.
+                                    </span>
+                                </li>
+                            </ul>
+                        </article>
+
+                        <article
+                            id="vercel-vs-netlify"
+                            className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
+                        >
+                            <h3 className="text-sm font-semibold text-neutral-900 mb-1">
+                                Vercel vs Netlify
+                            </h3>
+                            <ul className="space-y-1.5">
+                                <li className="flex gap-2">
+                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                    <span>
+                                        Both are excellent for static and hybrid Jamstack deployments.
+                                    </span>
+                                </li>
+                                <li className="flex gap-2">
+                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                    <span>
+                                        Vercel leans heavily into Next.js workflows and preview
+                                        deployments.
+                                    </span>
+                                </li>
+                                <li className="flex gap-2">
+                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                    <span>
+                                        Netlify emphasises simple git-based flows and a broad plugin and
+                                        integration ecosystem.
+                                    </span>
+                                </li>
+                            </ul>
+                        </article>
+
+                        <article
+                            id="static-vs-ssr"
+                            className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
+                        >
+                            <h3 className="text-sm font-semibold text-neutral-900 mb-1">
+                                Static vs SSR
+                            </h3>
+                            <ul className="space-y-1.5">
+                                <li className="flex gap-2">
+                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                    <span>
+                                        Static exports are simple, cacheable, and usually cheapest to run.
+                                    </span>
+                                </li>
+                                <li className="flex gap-2">
+                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                    <span>
+                                        SSR (or ISR) is useful when you need per-request data or frequent
+                                        content changes.
+                                    </span>
+                                </li>
+                                <li className="flex gap-2">
+                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                    <span>
+                                        Kloner’s output is designed so you can go either way depending on
+                                        your hosting choice.
+                                    </span>
+                                </li>
+                            </ul>
+                        </article>
+                    </div>
+                </section>
+
                 {/* Safety & fairness (non-technical) */}
                 <section id="safety" className="mb-16">
                     <SectionHeader
@@ -408,6 +513,175 @@ export default function DocsPage() {
                                 "Clarifies that once exported, you own and control the project code and its use.",
                             ]}
                         />
+                    </div>
+                </section>
+
+                {/* Company: About + Contact for footer links */}
+                <section id="about" className="mb-16">
+                    <SectionHeader
+                        eyebrow="Company"
+                        title="About Kloner"
+                        description="Kloner is built for people who want to move fast from inspiration to shipped projects without losing control of the output."
+                    />
+
+                    <div className="mt-6 grid gap-5 md:grid-cols-2 text-xs text-neutral-800">
+                        <div>
+                            <h3 className="text-sm font-semibold text-neutral-900 mb-1">
+                                What we focus on
+                            </h3>
+                            <ul className="space-y-1.5">
+                                <li className="flex gap-2">
+                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                    <span>
+                                        Fast iteration from an existing page to something that actually
+                                        represents your offer.
+                                    </span>
+                                </li>
+                                <li className="flex gap-2">
+                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                    <span>
+                                        Clear guardrails so cloning stays on the right side of fair use and
+                                        platform policies.
+                                    </span>
+                                </li>
+                                <li className="flex gap-2">
+                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                    <span>
+                                        An opinionated workflow that still lets you export and own the
+                                        final code.
+                                    </span>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div id="contact">
+                            <h3 className="text-sm font-semibold text-neutral-900 mb-1">
+                                Contact
+                            </h3>
+                            <p className="text-[11px] text-neutral-700 mb-2">
+                                If you&apos;re evaluating Kloner for a serious project, reach out so we
+                                can understand your use case and make sure the product is a good fit.
+                            </p>
+                            <ul className="space-y-1.5 text-[11px] text-neutral-700">
+                                <li className="flex gap-2">
+                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                    <span>
+                                        Product feedback, bugs, or feature requests.
+                                    </span>
+                                </li>
+                                <li className="flex gap-2">
+                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                    <span>
+                                        Agency or studio needs that don&apos;t fit the default plans.
+                                    </span>
+                                </li>
+                                <li className="flex gap-2">
+                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                    <span>
+                                        Partnership ideas where Kloner sits inside a larger toolchain.
+                                    </span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+
+                {/* Partnerships: For Creators / Affiliates / For Business */}
+                <section id="partnerships" className="mb-16">
+                    <SectionHeader
+                        eyebrow="Partnerships"
+                        title="Ways to work with Kloner long-term"
+                        description="High-level modes we expect to support as the product matures."
+                    />
+
+                    <div className="mt-6 grid gap-5 md:grid-cols-3 text-xs text-neutral-800">
+                        <article
+                            id="for-creators"
+                            className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
+                        >
+                            <h3 className="text-sm font-semibold text-neutral-900 mb-1">
+                                For creators
+                            </h3>
+                            <p className="text-[11px] text-neutral-700">
+                                Use Kloner to spin up landing pages, mini-sites, and experiments for
+                                your own audience, while still owning the final exports.
+                            </p>
+                        </article>
+
+                        <article
+                            id="affiliates"
+                            className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
+                        >
+                            <h3 className="text-sm font-semibold text-neutral-900 mb-1">
+                                Affiliates
+                            </h3>
+                            <p className="text-[11px] text-neutral-700">
+                                Point builders and agencies toward Kloner when they need a way to move
+                                faster from &quot;I like this layout&quot; to deployable code.
+                            </p>
+                        </article>
+
+                        <article
+                            id="for-business"
+                            className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
+                        >
+                            <h3 className="text-sm font-semibold text-neutral-900 mb-1">
+                                For business
+                            </h3>
+                            <p className="text-[11px] text-neutral-700">
+                                If you want seats, SSO, or more formal agreements, this is the bucket
+                                we expect those conversations to live in.
+                            </p>
+                        </article>
+                    </div>
+                </section>
+
+                {/* Connect: social placeholders for footer links */}
+                <section id="connect" className="mb-16">
+                    <SectionHeader
+                        eyebrow="Connect"
+                        title="Stay up to date"
+                        description="Lightweight placeholders for social channels linked from the footer. These can evolve into full pages later."
+                    />
+
+                    <div className="mt-6 grid gap-5 md:grid-cols-3 text-xs text-neutral-800">
+                        <article
+                            id="x-twitter"
+                            className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
+                        >
+                            <h3 className="text-sm font-semibold text-neutral-900 mb-1">
+                                X / Twitter
+                            </h3>
+                            <p className="text-[11px] text-neutral-700">
+                                Short product updates, work-in-progress demos, and experiments as they
+                                happen.
+                            </p>
+                        </article>
+
+                        <article
+                            id="instagram"
+                            className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
+                        >
+                            <h3 className="text-sm font-semibold text-neutral-900 mb-1">
+                                Instagram
+                            </h3>
+                            <p className="text-[11px] text-neutral-700">
+                                Visual snippets and before-and-after shots of pages built with Kloner.
+                            </p>
+                        </article>
+
+                        <article
+                            id="linkedin"
+                            className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
+                        >
+                            <h3 className="text-sm font-semibold text-neutral-900 mb-1">
+                                LinkedIn
+                            </h3>
+                            <p className="text-[11px] text-neutral-700">
+                                More formal product announcements and case studies oriented around
+                                teams.
+                            </p>
+                        </article>
                     </div>
                 </section>
 
@@ -681,8 +955,8 @@ function TierRow({
     return (
         <div
             className={`flex items-center justify-between rounded-xl px-3 py-2 ${emphasis
-                ? "bg-accent text-neutral-50"
-                : "bg-neutral-50 text-neutral-800 border border-neutral-200"
+                    ? "bg-accent text-neutral-50"
+                    : "bg-neutral-50 text-neutral-800 border border-neutral-200"
                 }`}
         >
             <div className="flex items-center gap-2 text-[11px]">
@@ -717,8 +991,8 @@ function PlanCard(props: {
     return (
         <div
             className={`flex h-full flex-col rounded-2xl border bg-white p-5 shadow-sm ${props.highlight
-                ? "border-neutral-900 shadow-md shadow-neutral-200"
-                : "border-neutral-200"
+                    ? "border-neutral-900 shadow-md shadow-neutral-200"
+                    : "border-neutral-200"
                 }`}
         >
             <div className="mb-3 flex items-center justify-between gap-2">

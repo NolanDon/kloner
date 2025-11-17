@@ -10,7 +10,8 @@ import FAQSection from "@/components/FaqSection";
 import ParallaxTypeHero from "@/components/ParallaxTypeHero";
 import MembershipHero from "@/components/MembershipHero";
 import PreviewDashboard from "@/components/StartsWithLabs";
-import KlonerExamples from "@/components/KlonerExamples"
+import KlonerExamples from "@/components/KlonerExamples";
+// import { OnboardingProvider } from "@/components/OnboardingProvider";
 
 export default function Page() {
   return (
@@ -41,24 +42,16 @@ export default function Page() {
         >
           <StatsStrip />
         </section>
-        <section
-          id="how-it-works"
-          className="snap-none"
-        >
+
+        <section id="how-it-works" className="snap-none">
           <HowItWorks />
         </section>
 
-        <section
-          id="stories"
-          className="snap-start snap-always"
-        >
+        <section id="stories" className="snap-start snap-always">
           <Stories />
         </section>
 
-        <section
-          id="examples"
-          className="snap-start snap-always"
-        >
+        <section id="examples" className="snap-start snap-always">
           <KlonerExamples />
         </section>
 
@@ -97,10 +90,7 @@ export default function Page() {
           <ParallaxTypeHero />
         </section>
 
-        <section
-          id="footer"
-          className="snap-start snap-always flex flex-col"
-        >
+        <section id="footer" className="snap-start snap-always flex flex-col">
           <Footer />
         </section>
       </main>

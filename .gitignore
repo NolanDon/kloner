@@ -3,3 +3,5 @@ node_modules
 .env.local
 app/.DS_Store
 serviceAccount.json
+components/OnboardingProvider.tsx
+public/images/transparent_logo.png
