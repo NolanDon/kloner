@@ -221,16 +221,9 @@ export async function POST(req: NextRequest) {
             case "integration-configuration.permission-upgraded":
             case "integration-configuration.scope-change-confirmed":
             case "integration-configuration.removed":
-                console.log("[vercel-webhook] project/config event", type, {
-                    id,
-                    configurationId: event.payload?.configurationId,
-                    projectId: event.payload?.project?.id,
-                    projectName: event.payload?.project?.name,
-                });
                 break;
 
             default:
-                console.log("[vercel-webhook] ignoring event", type);
                 break;
         }
 

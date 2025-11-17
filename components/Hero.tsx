@@ -30,6 +30,21 @@ export default function Hero() {
   const [url, setUrl] = useState("");
   const inputRef = useRef<HTMLInputElement | null>(null);
 
+  // Detect mobile on the client and only render the small video on mobile.
+  // This ensures the large video is never requested on mobile devices.
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const update = () => setIsMobile(mq.matches);
+    update();
+    if (mq.addEventListener) mq.addEventListener("change", update);
+    else mq.addListener(update);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", update);
+      else mq.removeListener(update);
+    };
+  }, []);
+
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
@@ -64,9 +79,10 @@ export default function Hero() {
       {/* Background video / poster */}
       <div className="absolute inset-0 p-[var(--hero-gutter)]">
         <div className="relative h-full w-full overflow-hidden rounded-2xl md:rounded-3xl ring-1 ring-black/10 shadow-2xl">
+          {/* Only one video element is rendered, chosen by isMobile so the other file is never requested */}
           <video
             className="absolute inset-0 h-full w-full object-cover"
-            src="/hero.webm"
+            src={isMobile ? "/hero_mobile.mp4" : "/hero.webm"}
             autoPlay
             loop
             muted

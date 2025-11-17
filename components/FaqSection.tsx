@@ -133,23 +133,22 @@ export default function FAQSection() {
                     </a>
                 </div>
 
-                {/* Layout */}
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12">
-                    {/* Left labels */}
-                    <div className="hidden sm:block md:col-span-3">
-                        <div className="space-y-24">
-                            {GROUPS.map((g) => (
-                                <div key={g.heading} className="text-2xl font-medium text-neutral-800">
+                {/* Groups: render each group as a responsive row so heading aligns with its items */}
+                <div className="space-y-12">
+                    {GROUPS.map((g, gi) => (
+                        <div
+                            key={g.heading}
+                            className={`grid grid-cols-1 md:grid-cols-12 gap-6 lg:gap-12 items-start ${gi > 0 ? 'pt-6 md:pt-8 border-t border-neutral-100' : ''}`}
+                        >
+                            {/* Left heading on md+ */}
+                            <div className="hidden md:block md:col-span-3">
+                                <div className="text-2xl font-medium text-neutral-800 sticky top-28">
                                     {g.heading}
                                 </div>
-                            ))}
-                        </div>
-                    </div>
+                            </div>
 
-                    {/* Right groups */}
-                    <div className="md:col-span-9 max-w-3xl">
-                        {GROUPS.map((g, gi) => (
-                            <div key={g.heading} className={gi > 0 ? 'mt-12 md:mt-16' : ''}>
+                            {/* Right: items (and mobile heading) */}
+                            <div className="md:col-span-9 max-w-3xl">
                                 {/* mobile-only group title */}
                                 <div className="md:hidden mb-2 text-base font-semibold">{g.heading}</div>
                                 <ul>
@@ -158,8 +157,8 @@ export default function FAQSection() {
                                     ))}
                                 </ul>
                             </div>
-                        ))}
-                    </div>
+                        </div>
+                    ))}
                 </div>
 
                 {/* Mobile read more */}

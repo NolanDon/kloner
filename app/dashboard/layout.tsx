@@ -7,7 +7,7 @@ import { onAuthStateChanged, type User as FirebaseUser, signOut } from "firebase
 import { auth } from "@/lib/firebase";
 import Link from "next/link";
 import Image from "next/image";
-import logo from "@/public/images/logo.png";
+import logo from "@/public/images/orange_logo.png";
 import CenterLoader from "@/components/ui/CenterLoader";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -165,9 +165,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 <div className="px-5 py-5 border-b border-neutral-200">
                     <Link
                         href="/"
-                        className="ml-5 flex items-center gap-2 font-black tracking-tight text-xl md:text-2xl shrink-0"
+                        className="flex items-center gap-2 font-black tracking-tight text-xl md:text-2xl shrink-0"
                     >
-                        <div className="relative h-10 w-10">
+                        <div className="relative h-[120px] w-[120px]">
                             <Image
                                 src={logo}
                                 alt="kloner logo"
@@ -176,16 +176,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                                 className="object-contain"
                             />
                         </div>
-
-                        {/* 3: Accent text with white outline */}
-                        <span className="text-[rgb(245,95,42)] [text-shadow:0_0_4px_rgba(255,255,255,0.9)]">
-                            kloner
-                        </span>
-
-
                     </Link>
-
-
                 </div>
 
                 {/* Nav */}
@@ -276,9 +267,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                             className="h-8 w-8 grid place-items-center rounded-lg text-white font-black"
                             style={{ backgroundColor: ACCENT }}
                         >
-                            K
                         </div>
-                        <div className="font-semibold">Kloner</div>
                     </a>
 
                     <button

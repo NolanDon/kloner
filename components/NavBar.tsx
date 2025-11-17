@@ -17,6 +17,7 @@ import {
   Hammer,
   Rocket,
   Wand2,
+  Settings2,
   Eye,
   ScanSearch,
 } from "lucide-react";
@@ -24,7 +25,7 @@ import { useAuth } from "@/src/hooks/useAuth";
 import { signOut, type User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import Image from "next/image";
-import logo from "@/public/favicon.ico";
+import logo from "@/public/images/logo.png";
 
 const ACCENT = "#f55f2a";
 
@@ -113,19 +114,19 @@ export default function NavBar(): JSX.Element {
 
   return (
     <div
-      className="px-4 fixed left-0 right-0 top-5 z-50"
+      className="p-4 fixed left-0 right-0 top-5 z-50"
       onMouseLeave={() => setOpen(false)}
     >
       <div className="mx-auto max-w-6xl">
         <div
-          className={`relative flex items-center gap-3 px-3 py-1 md:px-1 mx-2 ${shellClasses}`}
+          className={`relative flex items-center gap-3 px-3 py-2 md:px-1 mx-2 ${shellClasses}`}
           style={{ height: "4rem" }}
         >
           <Link
             href="/"
             className="ml-5 flex items-center gap-2 font-black tracking-tight text-xl md:text-2xl shrink-0"
           >
-            <div className="relative h-10 w-10">
+            <div className="relative h-[90px] w-[90px]">
               <Image
                 src={logo}
                 alt="kloner logo"
@@ -134,9 +135,9 @@ export default function NavBar(): JSX.Element {
                 className="object-contain"
               />
             </div>
-            <span className="text-white">
+            {/* <span className="text-white">
               kloner
-            </span>
+            </span> */}
           </Link>
 
           {/* Desktop nav (now lg and up) */}
@@ -171,7 +172,7 @@ export default function NavBar(): JSX.Element {
           </nav>
 
           {/* Right side */}
-          <div className="ml-auto flex items-center gap-2 md:gap-4 mr-2">
+          <div className="ml-auto flex items-center gap-2 md:gap-4">
             {/* Mobile hamburger (visible until lg) */}
             <button
               aria-label={mOpen ? "Close menu" : "Open menu"}
@@ -194,7 +195,7 @@ export default function NavBar(): JSX.Element {
               <>
                 <a
                   href="/login"
-                  className="hidden lg:inline text-sm text-white/85 hover:text-white"
+                  className="hidden lg:inline text-[15px] text-white/85 hover:text-white"
                 >
                   Login
                 </a>
@@ -203,7 +204,7 @@ export default function NavBar(): JSX.Element {
               <>
                 <Link
                   href="/dashboard"
-                  className="hidden lg:inline text-sm text-white/85 hover:text-white"
+                  className="hidden lg:inline text-[15px] text-white/85 hover:text-white"
                 >
                   Dashboard
                 </Link>
@@ -361,6 +362,12 @@ export default function NavBar(): JSX.Element {
                     href="/price"
                     icon={Rocket}
                     label="Deploy"
+                    onNavigate={() => setMOpen(false)}
+                  />
+                  <QuickAction
+                    href="/settings"
+                    icon={Settings2}
+                    label="Settings"
                     onNavigate={() => setMOpen(false)}
                   />
                 </div>

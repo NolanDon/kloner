@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import Image from "next/image";
-import logo from "@/public/favicon.ico";
+import logo from "@/public/images/orange_logo.png";
 
 type Slide = {
     src: string;
@@ -15,33 +15,33 @@ type Slide = {
 const slides: Slide[] = [
     {
         src: "/images/showcase/showcase1.jpg",
-        alt: "Neo SaaS Landing",
-        label: "Neo SaaS Landing",
+        alt: "Dusk Til Dawn Carnival",
+        label: "Dusk Til Dawn",
+        sublabel: "Event Landing Page",
+    },
+    {
+        src: "/images/showcase/showcase2.png",
+        alt: "Therapy practice website",
+        label: "Grounded Collective Therapy Group",
+        sublabel: "Practice Website",
+    },
+    {
+        src: "/images/showcase/showcase3.png",
+        alt: "Wolfer SaaS landing page",
+        label: "Wolfer",
         sublabel: "SaaS Landing Page",
     },
     {
-        src: "/images/showcase/showcase2.jpg",
-        alt: "Creative Studio Grid",
-        label: "Creative Studio Grid",
-        sublabel: "Agency Website",
+        src: "/images/showcase/showcase4.png",
+        alt: "Creative director portfolio",
+        label: "ToyBox Productions",
+        sublabel: "Portfolio Website",
     },
     {
-        src: "/images/showcase/showcase3.jpg",
-        alt: "Productized Services",
-        label: "Productized Services",
-        sublabel: "Founder Stack",
-    },
-    {
-        src: "/images/showcase/showcase4.jpg",
-        alt: "Course Creator Hub",
-        label: "Course Creator Hub",
-        sublabel: "Creator Landing",
-    },
-    {
-        src: "/images/showcase/showcase5.jpg",
-        alt: "Launch Template",
-        label: "Launch Template",
-        sublabel: "Launch Page",
+        src: "/images/showcase/showcase5.png",
+        alt: "Veristay rental platform",
+        label: "Veristay",
+        sublabel: "Short-term Rental Landing Page",
     },
 ];
 
@@ -125,9 +125,9 @@ export default function DeckImageCarousel({
                     <div className="min-w-0">
                         <h2 className="mt-1 flex items-center justify-center text-lg text-neutral-600">
                             <span className="text-[16px] uppercase tracking-[0.1em] text-neutral-500">
-                                Built With Kloner
+                                Built With
                             </span>
-                            <span className="relative inline-block h-8 w-8">
+                            <span className="relative inline-block h-[120px] w-[120px]">
                                 <Image
                                     src={logo}
                                     alt="Kloner logo"
@@ -228,10 +228,7 @@ export default function DeckImageCarousel({
                                                     </p>
                                                 )}
                                             </div>
-                                            <div className="flex flex-col items-end gap-1">
-                                                <span className="rounded-full bg-white/5 px-3 py-1 text-[10px] font-medium text-neutral-600 ring-1 ring-white/15 sm:px-4 sm:text-[11px]">
-                                                    Slow card snap
-                                                </span>
+                                            <div className="flex flex-col items-end">
                                                 <span className="text-[10px] text-neutral-500 sm:text-[11px]">
                                                     Click to bring forward
                                                 </span>

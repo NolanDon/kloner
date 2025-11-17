@@ -29,6 +29,7 @@ import {
     Loader2,
 } from "lucide-react";
 import PreviewEditor from "@/components/PreviewEditor";
+import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 
 const ACCENT = "#f55f2a";
 
@@ -68,6 +69,7 @@ type ProjectGroup = {
 function toDate(v: any): Date | null {
     if (!v) return null;
     if (typeof v.toDate === "function") return v.toDate();
+    if (v instanceof Date) return v;
     if (typeof v === "number") return new Date(v);
     if (typeof v === "string") {
         const d = new Date(v);
@@ -89,7 +91,8 @@ function formatDate(v: any): string {
 
 function stateColor(state?: string | null): string {
     const s = (state || "").toLowerCase();
-    if (s === "ready" || s === "succeeded") return "bg-emerald-50 text-emerald-700 border-emerald-200";
+    if (s === "ready" || s === "succeeded")
+        return "bg-emerald-50 text-emerald-700 border-emerald-200";
     if (s === "error" || s === "failed" || s === "canceled")
         return "bg-red-50 text-red-700 border-red-200";
     if (s === "building" || s === "queued" || s === "pending")
@@ -266,6 +269,11 @@ export default function DeploymentsPage(): JSX.Element {
     // project/url scoping dropdown
     const [selectedProjectKey, setSelectedProjectKey] = useState<string>("all");
 
+    // manual Vercel API sync
+    const [refreshing, setRefreshing] = useState(false);
+    const [lastGlobalCheck, setLastGlobalCheck] = useState<Date | null>(null);
+    const [refreshError, setRefreshError] = useState<string | null>(null);
+
     useEffect(() => {
         const off = onAuthStateChanged(auth, (u) => {
             setUser(u);
@@ -398,46 +406,59 @@ export default function DeploymentsPage(): JSX.Element {
         });
     }, [items, selectedProjectKey]);
 
-    // auto-refresh stale "building" states via backend helper
+
+    // 30s polling for building deployments via refresh-deployments
     useEffect(() => {
         if (!user || scopedItems.length === 0) return;
 
-        const now = Date.now();
-
-        const staleBuildingIds = scopedItems
-            .filter((d) => {
-                const state = deriveStateFromDoc(d);
-                if (!BUILDING_STATES.includes(state)) return false;
-
-                const lastDate = toDate(d.updatedAt || d.lastEventAt || d.createdAt);
-                if (!lastDate) return true;
-
-                const ageMs = now - lastDate.getTime();
-                return ageMs > 2 * 60 * 1000;
-            })
+        const buildingIds = scopedItems
+            .filter((d) => BUILDING_STATES.includes(deriveStateFromDoc(d)))
             .map((d) => d.vercelDeploymentId)
+            .filter(Boolean)
             .slice(0, 10);
 
-        if (staleBuildingIds.length === 0) return;
+        if (buildingIds.length === 0) return;
 
-        void fetch("/api/vercel/refresh-deployments", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ deploymentIds: staleBuildingIds }),
-        }).catch(() => {
-            // ignore
-        });
+        let id: number | undefined;
+
+        (async () => {
+            const csrf = await ensureSessionAndCsrf();
+
+            const hitApi = () => {
+                void fetch("/api/vercel/refresh-deployments", {
+                    method: "POST",
+                    headers: {
+                        "content-type": "application/json",
+                        ...(csrf ? { "x-csrf": csrf } : {}),
+                    },
+                    body: JSON.stringify({ deploymentIds: buildingIds }),
+                }).catch(() => {
+                    // ignore errors here; UI still has manual refresh + Firestore
+                });
+            };
+
+            // immediate sync once
+            hitApi();
+
+            // poll every 30s while there are building deployments in this scope
+            id = window.setInterval(hitApi, 30_000);
+        })();
+
+        return () => {
+            if (id !== undefined) {
+                window.clearInterval(id);
+            }
+        };
     }, [user, scopedItems]);
 
     const total = scopedItems.length;
 
     const readyCount = useMemo(
         () =>
-            scopedItems.filter((d) =>
-                ["ready", "succeeded"].includes(
-                    deriveStateFromDoc(d) === "ready" ? "ready" : (d.vercelState || "").toLowerCase()
-                )
-            ).length,
+            scopedItems.filter((d) => {
+                const s = deriveStateFromDoc(d);
+                return s === "ready";
+            }).length,
         [scopedItems]
     );
 
@@ -766,9 +787,47 @@ export default function DeploymentsPage(): JSX.Element {
                 setEditorHtml(payload.html);
             }
         } catch {
-            // silent failure for now; PreviewEditor has its own UX
+            // PreviewEditor has its own UX
         }
     };
+
+    // manual sync using Vercel API via backend
+    async function refreshFromVercel() {
+        if (!user) return;
+        const ids = scopedItems
+            .map((d) => d.vercelDeploymentId)
+            .filter(Boolean)
+            .slice(0, 50);
+
+        if (ids.length === 0) return;
+
+        setRefreshing(true);
+        setRefreshError(null);
+
+
+        const csrf = await ensureSessionAndCsrf();
+
+
+        try {
+            const res = await fetch("/api/vercel/refresh-deployments", {
+                method: "POST",
+                headers: {
+                    "content-type": "application/json",
+                    ...(csrf ? { "x-csrf": csrf } : {}),
+                },
+                body: JSON.stringify({ deploymentIds: ids }),
+            });
+            if (!res.ok) {
+                const json = await res.json().catch(() => ({} as any));
+                throw new Error(json?.error || "Failed to refresh from Vercel");
+            }
+            setLastGlobalCheck(new Date());
+        } catch (e: any) {
+            setRefreshError(e?.message || "Failed to refresh from Vercel");
+        } finally {
+            setRefreshing(false);
+        }
+    }
 
     const latestDeployment = scopedItems[0] || null;
     const history = scopedItems.slice(1);
@@ -817,7 +876,7 @@ export default function DeploymentsPage(): JSX.Element {
                                                     ? "Kloner tried to deploy your preview, but Vercel reported an error. Check the deployment in Vercel to inspect the build logs and fix the issue."
                                                     : bannerVariant === "success"
                                                         ? "Your preview finished building on Vercel. You can open the live site or review its history below."
-                                                        : "A deployment was just triggered from the Preview Builder. As Vercel webhooks arrive, this list will update with its current status."}
+                                                        : "A deployment was just triggered from the Preview Builder. Kloner will query the Vercel API periodically or when you manually refresh to keep this status in sync."}
                                                 {hasNewMeta?.projectName
                                                     ? ` Project: ${hasNewMeta.projectName}.`
                                                     : ""}
@@ -842,8 +901,8 @@ export default function DeploymentsPage(): JSX.Element {
                             )}
 
                             <p className="text-xs sm:text-sm text-neutral-500 max-w-xl">
-                                Every time Kloner deploys to your Vercel account, we record the deployment here. Data is
-                                driven entirely by the Vercel webhook.
+                                Every time Kloner deploys to your Vercel account, we record the deployment here.
+                                Status is refreshed by querying the Vercel API (and webhooks if available).
                             </p>
                         </div>
                     </div>
@@ -883,6 +942,32 @@ export default function DeploymentsPage(): JSX.Element {
                                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
                                 <span>{readyCount} live / ready</span>
                             </div>
+
+                            <div className="mt-2 flex flex-col items-end gap-1">
+                                <button
+                                    type="button"
+                                    disabled={refreshing || scopedItems.length === 0}
+                                    onClick={refreshFromVercel}
+                                    className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-[11px] font-medium text-neutral-800 hover:bg-neutral-50 disabled:opacity-60 disabled:cursor-default"
+                                >
+                                    {refreshing ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin text-neutral-500" />
+                                    ) : (
+                                        <RefreshCw className="h-3.5 w-3.5 text-neutral-500" />
+                                    )}
+                                    <span>Check status via Vercel API</span>
+                                </button>
+                                <div className="text-[10px] text-neutral-400">
+                                    {lastGlobalCheck
+                                        ? `Last checked ${formatDate(lastGlobalCheck)}`
+                                        : "Not checked yet"}
+                                </div>
+                                {refreshError && (
+                                    <div className="text-[10px] text-red-600 max-w-[220px] text-right">
+                                        {refreshError}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </header>
@@ -899,176 +984,157 @@ export default function DeploymentsPage(): JSX.Element {
                             <span>No deployments in this scope yet</span>
                         </div>
                         <p className="text-xs text-neutral-600">
-                            Trigger a deployment from the Preview Builder. When Vercel finishes building, the webhook
-                            will populate this view automatically for the selected project / URL.
+                            Trigger a deployment from the Preview Builder. Kloner will use the Vercel API to pull in
+                            status and history for the selected project / URL.
                         </p>
                     </div>
                 ) : (
                     <div className="space-y-6">
                         {/* Latest deployment card */}
-                        {latestDeployment && (() => {
-                            const d = latestDeployment;
-                            const created = formatDate(d.createdAt);
-                            const updated = formatDate(d.updatedAt || d.lastEventAt);
-                            const state = deriveStateFromDoc(d);
-                            const stateStyles = stateColor(state);
-                            const projectName = d.vercelProjectName || d.vercelProjectId || "Untitled project";
-                            const key = d.vercelDeploymentId || d.id;
-                            const act = actionState[key] || {};
-                            const isRedeployLoading = !!act.redeployLoading;
-                            const isCustomLoading = !!act.customLoading;
-                            const isEditorLoading = editorLoadingId === key;
+                        {latestDeployment &&
+                            (() => {
+                                const d = latestDeployment;
+                                const created = formatDate(d.createdAt);
+                                const updated = formatDate(d.updatedAt || d.lastEventAt);
+                                const state = deriveStateFromDoc(d);
+                                const stateStyles = stateColor(state);
+                                const projectName =
+                                    d.vercelProjectName || d.vercelProjectId || "Untitled project";
+                                const key = d.vercelDeploymentId || d.id;
+                                const act = actionState[key] || {};
+                                const isCustomLoading = !!act.customLoading;
+                                const isEditorLoading = editorLoadingId === key;
 
-                            return (
-                                <section aria-label="Latest deployment">
-                                    <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-500 mb-2">
-                                        Latest deployment
-                                    </h2>
-                                    <article className="rounded-2xl border border-neutral-200 bg-white shadow-sm p-5 flex flex-col gap-3">
-                                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                                            <div className="min-w-0">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="text-base font-semibold text-neutral-900 truncate">
-                                                        {projectName}
+                                return (
+                                    <section aria-label="Latest deployment">
+                                        <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-500 mb-2">
+                                            Latest deployment
+                                        </h2>
+                                        <article className="rounded-2xl border border-neutral-200 bg-white shadow-sm p-5 flex flex-col gap-3">
+                                            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="text-base font-semibold text-neutral-900 truncate">
+                                                            {projectName}
+                                                        </div>
+                                                        <span className="text-[11px] text-neutral-400 truncate">
+                                                            {d.vercelDeploymentId?.slice(0, 10)}…
+                                                        </span>
                                                     </div>
-                                                    <span className="text-[11px] text-neutral-400 truncate">
-                                                        {d.vercelDeploymentId?.slice(0, 10)}…
+                                                    <div className="mt-1 text-xs text-neutral-500 break-all">
+                                                        {d.vercelUrl || "URL pending"}
+                                                    </div>
+                                                </div>
+
+                                                <div
+                                                    className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium ${stateStyles}`}
+                                                >
+                                                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
+                                                    <span className="capitalize">
+                                                        {state === "unknown" ? "unknown" : state}
                                                     </span>
                                                 </div>
-                                                <div className="mt-1 text-xs text-neutral-500 break-all">
-                                                    {d.vercelUrl || "URL pending"}
-                                                </div>
                                             </div>
 
-                                            <div
-                                                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium ${stateStyles}`}
-                                            >
-                                                <span className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
-                                                <span className="capitalize">
-                                                    {state === "unknown" ? "unknown" : state}
-                                                </span>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex flex-wrap items-center gap-3 text-[11px] text-neutral-500">
-                                            <div className="inline-flex items-center gap-1.5">
-                                                <Clock className="h-3 w-3" />
-                                                <span>
-                                                    Created {created || "–"}
-                                                    {updated && (
-                                                        <span className="ml-1 text-neutral-400">
-                                                            · Updated {updated}
-                                                        </span>
-                                                    )}
-                                                </span>
-                                            </div>
-                                            {d.lastEventType && (
-                                                <span className="inline-flex items-center gap-1.5">
-                                                    <span className="h-1 w-1 rounded-full bg-neutral-300" />
+                                            <div className="flex flex-wrap items-center gap-3 text-[11px] text-neutral-500">
+                                                <div className="inline-flex items-center gap-1.5">
+                                                    <Clock className="h-3 w-3" />
                                                     <span>
-                                                        Last event:{" "}
-                                                        <span className="font-medium text-neutral-700">
-                                                            {d.lastEventType}
+                                                        Created {created || "–"}
+                                                        {updated && (
+                                                            <span className="ml-1 text-neutral-400">
+                                                                · Updated {updated}
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                </div>
+                                                {d.lastEventType && (
+                                                    <span className="inline-flex items-center gap-1.5">
+                                                        <span className="h-1 w-1 rounded-full bg-neutral-300" />
+                                                        <span>
+                                                            Last event:{" "}
+                                                            <span className="font-medium text-neutral-700">
+                                                                {d.lastEventType}
+                                                            </span>
                                                         </span>
                                                     </span>
-                                                </span>
-                                            )}
-                                        </div>
-
-                                        <div className="flex flex-wrap items-center gap-3 mt-1">
-                                            {state === "error" && (
-                                                <div className="inline-flex items-center gap-1 text-[11px] text-red-600">
-                                                    <AlertTriangle className="h-3 w-3" />
-                                                    <span>Check build logs in Vercel</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                        {/* 
-                                        <p className="text-xs mt-3 text-neutral-600 max-w-prose">
-                                            To publish your latest changes, open the <strong>Preview Editor</strong> and use the
-                                            <strong> Export to Vercel </strong> button.
-                                        </p> */}
-
-                                        {/* Controls always visible for latest deployment */}
-                                        <div className="border-t border-neutral-100 pt-3">
-                                            <div className="mt-1 space-y-3 rounded-lg border border-neutral-200 bg-neutral-50/80 p-3">
-                                                <div className="flex flex-wrap items-center gap-2">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => openEditorForDeployment(d)}
-                                                        disabled={isEditorLoading}
-                                                        className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-white"
-                                                        style={{
-                                                            backgroundColor: ACCENT,
-                                                            boxShadow: "0 10px 30px rgba(245,95,42,0.40)",
-                                                        }}
-                                                    >
-                                                        {isEditorLoading ? (
-                                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                                        ) : (
-                                                            <Code2 className="h-3.5 w-3.5" />
-                                                        )}
-                                                        <span>Open in Preview Editor</span>
-                                                    </button>
-
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => openEditorForDeployment(d)}
-                                                        disabled={isEditorLoading}
-                                                        className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-[11px] font-medium text-neutral-800 hover:bg-neutral-50"
-                                                    >
-                                                        {isEditorLoading ? (
-                                                            <Loader2 className="h-3.5 w-3.5 animate-spin text-neutral-500" />
-                                                        ) : (
-                                                            <RefreshCw className="h-3.5 w-3.5 text-neutral-500" />
-                                                        )}
-                                                        <span>Deploy edited HTML</span>
-                                                    </button>
-
-                                                    {/* <button
-                                                        type="button"
-                                                        onClick={() => handleRedeploy(d)}
-                                                        disabled={true}
-                                                        className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-[11px] font-medium text-neutral-800 hover:bg-neutral-50"
-                                                    >
-                                                        {isRedeployLoading ? (
-                                                            <Loader2 className="h-3.5 w-3.5 animate-spin text-neutral-500" />
-                                                        ) : (
-                                                            <RefreshCw className="h-3.5 w-3.5 text-neutral-500" />
-                                                        )}
-                                                        <span>Redeploy latest</span>
-                                                    </button> */}
-
-                                                    <a
-                                                        href={d.vercelUrl || "#"}
-                                                        target={d.vercelUrl ? "_blank" : undefined}
-                                                        rel={d.vercelUrl ? "noreferrer" : undefined}
-                                                        className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-[11px] font-medium text-neutral-800 hover:bg-neutral-50"
-                                                    >
-                                                        <span>Open live site</span>
-                                                        <ArrowUpRight className="h-3 w-3" />
-                                                    </a>
-
-                                                </div>
-
-                                                {(act.customError || act.redeployError) && (
-                                                    <p className="mt-1 text-[10px] text-red-600">
-                                                        {act.customError || act.redeployError}
-                                                    </p>
-                                                )}
-
-                                                {isCustomLoading && (
-                                                    <p className="mt-1 text-[10px] text-neutral-500 inline-flex items-center gap-1">
-                                                        <Loader2 className="h-3 w-3 animate-spin" />
-                                                        <span>Pushing custom HTML to Vercel…</span>
-                                                    </p>
                                                 )}
                                             </div>
-                                        </div>
-                                    </article>
-                                </section>
-                            );
-                        })()}
+
+                                            <div className="flex flex-wrap items-center gap-3 mt-1">
+                                                {state === "error" && (
+                                                    <div className="inline-flex items-center gap-1 text-[11px] text-red-600">
+                                                        <AlertTriangle className="h-3 w-3" />
+                                                        <span>Check build logs in Vercel</span>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div className="border-t border-neutral-100 pt-3">
+                                                <div className="mt-1 space-y-3 rounded-lg border border-neutral-200 bg-neutral-50/80 p-3">
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => openEditorForDeployment(d)}
+                                                            disabled={isEditorLoading}
+                                                            className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-white"
+                                                            style={{
+                                                                backgroundColor: ACCENT,
+                                                                boxShadow:
+                                                                    "0 10px 30px rgba(245,95,42,0.40)",
+                                                            }}
+                                                        >
+                                                            {isEditorLoading ? (
+                                                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                            ) : (
+                                                                <Code2 className="h-3.5 w-3.5" />
+                                                            )}
+                                                            <span>Open in Preview Editor</span>
+                                                        </button>
+
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => openEditorForDeployment(d)}
+                                                            disabled={isEditorLoading}
+                                                            className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-[11px] font-medium text-neutral-800 hover:bg-neutral-50"
+                                                        >
+                                                            {isEditorLoading ? (
+                                                                <Loader2 className="h-3.5 w-3.5 animate-spin text-neutral-500" />
+                                                            ) : (
+                                                                <RefreshCw className="h-3.5 w-3.5 text-neutral-500" />
+                                                            )}
+                                                            <span>Deploy edited HTML</span>
+                                                        </button>
+
+                                                        <a
+                                                            href={d.vercelUrl || "#"}
+                                                            target={d.vercelUrl ? "_blank" : undefined}
+                                                            rel={d.vercelUrl ? "noreferrer" : undefined}
+                                                            className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-[11px] font-medium text-neutral-800 hover:bg-neutral-50"
+                                                        >
+                                                            <span>Open live site</span>
+                                                            <ArrowUpRight className="h-3 w-3" />
+                                                        </a>
+                                                    </div>
+
+                                                    {(act.customError || act.redeployError) && (
+                                                        <p className="mt-1 text-[10px] text-red-600">
+                                                            {act.customError || act.redeployError}
+                                                        </p>
+                                                    )}
+
+                                                    {isCustomLoading && (
+                                                        <p className="mt-1 text-[10px] text-neutral-500 inline-flex items-center gap-1">
+                                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                                            <span>Pushing custom HTML to Vercel…</span>
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </article>
+                                    </section>
+                                );
+                            })()}
 
                         {/* History rows */}
                         {history.length > 0 && (
@@ -1084,7 +1150,8 @@ export default function DeploymentsPage(): JSX.Element {
                                 </div>
 
                                 <p className="text-xs my-3 text-neutral-600">
-                                    Your previous deployments will show in the list below.
+                                    Your previous deployments will show in the list below. Use the Vercel API check
+                                    above any time you want to force a fresh status sync.
                                 </p>
                                 <div className="rounded-2xl border border-neutral-200 bg-white shadow-sm">
                                     <div className="px-4 py-2 flex items-center text-[11px] text-neutral-500 border-b border-neutral-100">

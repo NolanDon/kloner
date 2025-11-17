@@ -12,7 +12,7 @@ const soft = { duration: 0.6, ease: 'easeOut' };
 
 function CardShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="relative aspect-[4/3] w-full overflow-hidden rounded-b-xl bg-neutral-50">
+    <div className="relative aspect-[4/3] w-full overflow-hidden bg-neutral-50">
       {children}
     </div>
   );
@@ -37,12 +37,12 @@ function FeatureFrame({
       initial={{ opacity: 0, y: 12 }}
       animate={inView ? { opacity: 1, y: 0 } : undefined}
       transition={{ ...soft, delay: i * 0.05 }}
-      className="overflow-hidden rounded-2xl border border-neutral-200 bg-accent shadow-sm"
+      className="overflow-hidden rounded-2xl shadow-xl"
     >
       {children}
-      <div className="p-4" id="included">
-        <div className="font-semibold text-2xl text-white">{title}</div>
-        <div className="mt-1 text-xs text-neutral-50">{sub}</div>
+      <div className="p-4 border border-neutral-200" id="included">
+        <div className="text-2xl text-neutral-800">{title}</div>
+        <div className="mt-1 text-xs text-neutral-400">{sub}</div>
       </div>
     </motion.div>
   );

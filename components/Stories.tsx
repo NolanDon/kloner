@@ -3,7 +3,7 @@
 
 import Image from 'next/image';
 import SectionReveal from './SectionReveal';
-import logo from "@/public/favicon.ico";
+import logo from "@/public/images/orange_logo.png";
 
 type Reel = {
   src: string;
@@ -81,7 +81,7 @@ export default function Stories() {
             <span className="text-[16px] uppercase tracking-[0.1em] text-neutral-500">
               Teams Ship Faster With
             </span>
-            <span className="relative inline-block h-8 w-8">
+            <span className="relative inline-block h-[120px] w-[120px]">
               <Image
                 src={logo}
                 alt="Kloner logo"

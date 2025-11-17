@@ -85,7 +85,7 @@ function hash64(s: string): string {
 
 /* ───────── CSRF helper ───────── */
 
-let csrfPromise: Promise<string | null> | null = null;
+export let csrfPromise: Promise<string | null> | null = null;
 
 async function fetchCsrf(): Promise<string | null> {
     try {
@@ -103,7 +103,7 @@ async function fetchCsrf(): Promise<string | null> {
     }
 }
 
-async function ensureSessionAndCsrf(): Promise<string | null> {
+export async function ensureSessionAndCsrf(): Promise<string | null> {
     if (!csrfPromise) {
         csrfPromise = fetchCsrf();
     }

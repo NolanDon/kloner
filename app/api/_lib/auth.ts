@@ -42,17 +42,6 @@ export function assertCsrf(req: NextRequest) {
     const cookie = cookieRaw.trim();
     const header = headerRaw.trim();
 
-    // Debug log: what the server sees
-    console.log("[csrf-debug]", {
-        method: m,
-        cookieRaw,
-        headerRaw,
-        cookie,
-        header,
-        cookieLen: cookie.length,
-        headerLen: header.length,
-    });
-
     if (!cookie || !header) {
         console.warn("[csrf] missing token", { cookie, header });
         throw Object.assign(new Error("CSRF check failed"), { status: 403 });
