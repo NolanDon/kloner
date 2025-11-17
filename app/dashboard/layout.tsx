@@ -167,7 +167,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                         href="/"
                         className="flex items-center gap-2 font-black tracking-tight text-xl md:text-2xl shrink-0"
                     >
-                        <div className="relative h-[120px] w-[120px]">
+                        <div className="relative h-[90px] w-[90px]">
                             <Image
                                 src={logo}
                                 alt="kloner logo"

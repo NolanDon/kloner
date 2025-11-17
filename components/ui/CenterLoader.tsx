@@ -2,7 +2,7 @@
 "use client";
 
 import Image from "next/image";
-import logo from "@/public/images/logo.png";
+import logo from "@/public/images/orange_logo.png";
 
 /** Full-screen centered pulsing logo */
 export default function CenterLoader(): JSX.Element {
@@ -13,7 +13,7 @@ export default function CenterLoader(): JSX.Element {
                     src={logo}
                     alt="Kloner"
                     priority
-                    className="h-16 w-16 object-contain"
+                    className="h-[90px] w-[90px] object-contain"
                 />
             </div>
         </div>

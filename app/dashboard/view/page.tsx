@@ -245,14 +245,11 @@ export default function PreviewPage(): JSX.Element {
     const [user, setUser] = useState<FirebaseUser | null>(null);
     const [userTier, setUserTier] = useState<UserTier>("unknown");
 
-    const [credits, setCredits] = useState<{
-        screenshotUsed: number;
-        previewUsed: number;
-        dateKey: string;
-    }>({
+    const [credits, setCredits] = useState<UICredits>({
         screenshotUsed: 0,
         previewUsed: 0,
-        dateKey: "",
+        screenshotRemaining: null,
+        previewRemaining: null,
     });
 
     const [showCreditsPaywall, setShowCreditsPaywall] = useState<
@@ -331,98 +328,148 @@ export default function PreviewPage(): JSX.Element {
         [userTier]
     );
 
-    /* ───────── credits ───────── */
+    /* ───────── credits (read from Firestore) ───────── */
 
-    async function listAllDeep(
-        root: StorageReference
-    ): Promise<StorageReference[]> {
-        const out: StorageReference[] = [];
-        async function walk(ref: StorageReference) {
-            const l = await listAll(ref);
-            out.push(...l.items);
-            await Promise.all(l.prefixes.map(walk));
-        }
-        await walk(root);
-        return out;
-    }
-
-    const screenshotRemaining = tierLimits.screenshotMonthly
-        ? Math.max(tierLimits.screenshotMonthly - credits.screenshotUsed, 0)
-        : null;
-
-    const previewRemaining = tierLimits.previewMonthly
-        ? Math.max(tierLimits.previewMonthly - credits.previewUsed, 0)
-        : null;
-
-    function persistCredits(next: {
+    type UICredits = {
         screenshotUsed: number;
         previewUsed: number;
-    }) {
+        screenshotRemaining: number | null;
+        previewRemaining: number | null;
+    };
+
+    // Watch kloner_users/{uid} and derive credits from the canonical bucket
+    useEffect(() => {
         if (!user) {
             setCredits({
-                screenshotUsed: next.screenshotUsed,
-                previewUsed: next.previewUsed,
-                dateKey: todayKey,
+                screenshotUsed: 0,
+                previewUsed: 0,
+                screenshotRemaining: null,
+                previewRemaining: null,
             });
             return;
         }
 
-        const key = `kloner.credits.${user.uid}.${todayKey}`;
+        const ref = doc(db, "kloner_users", user.uid);
+        const unsub = onSnapshot(ref, (snap) => {
+            if (!snap.exists()) {
+                // No doc yet: treat as full allowance based on tier limits
+                const screenshotLimit =
+                    tierLimits.screenshotMonthly && tierLimits.screenshotMonthly > 0
+                        ? tierLimits.screenshotMonthly
+                        : 0;
+                const previewLimit =
+                    tierLimits.previewMonthly && tierLimits.previewMonthly > 0
+                        ? tierLimits.previewMonthly
+                        : 0;
 
-        try {
-            localStorage.setItem(
-                key,
-                JSON.stringify({
-                    screenshotUsed: next.screenshotUsed,
-                    previewUsed: next.previewUsed,
-                })
-            );
-        } catch {
-            // ignore
-        }
+                setCredits({
+                    screenshotUsed: 0,
+                    previewUsed: 0,
+                    screenshotRemaining: screenshotLimit || null,
+                    previewRemaining: previewLimit || null,
+                });
+                return;
+            }
 
-        setCredits({
-            screenshotUsed: next.screenshotUsed,
-            previewUsed: next.previewUsed,
-            dateKey: todayKey,
+            const data = snap.data() as any;
+            const raw = (data.credits as any) || {};
+
+            const previewBucket = (raw.preview as any) || {};
+            const snapshotBucket = (raw.snapshot as any) || {};
+
+            // Fallback to tierLimits if bucket not initialized yet
+            const previewLimit =
+                typeof previewBucket.monthlyLimit === "number" &&
+                    previewBucket.monthlyLimit >= 0
+                    ? previewBucket.monthlyLimit
+                    : tierLimits.previewMonthly || 0;
+
+            const screenshotLimit =
+                typeof snapshotBucket.monthlyLimit === "number" &&
+                    snapshotBucket.monthlyLimit >= 0
+                    ? snapshotBucket.monthlyLimit
+                    : tierLimits.screenshotMonthly || 0;
+
+            const previewRemaining =
+                previewLimit === 0
+                    ? null
+                    : typeof previewBucket.remaining === "number"
+                        ? previewBucket.remaining
+                        : previewLimit;
+
+            const screenshotRemaining =
+                screenshotLimit === 0
+                    ? null
+                    : typeof snapshotBucket.remaining === "number"
+                        ? snapshotBucket.remaining
+                        : screenshotLimit;
+
+            setCredits({
+                screenshotUsed:
+                    screenshotRemaining === null || screenshotLimit === 0
+                        ? 0
+                        : Math.max(screenshotLimit - screenshotRemaining, 0),
+                previewUsed:
+                    previewRemaining === null || previewLimit === 0
+                        ? 0
+                        : Math.max(previewLimit - previewRemaining, 0),
+                screenshotRemaining,
+                previewRemaining,
+            });
         });
-    }
+
+        return () => unsub();
+    }, [
+        user?.uid,
+        tierLimits.screenshotMonthly,
+        tierLimits.previewMonthly,
+        db,
+    ]);
+
+    // Simple accessors for UI
+    const screenshotRemaining = credits.screenshotRemaining;
+    const previewRemaining = credits.previewRemaining;
 
     function canUseScreenshotCredit(): boolean {
-        if (!tierLimits.screenshotMonthly) return true;
-        return credits.screenshotUsed < tierLimits.screenshotMonthly;
+        // null = unlimited
+        if (screenshotRemaining === null) return true;
+        return screenshotRemaining > 0;
     }
 
     function canUsePreviewCredit(): boolean {
-        if (!tierLimits.previewMonthly) return true;
-        return credits.previewUsed < tierLimits.previewMonthly;
+        if (previewRemaining === null) return true;
+        return previewRemaining > 0;
     }
 
+    // Optional: optimistic UI update AFTER a successful call,
+    // Firestore will re-sync as soon as consumeUserCredit runs on the backend.
     function markScreenshotSuccess() {
-        if (!tierLimits.screenshotMonthly) return;
-        const next = {
-            screenshotUsed: credits.screenshotUsed + 1,
-            previewUsed: credits.previewUsed,
-        };
-        persistCredits(next);
+        if (screenshotRemaining === null) return; // unlimited: nothing to show
+        setCredits((prev) => ({
+            ...prev,
+            screenshotUsed: prev.screenshotUsed + 1,
+            screenshotRemaining: Math.max(
+                (prev.screenshotRemaining ?? 1) - 1,
+                0
+            ),
+        }));
     }
 
     function markPreviewSuccess() {
-        if (!tierLimits.previewMonthly) return;
-        const next = {
-            screenshotUsed: credits.screenshotUsed,
-            previewUsed: credits.previewUsed + 1,
-        };
-        persistCredits(next);
+        if (previewRemaining === null) return;
+        setCredits((prev) => ({
+            ...prev,
+            previewUsed: prev.previewUsed + 1,
+            previewRemaining: Math.max(
+                (prev.previewRemaining ?? 1) - 1,
+                0
+            ),
+        }));
     }
 
-    useEffect(() => {
-        if (credits.dateKey && credits.dateKey !== todayKey) {
-            persistCredits({ screenshotUsed: 0, previewUsed: 0 });
-        }
-    }, [todayKey, credits.dateKey]);
-
     /* ───────── storage helpers ───────── */
+
+    async function listAllDeep(root: StorageReference): Promise<StorageReference[]> { const out: StorageReference[] = []; async function walk(ref: StorageReference) { const l = await listAll(ref); out.push(...l.items); await Promise.all(l.prefixes.map(walk)); } await walk(root); return out; }
 
     async function loadShotsForDoc(
         u: FirebaseUser,
@@ -637,7 +684,7 @@ export default function PreviewPage(): JSX.Element {
                         effectiveTier = "free";
                     }
                 } else {
-                    // 2) Fallback: custom claims (same logic you had before)
+                    // 2) Fallback: custom claims
                     const result = await getIdTokenResult(u, true);
                     const claimTier = (result.claims.userTier as string) || "free";
                     if (
@@ -670,34 +717,13 @@ export default function PreviewPage(): JSX.Element {
             }
 
             setUserTier(effectiveTier);
-
-            // ---- existing credits logic, unchanged ----
-            const key = `kloner.credits.${u.uid}.${todayKey}`;
-            let parsed = { screenshotUsed: 0, previewUsed: 0 };
-
-            try {
-                const raw = localStorage.getItem(key);
-                if (raw) {
-                    parsed = JSON.parse(raw) as {
-                        screenshotUsed: number;
-                        previewUsed: number;
-                    };
-                }
-            } catch {
-                // ignore
-            }
-
-            setCredits({
-                screenshotUsed: parsed.screenshotUsed || 0,
-                previewUsed: parsed.previewUsed || 0,
-                dateKey: todayKey,
-            });
+            // Credits are now driven entirely by Firestore (credits bucket),
+            // via the separate onSnapshot-based hook you wired up.
         });
 
         return () => unsub();
-        // router + todayKey keep old behavior (redirect + daily credits reset)
-        // targetUrl is not needed to re-run auth/tier logic and causes extra calls
-    }, [router, todayKey]);
+        // router keeps redirect behavior; we no longer care about todayKey here.
+    }, [router]);
 
 
     useEffect(() => {
