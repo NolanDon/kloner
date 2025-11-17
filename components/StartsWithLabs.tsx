@@ -3,8 +3,9 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence, useAnimation } from 'framer-motion';
-import { Rocket, RefreshCw, Globe, CheckCircle2, Hand, ListChecks, TimerOff, MousePointer } from 'lucide-react';
+import { Rocket, RefreshCw, CheckCircle2, Hand, ListChecks, TimerOff } from 'lucide-react';
 import { ClickyCursor } from './ClickyCursor';
+import { useUrlOverlay } from './UrlOverlayProvider';
 
 /**
  * Fixed-height canvas prevents reflow. Transitions shortened aggressively.
@@ -100,6 +101,7 @@ export default function PreviewDashboard({
     const [visibleCount, setVisibleCount] = useState<number>(0);
     const [pulseDeploy, setPulseDeploy] = useState<boolean>(false);
     const [previewReadyFlash, setPreviewReadyFlash] = useState<boolean>(false);
+    const { openUrlOverlay } = useUrlOverlay();
 
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -225,7 +227,7 @@ export default function PreviewDashboard({
                         Drop a link. We generate assets, normalize code, and spin up a live preview you can deploy in one click.
                     </p>
                     <a
-                        href="#how"
+                        onClick={openUrlOverlay}
                         className="group inline-flex items-center rounded-full bg-accent px-4 py-2 text-sm text-white mt-4 whitespace-nowrap transition-[padding] duration-200 ease-out"
                     >
                         <span>Get started</span>

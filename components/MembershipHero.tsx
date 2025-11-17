@@ -6,6 +6,7 @@ import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Check, Shield, Clock4, CreditCard } from "lucide-react";
 import React, { useEffect, useMemo, useState } from "react";
 import { AnimatedCreditCard } from "./AnimatedCreditCard";
+import { useUrlOverlay } from "./UrlOverlayProvider";
 
 const BULLETS = [
     "Includes 100 preview credits per month on Pro",
@@ -191,6 +192,8 @@ function RotatingCards() {
 
 /** ----------------------- Section ----------------------- */
 export default function MembershipHero() {
+    const { openUrlOverlay } = useUrlOverlay();
+
     return (
         <section
             className="
@@ -279,7 +282,7 @@ export default function MembershipHero() {
                         {/* CTA */}
                         <div className="mt-5 md:mt-6">
                             <a
-                                href="#start"
+                                onClick={openUrlOverlay}
                                 className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-full px-6 py-3 text-white bg-accent hover:bg-accent2 transition"
                             >
                                 Start for free today

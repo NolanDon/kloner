@@ -1,6 +1,14 @@
+// app/layout.tsx
 import "./globals.css";
 import type { Metadata } from "next";
 import AuthProviderServer from "@/components/auth/auth-provider.server";
+import { Inter } from "next/font/google";
+import { AppClientProviders } from "./AppClientProvider";
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://kloner.app"),
@@ -61,12 +69,17 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
-    <html lang="en">
-      <head />
+    <html lang="en" className={inter.variable}>
       <body className="bg-white scroll-smooth snap-y snap-mandatory">
-        <AuthProviderServer>{children}</AuthProviderServer>
+        <AuthProviderServer>
+          <AppClientProviders>{children}</AppClientProviders>
+        </AuthProviderServer>
       </body>
     </html>
   );

@@ -1,3 +1,6 @@
+// app/page.tsx
+"use client";
+
 import NavBar from "@/components/NavBar";
 import Hero from "@/components/Hero";
 import StatsStrip from "@/components/StatsStrip";
@@ -11,17 +14,13 @@ import ParallaxTypeHero from "@/components/ParallaxTypeHero";
 import MembershipHero from "@/components/MembershipHero";
 import PreviewDashboard from "@/components/StartsWithLabs";
 import KlonerExamples from "@/components/KlonerExamples";
-// import { OnboardingProvider } from "@/components/OnboardingProvider";
 
 export default function Page() {
   return (
     <>
-      {/* Nav stays normal; sections below are snap targets */}
       <NavBar />
 
-      {/* Scroll container with snap + smooth scroll */}
       <main className="h-screen snap-y snap-mandatory scroll-smooth">
-        {/* <main> */}
         <section
           id="hero"
           className="snap-start snap-always min-h-screen flex flex-col"

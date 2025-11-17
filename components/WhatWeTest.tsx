@@ -17,6 +17,7 @@ import {
   Dna,
 } from 'lucide-react';
 import React from 'react';
+import { useUrlOverlay } from './UrlOverlayProvider';
 
 type Category = { label: string; icon: React.ComponentType<any> };
 
@@ -106,6 +107,8 @@ function IconPill({
 }
 
 export default function WhatWeTest() {
+  const { openUrlOverlay } = useUrlOverlay();
+
   const activeIndex = 0;
 
   return (
@@ -115,7 +118,7 @@ export default function WhatWeTest() {
     >
       <div className="flex items-center justify-center">
         <a
-          href="/dashboard"
+          onClick={openUrlOverlay}
           className="bg-accent hover:bg-accent2 items-center gap-2 rounded-full px-6 py-4 text-white"
         >
           Start your project <span aria-hidden>›</span>
