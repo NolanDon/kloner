@@ -65,9 +65,8 @@ import {
     extractHashFromKey,
     shortVersionFromShotPath,
     rendersEqual,
-    CREDIT_LIMITS,
-    type UserTier,
 } from "./page.helpers";
+import { CREDIT_LIMITS, UserTier } from "@/src/lib/credits";
 
 const ACCENT = "#f55f2a";
 

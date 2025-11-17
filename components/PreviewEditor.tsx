@@ -406,25 +406,25 @@ export default function PreviewEditor({
         (next: ViewMode) => {
             if (closing || mode === next) return;
 
-            if (!dirty) {
-                setMode(next);
-                tryClearIframeSelection();
-                return;
-            }
+            // if (!dirty) {
+            //     setMode(next);
+            //     tryClearIframeSelection();
+            //     return;
+            // }
 
-            const wantsSave = window.confirm(
-                "You have unsaved changes in this draft. Save them before switching view?"
-            );
+            // const wantsSave = window.confirm(
+            //     "You have unsaved changes in this draft. Save them before switching view?"
+            // );
 
-            if (!wantsSave) {
-                // switch without saving
-                setMode(next);
-                tryClearIframeSelection();
-                return;
-            }
+            // if (!wantsSave) {
+            //     // switch without saving
+            //     setMode(next);
+            //     tryClearIframeSelection();
+            //     return;
+            // }
 
             (async () => {
-                await doSave();
+                // await doSave();
                 setMode(next);
                 tryClearIframeSelection();
             })();
