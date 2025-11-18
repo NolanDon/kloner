@@ -100,6 +100,7 @@ type RenderDoc = {
     archived?: boolean;
     createdAt?: any;
     updatedAt?: any;
+    siteConfigId?: string;
     model?: string | null;
     version?: number;
     controllerVersion?: string | null;
@@ -1912,16 +1913,11 @@ export default function PreviewPage(): JSX.Element {
                                                     deployLocked
                                                         ? () => {
                                                             setShowCreditsPaywall("deploy");
-                                                            push(
-                                                                "Deploy is available on paid plans.",
-                                                                "warn"
-                                                            );
+                                                            push("Deploy is available on paid plans.", "warn");
                                                         }
                                                         : isDeployed
                                                             ? () => {
-                                                                router.push(
-                                                                    "/dashboard/deployments"
-                                                                );
+                                                                router.push("/dashboard/deployments");
                                                             }
                                                             : deployThis
                                                 }
@@ -1966,12 +1962,8 @@ export default function PreviewPage(): JSX.Element {
                                             {/* Only show customize if not deployed */}
                                             {!isDeployed && (
                                                 <button
-                                                    onClick={() =>
-                                                        continueRender(r.id)
-                                                    }
-                                                    disabled={
-                                                        disableOpen || isDeleting
-                                                    }
+                                                    onClick={() => continueRender(r.id)}
+                                                    disabled={disableOpen || isDeleting}
                                                     className="inline-flex items-center gap-2 rounded-md border border-neutral-400 px-3 py-1 text-xs text-neutral-800 shadow-sm"
                                                     title={
                                                         isQueued
@@ -1981,12 +1973,21 @@ export default function PreviewPage(): JSX.Element {
                                                                 : "Open editor to customize"
                                                     }
                                                 >
-                                                    {isQueued
-                                                        ? "Queued"
-                                                        : isFailed
-                                                            ? "Customize (fix)"
-                                                            : "Customize"}
+                                                    {isQueued ? "Queued" : isFailed ? "Customize (fix)" : "Customize"}
                                                     <BrushIcon className="h-4 w-4" />
+                                                </button>
+                                            )}
+
+                                            {/* Only show if this render has a siteConfig generated */}
+                                            {r.siteConfigId && (
+                                                <button
+                                                    onClick={() => router.push(`/site/${r.siteConfigId}`)}
+                                                    disabled={isDeleting}
+                                                    className="inline-flex items-center gap-2 rounded-md border border-neutral-400 px-3 py-1 text-xs text-neutral-800 shadow-sm"
+                                                    title="Open generated layout site"
+                                                >
+                                                    <span>Open site</span>
+                                                    <Rocket className="h-4 w-4" />
                                                 </button>
                                             )}
                                         </div>
