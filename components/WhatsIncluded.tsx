@@ -3,6 +3,7 @@
 
 import React, { useRef } from 'react';
 import { motion, useInView } from 'framer-motion';
+import { useUrlOverlay } from './UrlOverlayProvider';
 
 /* ----------------------------------------------------------------
    Shared bits
@@ -31,6 +32,7 @@ function FeatureFrame({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { amount: 0.35, once: true });
+
   return (
     <motion.div
       ref={ref}
@@ -161,6 +163,9 @@ const CARDS: CardData[] = [
    Section
 ------------------------------------------------------------------*/
 export default function MembershipSticky() {
+
+  const { openUrlOverlay } = useUrlOverlay();
+
   return (
     <section className="bg-white text-neutral-800 pt-30">
       <div className="container-soft">
@@ -170,7 +175,7 @@ export default function MembershipSticky() {
             <div className="md:sticky top-24">
 
               {/* <div className=" md:sticky md:top-44"> */}
-                <h2 className="text-4xl md:text-6xl md:mb-10 text-black/80 bg-white pt-40 md:py-15 mt-20">What's included</h2>
+              <h2 className="text-4xl md:text-6xl md:mb-10 text-black/80 bg-white pt-40 md:py-15 mt-20">What's included</h2>
               {/* </div> */}
               <div className="mt-20">
                 <p className="mt-[-40px] md:mt-3 max-w-md text-neutral-600">
@@ -180,7 +185,7 @@ export default function MembershipSticky() {
               </div>
 
               <a
-                href="#join"
+                onClick={openUrlOverlay}
                 className="mt-10 inline-flex bg-accent hover:bg-accent2 items-center gap-2 rounded-full px-6 py-4 text-white"
               >
                 Start free preview <span aria-hidden>›</span>

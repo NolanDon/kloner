@@ -26,6 +26,7 @@ import { signOut, type User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import Image from "next/image";
 import logo from "@/public/images/logo.png";
+import { useUrlOverlay } from "@/components/UrlOverlayProvider";
 
 const ACCENT = "#f55f2a";
 
@@ -38,8 +39,9 @@ export default function NavBar(): JSX.Element {
   const [active, setActive] = useState<NavItem | null>(null);
   const [mOpen, setMOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
- 
+
   const { user } = (useAuth() ?? {}) as { user: User | null };
+  const { openUrlOverlay } = useUrlOverlay();
 
   useEffect(() => {
     const on = () => setScrolled(window.scrollY > 800);
@@ -135,12 +137,9 @@ export default function NavBar(): JSX.Element {
                 className="object-contain"
               />
             </div>
-            {/* <span className="text-white">
-              kloner
-            </span> */}
           </Link>
 
-          {/* Desktop nav (now lg and up) */}
+          {/* Desktop nav */}
           <nav className="hidden lg:flex flex-1 items-center justify-center">
             <ul className="flex items-center gap-6 text-[15px] text-white/85">
               {navItems.map((i, idx) => (
@@ -173,7 +172,7 @@ export default function NavBar(): JSX.Element {
 
           {/* Right side */}
           <div className="ml-auto flex items-center gap-2 md:gap-4">
-            {/* Mobile hamburger (visible until lg) */}
+            {/* Mobile hamburger */}
             <button
               aria-label={mOpen ? "Close menu" : "Open menu"}
               aria-expanded={mOpen}
@@ -190,7 +189,7 @@ export default function NavBar(): JSX.Element {
               )}
             </button>
 
-            {/* Auth (desktop: lg and up) */}
+            {/* Auth (desktop) */}
             {!user ? (
               <>
                 <a
@@ -254,13 +253,15 @@ export default function NavBar(): JSX.Element {
               </>
             )}
 
-            <a
-              href="/dashboard"
+            {/* Desktop CTA uses overlay */}
+            <button
+              type="button"
+              onClick={openUrlOverlay}
               className="hidden lg:inline-flex items-center justify-center h-14 rounded-full px-5 text-[15px] text-white whitespace-nowrap"
               style={{ backgroundColor: ACCENT }}
             >
               Start project
-            </a>
+            </button>
           </div>
 
           {/* Desktop mega dropdown (lg and up) */}
@@ -398,14 +399,17 @@ export default function NavBar(): JSX.Element {
                       >
                         <User2 className="mr-2 h-4 w-4" /> Login
                       </a>
-                      <a
-                        href={br.cta.href}
-                        onClick={() => setMOpen(false)}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMOpen(false);
+                          openUrlOverlay();
+                        }}
                         className="inline-flex flex-1 items-center justify-center rounded-full px-4 py-2.5 text-sm font-semibold text-white"
                         style={{ background: ACCENT }}
                       >
                         Start Project
-                      </a>
+                      </button>
                     </div>
                   ) : (
                     <div className="flex gap-2">

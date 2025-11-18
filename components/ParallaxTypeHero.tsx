@@ -5,6 +5,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { motion, useMotionValueEvent, useScroll, useTransform, useSpring } from 'framer-motion';
 import Image from 'next/image';
 import holdup from '@/public/images/holdup.png';
+import { useUrlOverlay } from './UrlOverlayProvider';
 
 const clamp = (n: number, min: number, max: number) => Math.min(Math.max(n, min), max);
 const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
@@ -27,6 +28,7 @@ export default function ParallaxTypeHero({
     typingEnd = 0.10,
 }: Props) {
     const sectionRef = useRef<HTMLDivElement>(null);
+    const { openUrlOverlay } = useUrlOverlay();
     const { scrollYProgress } = useScroll({
         target: sectionRef,
         offset: ['start start', 'end start'],
@@ -90,7 +92,7 @@ export default function ParallaxTypeHero({
                     <motion.div initial={{ opacity: 0, y: 8 }} style={{ opacity: subOpacity }}>
                         <div className="mt-5 md:mt-6">
                             <a
-                                href="#start"
+                                onClick={openUrlOverlay}
                                 className="
                   group relative inline-flex items-center gap-3 whitespace-nowrap
                   h-12 px-7 rounded-full shrink-0
