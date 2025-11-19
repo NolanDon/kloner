@@ -67,10 +67,14 @@ export async function peekUserCredit(
 
     const now = new Date();
 
-    const storedLimit =
+    const storedLimitRaw =
         typeof bucket.monthlyLimit === "number" && bucket.monthlyLimit >= 0
             ? bucket.monthlyLimit
             : defaultLimit;
+
+    // If stored limit doesn't match the tier's limit, assume the tier changed
+    // and normalize to the new tier's limit.
+    const effectiveLimit = defaultLimit ?? storedLimitRaw;
 
     const periodEndTs = bucket.periodEnd;
     const periodEndDate: Date | null =
@@ -80,21 +84,23 @@ export async function peekUserCredit(
 
     let remaining: number;
 
-    // If there is a stored period end and it's in the past, treat as reset for peek
-    if (periodEndDate && now >= periodEndDate) {
-        remaining = storedLimit;
+    const tierChanged = storedLimitRaw !== effectiveLimit;
+
+    // New period OR tier changed OR no period info => treat as reset
+    if (!periodEndDate || now >= periodEndDate || tierChanged) {
+        remaining = effectiveLimit;
     } else if (typeof bucket.remaining === "number") {
         remaining = bucket.remaining;
     } else {
-        remaining = storedLimit;
+        remaining = effectiveLimit;
     }
 
-    const ok = storedLimit === 0 || remaining > 0;
+    const ok = effectiveLimit === 0 || remaining > 0;
 
     return {
         ok,
-        remaining: storedLimit === 0 ? null : remaining,
-        monthlyLimit: storedLimit === 0 ? null : storedLimit,
+        remaining: effectiveLimit === 0 ? null : remaining,
+        monthlyLimit: effectiveLimit === 0 ? null : effectiveLimit,
     };
 }
 
@@ -113,10 +119,10 @@ export async function consumeUserCredit(
     const userRef = db.collection("kloner_users").doc(uid);
 
     const coreKind = toCoreKind(kind);
-    const limit = monthlyLimitFor(tier, coreKind);
+    const limitForTier = monthlyLimitFor(tier, coreKind);
 
     // Unlimited tier
-    if (limit === 0) {
+    if (limitForTier === 0) {
         return {
             ok: true,
             remaining: null,
@@ -128,7 +134,7 @@ export async function consumeUserCredit(
     const periodEnd = currentPeriodEnd();
 
     let finalRemaining = 0;
-    let finalLimit = limit;
+    let finalLimit = limitForTier;
 
     await db.runTransaction(async (tx) => {
         const snap = await tx.get(userRef);
@@ -138,12 +144,14 @@ export async function consumeUserCredit(
 
         const bucket = (credits[key] as any) || {};
 
-        const storedLimit =
+        const storedLimitRaw =
             typeof bucket.monthlyLimit === "number" && bucket.monthlyLimit >= 0
                 ? bucket.monthlyLimit
-                : limit;
+                : limitForTier;
 
-        finalLimit = storedLimit;
+        // If the stored limit doesn't match the new tier, normalize to tier limit.
+        const effectiveLimit = limitForTier ?? storedLimitRaw;
+        finalLimit = effectiveLimit;
 
         const periodEndTs = bucket.periodEnd;
         const periodEndDate: Date | null =
@@ -151,20 +159,21 @@ export async function consumeUserCredit(
                 ? (periodEndTs.toDate() as Date)
                 : null;
 
+        const tierChanged = storedLimitRaw !== effectiveLimit;
+
         let remaining: number;
 
-        // New period or missing bucket → reset
-        if (!periodEndDate || now >= periodEndDate) {
-            remaining = storedLimit;
+        // New period OR tier changed OR no period info => reset bucket
+        if (!periodEndDate || now >= periodEndDate || tierChanged) {
+            remaining = effectiveLimit;
         } else if (typeof bucket.remaining === "number") {
             remaining = bucket.remaining;
         } else {
-            remaining = storedLimit;
+            remaining = effectiveLimit;
         }
 
         if (remaining <= 0) {
             finalRemaining = 0;
-            // Write normalized bucket but don't go negative
             tx.set(
                 userRef,
                 {
@@ -172,7 +181,7 @@ export async function consumeUserCredit(
                         ...credits,
                         [key]: {
                             remaining: 0,
-                            monthlyLimit: storedLimit,
+                            monthlyLimit: effectiveLimit,
                             periodEnd: admin.firestore.Timestamp.fromDate(periodEnd),
                         },
                     },
@@ -192,7 +201,7 @@ export async function consumeUserCredit(
                     ...credits,
                     [key]: {
                         remaining,
-                        monthlyLimit: storedLimit,
+                        monthlyLimit: effectiveLimit,
                         periodEnd: admin.firestore.Timestamp.fromDate(periodEnd),
                     },
                 },

@@ -1,7 +1,7 @@
 // app/login/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import NavBar from "@/components/NavBar";
 import { auth, db } from "@/lib/firebase";
@@ -235,16 +235,33 @@ export default function LoginPage(): JSX.Element {
     const [showPw, setShowPw] = useState<boolean>(false);
 
     const [acceptedTerms, setAcceptedTerms] = useState<boolean>(false);
+    const [pendingUrl, setPendingUrl] = useState<string>("");
 
-    const pendingUrl = useMemo(() => {
-        const q = search.get("u");
-        if (q) return q;
-        try {
-            return localStorage.getItem("kloner.pendingUrl") || "";
-        } catch {
-            return "";
+    // Initialize pendingUrl from query or localStorage
+    useEffect(() => {
+        let initial = search.get("u") || "";
+        if (!initial) {
+            try {
+                initial = localStorage.getItem("kloner.pendingUrl") || "";
+            } catch {
+                // ignore
+            }
         }
+        setPendingUrl(initial);
     }, [search]);
+
+    const clearPendingUrl = () => {
+        setPendingUrl("");
+        try {
+            localStorage.removeItem("kloner.pendingUrl");
+        } catch {
+            // ignore
+        }
+        const params = new URLSearchParams(search.toString());
+        params.delete("u");
+        const qs = params.toString();
+        router.replace(qs ? `/login?${qs}` : "/login");
+    };
 
     useEffect(() => {
         const unsub = onAuthStateChanged(auth, async (u) => {
@@ -370,10 +387,20 @@ export default function LoginPage(): JSX.Element {
                 </div>
 
                 {pendingUrl ? (
-                    <div className="mb-4 rounded-lg bg-amber-50 text-amber-700 ring-1 ring-amber-200 px-3 py-2 text-xs ">
-                        We will add this URL after you{" "}
-                        {mode === "signin" ? "sign in" : "sign up"}:{" "}
-                        <span className="font-medium break-all">{pendingUrl}</span>
+                    <div className="mb-4 flex items-start justify-between gap-2 rounded-lg bg-amber-50 text-amber-700 ring-1 ring-amber-200 px-3 py-2 text-xs">
+                        <div>
+                            We will add this URL after you{" "}
+                            {mode === "signin" ? "sign in" : "sign up"}:{" "}
+                            <span className="font-medium break-all">{pendingUrl}</span>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={clearPendingUrl}
+                            className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full border border-amber-300 text-[10px] leading-none hover:bg-amber-100"
+                            aria-label="Do not auto-add this URL"
+                        >
+                            ×
+                        </button>
                     </div>
                 ) : null}
 

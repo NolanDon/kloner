@@ -67,26 +67,23 @@ import {
     rendersEqual,
 } from "./page.helpers";
 import { CREDIT_LIMITS, UserTier } from "@/src/lib/credits";
+import { UrlDoc } from "../page";
 
 const ACCENT = "#f55f2a";
 
 /* ───────── types ───────── */
 
-type UrlDoc = {
-    url: string;
-    urlHash?: string;
-    screenshotsPrefix?: string;
-    screenshotPaths?: string[];
-    status?: string;
-    createdAt?: any;
-    controllerVersion?: string;
-};
-
 type Shot = {
     path: string;
     url: string;
     fileName: string;
-    createdAt?: Date;
+
+    // new fields from Firestore screenshots[]
+    snapshotId?: string;
+    snapshotCreatedAt?: string;
+    sourceUrl?: string;
+    status?: string;
+    bytes?: number;
 };
 
 type RenderDoc = {
@@ -249,8 +246,8 @@ export default function PreviewPage(): JSX.Element {
     const [credits, setCredits] = useState<UICredits>({
         screenshotUsed: 0,
         previewUsed: 0,
-        screenshotRemaining: null,
-        previewRemaining: null,
+        screenshotRemaining: 0,
+        previewRemaining: 0,
     });
 
     const [showCreditsPaywall, setShowCreditsPaywall] = useState<
@@ -344,8 +341,8 @@ export default function PreviewPage(): JSX.Element {
             setCredits({
                 screenshotUsed: 0,
                 previewUsed: 0,
-                screenshotRemaining: null,
-                previewRemaining: null,
+                screenshotRemaining: 0,
+                previewRemaining: 0,
             });
             return;
         }
@@ -489,19 +486,39 @@ export default function PreviewPage(): JSX.Element {
             fileRefs = await listAllDeep(sRef(storage, prefix));
         }
 
-        const entries = await Promise.all(
+        // NEW: build metadata index from Firestore screenshots[]
+        const metaByKey = new Map<string, any>();
+        if (Array.isArray(data.screenshots)) {
+            for (const s of data.screenshots) {
+                if (s && typeof s.key === "string") {
+                    metaByKey.set(s.key, s);
+                }
+            }
+        }
+
+        const entries: Shot[] = await Promise.all(
             fileRefs.map(async (r) => {
                 const url = await getDownloadURL(r);
-                const name =
-                    r.name || r.fullPath.split("/").pop() || "image";
+                const name = r.name || r.fullPath.split("/").pop() || "image";
+
+                const meta = metaByKey.get(r.fullPath);
+
                 return {
                     path: r.fullPath,
                     url,
                     fileName: name,
-                } as Shot;
+
+                    // attach grouping metadata
+                    snapshotId: meta?.snapshotId,
+                    snapshotCreatedAt: meta?.snapshotCreatedAt,
+                    sourceUrl: meta?.sourceUrl,
+                    status: meta?.status,
+                    bytes: meta?.bytes,
+                };
             })
         );
 
+        // keep your existing sort – newest first by filename
         entries.sort((a, b) =>
             a.fileName < b.fileName ? 1 : a.fileName > b.fileName ? -1 : 0
         );
@@ -1107,17 +1124,21 @@ export default function PreviewPage(): JSX.Element {
         [router]
     );
 
-    const buildFromKey = useCallback(
-        async (storageKey: string) => {
+    const buildFromCollection = useCallback(
+        async (storageKeys: string[]) => {
             if (!user) return;
+            if (!storageKeys.length) return;
+
+            // Use first key for optimistic bookkeeping
+            const primaryKey = storageKeys[0];
 
             const alreadyQueued = renders.find(
                 (r) =>
-                    r.key === storageKey &&
+                    r.key === primaryKey &&
                     r.status === "queued" &&
                     !r.archived
             );
-            if (alreadyQueued || pendingByKey[storageKey]) return;
+            if (alreadyQueued || pendingByKey[primaryKey]) return;
 
             if (!canUsePreviewCredit()) {
                 push(
@@ -1130,18 +1151,18 @@ export default function PreviewPage(): JSX.Element {
 
             if (
                 !window.confirm(
-                    "Generate an editable preview from this screenshot?"
+                    "Generate an editable preview that uses ALL screenshots from this snapshot run?"
                 )
             )
                 return;
 
             const optimisticId = `local_${hash64(
-                `${user.uid}|${storageKey}|${Date.now()}`
+                `${user.uid}|${primaryKey}|${Date.now()}`
             )}`;
 
             const optimistic: { id: string } & RenderDoc = {
                 id: optimisticId,
-                key: storageKey,
+                key: primaryKey,          // still store a primary key
                 referenceImage: null,
                 html: "",
                 status: "queued",
@@ -1158,22 +1179,22 @@ export default function PreviewPage(): JSX.Element {
                 controllerVersion: null,
             } as any;
 
-            startHardLock(storageKey, optimisticId, 60_000);
+            startHardLock(primaryKey, optimisticId, 60_000);
 
             setRenders((prev) => [optimistic, ...prev]);
             setOptimisticByKey((m) => ({
                 ...m,
-                [storageKey]: optimistic,
+                [primaryKey]: optimistic,
             }));
             setPendingByKey((m) => ({
                 ...m,
-                [storageKey]: true,
+                [primaryKey]: true,
             }));
             setErr("");
             setInfo("Preview queued.");
 
             try {
-                const body: any = { key: storageKey };
+                const body: any = { keys: storageKeys.slice(0, 25) }; // respect cap in route
                 if (isHttpUrl(targetUrl)) {
                     body.url = targetUrl;
                     body.urlHash = hash64(targetUrl);
@@ -1189,21 +1210,17 @@ export default function PreviewPage(): JSX.Element {
                     body: JSON.stringify(body),
                 });
 
-                const j = (await r
-                    .json()
-                    .catch(() => ({}))) as any;
+                const j = (await r.json().catch(() => ({}))) as any;
 
                 if (r.status === 202) {
-                    push("Server accepted preview job", "ok");
+                    push("Server accepted collection preview job", "ok");
                     markPreviewSuccess();
                     await refreshRenders();
                     return;
                 }
 
                 if (!r.ok || !j?.ok)
-                    throw new Error(
-                        j?.error || "Render failed"
-                    );
+                    throw new Error(j?.error || "Render failed");
 
                 markPreviewSuccess();
                 await refreshRenders();
@@ -1216,17 +1233,15 @@ export default function PreviewPage(): JSX.Element {
                     )
                 );
                 setOptimisticByKey((m) => {
-                    const v = m[storageKey];
+                    const v = m[primaryKey];
                     if (!v) return m;
                     return {
                         ...m,
-                        [storageKey]: { ...v, status: "failed" },
+                        [primaryKey]: { ...v, status: "failed" },
                     };
                 });
-                setErr(
-                    e?.message || "Failed to start preview."
-                );
-                push("Preview failed to start", "err");
+                setErr(e?.message || "Failed to start collection preview.");
+                push("Collection preview failed to start", "err");
             }
         },
         [
@@ -1610,70 +1625,6 @@ export default function PreviewPage(): JSX.Element {
     const shotsPollRef =
         useRef<ReturnType<typeof setInterval> | null>(null);
 
-    function beginShortShotsPoll(prefix: string) {
-        if (shotsPollRef.current) {
-            clearInterval(shotsPollRef.current);
-            shotsPollRef.current = null;
-        }
-
-        const deadline = Date.now() + 60_000;
-
-        shotsPollRef.current = setInterval(async () => {
-            if (!user) return;
-
-            try {
-                const refs = await listAllDeep(
-                    sRef(storage, prefix)
-                );
-                const map = new Map(
-                    refs.map((r) => [r.fullPath, r])
-                );
-
-                const newOnes = Array.from(map.keys()).filter(
-                    (p) => !shots.some((s) => s.path === p)
-                );
-
-                if (newOnes.length) {
-                    const added = await Promise.all(
-                        newOnes.map(async (p) => {
-                            const r = map.get(p)!;
-                            const url = await getDownloadURL(r);
-                            const name =
-                                r.name ||
-                                r.fullPath.split("/").pop() ||
-                                "image";
-                            return {
-                                path: r.fullPath,
-                                url,
-                                fileName: name,
-                            } as Shot;
-                        })
-                    );
-
-                    setShots((prev) =>
-                        [...added, ...prev].sort((a, b) =>
-                            a.fileName < b.fileName
-                                ? 1
-                                : a.fileName > b.fileName
-                                    ? -1
-                                    : 0
-                        )
-                    );
-
-                    clearInterval(shotsPollRef.current!);
-                    shotsPollRef.current = null;
-                }
-            } finally {
-                if (
-                    Date.now() > deadline &&
-                    shotsPollRef.current
-                ) {
-                    clearInterval(shotsPollRef.current);
-                    shotsPollRef.current = null;
-                }
-            }
-        }, 3000);
-    }
 
     useEffect(
         () => () => {
@@ -2072,155 +2023,195 @@ export default function PreviewPage(): JSX.Element {
     );
 
 
-    const ShotCard = useMemo(
-        () =>
-            memo(
-                function ShotCardInner({
-                    s,
-                    locked,
-                    index,
-                    onView,
-                }: {
-                    s: Shot;
-                    locked: boolean;
-                    index: number;
-                    onView: (i: number) => void;
-                }) {
-                    const [imgLoading, setImgLoading] =
-                        useState<boolean>(true);
-                    const isDeleting = !!deletingByKey[s.path];
-                    const hardLocked =
-                        (lockUntilByKey[s.path] || 0) >
-                        Date.now();
-                    const showOverlay =
-                        locked ||
-                        imgLoading ||
-                        hardLocked ||
-                        isDeleting;
+    // const ShotCard = useMemo(
+    //     () =>
+    //         memo(
+    //             function ShotCardInner({
+    //                 s,
+    //                 locked,
+    //                 index,
+    //                 onView,
+    //                 // NEW: optional collection props
+    //                 isGroupRoot,
+    //                 extraCount,
+    //                 onGenerateCollection,
+    //             }: {
+    //                 s: Shot;
+    //                 locked: boolean;
+    //                 index: number;
+    //                 onView: (i: number) => void;
 
-                    const versionLabel = shortVersionFromShotPath(
-                        s.path,
-                        (docData?.urlHash as
-                            | string
-                            | undefined) ?? null
-                    );
+    //                 // if true, this card represents an entire snapshot collection
+    //                 isGroupRoot?: boolean;
+    //                 // how many additional pages are in this collection
+    //                 extraCount?: number;
+    //                 // if provided, use this instead of buildFromKey for generate
+    //                 onGenerateCollection?: (snapshotId: string) => void;
+    //             }) {
+    //                 const [imgLoading, setImgLoading] = useState<boolean>(true);
+    //                 const isDeleting = !!deletingByKey[s.path];
+    //                 const hardLocked =
+    //                     (lockUntilByKey[s.path] || 0) > Date.now();
+    //                 const showOverlay =
+    //                     locked || imgLoading || hardLocked || isDeleting;
 
-                    return (
-                        <figure className="relative rounded-xl border border-neutral-200 bg-white shadow-sm flex flex-col">
-                            <span
-                                className="absolute top-2 left-2 z-10 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow"
-                                style={{ backgroundColor: "#1d4ed8" }}
-                                title={`Version ${versionLabel}`}
-                            >
-                                {versionLabel}
-                            </span>
-                            <button
-                                onClick={() => discardShot(s)}
-                                disabled={locked || isDeleting}
-                                aria-label="Discard screenshot"
-                                title="Delete this screenshot and all previews from it"
-                                className="absolute top-0 right-0 z-40 grid h-5 w-5 place-items-center -translate-y-1/2 translate-x-1/2 rounded-full bg-red-600 text-white shadow-md ring-1 ring-white hover:bg-red-700 hover:ring-red-300 disabled:opacity-50"
-                            >
-                                <span className="text-lg mb-0.5 leading-none">
-                                    ×
-                                </span>
-                            </button>
+    //                 const versionLabel = shortVersionFromShotPath(
+    //                     s.path,
+    //                     (docData?.urlHash as string | undefined) ?? null
+    //                 );
 
-                            {isDeleting && (
-                                <CenterSpinner label="Deleting…" />
-                            )}
+    //                 const isCollectionCard =
+    //                     !!isGroupRoot && !!s.snapshotId && !!onGenerateCollection;
 
-                            <a
-                                // href={s.url}
-                                // target="_blank"
-                                // rel="noreferrer"
-                                className="block"
-                                title="Open full-size screenshot"
-                            >
-                                <div className="w-full aspect-[4/3] bg-neutral-50 flex items-center justify-center rounded-t-xl relative">
-                                    <img
-                                        src={s.url}
-                                        alt={s.fileName}
-                                        className="h-full w-full object-cover opacity-30"
-                                        loading="lazy"
-                                        onLoad={() => setImgLoading(false)}
-                                        onError={() =>
-                                            setImgLoading(false)
-                                        }
-                                    />
-                                    <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
-                                        <div className="pointer-events-auto flex flex-col xl:flex-row items-center gap-2 rounded-xl bg-white/90 p-2 ring-1 ring-neutral-200 backdrop-blur">
-                                            <button
-                                                onClick={(e) => {
-                                                    e.preventDefault();
-                                                    onView(index);
-                                                }}
-                                                className="shrink-0 rounded-md px-2 py-1 text-[0.75rem] border border-neutral-400 text-neutral-800 hover:bg-neutral-50 inline-flex items-center gap-1.5"
-                                                title="View full-screen"
-                                            >
-                                                <span>View</span>
-                                                <Eye
-                                                    className="h-4 w-4"
-                                                    aria-hidden
-                                                />
-                                            </button>
+    //                 const handleGenerateClick = (e: React.MouseEvent) => {
+    //                     e.preventDefault();
+    //                     if (locked || isDeleting) return;
 
-                                            <button
-                                                onClick={(e) => {
-                                                    e.preventDefault();
-                                                    buildFromKey(s.path);
-                                                }}
-                                                disabled={locked || isDeleting}
-                                                aria-busy={locked}
-                                                className="shrink-0 rounded-md px-2 py-1 text-[0.75rem] border border-neutral-400 text-neutral-800 hover:bg-neutral-50 inline-flex items-center gap-1.5"
-                                                title="Create editable preview from this screenshot"
-                                            >
-                                                <span>
-                                                    {locked
-                                                        ? "In progress"
-                                                        : "Generate preview"}
-                                                </span>
-                                                <Hammer
-                                                    className={`h-4 w-4 ${locked
-                                                        ? "animate-pulse"
-                                                        : ""
-                                                        }`}
-                                                    aria-hidden
-                                                />
-                                            </button>
-                                        </div>
-                                    </div>
+    //                     if (isCollectionCard) {
+    //                         onGenerateCollection!(s.snapshotId!);
+    //                     } else {
+    //                         // legacy single-shot behavior
+    //                         buildFromKey(s.path);
+    //                     }
+    //                 };
 
-                                    {showOverlay && (
-                                        <CenterSpinner
-                                            label={
-                                                locked
-                                                    ? "Queued preview…"
-                                                    : "Loading…"
-                                            }
-                                        />
-                                    )}
-                                </div>
-                            </a>
+    //                 return (
+    //                     <figure className="relative rounded-xl border border-neutral-200 bg-white shadow-sm flex flex-col">
+    //                         <span
+    //                             className="absolute top-2 left-2 z-10 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow"
+    //                             style={{ backgroundColor: "#1d4ed8" }}
+    //                             title={`Version ${versionLabel}`}
+    //                         >
+    //                             {versionLabel}
+    //                         </span>
 
-                            <figcaption className="px-3 py-2 text-xs text-neutral-700 rounded-b-xl">
-                                <div className="flex items-center justify-between gap-2 flex-wrap">
-                                    <span className="truncate text-[11px] text-neutral-500">
-                                        {s.fileName}
-                                    </span>
-                                </div>
-                            </figcaption>
-                        </figure>
-                    );
-                },
-                (prev, next) =>
-                    prev.locked === next.locked &&
-                    prev.s.path === next.s.path &&
-                    prev.s.url === next.s.url &&
-                    prev.s.fileName === next.s.fileName
-            ),
-        [buildFromKey, discardShot, deletingByKey, lockUntilByKey, docData?.urlHash]
-    );
+    //                         {/* optional +N more badge for collections */}
+    //                         {isCollectionCard && extraCount && extraCount > 0 && (
+    //                             <span className="absolute top-2 right-2 z-10 rounded-full bg-neutral-900/80 px-2 py-0.5 text-[10px] font-semibold text-white shadow">
+    //                                 +{extraCount} more
+    //                             </span>
+    //                         )}
+
+    //                         <button
+    //                             onClick={() => discardShot(s)}
+    //                             disabled={locked || isDeleting}
+    //                             aria-label="Discard screenshot"
+    //                             title="Delete this screenshot and all previews from it"
+    //                             className="absolute top-0 right-0 z-40 grid h-5 w-5 place-items-center -translate-y-1/2 translate-x-1/2 rounded-full bg-red-600 text-white shadow-md ring-1 ring-white hover:bg-red-700 hover:ring-red-300 disabled:opacity-50"
+    //                         >
+    //                             <span className="text-lg mb-0.5 leading-none">
+    //                                 ×
+    //                             </span>
+    //                         </button>
+
+    //                         {isDeleting && <CenterSpinner label="Deleting…" />}
+
+    //                         <a
+    //                             className="block"
+    //                             title={
+    //                                 isCollectionCard
+    //                                     ? "Open collection screenshots"
+    //                                     : "Open full-size screenshot"
+    //                             }
+    //                         >
+    //                             <div className="w-full aspect-[4/3] bg-neutral-50 flex items-center justify-center rounded-t-xl relative">
+    //                                 <img
+    //                                     src={s.url}
+    //                                     alt={s.fileName}
+    //                                     className="h-full w-full object-cover opacity-30"
+    //                                     loading="lazy"
+    //                                     onLoad={() => setImgLoading(false)}
+    //                                     onError={() => setImgLoading(false)}
+    //                                 />
+
+    //                                 <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
+    //                                     <div className="pointer-events-auto flex flex-col xl:flex-row items-center gap-2 rounded-xl bg-white/90 p-2 ring-1 ring-neutral-200 backdrop-blur">
+    //                                         <button
+    //                                             onClick={(e) => {
+    //                                                 e.preventDefault();
+    //                                                 onView(index);
+    //                                             }}
+    //                                             className="shrink-0 rounded-md px-2 py-1 text-[0.75rem] border border-neutral-400 text-neutral-800 hover:bg-neutral-50 inline-flex items-center gap-1.5"
+    //                                             title={
+    //                                                 isCollectionCard
+    //                                                     ? "View this collection"
+    //                                                     : "View full-screen"
+    //                                             }
+    //                                         >
+    //                                             <span>
+    //                                                 {isCollectionCard
+    //                                                     ? "View collection"
+    //                                                     : "View"}
+    //                                             </span>
+    //                                             <Eye
+    //                                                 className="h-4 w-4"
+    //                                                 aria-hidden
+    //                                             />
+    //                                         </button>
+
+    //                                         <button
+    //                                             onClick={handleGenerateClick}
+    //                                             disabled={locked || isDeleting}
+    //                                             aria-busy={locked}
+    //                                             className="shrink-0 rounded-md px-2 py-1 text-[0.75rem] border border-neutral-400 text-neutral-800 hover:bg-neutral-50 inline-flex items-center gap-1.5"
+    //                                             title={
+    //                                                 isCollectionCard
+    //                                                     ? "Create editable preview from this collection"
+    //                                                     : "Create editable preview from this screenshot"
+    //                                             }
+    //                                         >
+    //                                             <span>
+    //                                                 {locked
+    //                                                     ? "In progress"
+    //                                                     : isCollectionCard
+    //                                                         ? "Generate collection preview"
+    //                                                         : "Generate preview"}
+    //                                             </span>
+    //                                             <Hammer
+    //                                                 className={`h-4 w-4 ${locked
+    //                                                     ? "animate-pulse"
+    //                                                     : ""
+    //                                                     }`}
+    //                                                 aria-hidden
+    //                                             />
+    //                                         </button>
+    //                                     </div>
+    //                                 </div>
+
+    //                                 {showOverlay && (
+    //                                     <CenterSpinner
+    //                                         label={
+    //                                             locked
+    //                                                 ? "Queued preview…"
+    //                                                 : "Loading…"
+    //                                         }
+    //                                     />
+    //                                 )}
+    //                             </div>
+    //                         </a>
+
+    //                         <figcaption className="px-3 py-2 text-xs text-neutral-700 rounded-b-xl">
+    //                             <div className="flex items-center justify-between gap-2 flex-wrap">
+    //                                 <span className="truncate text-[11px] text-neutral-500">
+    //                                     {s.fileName}
+    //                                 </span>
+    //                             </div>
+    //                         </figcaption>
+    //                     </figure>
+    //                 );
+    //             },
+    //             (prev, next) =>
+    //                 prev.locked === next.locked &&
+    //                 prev.s.path === next.s.path &&
+    //                 prev.s.url === next.s.url &&
+    //                 prev.s.fileName === next.s.fileName &&
+    //                 prev.isGroupRoot === next.isGroupRoot &&
+    //                 prev.extraCount === next.extraCount &&
+    //                 prev.onGenerateCollection === next.onGenerateCollection
+    //         ),
+    //     [buildFromKey, discardShot, deletingByKey, lockUntilByKey, docData?.urlHash]
+    // );
+
 
     /* ───────── UI state / labels ───────── */
 
@@ -2243,6 +2234,46 @@ export default function PreviewPage(): JSX.Element {
                         : "Enterprise plan";
 
     /* ───────── render ───────── */
+
+
+    const groupedShots = useMemo(() => {
+        if (!shots || shots.length === 0) return [];
+
+        const groupsMap = new Map<
+            string,
+            { snapshotId: string; snapshotCreatedAt?: string; items: Shot[] }
+        >();
+
+        for (const s of shots) {
+            const id = s.snapshotId || "ungrouped";
+
+            let group = groupsMap.get(id);
+            if (!group) {
+                group = {
+                    snapshotId: id,
+                    snapshotCreatedAt: s.snapshotCreatedAt,
+                    items: [],
+                };
+                groupsMap.set(id, group);
+            }
+            group.items.push(s);
+        }
+
+        const groups = Array.from(groupsMap.values());
+
+        // newest snapshot first if we have timestamps
+        groups.sort((a, b) => {
+            const at = a.snapshotCreatedAt || "";
+            const bt = b.snapshotCreatedAt || "";
+            if (!at && !bt) return 0;
+            if (!at) return 1;
+            if (!bt) return -1;
+            return at < bt ? 1 : at > bt ? -1 : 0;
+        });
+
+        return groups;
+    }, [shots]);
+
 
     return (
         <main className="min-h-screen bg-white">
@@ -2440,7 +2471,7 @@ export default function PreviewPage(): JSX.Element {
                     </div>
 
                     <h2 className="text-1xl sm:text-3xl font-semibold tracking-tight text-neutral-700">
-                        Screenshots
+                        Collections
                     </h2>
                     <p className="my-2 text-xs text-neutral-500">
                         These are the original screenshots captured
@@ -2519,7 +2550,7 @@ export default function PreviewPage(): JSX.Element {
                                     )}
                                     Step 2
                                 </strong>{" "}
-                                — Base screenshots captured. <br />
+                                — Base collection captured. <br />
                                 {renders.length === 0 && (
                                     <div className="x-1 inline-flex ml-1 mt-5 text-sm flex items-center text-neutral-700">
                                         Click{" "}
@@ -2535,7 +2566,106 @@ export default function PreviewPage(): JSX.Element {
                                 )}
                             </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <div className="space-y-3">
+                                {groupedShots.map((group, groupIndex) => {
+                                    const first = group.items[0];
+                                    if (!first) return null;
+
+                                    const extraCount = group.items.length - 1;
+
+                                    // keys for this snapshot run
+                                    const collectionKeys = group.items.map((s) => s.path);
+
+                                    // index in flat shots so your existing viewer still works
+                                    const globalIndex = shots.findIndex((sh) => sh.path === first.path);
+
+                                    // lock if ANY shot in the collection is pending or has a queued render
+                                    const locked = group.items.some((s) => {
+                                        if (pendingByKey[s.path]) return true;
+                                        return renders.some(
+                                            (r) =>
+                                                r.key === s.path &&
+                                                r.status === "queued" &&
+                                                !r.archived
+                                        );
+                                    });
+
+                                    return (
+                                        <div
+                                            key={group.snapshotId + "-" + groupIndex}
+                                            className="flex items-center justify-between rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs shadow-sm"
+                                        >
+                                            {/* left side: tiny preview + meta */}
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    openViewer(globalIndex >= 0 ? globalIndex : 0)
+                                                }
+                                                className="flex items-center gap-2 text-left"
+                                                disabled={locked}
+                                            >
+                                                <div className="h-10 w-16 overflow-hidden rounded-md bg-neutral-100">
+                                                    <img
+                                                        src={first.url}
+                                                        alt={first.fileName}
+                                                        className="h-full w-full object-cover"
+                                                        loading="lazy"
+                                                    />
+                                                </div>
+
+                                                <div className="flex flex-col">
+                                                    <span className="text-[11px] font-semibold text-neutral-800">
+                                                        Snapshot Collection {groupedShots.length - groupIndex}
+                                                    </span>
+                                                    {group.snapshotCreatedAt && (
+                                                        <span className="text-[10px] text-neutral-500">
+                                                            {new Date(group.snapshotCreatedAt).toLocaleString()}
+                                                        </span>
+                                                    )}
+                                                    {extraCount > 0 && (
+                                                        <span className="text-[10px] text-neutral-500">
+                                                            +{extraCount} more page
+                                                            {extraCount > 1 ? "s" : ""}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </button>
+
+                                            {/* right side: single generate button for the whole collection */}
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    if (locked) return;
+                                                    buildFromCollection(collectionKeys);
+                                                }}
+                                                disabled={locked}
+                                                aria-busy={locked}
+                                                className="ml-2 inline-flex items-center rounded-md border border-neutral-300 px-2 py-1 text-[11px] font-medium text-neutral-800 hover:bg-neutral-50 disabled:opacity-50"
+                                                title="Create editable preview from this snapshot collection"
+                                            >
+                                                <span>{locked ? "In progress" : "Generate preview"}</span>
+                                                <Hammer
+                                                    className={`ml-1 h-3 w-3 ${locked ? "animate-pulse" : ""}`}
+                                                    aria-hidden
+                                                />
+                                            </button>
+                                        </div>
+                                    );
+                                })}
+
+                                <div className="max-w-[180px]">
+                                    <GhostActionCard
+                                        title={rescanning ? "Starting…" : "Add / Rescan"}
+                                        subtitle="Captures a fresh screenshot collection."
+                                        onClick={rescan}
+                                        disabled={rescanning || !isHttpUrl(targetUrl)}
+                                    />
+                                </div>
+
+                            </div>
+
+
+                            {/* <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                 {shots.map((s, i) => {
                                     const locked =
                                         !!pendingByKey[s.path] ||
@@ -2568,7 +2698,7 @@ export default function PreviewPage(): JSX.Element {
                                         rescanning || !isHttpUrl(targetUrl)
                                     }
                                 />
-                            </div>
+                            </div> */}
                         </>
                     )}
                 </div>
@@ -2605,7 +2735,7 @@ export default function PreviewPage(): JSX.Element {
                                         <span>Step 3</span>
                                     </strong>
                                     <span className="text-neutral-800">
-                                        — Generate a preview from your screenshot options above.
+                                        — Generate a preview from your screenshot collection options above.
                                     </span>
                                 </div>
                             </div>
@@ -2657,11 +2787,11 @@ export default function PreviewPage(): JSX.Element {
                                         </button>
                                     </>
                                 ) : <span className="text-neutral-800">
-                                    — Generate a preview from your screenshot options above.
+                                    — Generate a preview from one of your screenshot collections above.
                                 </span>}
 
                             </div>
-                            <p className="mt-1 text-xs text-neutral-500">
+                            {/* <p className="mt-1 text-xs text-neutral-500">
                                 Tip: Reference the original screenshot with the version
                                 badge{" "}
                                 <span
@@ -2670,7 +2800,7 @@ export default function PreviewPage(): JSX.Element {
                                 >
                                     592f
                                 </span>
-                            </p>
+                            </p> */}
 
                             <div
                                 className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
@@ -2809,16 +2939,16 @@ export default function PreviewPage(): JSX.Element {
                                 <p className="text-xs text-neutral-600 mb-3">
                                     {showCreditsPaywall ===
                                         "screenshot" &&
-                                        "You have used all daily screenshot credits. Upgrade to capture more pages and monitor more sites."}
+                                        "You have used all monhtly screenshot credits. Upgrade to capture more pages and monitor more sites."}
                                     {showCreditsPaywall ===
                                         "preview" &&
-                                        "You have used all daily preview credits. Upgrade to generate more designs and unlock one-click deploy."}
+                                        "You have used all monhtly preview credits. Upgrade to generate more designs and unlock one-click deploy."}
                                     {showCreditsPaywall === "deploy" &&
                                         "To deploy your website live, upgrade to a paid plan to unlock one-click deploy."}
                                 </p>
                                 <ul className="mb-4 list-disc list-inside text-xs text-neutral-700 space-y-1">
                                     <li>
-                                        Higher daily limits for screenshots
+                                        Higher monthly limits for screenshots
                                         and previews
                                     </li>
                                     <li>

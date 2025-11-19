@@ -6,6 +6,13 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 type Device = "desktop" | "tablet" | "mobile";
 type ViewMode = "code" | "preview" | "screenshot";
 
+type EditorPage = {
+    id: string; // should match data-route when possible
+    label: string;
+    html: string;
+    screenshotUrl?: string;
+};
+
 type Props = {
     initialHtml: string;
     sourceImage?: string;
@@ -15,10 +22,20 @@ type Props = {
     saveDraft?: (payload: {
         draftId?: string;
         html: string;
-        meta: { nameHint?: string; device: Device; mode: ViewMode };
+        meta: {
+            nameHint?: string;
+            device: Device;
+            mode: ViewMode;
+            pageId?: string;
+        };
         version: number;
     }) => Promise<void>;
     onLiveHtml?: (html: string) => void;
+
+    // Optional precomputed pages (id should equal data-route if you want route-based switching)
+    pages?: EditorPage[];
+    initialPageId?: string;
+    onPageHtmlChange?: (pageId: string, html: string) => void;
 };
 
 const ACCENT = "#f55f2a";
@@ -118,6 +135,49 @@ type StyleCmd =
     | { kind: "weight"; value: string | number }
     | { kind: "letterSpacing"; value: string };
 
+// derive human label from route
+function labelFromRoute(route: string): string {
+    if (!route || route === "/") return "Home";
+
+    const clean = route.replace(/^\//, "");
+    if (!clean) return "Home";
+
+    return clean
+        .split(/[/-]/g)
+        .filter(Boolean)
+        .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+        .join(" ");
+}
+
+
+// derive pages from a monolithic HTML with <main class="page-root" data-route="...">
+function derivePagesFromHtml(html: string): EditorPage[] {
+    if (typeof window === "undefined") return [];
+    try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(stripScripts(html), "text/html");
+        const mains = Array.from(
+            doc.querySelectorAll("main.page-root[data-route]")
+        ) as HTMLElement[];
+
+        if (!mains.length) return [];
+
+        return mains.map((el) => {
+            const route = el.getAttribute("data-route") || "/";
+            const labelAttr = el.getAttribute("data-label") || "";
+            const label = labelAttr || labelFromRoute(route);
+            // we keep full HTML for each page so we preserve one monolithic doc
+            return {
+                id: route,
+                label,
+                html,
+            };
+        });
+    } catch {
+        return [];
+    }
+}
+
 export default function PreviewEditor({
     initialHtml,
     sourceImage,
@@ -126,24 +186,35 @@ export default function PreviewEditor({
     draftId,
     saveDraft,
     onLiveHtml,
+    pages,
+    initialPageId,
+    onPageHtmlChange,
 }: Props) {
-    const [htmlDraft, setHtmlDraft] = useState<string>(() => {
-        const fromLs =
-            typeof window !== "undefined"
-                ? localStorage.getItem(STORAGE_KEY(draftId))
-                : null;
-        return stripScripts(fromLs || initialHtml || "");
-    });
+    // monolithic HTML draft for the entire document
+    const [htmlDraft, setHtmlDraft] = useState<string>("");
+    const [previewHtml, setPreviewHtml] = useState<string>("");
 
-    const [previewHtml, setPreviewHtml] = useState<string>(() =>
-        stripScripts(initialHtml || "")
+    // derived pages from initialHtml if caller didn't pass pages
+    const [derivedPages, setDerivedPages] = useState<EditorPage[]>([]);
+
+    // active page id (normally matches data-route, or "single" for non-multi-page docs)
+    const [activePageId, setActivePageId] = useState<string>("");
+
+    const allPages = useMemo<EditorPage[] | null>(
+        () => (pages && pages.length ? pages : derivedPages.length ? derivedPages : null),
+        [pages, derivedPages]
     );
+
+    const activePage = useMemo(
+        () => (allPages ? allPages.find((p) => p.id === activePageId) ?? null : null),
+        [allPages, activePageId]
+    );
+
     const [nameHint, setNameHint] = useState<string>("");
     const [version, setVersion] = useState<number>(1);
     const [mode, setMode] = useState<ViewMode>("preview");
     const [device, setDevice] = useState<Device>("desktop");
     const [dirty, setDirty] = useState(false);
-
     const [savingDraft, setSavingDraft] = useState(false);
     const [exporting, setExporting] = useState(false);
     const [exportNote, setExportNote] = useState<string>("");
@@ -152,29 +223,107 @@ export default function PreviewEditor({
     const [closePrompt, setClosePrompt] = useState(false);
     const [exportPrompt, setExportPrompt] = useState(false);
 
-    const [selectionMeta, setSelectionMeta] = useState<SelectionMeta>({
-        has: false,
-    });
+    const [selectionMeta, setSelectionMeta] = useState<SelectionMeta>({ has: false });
 
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
-    const asideRef = useRef<HTMLDivElement>(null);
     const [iframeKey, setIframeKey] = useState<number>(0);
 
     const devicePx = device === "desktop" ? 1440 : device === "tablet" ? 768 : 390;
-    const renderHtml = useMemo(() => stripScripts(previewHtml), [previewHtml]);
+
+    // inject route-specific CSS into the monolithic HTML
+    const renderHtml = useMemo(() => {
+        const base = stripScripts(previewHtml || "");
+        if (!base) return base;
+        // no multi-page routing: just render as-is
+        if (!allPages || !activePageId || activePageId === "single") return base;
+
+        const styleTag = `<style id="kloner-active-route">main.page-root[data-route]{display:none!important;}main.page-root[data-route="${activePageId}"]{display:block!important;}</style>`;
+
+        if (base.includes("</head>")) {
+            return base.replace("</head>", `${styleTag}</head>`);
+        }
+        if (base.includes("<head>")) {
+            return base.replace("<head>", `<head>${styleTag}`);
+        }
+        return styleTag + base;
+    }, [previewHtml, activePageId, allPages]);
 
     const [uiScale, setUiScale] = useState<number>(() => {
-        const v =
-            typeof window !== "undefined"
-                ? Number(localStorage.getItem("kloner:uiScale"))
-                : NaN;
+        if (typeof window === "undefined") return 0.85;
+        const v = Number(localStorage.getItem("kloner:uiScale"));
         return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : 0.85;
     });
     useEffect(() => {
+        if (typeof window === "undefined") return;
         localStorage.setItem("kloner:uiScale", String(uiScale));
     }, [uiScale]);
 
+    // derive pages from initialHtml once
+    useEffect(() => {
+        if (pages && pages.length) {
+            setDerivedPages([]);
+            return;
+        }
+        const derived = derivePagesFromHtml(initialHtml);
+        setDerivedPages(derived);
+    }, [initialHtml, pages]);
+
+    // initialise monolithic HTML once (or when draftId/initialHtml changes)
+    useEffect(() => {
+        const storageKey = STORAGE_KEY(draftId);
+        const fromLs =
+            typeof window !== "undefined"
+                ? localStorage.getItem(storageKey)
+                : null;
+
+        const baseHtml = stripScripts(fromLs || initialHtml || "");
+        setHtmlDraft(baseHtml);
+        setPreviewHtml(baseHtml);
+        setDirty(false);
+    }, [draftId, initialHtml]);
+
+    // set initial active page, and keep it valid when page set changes
+    useEffect(() => {
+        if (!allPages || allPages.length === 0) {
+            // no multi-page semantics, treat as single
+            if (!activePageId) setActivePageId("single");
+            return;
+        }
+
+        // if current active id is still valid, keep it
+        const stillExists =
+            activePageId &&
+            allPages.some((p) => p.id === activePageId);
+
+        if (stillExists) return;
+
+        // prefer initialPageId if it's valid
+        if (initialPageId && allPages.some((p) => p.id === initialPageId)) {
+            setActivePageId(initialPageId);
+            return;
+        }
+
+        // fallback to first page
+        setActivePageId(allPages[0].id);
+    }, [allPages, activePageId, initialPageId]);
+
+    // persist monolithic draft to localStorage
+    useEffect(() => {
+        const storageKey = STORAGE_KEY(draftId);
+        if (typeof window !== "undefined") {
+            localStorage.setItem(storageKey, htmlDraft);
+        }
+        setDirty(true);
+    }, [htmlDraft, draftId]);
+
+    // bump iframe key when HTML or mode changes (except pure screenshot mode)
+    useEffect(() => {
+        if (mode === "screenshot") return;
+        setIframeKey((k) => k + 1);
+    }, [renderHtml, mode]);
+
+    // keyboard zoom shortcuts
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
             if (!(e.metaKey || e.ctrlKey)) return;
@@ -193,16 +342,6 @@ export default function PreviewEditor({
         return () => window.removeEventListener("keydown", onKey);
     }, []);
 
-    useEffect(() => {
-        localStorage.setItem(STORAGE_KEY(draftId), htmlDraft);
-        setDirty(true);
-    }, [htmlDraft, draftId]);
-
-    useEffect(() => {
-        if (mode === "screenshot") return;
-        setIframeKey((k) => k + 1);
-    }, [renderHtml, mode]);
-
     const tryClearIframeSelection = useCallback(() => {
         const win = iframeRef.current?.contentWindow as any;
         try {
@@ -214,6 +353,7 @@ export default function PreviewEditor({
         }
     }, []);
 
+    // ESC clears iframe selection
     useEffect(() => {
         const esc = (e: KeyboardEvent) => {
             if (e.key === "Escape") {
@@ -251,7 +391,12 @@ export default function PreviewEditor({
             await saveDraft({
                 draftId,
                 html: nextHtml,
-                meta: { nameHint: nameHint || undefined, device, mode },
+                meta: {
+                    nameHint: nameHint || undefined,
+                    device,
+                    mode,
+                    pageId: activePageId || undefined,
+                },
                 version: nextVersion,
             });
 
@@ -260,6 +405,10 @@ export default function PreviewEditor({
 
             if (options?.applyToPreview) {
                 emitLive(nextHtml);
+            }
+
+            if (onPageHtmlChange && activePageId) {
+                onPageHtmlChange(activePageId, nextHtml);
             }
 
             setDirty(false);
@@ -401,35 +550,20 @@ export default function PreviewEditor({
         [closing, dirty, doSave, onClose, tryClearIframeSelection]
     );
 
-    // view-tab change guard
     const handleModeClick = useCallback(
         (next: ViewMode) => {
             if (closing || mode === next) return;
-
-            // if (!dirty) {
-            //     setMode(next);
-            //     tryClearIframeSelection();
-            //     return;
-            // }
-
-            // const wantsSave = window.confirm(
-            //     "You have unsaved changes in this draft. Save them before switching view?"
-            // );
-
-            // if (!wantsSave) {
-            //     // switch without saving
-            //     setMode(next);
-            //     tryClearIframeSelection();
-            //     return;
-            // }
-
-            (async () => {
-                // await doSave();
-                setMode(next);
-                tryClearIframeSelection();
-            })();
+            setMode(next);
+            tryClearIframeSelection();
         },
-        [closing, mode, dirty, doSave, tryClearIframeSelection]
+        [closing, mode, tryClearIframeSelection]
+    );
+
+    const activeSourceImage = useMemo(
+        () =>
+            (allPages && activePage && activePage.screenshotUrl) ||
+            sourceImage,
+        [allPages, activePage, sourceImage]
     );
 
     return (
@@ -449,10 +583,7 @@ export default function PreviewEditor({
                     }}
                 >
                     {/* Left panel */}
-                    <aside
-                        ref={asideRef}
-                        className="flex flex-col min-w-0 overflow-auto pr-1 max-lg:order-2"
-                    >
+                    <aside className="flex flex-col min-w-0 overflow-auto pr-1 max-lg:order-2">
                         <div className="mb-3">
                             <label className="block text-[11px] font-semibold text-neutral-500 mb-1">
                                 Site name
@@ -465,6 +596,27 @@ export default function PreviewEditor({
                                 disabled={closing}
                             />
                         </div>
+
+                        {/* Page selector */}
+                        {allPages && allPages.length > 0 && (
+                            <div className="mb-3">
+                                <div className="text-[11px] font-semibold text-neutral-500 mb-1">
+                                    Page
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                    {allPages.map((p) => (
+                                        <UiBtn
+                                            key={p.id}
+                                            pressed={p.id === activePageId}
+                                            onClick={() => setActivePageId(p.id)}
+                                            disabled={closing}
+                                        >
+                                            {p.label || p.id}
+                                        </UiBtn>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
                         <div className="mb-3">
                             <div className="text-[11px] font-semibold text-neutral-500 mb-1">
@@ -910,9 +1062,9 @@ export default function PreviewEditor({
                                 tryClearIframeSelection();
                         }}
                     >
-                        {sourceImage && mode !== "screenshot" && (
+                        {activeSourceImage && mode !== "screenshot" && (
                             <img
-                                src={sourceImage}
+                                src={activeSourceImage}
                                 alt="reference"
                                 className="absolute right-3 top-3 h-28 w-auto rounded border shadow pointer-events-none max-sm:hidden"
                             />
@@ -967,9 +1119,9 @@ export default function PreviewEditor({
                                     className="mx-auto"
                                     style={{ width: devicePx, minWidth: 320 }}
                                 >
-                                    {sourceImage ? (
+                                    {activeSourceImage ? (
                                         <img
-                                            src={sourceImage}
+                                            src={activeSourceImage}
                                             alt="Reference"
                                             className="w-full h-auto rounded border bg-white"
                                         />
@@ -1154,8 +1306,8 @@ function UiBtn({
             disabled={disabled}
             aria-busy={ariaBusy}
             className={`${base} px-2.5 py-1 rounded-full border text-xs ${pressed
-                    ? "bg-slate-900 text-white border-slate-900"
-                    : "bg-white text-neutral-800 border-neutral-300 hover:bg-neutral-50"
+                ? "bg-slate-900 text-white border-slate-900"
+                : "bg-white text-neutral-800 border-neutral-300 hover:bg-neutral-50"
                 }`}
         >
             {withBusy}

@@ -43,7 +43,7 @@ type UrlStatusRaw =
 
 type UrlStatusUi = "queued" | "processing" | "ready" | "stale" | "error" | "unknown";
 
-interface UrlDoc {
+export interface UrlDoc {
     url: string;
     urlHash?: string;
     createdAt?: any;
