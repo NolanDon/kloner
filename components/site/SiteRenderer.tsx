@@ -16,11 +16,15 @@ import { GridSection } from "./GridSection";
 type Props = {
     config: SiteConfig;
     overridesCss?: string;
-    siteId?: string;            // optional, for internal link building later
-    pageSlug?: string;          // optional, for multi-page routing later
-    disableNavigation?: boolean; // used in editor preview to block real navigation
-    currentPageId?: string;     // explicit page selection (editor sidebar)
+    siteId?: string;
+    pageSlug?: string;
+    disableNavigation?: boolean;
+    currentPageId?: string;
+    selectedSectionId?: string | null;
+    onSelectSection?: (id: string) => void;
+    onEditSection?: (id: string, patch: Partial<Section["props"]>) => void;
 };
+
 
 type HeaderProps = {
     pages: PageConfig[];

@@ -23,6 +23,25 @@ export default function EditSitePage() {
     const [activePageId, setActivePageId] = useState<string | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [viewportMode, setViewportMode] = useState<ViewportMode>("desktop");
+    const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
+
+    const updateConfig = (updater: (c: SiteConfig) => SiteConfig) => {
+        setData((prev) =>
+            prev ? { ...prev, config: updater(prev.config) } : prev
+        );
+    };
+
+    const updateSection = (id: string, patch: Partial<Section["props"]>) => {
+        updateConfig((c) =>
+            withActivePage(c, (sections) =>
+                sections.map((s): any =>
+                    s.id === id
+                        ? { ...s, props: { ...s.props, ...patch } }
+                        : s
+                )
+            )
+        );
+    };
 
     useEffect(() => {
         let cancelled = false;
@@ -56,11 +75,6 @@ export default function EditSitePage() {
         };
     }, [siteId]);
 
-    const updateConfig = (updater: (c: SiteConfig) => SiteConfig) => {
-        setData((prev) =>
-            prev ? { ...prev, config: updater(prev.config) } : prev
-        );
-    };
 
     const addPage = () => {
         updateConfig((c) => {
@@ -115,24 +129,6 @@ export default function EditSitePage() {
         const pages = [...c.pages];
         pages[idx] = updatedPage;
         return { ...c, pages };
-    };
-
-    const updateSection = (id: string, patch: Partial<Section["props"]>) => {
-        updateConfig((c) =>
-            withActivePage(c, (sections) =>
-                sections.map((s): any =>
-                    s.id === id
-                        ? {
-                            ...s,
-                            props: {
-                                ...s.props,
-                                ...patch,
-                            },
-                        }
-                        : s
-                )
-            )
-        );
     };
 
     const moveSection = (id: string, dir: "up" | "down") => {
@@ -659,7 +655,10 @@ export default function EditSitePage() {
                                     overridesCss={overridesCss}
                                     siteId={siteId}
                                     disableNavigation
-                                    currentPageId={activePage?.id || undefined}
+                                    currentPageId={activePage?.id}
+                                    selectedSectionId={selectedSectionId}
+                                    onSelectSection={setSelectedSectionId}
+                                    onEditSection={updateSection}
                                 />
                             </div>
                         </div>
