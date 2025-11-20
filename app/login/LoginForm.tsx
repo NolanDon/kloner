@@ -298,9 +298,8 @@ export default function LoginPage(): JSX.Element {
                             console.error("generate failed after signup", e);
                         });
 
-                        router.replace(
-                            `/dashboard/view?u=${encodeURIComponent(cleaned)}`
-                        );
+                        router.replace("/dashboard");
+
                         return;
                     } catch (e) {
                         console.error("failed to auto-add pending url", e);
