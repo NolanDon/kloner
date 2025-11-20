@@ -114,7 +114,6 @@ export async function setUserTierFromStripe(
     const creditsUpdate: Record<string, unknown> = {};
 
     if (previewLimit !== undefined && previewLimit !== null) {
-        // Unlimited is encoded as monthlyLimit 0 with remaining null
         creditsUpdate["credits.preview"] =
             previewLimit === 0
                 ? {
@@ -145,10 +144,13 @@ export async function setUserTierFromStripe(
     }
 
     // Apply tier metadata and credit reset in one write
+    // and nuke any legacy root-level preview/snapshot fields.
     await userRef.set(
         {
             ...payload,
             ...creditsUpdate,
+            preview: admin.firestore.FieldValue.delete(),
+            snapshot: admin.firestore.FieldValue.delete(),
         },
         { merge: true }
     );
