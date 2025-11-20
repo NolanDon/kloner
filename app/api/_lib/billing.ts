@@ -142,7 +142,7 @@ export async function setUserTierFromStripe(
                     periodEnd: periodEndTs,
                 };
     }
-
+    
     // Apply tier metadata and credit reset in one write
     // and nuke any legacy root-level preview/snapshot fields.
     await userRef.set(

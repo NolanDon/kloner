@@ -243,12 +243,6 @@ export default function PreviewPage(): JSX.Element {
     const [user, setUser] = useState<FirebaseUser | null>(null);
     const [userTier, setUserTier] = useState<UserTier>("unknown");
 
-    const [credits, setCredits] = useState<UICredits>({
-        screenshotUsed: 0,
-        previewUsed: 0,
-        screenshotRemaining: 0,
-        previewRemaining: 0,
-    });
 
     const [showCreditsPaywall, setShowCreditsPaywall] = useState<
         null | "screenshot" | "preview" | "deploy"
@@ -406,7 +400,7 @@ export default function PreviewPage(): JSX.Element {
 
                 // local state cleanup
                 setShots((prev) => prev.filter((s) => !paths.includes(s.path)));
-                
+
                 setRenders((prev) =>
                     prev.filter((r) => !(typeof r.key === "string" && paths.includes(r.key)))
                 );
@@ -445,8 +439,7 @@ export default function PreviewPage(): JSX.Element {
     );
 
 
-    /* ───────── credits (read from Firestore) ───────── */
-
+    // ---- state ----
     type UICredits = {
         screenshotUsed: number;
         previewUsed: number;
@@ -454,14 +447,36 @@ export default function PreviewPage(): JSX.Element {
         previewRemaining: number | null;
     };
 
-    // Watch kloner_users/{uid} and derive credits from the canonical bucket
+    const [credits, setCredits] = useState<UICredits>({
+        screenshotUsed: 0,
+        previewUsed: 0,
+        screenshotRemaining: null,
+        previewRemaining: null,
+    });
+
+    // derived limits for denominator (fallback only)
+    const screenshotLimitDisplay =
+        tierLimits.screenshotMonthly && tierLimits.screenshotMonthly > 0
+            ? tierLimits.screenshotMonthly
+            : null;
+
+    const previewLimitDisplay =
+        tierLimits.previewMonthly && tierLimits.previewMonthly > 0
+            ? tierLimits.previewMonthly
+            : null;
+
+    /* ───────── credits (read from Firestore) ───────── */
+
+    // Watch kloner_users/{uid} and derive credits from the canonical buckets:
+    //   credits.preview
+    //   credits.snapshot
     useEffect(() => {
         if (!user) {
             setCredits({
                 screenshotUsed: 0,
                 previewUsed: 0,
-                screenshotRemaining: 0,
-                previewRemaining: 0,
+                screenshotRemaining: null,
+                previewRemaining: null,
             });
             return;
         }
@@ -488,13 +503,11 @@ export default function PreviewPage(): JSX.Element {
                 return;
             }
 
-            const data = snap.data() as any;
-            const raw = (data.credits as any) || {};
-
-            const previewBucket = (raw.preview as any) || {};
-            const snapshotBucket = (raw.snapshot as any) || {};
-
-            // Fallback to tierLimits if bucket not initialized yet
+            const creditsMap = (snap.data() as any) || {};
+            // ONLY read nested buckets under `credits`
+            const previewBucket = (creditsMap['credits.preview'] as any) || {};
+            const snapshotBucket = (creditsMap['credits.snapshot'] as any) || {};
+        
             const previewLimit =
                 typeof previewBucket.monthlyLimit === "number" &&
                     previewBucket.monthlyLimit >= 0
@@ -548,20 +561,18 @@ export default function PreviewPage(): JSX.Element {
     const previewRemaining = credits.previewRemaining;
 
     function canUseScreenshotCredit(): boolean {
-        // null = unlimited
-        if (screenshotRemaining === null) return true;
+        if (screenshotRemaining === null) return true; // unlimited
         return screenshotRemaining > 0;
     }
 
     function canUsePreviewCredit(): boolean {
-        if (previewRemaining === null) return true;
+        if (previewRemaining === null) return true; // unlimited
         return previewRemaining > 0;
     }
 
-    // Optional: optimistic UI update AFTER a successful call,
-    // Firestore will re-sync as soon as consumeUserCredit runs on the backend.
+    // Optional optimistic updates
     function markScreenshotSuccess() {
-        if (screenshotRemaining === null) return; // unlimited: nothing to show
+        if (screenshotRemaining === null) return;
         setCredits((prev) => ({
             ...prev,
             screenshotUsed: prev.screenshotUsed + 1,
@@ -583,7 +594,6 @@ export default function PreviewPage(): JSX.Element {
             ),
         }));
     }
-
     /* ───────── storage helpers ───────── */
 
     async function listAllDeep(root: StorageReference): Promise<StorageReference[]> { const out: StorageReference[] = []; async function walk(ref: StorageReference) { const l = await listAll(ref); out.push(...l.items); await Promise.all(l.prefixes.map(walk)); } await walk(root); return out; }
@@ -2089,7 +2099,7 @@ export default function PreviewPage(): JSX.Element {
                                                 isDeploying
                                                     ? "Deploying…"
                                                     : isQueued
-                                                        ? "Building Site… This can take up to five minutes"
+                                                        ? "Building site. This may take up to five minutes"
                                                         : "Locked…"
                                             }
                                         />
@@ -2419,22 +2429,20 @@ export default function PreviewPage(): JSX.Element {
                             </div>
                             <div className="flex flex-wrap gap-2">
                                 <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] sm:text-xs text-neutral-700">
-                                    Screenshots Remaining: &nbsp;
+                                    Screenshots Remaining:&nbsp;
                                     <span className="font-semibold text-neutral-900">
-                                        {tierLimits.screenshotMonthly
-                                            ? `${screenshotRemaining}/${tierLimits.screenshotMonthly}`
-                                            : "unlimited"}
+                                        {screenshotRemaining === null || !screenshotLimitDisplay
+                                            ? "unlimited"
+                                            : `${screenshotRemaining}/${screenshotLimitDisplay}`}
                                     </span>
                                 </span>
 
                                 <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] sm:text-xs text-neutral-700">
-                                    Previews Remaining: &nbsp;
+                                    Previews Remaining:&nbsp;
                                     <span className="font-semibold text-neutral-900">
-                                        {
-                                            tierLimits.previewMonthly
-                                                ? `${previewRemaining}/${tierLimits.previewMonthly}`
-                                                : "unlimited"
-                                        }
+                                        {previewRemaining === null || !previewLimitDisplay
+                                            ? "unlimited"
+                                            : `${previewRemaining}/${previewLimitDisplay}`}
                                     </span>
                                 </span>
                             </div>
