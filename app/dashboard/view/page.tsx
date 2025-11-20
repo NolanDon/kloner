@@ -326,6 +326,125 @@ export default function PreviewPage(): JSX.Element {
         [userTier]
     );
 
+    // at top of component
+    const [deletingCollectionById, setDeletingCollectionById] = useState<
+        Record<string, boolean>
+    >({});
+
+    // somewhere near other callbacks
+    const discardCollection = useCallback(
+        async (group: {
+            snapshotId: string | null | undefined;
+            items: { path: string | null | undefined }[];
+        }) => {
+            if (!user || !docSnap) return;
+
+            // Narrow paths to string[]
+            const paths: string[] = group.items
+                .map((s) => s.path)
+                .filter((p): p is string => typeof p === "string" && p.length > 0);
+
+            if (!paths.length) return;
+
+            const ok = window.confirm(
+                `Delete this snapshot collection (${paths.length} screenshot${paths.length > 1 ? "s" : ""
+                }) and all its previews?`
+            );
+            if (!ok) return;
+
+            setErr("");
+
+            const snapshotId = group.snapshotId ?? "";
+            if (!snapshotId) return;
+
+            setDeletingCollectionById((m) => ({
+                ...m,
+                [snapshotId]: true,
+            }));
+
+            try {
+                // delete storage objects
+                await Promise.all(
+                    paths.map((p) =>
+                        deleteObject(sRef(storage, p)).catch(() => { })
+                    )
+                );
+
+                // delete renders that reference any of these keys (chunked "in" queries)
+                const rCol = collection(
+                    db,
+                    "kloner_users",
+                    user.uid,
+                    "kloner_renders"
+                );
+
+                const chunks: string[][] = [];
+                for (let i = 0; i < paths.length; i += 10) {
+                    chunks.push(paths.slice(i, i + 10));
+                }
+
+                for (const chunk of chunks) {
+                    const rSnap = await getDocs(
+                        query(rCol, where("key", "in", chunk))
+                    );
+                    if (!rSnap.empty) {
+                        await Promise.all(
+                            rSnap.docs.map((d) => deleteDoc(d.ref))
+                        );
+                    }
+                }
+
+                // remove paths from the snapshot doc
+                try {
+                    await updateDoc(docSnap.ref, {
+                        screenshotPaths: arrayRemove(...paths),
+                        updatedAt: serverTimestamp(),
+                    } as any);
+                } catch {
+                    // ignore
+                }
+
+                // local state cleanup
+                setShots((prev) => prev.filter((s) => !paths.includes(s.path)));
+                
+                setRenders((prev) =>
+                    prev.filter((r) => !(typeof r.key === "string" && paths.includes(r.key)))
+                );
+
+                setPendingByKey((prev) => {
+                    const next = { ...prev };
+                    paths.forEach((p) => {
+                        delete next[p];
+                    });
+                    return next;
+                });
+
+                setOptimisticByKey((prev) => {
+                    const next = { ...prev };
+                    paths.forEach((p) => {
+                        delete next[p];
+                    });
+                    return next;
+                });
+
+                push("Snapshot collection deleted", "ok");
+            } catch (e: any) {
+                setErr(
+                    e?.message || "Failed to delete snapshot collection."
+                );
+                push("Failed to delete snapshot collection", "err");
+            } finally {
+                setDeletingCollectionById((m) => {
+                    const n = { ...m };
+                    delete n[snapshotId];
+                    return n;
+                });
+            }
+        },
+        [user, docSnap, push]
+    );
+
+
     /* ───────── credits (read from Firestore) ───────── */
 
     type UICredits = {
@@ -1970,7 +2089,7 @@ export default function PreviewPage(): JSX.Element {
                                                 isDeploying
                                                     ? "Deploying…"
                                                     : isQueued
-                                                        ? "Rendering…"
+                                                        ? "Building Site… This can take up to five minutes"
                                                         : "Locked…"
                                             }
                                         />
@@ -2604,7 +2723,7 @@ export default function PreviewPage(): JSX.Element {
                                                 className="flex items-center gap-2 text-left"
                                                 disabled={locked}
                                             >
-                                                <div className="h-10 w-16 overflow-hidden rounded-md bg-neutral-100">
+                                                <div className={`h-10 w-16 ${locked ? 'opacity-50' : ''} overflow-hidden rounded-md bg-neutral-100`}>
                                                     <img
                                                         src={first.url}
                                                         alt={first.fileName}
@@ -2619,7 +2738,9 @@ export default function PreviewPage(): JSX.Element {
                                                     </span>
                                                     {group.snapshotCreatedAt && (
                                                         <span className="text-[10px] text-neutral-500">
-                                                            {new Date(group.snapshotCreatedAt).toLocaleString()}
+                                                            {new Date(
+                                                                group.snapshotCreatedAt
+                                                            ).toLocaleString()}
                                                         </span>
                                                     )}
                                                     {extraCount > 0 && (
@@ -2631,24 +2752,43 @@ export default function PreviewPage(): JSX.Element {
                                                 </div>
                                             </button>
 
-                                            {/* right side: single generate button for the whole collection */}
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    if (locked) return;
-                                                    buildFromCollection(collectionKeys);
-                                                }}
-                                                disabled={locked}
-                                                aria-busy={locked}
-                                                className="ml-2 inline-flex items-center rounded-md border border-neutral-300 px-2 py-1 text-[11px] font-medium text-neutral-800 hover:bg-neutral-50 disabled:opacity-50"
-                                                title="Create editable preview from this snapshot collection"
-                                            >
-                                                <span>{locked ? "In progress" : "Generate preview"}</span>
-                                                <Hammer
-                                                    className={`ml-1 h-3 w-3 ${locked ? "animate-pulse" : ""}`}
-                                                    aria-hidden
-                                                />
-                                            </button>
+                                            {/* right side: actions for the whole collection */}
+                                            <div className="ml-2 flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        if (locked) return;
+                                                        buildFromCollection(collectionKeys);
+                                                    }}
+                                                    disabled={locked}
+                                                    aria-busy={locked}
+                                                    className="inline-flex items-center rounded-md border border-neutral-300 px-2 py-1 text-[11px] font-medium text-neutral-800 hover:bg-neutral-50 disabled:opacity-50"
+                                                    title="Create editable preview from this snapshot collection"
+                                                >
+                                                    <span>{locked ? "In progress" : "Generate preview"}</span>
+                                                    <Hammer
+                                                        className={`ml-1 h-3 w-3 ${locked ? "animate-pulse" : ""
+                                                            }`}
+                                                        aria-hidden
+                                                    />
+                                                </button>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() => discardCollection(group)}
+                                                    disabled={
+                                                        locked ||
+                                                        !!deletingCollectionById[group.snapshotId]
+                                                    }
+                                                    aria-busy={!!deletingCollectionById[group.snapshotId]}
+                                                    className="inline-flex items-center rounded-md border border-red-200 px-2 py-1 text-[10px] font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                                                    title="Permanently delete this snapshot collection and all related images"
+                                                >
+                                                    {deletingCollectionById[group.snapshotId]
+                                                        ? "Deleting…"
+                                                        : "Remove"}
+                                                </button>
+                                            </div>
                                         </div>
                                     );
                                 })}
@@ -2890,11 +3030,9 @@ export default function PreviewPage(): JSX.Element {
                                         <img
                                             src={shots[viewerIdx].url}
                                             alt={shots[viewerIdx].fileName}
-                                            className="max-w-none"
                                             style={{
                                                 width: "auto",
                                                 height: "auto",
-                                                maxWidth: "none",
                                             }}
                                         />
                                     </div>

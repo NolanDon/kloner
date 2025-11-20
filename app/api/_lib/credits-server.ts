@@ -72,7 +72,7 @@ export async function peekUserCredit(
             ? bucket.monthlyLimit
             : defaultLimit;
 
-    // If stored limit doesn't match the tier's limit, assume the tier changed
+    // If stored limit does not match the tier's limit, assume the tier changed
     // and normalize to the new tier's limit.
     const effectiveLimit = defaultLimit ?? storedLimitRaw;
 
@@ -149,7 +149,7 @@ export async function consumeUserCredit(
                 ? bucket.monthlyLimit
                 : limitForTier;
 
-        // If the stored limit doesn't match the new tier, normalize to tier limit.
+        // If the stored limit does not match the new tier, normalize to tier limit.
         const effectiveLimit = limitForTier ?? storedLimitRaw;
         finalLimit = effectiveLimit;
 
