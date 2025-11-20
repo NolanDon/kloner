@@ -92,7 +92,7 @@ async function fetchCsrf(): Promise<string | null> {
         const res = await fetch("/api/auth/csrf", {
             method: "POST",
             headers: { "content-type": "application/json" },
-            credentials: "include",   // important
+            credentials: "include",
             cache: "no-store",
         });
         if (!res.ok) return null;
@@ -109,7 +109,6 @@ export async function ensureSessionAndCsrf(): Promise<string | null> {
     }
     return csrfPromise;
 }
-
 
 /* ───────── Session cookie with CSRF ───────── */
 
@@ -131,18 +130,24 @@ async function setSessionCookie(): Promise<void> {
     });
 }
 
-/* ───────── Add URL + start capture with CSRF ───────── */
+/* ───────── URL + generate helpers (split) ───────── */
 
-async function addAndStart(uid: string, url: string) {
+/**
+ * Ensure the URL doc exists for this user (idempotent).
+ * Returns the cleaned URL.
+ */
+async function ensureUrlDoc(uid: string, url: string): Promise<string> {
     const cleaned = normUrl(url);
     if (!isHttpUrl(cleaned)) throw new Error("Invalid URL.");
     const urlHash = hash64(cleaned);
 
     const col = collection(db, "kloner_users", uid, "kloner_urls");
+
     const [byHash, byUrl] = await Promise.all([
         getDocs(query(col, where("urlHash", "==", urlHash))),
         getDocs(query(col, where("url", "==", cleaned))),
     ]);
+
     const exists = !byHash.empty || !byUrl.empty;
     if (!exists) {
         await addDoc(col, {
@@ -156,6 +161,14 @@ async function addAndStart(uid: string, url: string) {
         });
     }
 
+    return cleaned;
+}
+
+/**
+ * Queue a generate run for an existing URL doc.
+ * Safe to fire-and-forget from the UI.
+ */
+async function queueGenerate(cleanedUrl: string): Promise<void> {
     const csrf = await ensureSessionAndCsrf();
 
     const r = await fetch("/api/private/generate", {
@@ -164,7 +177,7 @@ async function addAndStart(uid: string, url: string) {
             "content-type": "application/json",
             ...(csrf ? { "x-csrf": csrf } : {}),
         },
-        body: JSON.stringify({ url: cleaned }),
+        body: JSON.stringify({ url: cleanedUrl }),
         credentials: "same-origin",
     });
 
@@ -172,7 +185,6 @@ async function addAndStart(uid: string, url: string) {
         const j = await r.json().catch(() => ({} as any));
         throw new Error(j?.error || "Failed to queue capture.");
     }
-    return cleaned;
 }
 
 /* ───────── Signup notification + welcome mail (with CSRF) ───────── */
@@ -272,14 +284,27 @@ export default function LoginPage(): JSX.Element {
                 const pending = pendingUrl?.trim();
                 if (pending) {
                     try {
-                        const cleaned = await addAndStart(u.uid, pending);
+                        // Ensure doc exists, then fire generate in background
+                        const cleaned = await ensureUrlDoc(u.uid, pending);
+
                         try {
                             localStorage.removeItem("kloner.pendingUrl");
-                        } catch { }
-                        router.replace(`/dashboard/view?u=${encodeURIComponent(cleaned)}`);
+                        } catch {
+                            // ignore
+                        }
+
+                        // fire-and-forget generate; do NOT block navigation
+                        void queueGenerate(cleaned).catch((e) => {
+                            console.error("generate failed after signup", e);
+                        });
+
+                        router.replace(
+                            `/dashboard/view?u=${encodeURIComponent(cleaned)}`
+                        );
                         return;
-                    } catch {
-                        // fall through
+                    } catch (e) {
+                        console.error("failed to auto-add pending url", e);
+                        // fall through to normal redirect
                     }
                 }
 
@@ -338,7 +363,11 @@ export default function LoginPage(): JSX.Element {
                 await signInWithEmailAndPassword(auth, email.trim(), pw);
                 await setSessionCookie();
             } else {
-                const cred = await createUserWithEmailAndPassword(auth, email.trim(), pw);
+                const cred = await createUserWithEmailAndPassword(
+                    auth,
+                    email.trim(),
+                    pw
+                );
                 await setSessionCookie();
                 await notifyKlonerSignup(cred.user, "email");
             }
@@ -367,15 +396,6 @@ export default function LoginPage(): JSX.Element {
             <NavBar />
             <div className="w-full max-w-md rounded-2xl border border-black/10 bg-white p-8 shadow-md">
                 <div className="text-center">
-                    {/* <div className="mx-auto relative h-[90px] w-[90px]">
-                        <Image
-                            src={logo}
-                            alt="kloner logo"
-                            fill
-                            priority
-                            className="object-contain"
-                        />
-                    </div> */}
                     <h1 className="text-2xl mb-4 font-semibold tracking-tight">
                         {mode === "signin" ? "Sign in" : "Create account"}
                     </h1>
@@ -426,7 +446,9 @@ export default function LoginPage(): JSX.Element {
                         <div className="flex items-stretch gap-2">
                             <input
                                 type={showPw ? "text" : "password"}
-                                autoComplete={mode === "signin" ? "current-password" : "new-password"}
+                                autoComplete={
+                                    mode === "signin" ? "current-password" : "new-password"
+                                }
                                 value={pw}
                                 onChange={(e) => setPw(e.target.value)}
                                 className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-3 text-sm outline-none focus:ring-2"
