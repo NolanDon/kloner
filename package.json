@@ -10,6 +10,7 @@
     "test": "jest --passWithNoTests"
   },
   "dependencies": {
+    "@vercel/blob": "^2.0.0",
     "firebase": "^12.5.0",
     "firebase-admin": "^13.6.0",
     "framer-motion": "^11.0.0",

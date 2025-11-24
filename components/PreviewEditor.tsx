@@ -1,6 +1,7 @@
 // src/components/PreviewEditor.tsx
 "use client";
 
+import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 
 type Device = "desktop" | "tablet" | "mobile";
@@ -90,27 +91,77 @@ const FONT_OPTIONS = [
 ];
 
 const TEXT_COLOR_SWATCHES = [
-    "#020617",
-    "#0f172a",
-    "#111827",
-    "#334155",
-    "#64748b",
-    "#f55f2a",
-    "#16a34a",
-    "#2563eb",
-    "#f97316",
-    "#e11d48",
+    // Near-black / dark neutrals
+    "#020617", // slate-950
+    "#0f172a", // slate-900
+    "#111827", // gray-900
+    "#1f2937", // gray-800
+    "#27272a", // zinc-800
+
+    // Mid neutrals
+    "#334155", // slate-700
+    "#4b5563", // gray-600
+    "#6b7280", // gray-500
+    "#9ca3af", // gray-400
+    "#e5e7eb", // gray-200
+
+    // Brand / accent oranges
+    "#f55f2a", // kloner accent
+    "#f97316", // orange-500
+    "#ea580c", // orange-600
+
+    // Reds / rose / pink
+    "#ef4444", // red-500
+    "#dc2626", // red-600
+    "#e11d48", // rose-600
+    "#db2777", // pink-600
+
+    // Greens
+    "#16a34a", // green-600
+    "#22c55e", // green-500
+    "#10b981", // emerald-500
+
+    // Blues
+    "#2563eb", // blue-600
+    "#3b82f6", // blue-500
+    "#0ea5e9", // sky-500
+
+    // Indigo / violet / purple
+    "#4f46e5", // indigo-600
+    "#6366f1", // indigo-500
+    "#8b5cf6", // violet-500
+    "#a855f7", // purple-500
+
+    // Gold / amber
+    "#f59e0b", // amber-500
+    "#d97706", // amber-600
+
+    // Pure white
+    "#ffffff",
 ];
 
 const BG_COLOR_SWATCHES = [
-    "#ffffff",
-    "#f9fafb",
-    "#f3f4f6",
-    "#e5e7eb",
-    "#111827",
-    "#020617",
-    "#fef3c7",
-    "#fee2e2",
+    // Light neutrals
+    "#ffffff", // white
+    "#f9fafb", // gray-50
+    "#f3f4f6", // gray-100
+    "#e5e7eb", // gray-200
+    "#d1d5db", // gray-300
+
+    // Slate / dark neutrals (for dark themes)
+    "#111827", // gray-900
+    "#020617", // slate-950
+    "#0b1120", // slate-900
+    "#1f2937", // gray-800
+
+    // Soft brand / accent backgrounds
+    "#fef3c7", // amber-100
+    "#ffedd5", // orange-100
+    "#fee2e2", // rose-100
+    "#e0f2fe", // sky-100
+    "#dbeafe", // blue-100
+    "#dcfce7", // green-100
+    "#f3e8ff", // purple-100
 ];
 
 const FONT_SIZE_PRESETS = [
@@ -156,7 +207,6 @@ function stripEditorArtifacts(html: string): string {
 
     return out;
 }
-
 
 function injectClientRouter(html: string): string {
     if (!html) return html;
@@ -591,27 +641,35 @@ export default function PreviewEditor({
         }
     }
 
-    async function getClientUploadUrl(
-        filename: string,
-        type: string
-    ): Promise<{ uploadUrl: string; url: string }> {
-        const res = await fetch("/api/user-blob/upload-url", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ filename, contentType: type }),
-        });
-        const j = await res.json();
-        if (!res.ok) throw new Error(j?.error || "upload_url_failed");
-        return j;
-    }
-    async function uploadDirect(uploadUrl: string, file: File | Blob) {
-        const r = await fetch(uploadUrl, { method: "PUT", body: file });
-        if (!r.ok) throw new Error("upload_failed");
-    }
+    // ---------- NEW: single-step blob upload helper ----------
+
     function sanitizeName(name: string) {
         const base = name.toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
         return base.slice(-64) || "image";
+    }
+
+    async function uploadFileToUserBlob(file: File): Promise<string> {
+        const csrf = await ensureSessionAndCsrf();
+        const safeName = sanitizeName(file.name || "upload.bin");
+
+        const res = await fetch(
+            `/api/user-blob/upload-url?filename=${encodeURIComponent(safeName)}`,
+            {
+                method: "POST",
+                headers: {
+                    "content-type": file.type || "application/octet-stream",
+                    ...(csrf ? { "x-csrf": csrf } : {}),
+                },
+                credentials: "include",
+                body: file,
+            }
+        );
+
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok || !j?.url) {
+            throw new Error(j?.error || "blob_upload_failed");
+        }
+        return j.url as string;
     }
 
     // iframe messages: uploads + selection meta
@@ -626,6 +684,7 @@ export default function PreviewEditor({
                     if (!buf || !filename || !contentType) {
                         throw new Error("bad_payload");
                     }
+
                     const file = new File(
                         [new Uint8Array(buf)],
                         sanitizeName(filename),
@@ -633,11 +692,10 @@ export default function PreviewEditor({
                             type: contentType,
                         }
                     );
-                    const { uploadUrl, url } = await getClientUploadUrl(
-                        file.name,
-                        contentType
-                    );
-                    await uploadDirect(uploadUrl, file);
+
+                    // Single-step upload to your own API, which calls Vercel Blob
+                    const url = await uploadFileToUserBlob(file);
+
                     iframeRef.current?.contentWindow?.postMessage(
                         { type: "kloner:upload:done", id, ok: true, url },
                         "*"
@@ -1578,15 +1636,16 @@ function injectEditableOverlay(doc: Document, onChange: (updatedHtml: string) =>
     }
     markEditable(doc.body);
 
+    // <button class="kbtn kbtn-img"  data-act="img-insert">Insert image</button>
+    // <button class="kbtn kbtn-img"  data-act="img-replace">Replace image</button>
+    // <button class="kbtn kbtn-img"  data-act="img-alt">ALT text</button>
+
     const toolbar = doc.createElement("div");
     toolbar.className = "kloner-toolbar";
     toolbar.innerHTML = `
     <button class="kbtn kbtn-close" data-act="close">Close</button>
     <button class="kbtn kbtn-edit" data-act="dup">Duplicate</button>
     <button class="kbtn kbtn-del"  data-act="del">Delete block</button>
-    <button class="kbtn kbtn-img"  data-act="img-insert">Insert image</button>
-    <button class="kbtn kbtn-img"  data-act="img-replace">Replace image</button>
-    <button class="kbtn kbtn-img"  data-act="img-alt">ALT text</button>
     <button class="kbtn kbtn-img"  data-act="link">Link</button>
   `;
     doc.body.appendChild(toolbar);
@@ -1900,21 +1959,21 @@ function injectEditableOverlay(doc: Document, onChange: (updatedHtml: string) =>
             return;
         }
         if (act === "img-insert") {
-            insertImageIntoBlock(selected).catch(() => { });
-            return;
+            // insertImageIntoBlock(selected).catch(() => { });
+            // return;
         }
         if (act === "img-replace") {
-            const img =
-                (selected.tagName === "IMG"
-                    ? (selected as HTMLImageElement)
-                    : (selected.querySelector("img") as HTMLImageElement | null)) ??
-                null;
-            if (!img) {
-                showHint("No <img> here. Use Insert image.", selected);
-                return;
-            }
-            replaceImage(img);
-            return;
+            // const img =
+            //     (selected.tagName === "IMG"
+            //         ? (selected as HTMLImageElement)
+            //         : (selected.querySelector("img") as HTMLImageElement | null)) ??
+            //     null;
+            // if (!img) {
+            //     showHint("No <img> here. Use Insert image.", selected);
+            //     return;
+            // }
+            // replaceImage(img);
+            // return;
         }
         if (act === "img-alt") {
             const img =

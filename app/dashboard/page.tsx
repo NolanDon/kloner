@@ -1,4 +1,4 @@
-// app/dashboard/page.tsx (full component with billing notifications wired in)
+// app/dashboard/page.tsx (full component with stale retry wired in)
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -333,6 +333,8 @@ function UrlRow({ uid, r }: UrlRowProps) {
     );
 
     const locked = uiStatus === "processing";
+    const isStale = uiStatus === "stale";
+    const isReady = uiStatus === "ready";
 
     const [thumbUrl, setThumbUrl] = useState<string | null>(null);
     useEffect(() => {
@@ -372,7 +374,9 @@ function UrlRow({ uid, r }: UrlRowProps) {
         const ok =
             typeof window !== "undefined"
                 ? window.confirm(
-                    "Rescan this URL now? This will queue a new capture and may overwrite the latest screenshot."
+                    isStale
+                        ? "Retry screenshots for this URL? This will queue a fresh capture."
+                        : "Rescan this URL now? This will queue a new capture and may overwrite the latest screenshot."
                 )
                 : true;
         if (!ok) return;
@@ -388,13 +392,15 @@ function UrlRow({ uid, r }: UrlRowProps) {
                 status: "queued",
                 updatedAt: serverTimestamp(),
                 lastError: null,
-                retry: null,
+                retry: false,
             } as any);
+
             const res = await fetch("/api/private/generate", {
                 method: "POST",
                 headers: { "content-type": "application/json" },
                 body: JSON.stringify({ url: r.url }),
             });
+
             if (!res.ok) {
                 const j: any = await res.json().catch(() => ({}));
                 setErr(j?.error || "Failed to start capture.");
@@ -458,10 +464,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
             );
             const qHash = query(rendersCol, where("urlHash", "==", urlHash));
             const qUrl = query(rendersCol, where("url", "==", r.url));
-            const [snapHash, snapUrl] = await Promise.all([
-                getDocs(qHash),
-                getDocs(qUrl),
-            ]);
+            const [snapHash, snapUrl] = await Promise.all([getDocs(qHash), getDocs(qUrl)]);
             const toDeleteIds = new Set<string>();
             snapHash.forEach((d) => toDeleteIds.add(d.id));
             snapUrl.forEach((d) => toDeleteIds.add(d.id));
@@ -515,8 +518,8 @@ function UrlRow({ uid, r }: UrlRowProps) {
                             target={locked ? undefined : "_blank"}
                             rel={locked ? undefined : "noreferrer"}
                             className={`truncate max-w-full sm:max-w-[70%] text-sm ${locked
-                                    ? "text-neutral-400 pointer-events-none"
-                                    : "text-neutral-800 hover:underline"
+                                ? "text-neutral-400 pointer-events-none"
+                                : "text-neutral-800 hover:underline"
                                 }`}
                             aria-disabled={locked}
                             tabIndex={locked ? -1 : 0}
@@ -541,9 +544,10 @@ function UrlRow({ uid, r }: UrlRowProps) {
                         >
                             {busy
                                 ? "Working…"
-                                : uiStatus === "stale"
-                                    ? "Retry"
-                                    : "Rescan"}
+                                : isStale
+                                    ? "Retry screenshots"
+                                    : "Rescan"
+                            }
                         </button>
 
                         <a
@@ -553,8 +557,8 @@ function UrlRow({ uid, r }: UrlRowProps) {
                                     : `/dashboard/view?u=${encodeURIComponent(r.url)}`
                             }
                             className={`rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs ${locked
-                                    ? "text-neutral-400 pointer-events-none"
-                                    : "text-neutral-700 hover:bg-neutral-50"
+                                ? "text-neutral-400 pointer-events-none"
+                                : "text-neutral-700 hover:bg-neutral-50"
                                 }`}
                             aria-disabled={locked}
                             tabIndex={locked ? -1 : 0}
@@ -700,8 +704,8 @@ export default function DashboardPage() {
             {billingMsg && (
                 <div
                     className={`mt-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${billingMsg.type === "success"
-                            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                            : "border-amber-200 bg-amber-50 text-amber-800"
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                        : "border-amber-200 bg-amber-50 text-amber-800"
                         }`}
                 >
                     {billingMsg.type === "success" ? (
