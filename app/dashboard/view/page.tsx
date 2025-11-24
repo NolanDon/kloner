@@ -1941,15 +1941,40 @@ export default function PreviewPage(): JSX.Element {
                         if (prevHtmlRef.current === r.html) return;
                         prevHtmlRef.current = r.html;
 
-                        const safeHtml = (r.html || "").trim();
-                        const csp =
-                            "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src data: blob: https: http:; style-src 'unsafe-inline'; font-src data: https:; script-src 'unsafe-inline'; connect-src 'none';\">";
+                        let safeHtml = (r.html || "").trim();
+
+                        // 1. strip <script> blocks
+                        safeHtml = safeHtml.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
+
+                        // 2. strip inline event handlers: onClick="..." etc
+                        safeHtml = safeHtml.replace(/\son\w+\s*=\s*(['"]).*?\1/gi, "");
+
+                        // 3. strip javascript: URLs
+                        safeHtml = safeHtml.replace(
+                            /href\s*=\s*(['"])\s*javascript:[^'"]*\1/gi,
+                            'href="#"'
+                        );
+
+                        // 4. CSP: allow external CSS + fonts, block scripts fully
+                        const csp = `
+                            <meta http-equiv="Content-Security-Policy"
+                                content="
+                                    default-src 'none';
+                                    img-src data: blob: http: https:;
+                                    style-src 'unsafe-inline' https:;
+                                    font-src https: data:;
+                                    script-src 'none';
+                                    connect-src 'none';
+                                ">
+                        `.trim();
+
                         const base = r.html
-                            ? "<base target=\"_blank\" rel=\"noopener noreferrer\">"
+                            ? `<base target="_blank" rel="noopener noreferrer">`
                             : "";
 
                         setSrcDoc(`${csp}${base}${safeHtml}`);
                     }, [r.html]);
+
 
                     const hardLocked =
                         !!lockUntilByRender[r.id] &&
@@ -2226,12 +2251,19 @@ export default function PreviewPage(): JSX.Element {
                                     <iframe
                                         title={`r-${r.id}`}
                                         className="w-full h-0"
-                                        sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms allow-pointer-lock"
+                                        sandbox="
+                                            allow-same-origin
+                                            allow-popups
+                                            allow-popups-to-escape-sandbox
+                                            allow-forms
+                                            allow-pointer-lock
+                                        "
                                         referrerPolicy="no-referrer"
                                         allow="clipboard-read; clipboard-write"
                                         key={`frame-${r.id}`}
                                         srcDoc={srcDoc}
                                     />
+
                                 </div>
                             </div>
                         </>
