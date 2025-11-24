@@ -186,13 +186,13 @@ export async function consumeUserCredit(
             tx.set(
                 userRef,
                 {
-                    credits: {
-                        [kind]: {
-                            remaining,
-                            monthlyLimit: limitForTier,
-                            periodEnd: periodEndTs,
-                        },
+                    [`credits.${kind}`]: {
+                        remaining: 0,
+                        monthlyLimit: limitForTier,
+                        periodEnd: periodEndTs,
                     },
+                    // hard-delete legacy root map if it exists
+                    credits: admin.firestore.FieldValue.delete()
                 },
                 { merge: true }
             );
@@ -207,14 +207,13 @@ export async function consumeUserCredit(
         tx.set(
             userRef,
             {
-                credits: {
-                    [kind]: {
-                        remaining,
-                        monthlyLimit: limitForTier,
-                        periodEnd: periodEndTs,
-                    },
+                [`credits.${kind}`]: {
+                    remaining,
+                    monthlyLimit: limitForTier,
+                    periodEnd: periodEndTs,
                 },
-                // no root `credits` deletion here; credits is the canonical map
+                // hard-delete legacy root map
+                credits: admin.firestore.FieldValue.delete(),
             },
             { merge: true }
         );
