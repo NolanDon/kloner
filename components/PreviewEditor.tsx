@@ -125,14 +125,37 @@ function stripScripts(html: string) {
     return html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
 }
 
+// strip ALL editor/runtime artifacts that should never ship in export or interfere with routing
+function stripEditorArtifacts(html: string): string {
+    if (!html) return html;
+    let out = html;
+
+    // remove ALL old route styles from any previous preview/export
+    out = out.replace(
+        /<style[^>]+id=["']kloner-active-route["'][\s\S]*?<\/style>/gi,
+        ""
+    );
+
+    // remove any kloner toolbar / style CSS blocks
+    out = out.replace(
+        /<style[^>]*>[\s\S]*?(?:\[data-kloner-sel\]|\.kloner-toolbar|\.kbtn\b|\.khint\b)[\s\S]*?<\/style>/gi,
+        ""
+    );
+
+    // remove hidden file inputs and their hint blocks
+    out = out.replace(
+        /<input[^>]+type=["']file["'][^>]*>\s*<div[^>]*class=["']khint["'][^>]*>[\s\S]*?<\/div>/gi,
+        ""
+    );
+
+    return out;
+}
+
 function injectClientRouter(html: string): string {
     if (!html) return html;
 
-    // Remove any old kloner-active-route style you might have generated earlier
-    let out = html.replace(
-        /<style[^>]+id=["']kloner-active-route["'][\s\S]*?<\/style>/i,
-        ""
-    );
+    // clean up editor junk and any previous route CSS before injecting the SPA router
+    let out = stripEditorArtifacts(html);
 
     const routerCss = `
 <style id="kloner-active-route">
@@ -222,7 +245,6 @@ function injectClientRouter(html: string): string {
     return out;
 }
 
-
 type StyleCmd =
     | { kind: "fontFamily"; value: string }
     | { kind: "fontSizePx"; value: number }
@@ -247,13 +269,14 @@ function labelFromRoute(route: string): string {
         .join(" ");
 }
 
-
 // derive pages from a monolithic HTML with <main class="page-root" data-route="...">
 function derivePagesFromHtml(html: string): EditorPage[] {
     if (typeof window === "undefined") return [];
     try {
+        // scripts + editor artifacts are irrelevant for page discovery
+        const cleaned = stripScripts(stripEditorArtifacts(html));
         const parser = new DOMParser();
-        const doc = parser.parseFromString(stripScripts(html), "text/html");
+        const doc = parser.parseFromString(cleaned, "text/html");
         const mains = Array.from(
             doc.querySelectorAll("main.page-root[data-route]")
         ) as HTMLElement[];
@@ -299,7 +322,12 @@ export default function PreviewEditor({
     const [activePageId, setActivePageId] = useState<string>("");
 
     const allPages = useMemo<EditorPage[] | null>(
-        () => (pages && pages.length ? pages : derivedPages.length ? derivedPages : null),
+        () =>
+            pages && pages.length
+                ? pages
+                : derivedPages.length
+                    ? derivedPages
+                    : null,
         [pages, derivedPages]
     );
 
@@ -329,10 +357,12 @@ export default function PreviewEditor({
 
     const devicePx = device === "desktop" ? 1440 : device === "tablet" ? 768 : 390;
 
-    // inject route-specific CSS into the monolithic HTML
+    // inject route-specific CSS into the monolithic HTML for iframe preview
     const renderHtml = useMemo(() => {
-        const base = stripScripts(previewHtml || "");
+        // strip scripts + editor artifacts for preview
+        const base = stripScripts(stripEditorArtifacts(previewHtml || ""));
         if (!base) return base;
+
         // no multi-page routing: just render as-is
         if (!allPages || !activePageId || activePageId === "single") return base;
 
@@ -464,7 +494,10 @@ export default function PreviewEditor({
         return () => window.removeEventListener("keydown", esc);
     }, [tryClearIframeSelection]);
 
-    const emitLive = useCallback((html: string) => onLiveHtml?.(html), [onLiveHtml]);
+    const emitLive = useCallback(
+        (html: string) => onLiveHtml?.(html),
+        [onLiveHtml]
+    );
 
     function applyDraftToPreview() {
         setApplyingPreview(true);
@@ -533,7 +566,7 @@ export default function PreviewEditor({
 
             const finalHtml = hasMultiPage
                 ? injectClientRouter(baseHtml)
-                : baseHtml;
+                : stripEditorArtifacts(baseHtml);
 
             await onExport(finalHtml, nameHint || undefined);
         } catch (e: any) {
@@ -550,7 +583,6 @@ export default function PreviewEditor({
             setExporting(false);
         }
     }
-
 
     async function getClientUploadUrl(
         filename: string,
