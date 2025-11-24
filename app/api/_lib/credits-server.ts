@@ -24,6 +24,15 @@ function toCoreKind(kind: ServerCreditKind): CoreCreditKind {
 }
 
 /**
+ * Cost per operation in credits.
+ *  - preview:  15 credits
+ *  - snapshot: 10 credits
+ */
+function creditCost(kind: ServerCreditKind): number {
+    return kind === "preview" ? 15 : 10;
+}
+
+/**
  * End of current calendar month (UTC).
  */
 function currentPeriodEnd(): Date {
@@ -36,9 +45,12 @@ function currentPeriodEnd(): Date {
 
 /**
  * Read-only check of a user's monthly credits.
- * Source of truth is ALWAYS the field paths:
- *   - "credits.preview"
- *   - "credits.snapshot"
+ * Source of truth is ALWAYS the nested map:
+ *
+ *   credits: {
+ *     preview:  { monthlyLimit, periodEnd, remaining }
+ *     snapshot: { monthlyLimit, periodEnd, remaining }
+ *   }
  */
 export async function peekUserCredit(
     uid: string,
@@ -51,8 +63,9 @@ export async function peekUserCredit(
 
     const coreKind = toCoreKind(kind);
     const defaultLimit = monthlyLimitFor(tier, coreKind);
+    const cost = creditCost(kind);
 
-    // Unlimited
+    // Unlimited tier
     if (defaultLimit === 0) {
         return {
             ok: true,
@@ -64,13 +77,13 @@ export async function peekUserCredit(
     // No doc => full allowance
     if (!snap.exists) {
         return {
-            ok: true,
+            ok: defaultLimit >= cost,
             remaining: defaultLimit,
             monthlyLimit: defaultLimit,
         };
     }
 
-    // Read directly from the field path "credits.preview" / "credits.snapshot"
+    // Read from nested map "credits.preview" / "credits.snapshot"
     const bucket = (snap.get(`credits.${kind}`) as any) || {};
 
     const now = new Date();
@@ -95,19 +108,22 @@ export async function peekUserCredit(
     }
 
     return {
-        ok: remaining > 0,
+        ok: remaining >= cost,
         remaining,
         monthlyLimit: defaultLimit,
     };
 }
 
 /**
- * Atomic decrement of one credit, with period reset.
- * Only touches the field paths:
- *   - "credits.preview"
- *   - "credits.snapshot"
+ * Atomic decrement of credits for one operation, with period reset.
+ * Only touches the nested map:
  *
- * Legacy root "credits" map is deleted and never read.
+ *   credits.preview
+ *   credits.snapshot
+ *
+ * It will only consume credits if the user has at least the full cost:
+ *   - preview:  15
+ *   - snapshot: 10
  */
 export async function consumeUserCredit(
     uid: string,
@@ -119,6 +135,7 @@ export async function consumeUserCredit(
 
     const coreKind = toCoreKind(kind);
     const limitForTier = monthlyLimitFor(tier, coreKind);
+    const cost = creditCost(kind);
 
     // Unlimited tier: no writes, always ok
     if (limitForTier === 0) {
@@ -134,6 +151,7 @@ export async function consumeUserCredit(
     const periodEndTs = admin.firestore.Timestamp.fromDate(periodEnd);
 
     let finalRemaining = 0;
+    let success = false;
 
     await db.runTransaction(async (tx) => {
         const snap = await tx.get(userRef);
@@ -160,45 +178,50 @@ export async function consumeUserCredit(
             remaining = bucket.remaining;
         }
 
-        if (remaining <= 0) {
-            finalRemaining = 0;
+        // Not enough to cover full cost -> do NOT consume
+        if (remaining < cost) {
+            finalRemaining = remaining;
+            success = false;
+            // Still ensure periodEnd/monthlyLimit are sane
             tx.set(
                 userRef,
                 {
-                    // write only to the field path, never to "credits" map
-                    [`credits.${kind}`]: {
-                        remaining: 0,
-                        monthlyLimit: limitForTier,
-                        periodEnd: periodEndTs,
+                    credits: {
+                        [kind]: {
+                            remaining,
+                            monthlyLimit: limitForTier,
+                            periodEnd: periodEndTs,
+                        },
                     },
-                    // hard-delete legacy root map if it exists
-                    credits: admin.firestore.FieldValue.delete(),
                 },
                 { merge: true }
             );
             return;
         }
 
-        remaining -= 1;
+        // Enough balance: consume full cost
+        remaining -= cost;
         finalRemaining = remaining;
+        success = true;
 
         tx.set(
             userRef,
             {
-                [`credits.${kind}`]: {
-                    remaining,
-                    monthlyLimit: limitForTier,
-                    periodEnd: periodEndTs,
+                credits: {
+                    [kind]: {
+                        remaining,
+                        monthlyLimit: limitForTier,
+                        periodEnd: periodEndTs,
+                    },
                 },
-                // hard-delete legacy root map
-                credits: admin.firestore.FieldValue.delete(),
+                // no root `credits` deletion here; credits is the canonical map
             },
             { merge: true }
         );
     });
 
     return {
-        ok: finalRemaining >= 0,
+        ok: success,
         remaining: finalRemaining,
         monthlyLimit: limitForTier,
     };

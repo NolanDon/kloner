@@ -1957,16 +1957,16 @@ export default function PreviewPage(): JSX.Element {
 
                         // 4. CSP: allow external CSS + fonts, block scripts fully
                         const csp = `
-                            <meta http-equiv="Content-Security-Policy"
-                                content="
-                                    default-src 'none';
-                                    img-src data: blob: http: https:;
-                                    style-src 'unsafe-inline' https:;
-                                    font-src https: data:;
-                                    script-src 'none';
-                                    connect-src 'none';
-                                ">
-                        `.trim();
+                        <meta http-equiv="Content-Security-Policy"
+                            content="
+                                default-src 'none';
+                                img-src data: blob: http: https:;
+                                style-src 'unsafe-inline' https:;
+                                font-src https: data:;
+                                script-src 'none';
+                                connect-src 'none';
+                            ">
+                    `.trim();
 
                         const base = r.html
                             ? `<base target="_blank" rel="noopener noreferrer">`
@@ -2251,19 +2251,12 @@ export default function PreviewPage(): JSX.Element {
                                     <iframe
                                         title={`r-${r.id}`}
                                         className="w-full h-0"
-                                        sandbox="
-                                            allow-same-origin
-                                            allow-popups
-                                            allow-popups-to-escape-sandbox
-                                            allow-forms
-                                            allow-pointer-lock
-                                        "
+                                        sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms allow-pointer-lock"
                                         referrerPolicy="no-referrer"
                                         allow="clipboard-read; clipboard-write"
                                         key={`frame-${r.id}`}
                                         srcDoc={srcDoc}
                                     />
-
                                 </div>
                             </div>
                         </>
