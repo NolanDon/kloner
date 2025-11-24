@@ -2715,9 +2715,47 @@ export default function PreviewPage(): JSX.Element {
                     </div>
                 </div>
 
-                {err ? (
+                {true ? (
                     <div className="mt-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
-                        {err}
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <p className="font-medium">Something went wrong while generating this.</p>
+                                <p className="mt-1 text-xs text-red-600/80">
+                                    Try again in a moment. If it keeps happening, send this issue to support.
+                                </p>
+                            </div>
+
+                            <button
+                                type="button"
+                                className="ml-3 inline-flex items-center rounded-md border border-red-300 bg-white px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100"
+                                onClick={() => {
+                                    // keep full error visible to you, not the user
+                                    console.error("User-facing generation error", err);
+
+                                    const body = [
+                                        "Hi support,",
+                                        "",
+                                        "I hit an error in the app.",
+                                        "",
+                                        "Error details:",
+                                        String(err ?? ""),
+                                        "",
+                                        "Steps to reproduce:",
+                                        "",
+                                        "- "
+                                    ].join("\n");
+
+                                    window.open(
+                                        `mailto:support@tracksitechanges.io?subject=TrackSiteChanges%20error&body=${encodeURIComponent(
+                                            body
+                                        )}`,
+                                        "_blank"
+                                    );
+                                }}
+                            >
+                                Report to support
+                            </button>
+                        </div>
                     </div>
                 ) : null}
 
@@ -2726,6 +2764,7 @@ export default function PreviewPage(): JSX.Element {
                         {info}
                     </div>
                 ) : null}
+
 
                 {/* screenshots */}
                 <div className="mt-10">
