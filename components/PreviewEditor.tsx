@@ -130,16 +130,22 @@ function stripEditorArtifacts(html: string): string {
     if (!html) return html;
     let out = html;
 
-    // remove ALL old route styles from any previous preview/export
+    // remove ONLY the route style block by id
     out = out.replace(
         /<style[^>]+id=["']kloner-active-route["'][\s\S]*?<\/style>/gi,
         ""
     );
 
-    // remove any kloner toolbar / style CSS blocks
+    // remove only style tags that contain *our* editor markers;
+    // leave all other <style> tags (site CSS) intact
     out = out.replace(
-        /<style[^>]*>[\s\S]*?(?:\[data-kloner-sel\]|\.kloner-toolbar|\.kbtn\b|\.khint\b)[\s\S]*?<\/style>/gi,
-        ""
+        /<style[^>]*>[\s\S]*?<\/style>/gi,
+        (match) => {
+            const isEditorStyle = /\[data-kloner-sel\]|\.kloner-toolbar|\.kbtn\b|\.khint\b/.test(
+                match
+            );
+            return isEditorStyle ? "" : match;
+        }
     );
 
     // remove hidden file inputs and their hint blocks
@@ -150,6 +156,7 @@ function stripEditorArtifacts(html: string): string {
 
     return out;
 }
+
 
 function injectClientRouter(html: string): string {
     if (!html) return html;
