@@ -18,8 +18,8 @@ export const CREDIT_LIMITS: Record<
 > = {
     free: {
         // Enough to see the flow, not enough to run real workloads.
-        screenshotMonthly: 5,
-        previewMonthly: 10,
+        screenshotMonthly: 30,
+        previewMonthly: 60,
     },
     pro: {
         // Tightened from 1200 → 400 to keep infra and OpenAI spend sane.
