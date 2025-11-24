@@ -1,7 +1,6 @@
 // components/MembershipHero.tsx
 "use client";
 
-import Image from "next/image";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Check, Shield, Clock4, CreditCard } from "lucide-react";
 import React, { useEffect, useMemo, useState } from "react";
@@ -9,7 +8,7 @@ import { AnimatedCreditCard } from "./AnimatedCreditCard";
 import { useUrlOverlay } from "./UrlOverlayProvider";
 
 const BULLETS = [
-    "Includes 100 preview credits per month on Pro",
+    "Includes 400 preview credits per month",
     "Free tier with lighter daily credit limits",
     "Clean export with code, assets, and routes",
     "Edit text, images, and meta before export",
