@@ -125,6 +125,104 @@ function stripScripts(html: string) {
     return html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
 }
 
+function injectClientRouter(html: string): string {
+    if (!html) return html;
+
+    // Remove any old kloner-active-route style you might have generated earlier
+    let out = html.replace(
+        /<style[^>]+id=["']kloner-active-route["'][\s\S]*?<\/style>/i,
+        ""
+    );
+
+    const routerCss = `
+<style id="kloner-active-route">
+  main.page-root { display: none !important; }
+  main.page-root.is-active { display: block !important; }
+</style>`.trim();
+
+    const routerScript = `
+<script>
+(function () {
+  function normalizePath(path) {
+    if (!path) return "/";
+    try {
+      var url = new URL(path, window.location.origin);
+      path = url.pathname;
+    } catch (e) {}
+    if (path.length > 1 && path.endsWith("/")) {
+      path = path.slice(0, -1);
+    }
+    return path || "/";
+  }
+
+  function setActiveRoute(path) {
+    path = normalizePath(path);
+    var pages = document.querySelectorAll("main.page-root");
+    var found = false;
+
+    pages.forEach(function (el) {
+      var route = normalizePath(el.getAttribute("data-route") || "/");
+      if (route === path) {
+        el.classList.add("is-active");
+        found = true;
+      } else {
+        el.classList.remove("is-active");
+      }
+    });
+
+    if (!found) {
+      pages.forEach(function (el) {
+        var route = normalizePath(el.getAttribute("data-route") || "/");
+        el.classList.toggle("is-active", route === "/");
+      });
+    }
+  }
+
+  setActiveRoute(window.location.pathname);
+
+  document.addEventListener("click", function (e) {
+    var link = e.target.closest("a[href]");
+    if (!link) return;
+
+    var href = link.getAttribute("href") || "";
+    if (!href.startsWith("/")) return;
+    if (href.startsWith("//")) return;
+    if (href.startsWith("/api")) return;
+
+    e.preventDefault();
+
+    var url = new URL(href, window.location.origin);
+    var pathname = normalizePath(url.pathname);
+    window.history.pushState({}, "", pathname);
+    setActiveRoute(pathname);
+  });
+
+  window.addEventListener("popstate", function () {
+    setActiveRoute(window.location.pathname);
+  });
+})();
+</script>`.trim();
+
+    // Insert CSS into <head>
+    if (out.includes("</head>")) {
+        out = out.replace("</head>", routerCss + "\n</head>");
+    } else if (out.includes("<head>")) {
+        out = out.replace("<head>", "<head>\n" + routerCss + "\n");
+    } else {
+        out = routerCss + "\n" + out;
+    }
+
+    // Insert script before </body>
+    if (out.includes("</body>")) {
+        out = out.replace("</body>", routerScript + "\n</body>");
+    } else {
+        out = out + "\n" + routerScript;
+    }
+
+    return out;
+}
+
+
 type StyleCmd =
     | { kind: "fontFamily"; value: string }
     | { kind: "fontSizePx"; value: number }
@@ -425,7 +523,18 @@ export default function PreviewEditor({
             if (dirty) {
                 await doSave({ applyToPreview: true });
             }
-            const finalHtml = (htmlDraft || previewHtml || "").trim();
+
+            const baseHtml = (htmlDraft || previewHtml || "").trim();
+
+            // Detect multi-page layout: at least one page-root with a data-route
+            const hasMultiPage =
+                baseHtml.includes('class="page-root"') &&
+                baseHtml.includes("data-route=");
+
+            const finalHtml = hasMultiPage
+                ? injectClientRouter(baseHtml)
+                : baseHtml;
+
             await onExport(finalHtml, nameHint || undefined);
         } catch (e: any) {
             const msg = String(e?.message || "");
@@ -441,6 +550,7 @@ export default function PreviewEditor({
             setExporting(false);
         }
     }
+
 
     async function getClientUploadUrl(
         filename: string,
@@ -763,8 +873,8 @@ export default function PreviewEditor({
                                 disabled={closing || !dirty}
                                 aria-busy={applyingPreview}
                                 className={`rounded px-3 py-1.5 text-sm w-full transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${dirty
-                                        ? "bg-emerald-600 text-white hover:brightness-95"
-                                        : "bg-emerald-50 text-emerald-700"
+                                    ? "bg-emerald-600 text-white hover:brightness-95"
+                                    : "bg-emerald-50 text-emerald-700"
                                     }`}
                                 title="Apply current draft to the live preview"
                             >
