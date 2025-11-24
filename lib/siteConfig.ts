@@ -1,7 +1,7 @@
 // lib/siteConfig.ts
 
 // High-level theme tokens. Users only choose from safe knobs.
-export type FontSizeToken = "xs" | "sm" | "base" | "lg" | "xl" | "2xl";
+export type FontSizeToken = "xs" | "sm" | "base" | "lg" | "xl" | "2xl" | "3xl" | "4xl" | "5xl";
 export type FontWeightToken = "normal" | "medium" | "semibold" | "bold";
 
 export type ThemeTokens = {

@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
 
             let vercelProjectId: string | null = bodyProjectId ?? null;
             let vercelProjectName: string | null = bodyProjectName ?? null;
+            let renderStoredName: string | null = null;
 
             if (renderId) {
                 const ref = db.doc(`kloner_users/${uid}/kloner_renders/${renderId}`);
@@ -44,9 +45,16 @@ export async function POST(req: NextRequest) {
                     );
                 }
                 const data = renderDoc.data() || {};
+
                 vercelProjectId = (data.vercelProjectId as string) || vercelProjectId;
                 vercelProjectName =
                     (data.vercelProjectName as string) || vercelProjectName;
+
+                // support your client-side save `{ projectVercelName: trimmed }`
+                renderStoredName =
+                    (data.projectVercelName as string) ||
+                    (data.vercelProjectName as string) ||
+                    null;
             }
 
             const integrationRef = db
@@ -68,9 +76,27 @@ export async function POST(req: NextRequest) {
                 vercelTeamId?: string;
             };
 
-            // Keep this as simple as possible: either use an explicit projectName
-            // or just "kloner-site". Do NOT base it on reference domains / nameHint.
-            const projectBaseName = projectName || "kloner-site";
+            // ───────────────── project name handling ─────────────────
+            // Prefer explicit projectName from client, then stored names, then default.
+            const rawNameCandidate =
+                (typeof projectName === "string" && projectName.trim()) ||
+                (typeof renderStoredName === "string" && renderStoredName.trim()) ||
+                (typeof vercelProjectName === "string" && vercelProjectName.trim()) ||
+                "kloner-site";
+
+            // Slugify: lowercase, alnum + hyphen only, no leading/trailing hyphens
+            let projectBaseName = rawNameCandidate
+                .toLowerCase()
+                .replace(/[^a-z0-9-]/g, "-")
+                .replace(/-{2,}/g, "-")
+                .replace(/^-+|-+$/g, "");
+
+            if (!projectBaseName) {
+                projectBaseName = "kloner-site";
+            }
+
+            // Keep a human-readable name around too (before slug) if you want
+            const resolvedName = projectBaseName;
 
             // We want a pure static site
             const FRAMEWORK: null = null;
@@ -90,7 +116,7 @@ export async function POST(req: NextRequest) {
                         "Content-Type": "application/json",
                     },
                     body: JSON.stringify({
-                        name: projectBaseName,
+                        name: resolvedName, // required `name`
                         framework: FRAMEWORK,
                         buildCommand: null,
                         devCommand: null,
@@ -113,7 +139,8 @@ export async function POST(req: NextRequest) {
                 }
 
                 vercelProjectId = projectJson.id as string;
-                vercelProjectName = projectJson.name as string;
+                vercelProjectName =
+                    (projectJson.name as string) || resolvedName || "kloner-site";
 
                 if (renderDoc) {
                     await renderDoc.ref.set(
@@ -125,8 +152,7 @@ export async function POST(req: NextRequest) {
                     );
                 }
             } else {
-                // Project already exists (possibly created earlier as "express")
-                // Force it to static / no framework so the builder stops expecting Node/Express files.
+                // Project already exists
                 const patchUrl = vercelTeamId
                     ? `https://api.vercel.com/v10/projects/${vercelProjectId}?teamId=${encodeURIComponent(
                         vercelTeamId
@@ -181,22 +207,30 @@ export async function POST(req: NextRequest) {
 
             const deployUrl = `https://api.vercel.com/v13/deployments?${deployParams.toString()}`;
 
+            // Always include `name`; include `project` if we have an id.
+            const deployBody: any = {
+                name: vercelProjectName || resolvedName || "kloner-site",
+                files,
+                projectSettings: {
+                    framework: FRAMEWORK,
+                    buildCommand: null,
+                    devCommand: null,
+                    outputDirectory: null,
+                },
+            };
+
+            if (vercelProjectId) {
+                // Some APIs still accept `project`; harmless to include alongside `name`.
+                deployBody.project = vercelProjectId;
+            }
+
             const deployRes = await fetch(deployUrl, {
                 method: "POST",
                 headers: {
                     Authorization: `Bearer ${accessToken}`,
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({
-                    project: vercelProjectId,
-                    files,
-                    projectSettings: {
-                        framework: FRAMEWORK,
-                        buildCommand: null,
-                        devCommand: null,
-                        outputDirectory: null,
-                    },
-                }),
+                body: JSON.stringify(deployBody),
             });
 
             const deployJson = await deployRes.json().catch(() => ({} as any));
@@ -242,7 +276,8 @@ export async function POST(req: NextRequest) {
                     {
                         vercelDeploymentId,
                         vercelProjectId: vercelProjectId ?? null,
-                        vercelProjectName: vercelProjectName ?? null,
+                        vercelProjectName:
+                            vercelProjectName || resolvedName || null,
                         vercelUrl: url,
                         vercelState,
                         vercelTeamId: vercelTeamId ?? null,
@@ -262,7 +297,7 @@ export async function POST(req: NextRequest) {
                 ok: true,
                 url,
                 projectId: vercelProjectId,
-                projectName: vercelProjectName,
+                projectName: vercelProjectName || resolvedName,
             });
         },
         { methods: ["POST"], csrf: true }

@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json(
                     {
                         ok: false,
-                        error: "Vercel is not connected for this account.",
+                        error: "Vercel is not connected for this account. Please visit settings",
                     },
                     { status: 400 }
                 );

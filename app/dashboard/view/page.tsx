@@ -67,6 +67,7 @@ import {
     rendersEqual,
 } from "./page.helpers";
 import { CREDIT_LIMITS, UserTier } from "@/src/lib/credits";
+import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 import { UrlDoc } from "../page";
 
 const ACCENT = "#f55f2a";
@@ -127,7 +128,7 @@ function useToasts() {
             setTimeout(
                 () =>
                     setToasts((t) => t.filter((m) => m.id !== id)),
-                2800
+                6800
             );
         },
         []
@@ -286,6 +287,7 @@ export default function PreviewPage(): JSX.Element {
         Array<{ id: string } & RenderDoc>
     >([]);
     const [loadingRenders, setLoadingRenders] = useState(false);
+    const [projectNameBusy, setProjectNameBusy] = useState(false);
 
     const [lockUntilByKey, setLockUntilByKey] = useState<
         Record<string, number>
@@ -296,6 +298,71 @@ export default function PreviewPage(): JSX.Element {
 
     const [viewerOpen, setViewerOpen] = useState(false);
     const [viewerIdx, setViewerIdx] = useState(0);
+
+    const projectNameInputRef = useRef<HTMLInputElement | null>(null);
+    const [showProjectNamePopover, setShowProjectNamePopover] = useState(false);
+    const [pendingDeploy, setPendingDeploy] = useState<null | {
+        html: string;
+        renderId?: string;
+    }>(null);
+
+    function handleCancelProjectName() {
+        setShowProjectNamePopover(false);
+        setPendingDeploy(null);
+        setProjectNameBusy(false);
+        if (projectNameInputRef.current) {
+            projectNameInputRef.current.value = "";
+        }
+    }
+
+
+    async function handleConfirmProjectName() {
+        if (projectNameBusy) return; // guard against double-clicks
+        if (!pendingDeploy) {
+            setShowProjectNamePopover(false);
+            return;
+        }
+
+        const raw = projectNameInputRef.current?.value ?? "";
+        const trimmed = raw.trim();
+
+        if (!trimmed) {
+            push("Please enter a project name.", "err");
+            return;
+        }
+
+        setProjectNameBusy(true);
+        try {
+            // persist projectVercelName on the render
+            if (user && pendingDeploy.renderId) {
+                await updateDoc(
+                    doc(
+                        db,
+                        "kloner_users",
+                        user.uid,
+                        "kloner_renders",
+                        pendingDeploy.renderId
+                    ),
+                    { projectVercelName: trimmed }
+                );
+            }
+
+            setShowProjectNamePopover(false);
+
+            const { html, renderId } = pendingDeploy;
+            setPendingDeploy(null);
+
+            // re-run export with the confirmed name
+            void exportToVercel({
+                html,
+                renderId,
+                name: trimmed,
+            });
+        } finally {
+            setProjectNameBusy(false);
+        }
+    }
+
 
     const [optimisticByKey, setOptimisticByKey] = useState<
         Record<string, { id: string } & RenderDoc>
@@ -507,7 +574,7 @@ export default function PreviewPage(): JSX.Element {
             // ONLY read nested buckets under `credits`
             const previewBucket = (creditsMap['credits.preview'] as any) || {};
             const snapshotBucket = (creditsMap['credits.snapshot'] as any) || {};
-        
+
             const previewLimit =
                 typeof previewBucket.monthlyLimit === "number" &&
                     previewBucket.monthlyLimit >= 0
@@ -1568,72 +1635,72 @@ export default function PreviewPage(): JSX.Element {
 
         if (userTier === "free") {
             setShowCreditsPaywall("preview");
-            push(
-                "Export and deploy are reserved for paid plans.",
-                "warn"
-            );
+            push("Export and deploy are reserved for paid plans.", "warn");
+            return;
+        }
+
+        // Resolve which render id we're operating on (for state + Firestore)
+        const resolvedRenderId = renderId || activeRenderId || null;
+
+        // If no project name yet, open popover and stop here
+        const trimmedName = name?.trim();
+        if (!trimmedName) {
+            setPendingDeploy({
+                html,
+                renderId: resolvedRenderId ?? undefined,
+            });
+            // input is now uncontrolled; no per-keystroke state
+            setShowProjectNamePopover(true);
             return;
         }
 
         // visual feedback: mark this render as deploying
-        const idForState =
-            renderId || activeRenderId || null;
-        if (idForState) {
-            setDeployingRenderId(idForState);
+        if (resolvedRenderId) {
+            setDeployingRenderId(resolvedRenderId);
         }
         push("Starting deployment…", "ok");
+
+        const csrf = await ensureSessionAndCsrf();
 
         try {
             const r = await fetch("/api/user-deploy", {
                 method: "POST",
                 headers: {
                     "content-type": "application/json",
+                    ...(csrf ? { "x-csrf": csrf } : {}),
                 },
                 credentials: "include",
                 body: JSON.stringify({
                     html,
-                    projectName: name,
-                    renderId,
+                    projectName: trimmedName,
+                    renderId: resolvedRenderId,
                 }),
             });
 
-            const j = (await r
-                .json()
-                .catch(() => ({}))) as any;
+            const j = (await r.json().catch(() => ({}))) as any;
 
             if (!r.ok || !j?.url) {
-                push(
-                    j?.error || "Vercel deploy failed",
-                    "err"
-                );
-                throw new Error(
-                    j?.error || "Vercel deploy failed"
-                );
+                push(j?.error || "Vercel deploy failed", "err");
+                throw new Error(j?.error || "Vercel deploy failed");
             }
 
-            if (user && renderId) {
+            if (user && resolvedRenderId) {
                 await updateDoc(
                     doc(
                         db,
                         "kloner_users",
                         user.uid,
                         "kloner_renders",
-                        renderId
+                        resolvedRenderId
                     ),
                     { lastExportedAt: serverTimestamp() }
                 );
             }
 
-            navigator.clipboard
-                ?.writeText(j.url)
-                .catch(() => void 0);
+            navigator.clipboard?.writeText(j.url).catch(() => void 0);
 
-            // mark there is a new deployment to check
             try {
-                localStorage.setItem(
-                    "kloner.deployments.hasUnseen",
-                    "1"
-                );
+                localStorage.setItem("kloner.deployments.hasUnseen", "1");
             } catch {
                 // ignore
             }
@@ -1646,6 +1713,7 @@ export default function PreviewPage(): JSX.Element {
             setDeployingRenderId(null);
         }
     }
+
 
     const saveDraft = useCallback(
         async (payload: {
@@ -1916,7 +1984,6 @@ export default function PreviewPage(): JSX.Element {
                         try {
                             await exportToVercel({
                                 html: r.html!,
-                                name: r.nameHint || undefined,
                                 renderId: r.id,
                             });
                         } catch {
@@ -1929,6 +1996,51 @@ export default function PreviewPage(): JSX.Element {
 
                     return (
                         <>
+                            {showProjectNamePopover && (
+                                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                                    <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl border border-neutral-200">
+                                        <h2 className="text-sm font-semibold text-neutral-900">
+                                            Name your Vercel project
+                                        </h2>
+                                        <p className="mt-1 text-xs text-neutral-600">
+                                            Choose a short, URL-friendly name for this project.
+                                        </p>
+
+                                        <div className="flex flex-inline items-end">
+                                            <input
+                                                autoFocus
+                                                ref={projectNameInputRef}
+                                                defaultValue=""
+                                                placeholder="e.g. kloner-landing, client-site-01"
+                                                className="mt-3 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-[rgba(245,95,42,0.6)] focus:border-transparent"
+                                            />
+                                            <p className="mx-2 text-neutral-700">.vercel.app</p>
+                                        </div>
+
+                                        <div className="mt-4 flex justify-end gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={handleCancelProjectName}
+                                                disabled={projectNameBusy}
+                                                className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-600 hover:bg-neutral-50 disabled:opacity-50"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={handleConfirmProjectName}
+                                                disabled={projectNameBusy}
+                                                className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-70 disabled:cursor-not-allowed"
+                                                style={{ backgroundColor: ACCENT }}
+                                            >
+                                                {projectNameBusy ? "Saving…" : "Continue"}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+
                             <div className="relative flex flex-col overflow-visible rounded-xl border border-neutral-200 bg-white shadow-sm">
                                 <span
                                     className="absolute left-2 top-2 z-30 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow"

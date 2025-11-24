@@ -241,6 +241,7 @@ export default function DeploymentsPage(): JSX.Element {
     const [user, setUser] = useState<FirebaseUser | null>(null);
     const [loading, setLoading] = useState(true);
     const [items, setItems] = useState<Array<{ id: string } & DeploymentDoc>>([]);
+    const [showDeployHint, setShowDeployHint] = useState(false);
 
     // "new deploy" flag coming from Preview Builder via localStorage
     const [hasNewFlag, setHasNewFlag] = useState(false);
@@ -273,6 +274,12 @@ export default function DeploymentsPage(): JSX.Element {
     const [refreshing, setRefreshing] = useState(false);
     const [lastGlobalCheck, setLastGlobalCheck] = useState<Date | null>(null);
     const [refreshError, setRefreshError] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!showDeployHint) return;
+        const id = setTimeout(() => setShowDeployHint(false), 10000);
+        return () => clearTimeout(id);
+    }, [showDeployHint]);
 
     useEffect(() => {
         const off = onAuthStateChanged(auth, (u) => {
@@ -706,10 +713,15 @@ export default function DeploymentsPage(): JSX.Element {
 
         updateActionState(key, { customLoading: true, customError: null });
 
+        const csrf = await ensureSessionAndCsrf();
+
         try {
             const res = await fetch("/api/user-deploy", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "content-type": "application/json",
+                    ...(csrf ? { "x-csrf": csrf } : {}),
+                },
                 body: JSON.stringify({
                     html: args.html,
                     projectName,
@@ -851,7 +863,7 @@ export default function DeploymentsPage(): JSX.Element {
 
                             {hasNewFlag && (
                                 <div
-                                    className={`rounded-2xl border px-4 py-3 text-[11px] sm:text-xs shadow-sm ${bannerClasses}`}
+                                    className={`rounded-2xl border px-4 py-3 text-sm sm:text-xs shadow-sm ${bannerClasses}`}
                                 >
                                     <div className="flex items-start gap-2">
                                         {bannerVariant === "error" ? (
@@ -887,7 +899,7 @@ export default function DeploymentsPage(): JSX.Element {
                                                     href={latestFromPreview?.vercelUrl || hasNewMeta?.url}
                                                     target="_blank"
                                                     rel="noreferrer"
-                                                    className="mt-2 inline-flex items-center gap-1 rounded-md border bg-white/80 px-2.5 py-1 text-[11px] font-medium hover:bg-white"
+                                                    className="mt-2 inline-flex items-center gap-1 rounded-md border bg-white/80 px-2.5 py-1 text-sm font-medium hover:bg-white"
                                                 >
                                                     {bannerVariant === "error"
                                                         ? "Open deployment in Vercel"
@@ -910,13 +922,13 @@ export default function DeploymentsPage(): JSX.Element {
                     <div className="flex flex-col items-end gap-3">
                         {projectGroups.length > 0 && (
                             <div className="w-full sm:w-64">
-                                <label className="block text-[11px] font-medium text-neutral-500 mb-1">
+                                <label className="block text-sm font-medium text-neutral-500 mb-1">
                                     Project / URL scope
                                 </label>
                                 <select
                                     value={selectedProjectKey}
                                     onChange={(e) => setSelectedProjectKey(e.target.value)}
-                                    className="w-full rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-[11px] sm:text-xs text-neutral-800 shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400"
+                                    className="w-full rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm sm:text-xs text-neutral-800 shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400"
                                 >
                                     <option value="all">
                                         All projects ({items.length} deployment{items.length === 1 ? "" : "s"})
@@ -948,7 +960,7 @@ export default function DeploymentsPage(): JSX.Element {
                                     type="button"
                                     disabled={refreshing || scopedItems.length === 0}
                                     onClick={refreshFromVercel}
-                                    className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-[11px] font-medium text-neutral-800 hover:bg-neutral-50 disabled:opacity-60 disabled:cursor-default"
+                                    className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm font-medium text-neutral-800 hover:bg-neutral-50 disabled:opacity-60 disabled:cursor-default"
                                 >
                                     {refreshing ? (
                                         <Loader2 className="h-3.5 w-3.5 animate-spin text-neutral-500" />
@@ -1017,7 +1029,7 @@ export default function DeploymentsPage(): JSX.Element {
                                                         <div className="text-base font-semibold text-neutral-900 truncate">
                                                             {projectName}
                                                         </div>
-                                                        <span className="text-[11px] text-neutral-400 truncate">
+                                                        <span className="text-sm text-neutral-400 truncate">
                                                             {d.vercelDeploymentId?.slice(0, 10)}…
                                                         </span>
                                                     </div>
@@ -1027,7 +1039,7 @@ export default function DeploymentsPage(): JSX.Element {
                                                 </div>
 
                                                 <div
-                                                    className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium ${stateStyles}`}
+                                                    className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-sm font-medium ${stateStyles}`}
                                                 >
                                                     <span className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
                                                     <span className="capitalize">
@@ -1036,7 +1048,7 @@ export default function DeploymentsPage(): JSX.Element {
                                                 </div>
                                             </div>
 
-                                            <div className="flex flex-wrap items-center gap-3 text-[11px] text-neutral-500">
+                                            <div className="flex flex-wrap items-center gap-3 text-sm text-neutral-500">
                                                 <div className="inline-flex items-center gap-1.5">
                                                     <Clock className="h-3 w-3" />
                                                     <span>
@@ -1063,7 +1075,7 @@ export default function DeploymentsPage(): JSX.Element {
 
                                             <div className="flex flex-wrap items-center gap-3 mt-1">
                                                 {state === "error" && (
-                                                    <div className="inline-flex items-center gap-1 text-[11px] text-red-600">
+                                                    <div className="inline-flex items-center gap-1 text-sm text-red-600">
                                                         <AlertTriangle className="h-3 w-3" />
                                                         <span>Check build logs in Vercel</span>
                                                     </div>
@@ -1077,7 +1089,7 @@ export default function DeploymentsPage(): JSX.Element {
                                                             type="button"
                                                             onClick={() => openEditorForDeployment(d)}
                                                             disabled={isEditorLoading}
-                                                            className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-white"
+                                                            className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-white"
                                                             style={{
                                                                 backgroundColor: ACCENT,
                                                                 boxShadow:
@@ -1094,9 +1106,9 @@ export default function DeploymentsPage(): JSX.Element {
 
                                                         <button
                                                             type="button"
-                                                            onClick={() => openEditorForDeployment(d)}
+                                                            onClick={() => setShowDeployHint(true)}
                                                             disabled={isEditorLoading}
-                                                            className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-[11px] font-medium text-neutral-800 hover:bg-neutral-50"
+                                                            className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm font-medium text-neutral-800 hover:bg-neutral-50 disabled:opacity-60 disabled:cursor-not-allowed"
                                                         >
                                                             {isEditorLoading ? (
                                                                 <Loader2 className="h-3.5 w-3.5 animate-spin text-neutral-500" />
@@ -1106,16 +1118,67 @@ export default function DeploymentsPage(): JSX.Element {
                                                             <span>Deploy edited HTML</span>
                                                         </button>
 
+
                                                         <a
                                                             href={d.vercelUrl || "#"}
                                                             target={d.vercelUrl ? "_blank" : undefined}
                                                             rel={d.vercelUrl ? "noreferrer" : undefined}
-                                                            className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-[11px] font-medium text-neutral-800 hover:bg-neutral-50"
+                                                            className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm font-medium text-neutral-800 hover:bg-neutral-50"
                                                         >
                                                             <span>Open live site</span>
                                                             <ArrowUpRight className="h-3 w-3" />
                                                         </a>
                                                     </div>
+
+                                                    {showDeployHint && (
+                                                        <div className="mt-2 max-w-xs rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 shadow-sm">
+                                                            <p className="mb-2">
+                                                                To deploy edited HTML:
+                                                            </p>
+
+                                                            <div className="flex flex-col gap-2">
+                                                                {/* Visual reference to the “Open website in preview editor” button */}
+                                                                <button
+                                                                    type="button"
+                                                                    disabled
+                                                                    className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm font-medium text-neutral-800"
+                                                                >
+                                                                    {/* match the real icon if you have one there */}
+                                                                    <span>1. Click
+                                                                        <a
+                                                                            className="mx-2 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-white cursor-not-allowed"
+                                                                            style={{
+                                                                                backgroundColor: ACCENT,
+                                                                                boxShadow:
+                                                                                    "0 10px 30px rgba(245,95,42,0.40)",
+                                                                            }}
+                                                                        >
+                                                                            {isEditorLoading ? (
+                                                                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                                            ) : (
+                                                                                <Code2 className="h-3.5 w-3.5" />
+                                                                            )}
+                                                                            Open in Preview Editor
+                                                                        </a>
+                                                                    </span>
+                                                                </button>
+
+                                                                {/* Visual reference to the “Export to Vercel” button inside the editor */}
+                                                                <button
+                                                                    type="button"
+                                                                    disabled
+                                                                    className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm font-medium text-neutral-800  whitepace-nowrap "
+                                                                >
+                                                                    <span>2. Click <a
+                                                                        className={"ml-1 inline-flex items-center gap-2 transition focus:outline-none focus:ring-2 focus:ring-neutral-300 cursor-not-allowed text-sm rounded-md px-3 py-1.5 font-semibold text-white shadow-sm"}
+                                                                        style={{ backgroundColor: ACCENT }}
+                                                                    >Export to Vercel</a> inside the editor</span>
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+
 
                                                     {(act.customError || act.redeployError) && (
                                                         <p className="mt-1 text-[10px] text-red-600">
@@ -1143,7 +1206,7 @@ export default function DeploymentsPage(): JSX.Element {
                                     <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-500">
                                         History
                                     </h2>
-                                    <span className="text-[11px] text-neutral-400">
+                                    <span className="text-sm text-neutral-400">
                                         {history.length} previous deployment
                                         {history.length === 1 ? "" : "s"}
                                     </span>
@@ -1154,7 +1217,7 @@ export default function DeploymentsPage(): JSX.Element {
                                     above any time you want to force a fresh status sync.
                                 </p>
                                 <div className="rounded-2xl border border-neutral-200 bg-white shadow-sm">
-                                    <div className="px-4 py-2 flex items-center text-[11px] text-neutral-500 border-b border-neutral-100">
+                                    <div className="px-4 py-2 flex items-center text-sm text-neutral-500 border-b border-neutral-100">
                                         <div className="w-[120px]">Status</div>
                                         <div className="flex-1 min-w-0">URL</div>
                                         <div className="w-[150px] hidden sm:block">Created</div>
@@ -1172,11 +1235,11 @@ export default function DeploymentsPage(): JSX.Element {
                                             return (
                                                 <div
                                                     key={d.id}
-                                                    className="px-4 py-2 flex items-center text-[11px] sm:text-xs text-neutral-700 border-b last:border-b-0 border-neutral-100"
+                                                    className="px-4 py-2 flex items-center text-sm sm:text-xs text-neutral-700 border-b last:border-b-0 border-neutral-100"
                                                 >
                                                     <div className="w-[120px]">
                                                         <span
-                                                            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] sm:text-[11px] ${stateStyles}`}
+                                                            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] sm:text-sm ${stateStyles}`}
                                                         >
                                                             <span className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
                                                             <span className="capitalize">

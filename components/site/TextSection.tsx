@@ -1,70 +1,40 @@
-// components/site/TextSection.tsx
 "use client";
 
 import React from "react";
-import type { TextSectionProps } from "@/lib/siteConfig";
 
-type Props = {
+type TextSectionProps = {
     sectionId: string;
-    props: TextSectionProps;
-    editing?: boolean;
-    onEdit?: (patch: Partial<TextSectionProps>) => void;
+    props: any;
 };
 
-export function TextSection({ sectionId, props, editing, onEdit }: Props) {
-    const { title, body, alignment } = props;
+export function TextSection({ sectionId, props }: TextSectionProps) {
+    const { title, body, align } = props || {};
+    const alignValue = (align || "left") as "left" | "center" | "right";
 
-    if (!editing) {
-        return (
-            <section
-                className={`text-section ${alignment === "center"
-                        ? "text-center"
-                        : alignment === "right"
-                            ? "text-right"
-                            : "text-left"
-                    }`}
-            >
-                <h2>{title}</h2>
-                <p>{body}</p>
-            </section>
-        );
-    }
+    const alignClass =
+        alignValue === "center"
+            ? "text-center"
+            : alignValue === "right"
+                ? "text-right"
+                : "text-left";
 
-    // Inline editor mode
     return (
         <section
-            className={`text-section relative ${alignment === "center"
-                    ? "text-center"
-                    : alignment === "right"
-                        ? "text-right"
-                        : "text-left"
-                }`}
+            id={sectionId}
+            className={`text-section flex flex-col gap-3 ${alignClass}`}
         >
-            <div className="absolute -top-2 right-0 text-[10px] px-2 py-0.5 rounded-full bg-black/60 text-white">
-                Text block
-            </div>
-
-            <input
-                type="text"
-                value={title || ""}
-                onChange={(e) =>
-                    onEdit?.({
-                        title: e.target.value,
-                    })
-                }
-                className="w-full bg-transparent border border-white/10 rounded-md px-2 py-1 mb-2 text-sm"
-                placeholder="Section title"
-            />
-            <textarea
-                value={body || ""}
-                onChange={(e) =>
-                    onEdit?.({
-                        body: e.target.value,
-                    })
-                }
-                className="w-full bg-transparent border border-white/10 rounded-md px-2 py-1 text-xs min-h-[80px]"
-                placeholder="Section body"
-            />
+            {title && (
+                <h2
+                    className="text-section-title text-[length:var(--font-scale-heading)] font-[var(--font-weight-heading)]"
+                    dangerouslySetInnerHTML={{ __html: title }}
+                />
+            )}
+            {body && (
+                <div
+                    className="text-section-body text-[length:var(--font-scale-body)] font-[var(--font-weight-body)] leading-relaxed space-y-3"
+                    dangerouslySetInnerHTML={{ __html: body }}
+                />
+            )}
         </section>
     );
 }

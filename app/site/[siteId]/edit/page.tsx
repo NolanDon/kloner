@@ -3,7 +3,12 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import type { SiteConfig, Section, PageConfig } from "@/lib/siteConfig";
+import type {
+    SiteConfig,
+    Section,
+    PageConfig,
+    FontSizeToken,
+} from "@/lib/siteConfig";
 import { SiteRenderer } from "@/components/site/SiteRenderer";
 import CenterLoader from "@/components/ui/CenterLoader";
 
@@ -14,6 +19,122 @@ type LoadedSite = {
 
 type ViewportMode = "mobile" | "tablet" | "desktop";
 
+const FONT_OPTIONS = [
+    {
+        label: "System",
+        value:
+            "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    },
+    {
+        label: "Inter",
+        value:
+            "'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    },
+    {
+        label: "Outfit",
+        value:
+            "'Outfit', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    },
+    {
+        label: "Poppins",
+        value:
+            "'Poppins', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    },
+    {
+        label: "Playfair Display",
+        value: "'Playfair Display', 'Times New Roman', serif",
+    },
+    {
+        label: "Roboto",
+        value:
+            "'Roboto', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    },
+    {
+        label: "Merriweather",
+        value: "'Merriweather', 'Georgia', serif",
+    },
+    {
+        label: "Nunito",
+        value:
+            "'Nunito', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    },
+];
+
+const HEADING_SIZE_OPTIONS: { label: string; value: FontSizeToken }[] = [
+    { label: "Small", value: "2xl" },
+    { label: "Medium", value: "3xl" },
+    { label: "Large", value: "4xl" },
+    { label: "Hero", value: "5xl" },
+];
+
+const BODY_SIZE_OPTIONS: { label: string; value: FontSizeToken }[] = [
+    { label: "Small", value: "sm" },
+    { label: "Default", value: "base" },
+    { label: "Large", value: "lg" },
+    { label: "Extra large", value: "xl" },
+];
+
+const SECTION_SPACING_OPTIONS = [
+    { label: "None", value: "none" },
+    { label: "Tight", value: "tight" },
+    { label: "Normal", value: "normal" },
+    { label: "Loose", value: "loose" },
+] as const;
+
+const SECTION_ALIGN_OPTIONS = [
+    { label: "Left", value: "left" },
+    { label: "Center", value: "center" },
+    { label: "Right", value: "right" },
+] as const;
+
+type SectionAlign = (typeof SECTION_ALIGN_OPTIONS)[number]["value"];
+
+
+type SectionSpacing = (typeof SECTION_SPACING_OPTIONS)[number]["value"];
+
+function createSection(type: Section["type"]): Section {
+    const id = `section-${Date.now().toString(36)}-${Math.random()
+        .toString(36)
+        .slice(2, 7)}`;
+
+    if (type === "hero") {
+        return {
+            id,
+            type: "hero",
+            props: {
+                title: "Hero heading",
+                subtitle: "You can edit this hero text.",
+                primaryCta: {
+                    label: "Get started",
+                    target: { kind: "none" },
+                },
+            },
+        } as any;
+    }
+
+    if (type === "text") {
+        return {
+            id,
+            type: "text",
+            props: {
+                title: "Text section title",
+                body: "Write your body copy here.",
+            },
+        } as any;
+    }
+
+    // grid
+    return {
+        id,
+        type: "grid",
+        props: {
+            title: "Grid section title",
+            columns: 3,
+            items: [],
+        },
+    } as any;
+}
+
 export default function EditSitePage() {
     const params = useParams<{ siteId: string }>();
     const siteId = params.siteId;
@@ -22,8 +143,11 @@ export default function EditSitePage() {
     const [err, setErr] = useState("");
     const [activePageId, setActivePageId] = useState<string | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(true);
-    const [viewportMode, setViewportMode] = useState<ViewportMode>("desktop");
-    const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
+    const [viewportMode, setViewportMode] =
+        useState<ViewportMode>("desktop");
+    const [selectedSectionId, setSelectedSectionId] = useState<
+        string | null
+    >(null);
 
     const updateConfig = (updater: (c: SiteConfig) => SiteConfig) => {
         setData((prev) =>
@@ -31,16 +155,103 @@ export default function EditSitePage() {
         );
     };
 
+    const withActivePage = (
+        c: SiteConfig,
+        fn: (sections: Section[]) => Section[]
+    ): SiteConfig => {
+        if (!c.pages || c.pages.length === 0) return c;
+        const idx = activePageId
+            ? c.pages.findIndex((p) => p.id === activePageId)
+            : 0;
+        if (idx < 0) return c;
+
+        const page = c.pages[idx];
+        const updatedPage = { ...page, sections: fn(page.sections) };
+        const pages = [...c.pages];
+        pages[idx] = updatedPage;
+        return { ...c, pages };
+    };
+
     const updateSection = (id: string, patch: Partial<Section["props"]>) => {
         updateConfig((c) =>
             withActivePage(c, (sections) =>
-                sections.map((s): any =>
+                sections.map((s): Section =>
                     s.id === id
-                        ? { ...s, props: { ...s.props, ...patch } }
+                        ? ({ ...s, props: { ...s.props, ...patch } } as any)
                         : s
                 )
             )
         );
+    };
+
+    // patch "meta" on the section object (spacing, archived, etc)
+    const updateSectionMeta = (
+        id: string,
+        patch: {
+            spacing?: SectionSpacing;
+            archived?: boolean;
+            align?: SectionAlign;
+        }
+    ) => {
+        updateConfig((c) =>
+            withActivePage(c, (sections) =>
+                sections.map((s) =>
+                    s.id === id ? ({ ...(s as any), ...patch } as any) : s
+                )
+            )
+        );
+    };
+
+
+    const addSection = (type: Section["type"]) => {
+        updateConfig((c) =>
+            withActivePage(c, (sections) => [...sections, createSection(type)])
+        );
+    };
+
+    const duplicateSection = (id: string) => {
+        updateConfig((c) =>
+            withActivePage(c, (sections) => {
+                const idx = sections.findIndex((s) => s.id === id);
+                if (idx === -1) return sections;
+                const original = sections[idx] as any;
+                const copy: Section = {
+                    ...original,
+                    id: `section-${Date.now()
+                        .toString(36)
+                        .slice(2)}-copy`,
+                };
+                const arr = [...sections];
+                arr.splice(idx + 1, 0, copy);
+                return arr;
+            })
+        );
+    };
+
+    const updatePage = (id: string, patch: Partial<PageConfig> & { hiddenInNav?: boolean }) => {
+        updateConfig((c) => {
+            if (!c.pages) return c;
+            return {
+                ...c,
+                pages: c.pages.map((p) =>
+                    p.id === id ? ({ ...(p as any), ...patch } as any) : p
+                ),
+            };
+        });
+    };
+
+    const removePage = (id: string) => {
+        updateConfig((c) => {
+            const pages = c.pages || [];
+            if (pages.length <= 1) return c; // don't delete last page
+            const nextPages = pages.filter((p) => p.id !== id);
+            let nextActive = activePageId;
+            if (!nextPages.find((p) => p.id === activePageId)) {
+                nextActive = nextPages[0]?.id ?? null;
+            }
+            setActivePageId(nextActive);
+            return { ...c, pages: nextPages };
+        });
     };
 
     useEffect(() => {
@@ -74,7 +285,6 @@ export default function EditSitePage() {
             cancelled = true;
         };
     }, [siteId]);
-
 
     const addPage = () => {
         updateConfig((c) => {
@@ -114,23 +324,6 @@ export default function EditSitePage() {
         }));
     };
 
-    const withActivePage = (
-        c: SiteConfig,
-        fn: (sections: Section[]) => Section[]
-    ): SiteConfig => {
-        if (!c.pages || c.pages.length === 0) return c;
-        const idx = activePageId
-            ? c.pages.findIndex((p) => p.id === activePageId)
-            : 0;
-        if (idx < 0) return c;
-
-        const page = c.pages[idx];
-        const updatedPage = { ...page, sections: fn(page.sections) };
-        const pages = [...c.pages];
-        pages[idx] = updatedPage;
-        return { ...c, pages };
-    };
-
     const moveSection = (id: string, dir: "up" | "down") => {
         updateConfig((c) =>
             withActivePage(c, (sections) => {
@@ -152,6 +345,9 @@ export default function EditSitePage() {
                 sections.filter((s) => s.id !== id)
             )
         );
+        if (selectedSectionId === id) {
+            setSelectedSectionId(null);
+        }
     };
 
     const save = async () => {
@@ -199,9 +395,23 @@ export default function EditSitePage() {
                 ? "max-w-[900px]"
                 : "max-w-[1280px]";
 
+    const currentFontFamily =
+        config.theme.fontFamily ||
+        FONT_OPTIONS[0].value;
+
+    const currentHeadingSize =
+        (config.theme.fontScaleHeading as FontSizeToken | undefined) ||
+        HEADING_SIZE_OPTIONS[1].value;
+    const currentBodySize =
+        (config.theme.fontScaleBody as FontSizeToken | undefined) ||
+        BODY_SIZE_OPTIONS[1].value;
+
+    const currentPageMeta = activePage || ({} as PageConfig);
+    const currentPageHiddenInNav = (currentPageMeta as any).hiddenInNav;
+
     return (
         <main className="min-h-screen bg-neutral-50">
-            <div className="mx-auto max-w-7xl py-6 px-4 lg:px-8 flex flex-col gap-4">
+            <div className="py-6 px-4 lg:px-8 flex flex-col gap-4">
                 <header className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                         <div>
@@ -209,7 +419,8 @@ export default function EditSitePage() {
                                 Edit site
                             </h1>
                             <p className="text-xs text-neutral-500">
-                                Adjust colors, text and blocks. All changes are stored as JSON.
+                                Adjust layout, theme, and sections. All changes
+                                are stored as JSON.
                             </p>
                         </div>
                     </div>
@@ -243,17 +454,16 @@ export default function EditSitePage() {
                         : "lg:grid-cols-1"
                         }`}
                 >
-                    {/* Controls */}
                     {sidebarOpen && (
                         <div className="space-y-4">
-                            {/* Page picker */}
+                            {/* Page + nav controls */}
                             <section className="rounded-xl bg-white border border-neutral-200 p-4">
                                 <h2 className="text-sm font-semibold text-neutral-800">
                                     Page
                                 </h2>
-                                <div className="mt-3 space-y-2">
+                                <div className="mt-3 space-y-3 text-xs">
                                     {pages.length === 0 ? (
-                                        <div className="text-xs text-neutral-500 space-y-2">
+                                        <div className="text-neutral-500 space-y-2">
                                             <p>No pages in this site config.</p>
                                             <button
                                                 type="button"
@@ -268,11 +478,12 @@ export default function EditSitePage() {
                                             <select
                                                 className="w-full rounded-md border border-neutral-300 px-2 py-1 text-xs"
                                                 value={activePage?.id || ""}
-                                                onChange={(e) =>
+                                                onChange={(e) => {
                                                     setActivePageId(
                                                         e.target.value
-                                                    )
-                                                }
+                                                    );
+                                                    setSelectedSectionId(null);
+                                                }}
                                             >
                                                 {pages.map((p) => (
                                                     <option
@@ -283,6 +494,106 @@ export default function EditSitePage() {
                                                     </option>
                                                 ))}
                                             </select>
+
+                                            {/* Current page meta controls */}
+                                            {activePage && (
+                                                <div className="space-y-2 text-neutral-700">
+                                                    <label className="flex flex-col gap-1">
+                                                        <span>Page title</span>
+                                                        <input
+                                                            type="text"
+                                                            value={
+                                                                activePage.title ||
+                                                                ""
+                                                            }
+                                                            onChange={(e) =>
+                                                                updatePage(
+                                                                    activePage.id,
+                                                                    {
+                                                                        title: e
+                                                                            .target
+                                                                            .value,
+                                                                        navLabel:
+                                                                            activePage
+                                                                                .navLabel ??
+                                                                            e
+                                                                                .target
+                                                                                .value,
+                                                                    }
+                                                                )
+                                                            }
+                                                            className="rounded border border-neutral-300 px-2 py-1 text-xs"
+                                                        />
+                                                    </label>
+                                                    <label className="flex flex-col gap-1">
+                                                        <span>Nav label</span>
+                                                        <input
+                                                            type="text"
+                                                            value={
+                                                                activePage.navLabel ||
+                                                                activePage.title ||
+                                                                activePage.slug
+                                                            }
+                                                            onChange={(e) =>
+                                                                updatePage(
+                                                                    activePage.id,
+                                                                    {
+                                                                        navLabel:
+                                                                            e
+                                                                                .target
+                                                                                .value,
+                                                                    }
+                                                                )
+                                                            }
+                                                            className="rounded border border-neutral-300 px-2 py-1 text-xs"
+                                                        />
+                                                    </label>
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <label className="inline-flex items-center gap-2">
+                                                            <input
+                                                                type="checkbox"
+                                                                className="h-3 w-3"
+                                                                checked={
+                                                                    !currentPageHiddenInNav
+                                                                }
+                                                                onChange={(
+                                                                    e
+                                                                ) =>
+                                                                    updatePage(
+                                                                        activePage.id,
+                                                                        {
+                                                                            hiddenInNav:
+                                                                                !e
+                                                                                    .target
+                                                                                    .checked,
+                                                                        }
+                                                                    )
+                                                                }
+                                                            />
+                                                            <span>
+                                                                Show in header
+                                                                navigation
+                                                            </span>
+                                                        </label>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                removePage(
+                                                                    activePage.id
+                                                                )
+                                                            }
+                                                            className="text-[11px] text-red-600 border border-red-200 rounded px-2 py-0.5 disabled:opacity-50"
+                                                            disabled={
+                                                                pages.length <=
+                                                                1
+                                                            }
+                                                        >
+                                                            Delete page
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+
                                             <button
                                                 type="button"
                                                 onClick={addPage}
@@ -359,254 +670,673 @@ export default function EditSitePage() {
                                             }
                                         />
                                     </label>
+
+                                    <div className="pt-3 mt-2 border-t border-neutral-200 space-y-3">
+                                        <label className="flex flex-col gap-1">
+                                            <span>Font family</span>
+                                            <select
+                                                value={currentFontFamily}
+                                                onChange={(e) =>
+                                                    updateTheme({
+                                                        fontFamily:
+                                                            e.target.value as any,
+                                                    })
+                                                }
+                                                className="rounded border border-neutral-300 px-2 py-1 text-xs"
+                                            >
+                                                {FONT_OPTIONS.map((opt) => (
+                                                    <option
+                                                        key={opt.label}
+                                                        value={opt.value}
+                                                    >
+                                                        {opt.label}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </label>
+
+                                        <label className="flex flex-col gap-1">
+                                            <span>Heading size</span>
+                                            <select
+                                                value={currentHeadingSize}
+                                                onChange={(e) =>
+                                                    updateTheme({
+                                                        fontScaleHeading:
+                                                            e.target
+                                                                .value as FontSizeToken,
+                                                    })
+                                                }
+                                                className="rounded border border-neutral-300 px-2 py-1 text-xs"
+                                            >
+                                                {HEADING_SIZE_OPTIONS.map(
+                                                    (opt) => (
+                                                        <option
+                                                            key={opt.label}
+                                                            value={opt.value}
+                                                        >
+                                                            {opt.label}
+                                                        </option>
+                                                    )
+                                                )}
+                                            </select>
+                                        </label>
+
+                                        <label className="flex flex-col gap-1">
+                                            <span>Body size</span>
+                                            <select
+                                                value={currentBodySize}
+                                                onChange={(e) =>
+                                                    updateTheme({
+                                                        fontScaleBody:
+                                                            e.target
+                                                                .value as FontSizeToken,
+                                                    })
+                                                }
+                                                className="rounded border border-neutral-300 px-2 py-1 text-xs"
+                                            >
+                                                {BODY_SIZE_OPTIONS.map(
+                                                    (opt) => (
+                                                        <option
+                                                            key={opt.label}
+                                                            value={opt.value}
+                                                        >
+                                                            {opt.label}
+                                                        </option>
+                                                    )
+                                                )}
+                                            </select>
+                                        </label>
+
+                                        <label className="flex flex-col gap-1">
+                                            <span>Heading weight</span>
+                                            <select
+                                                value={
+                                                    config.theme
+                                                        .headingWeight ||
+                                                    "bold"
+                                                }
+                                                onChange={(e) =>
+                                                    updateTheme({
+                                                        headingWeight:
+                                                            e.target
+                                                                .value as any,
+                                                    })
+                                                }
+                                                className="rounded border border-neutral-300 px-2 py-1 text-xs"
+                                            >
+                                                <option value="normal">
+                                                    Normal
+                                                </option>
+                                                <option value="medium">
+                                                    Medium
+                                                </option>
+                                                <option value="semibold">
+                                                    Semibold
+                                                </option>
+                                                <option value="bold">
+                                                    Bold
+                                                </option>
+                                            </select>
+                                        </label>
+
+                                        <label className="flex flex-col gap-1">
+                                            <span>Body weight</span>
+                                            <select
+                                                value={
+                                                    config.theme.bodyWeight ||
+                                                    "normal"
+                                                }
+                                                onChange={(e) =>
+                                                    updateTheme({
+                                                        bodyWeight:
+                                                            e.target
+                                                                .value as any,
+                                                    })
+                                                }
+                                                className="rounded border border-neutral-300 px-2 py-1 text-xs"
+                                            >
+                                                <option value="normal">
+                                                    Normal
+                                                </option>
+                                                <option value="medium">
+                                                    Medium
+                                                </option>
+                                                <option value="semibold">
+                                                    Semibold
+                                                </option>
+                                                <option value="bold">
+                                                    Bold
+                                                </option>
+                                            </select>
+                                        </label>
+                                    </div>
                                 </div>
                             </section>
 
                             {/* Sections */}
                             <section className="rounded-xl bg-white border border-neutral-200 p-4">
-                                <h2 className="text-sm font-semibold text-neutral-800">
-                                    Sections
-                                </h2>
-                                <div className="mt-3 space-y-3">
-                                    {sections.map((s: Section, idx: number) => (
-                                        <div
-                                            key={s.id}
-                                            className="rounded-lg border border-neutral-200 p-3 text-xs space-y-2 bg-neutral-50"
+                                <div className="flex items-center justify-between gap-2">
+                                    <h2 className="text-sm font-semibold text-neutral-800">
+                                        Sections
+                                    </h2>
+                                    <div className="flex flex-wrap gap-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => addSection("hero")}
+                                            className="border border-neutral-300 rounded px-2 py-0.5 text-[11px] bg-neutral-50 hover:bg-neutral-100"
                                         >
-                                            <div className="flex items-center justify-between gap-2">
-                                                <span className="font-semibold text-neutral-800">
-                                                    {s.type.toUpperCase()} #
-                                                    {idx + 1}
-                                                </span>
-                                                <div className="flex items-center gap-1">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                            moveSection(
-                                                                s.id,
-                                                                "up"
-                                                            )
-                                                        }
-                                                        disabled={idx === 0}
-                                                        className="px-2 py-0.5 rounded border border-neutral-300 text-[11px] disabled:opacity-40"
-                                                    >
-                                                        ↑
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                            moveSection(
-                                                                s.id,
-                                                                "down"
-                                                            )
-                                                        }
-                                                        disabled={
-                                                            idx ===
-                                                            sections.length - 1
-                                                        }
-                                                        className="px-2 py-0.5 rounded border border-neutral-300 text-[11px] disabled:opacity-40"
-                                                    >
-                                                        ↓
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                            removeSection(s.id)
-                                                        }
-                                                        className="px-2 py-0.5 rounded border border-red-200 text-[11px] text-red-700"
-                                                    >
-                                                        Remove
-                                                    </button>
-                                                </div>
-                                            </div>
+                                            + Hero
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => addSection("text")}
+                                            className="border border-neutral-300 rounded px-2 py-0.5 text-[11px] bg-neutral-50 hover:bg-neutral-100"
+                                        >
+                                            + Text
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => addSection("grid")}
+                                            className="border border-neutral-300 rounded px-2 py-0.5 text-[11px] bg-neutral-50 hover:bg-neutral-100"
+                                        >
+                                            + Grid
+                                        </button>
+                                    </div>
+                                </div>
 
-                                            {s.type === "hero" && (
-                                                <div className="space-y-2">
-                                                    <label className="flex flex-col gap-1">
-                                                        <span>Title</span>
-                                                        <input
-                                                            type="text"
-                                                            value={
-                                                                s.props
-                                                                    .title || ""
-                                                            }
-                                                            onChange={(e) =>
-                                                                updateSection(
+                                <div className="mt-3 space-y-3">
+                                    {sections.map((s: Section, idx: number) => {
+                                        const spacing =
+                                            ((s as any).spacing as SectionSpacing) || "normal";
+                                        const archived = !!(s as any).archived;
+                                        const align = ((s as any).align as SectionAlign) || "center";
+                                        const isSelected =
+                                            selectedSectionId === s.id;
+
+                                        return (
+                                            <div
+                                                key={s.id}
+                                                className={`rounded-lg border p-3 text-xs space-y-2 bg-neutral-50 transition ${isSelected
+                                                    ? "border-neutral-900 shadow-sm"
+                                                    : "border-neutral-200"
+                                                    } ${archived
+                                                        ? "opacity-60"
+                                                        : ""
+                                                    }`}
+                                            >
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            setSelectedSectionId(
+                                                                s.id
+                                                            )
+                                                        }
+                                                        className="text-left font-semibold text-neutral-800 flex-1"
+                                                    >
+                                                        {s.type.toUpperCase()} #
+                                                        {idx + 1}
+                                                        {archived
+                                                            ? " (archived)"
+                                                            : ""}
+                                                    </button>
+                                                    <div className="flex items-center gap-1">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                moveSection(
                                                                     s.id,
-                                                                    {
-                                                                        title: e
-                                                                            .target
-                                                                            .value,
-                                                                    }
+                                                                    "up"
                                                                 )
                                                             }
-                                                            className="rounded border border-neutral-300 px-2 py-1 text-xs"
-                                                        />
-                                                    </label>
-                                                    <label className="flex flex-col gap-1">
-                                                        <span>Subtitle</span>
-                                                        <textarea
-                                                            value={
-                                                                s.props
-                                                                    .subtitle ||
-                                                                ""
-                                                            }
-                                                            onChange={(e) =>
-                                                                updateSection(
+                                                            disabled={idx === 0}
+                                                            className="px-2 py-0.5 rounded border border-neutral-300 text-[11px] disabled:opacity-40"
+                                                        >
+                                                            ↑
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                moveSection(
                                                                     s.id,
-                                                                    {
-                                                                        subtitle:
-                                                                            e
-                                                                                .target
-                                                                                .value,
-                                                                    }
+                                                                    "down"
                                                                 )
                                                             }
-                                                            className="rounded border border-neutral-300 px-2 py-1 text-xs"
-                                                            rows={3}
-                                                        />
-                                                    </label>
-                                                    <label className="flex flex-col gap-1">
-                                                        <span>
-                                                            Primary button label
-                                                        </span>
-                                                        <input
-                                                            type="text"
-                                                            value={
-                                                                s.props
-                                                                    .primaryCta
-                                                                    ?.label ||
-                                                                ""
+                                                            disabled={
+                                                                idx ===
+                                                                sections.length -
+                                                                1
                                                             }
+                                                            className="px-2 py-0.5 rounded border border-neutral-300 text-[11px] disabled:opacity-40"
+                                                        >
+                                                            ↓
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                duplicateSection(
+                                                                    s.id
+                                                                )
+                                                            }
+                                                            className="px-2 py-0.5 rounded border border-neutral-300 text-[11px]"
+                                                        >
+                                                            Duplicate
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                removeSection(
+                                                                    s.id
+                                                                )
+                                                            }
+                                                            className="px-2 py-0.5 rounded border border-red-200 text-[11px] text-red-700"
+                                                        >
+                                                            Remove
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                    <label className="flex items-center gap-2">
+                                                        <span className="whitespace-nowrap">Vertical spacing</span>
+                                                        <select
+                                                            value={spacing}
                                                             onChange={(e) =>
-                                                                updateSection(
-                                                                    s.id,
-                                                                    {
-                                                                        primaryCta:
+                                                                updateSectionMeta(s.id, {
+                                                                    spacing: e.target.value as SectionSpacing,
+                                                                })
+                                                            }
+                                                            className="rounded border border-neutral-300 px-2 py-0.5 text-[11px]"
+                                                        >
+                                                            {SECTION_SPACING_OPTIONS.map((opt) => (
+                                                                <option key={opt.value} value={opt.value}>
+                                                                    {opt.label}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </label>
+
+                                                    <label className="flex items-center gap-2">
+                                                        <span className="whitespace-nowrap">Align</span>
+                                                        <select
+                                                            value={align}
+                                                            onChange={(e) =>
+                                                                updateSectionMeta(s.id, {
+                                                                    align: e.target.value as SectionAlign,
+                                                                })
+                                                            }
+                                                            className="rounded border border-neutral-300 px-2 py-0.5 text-[11px]"
+                                                        >
+                                                            {SECTION_ALIGN_OPTIONS.map((opt) => (
+                                                                <option key={opt.value} value={opt.value}>
+                                                                    {opt.label}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </label>
+
+                                                    <label className="inline-flex items-center gap-2 ml-auto">
+                                                        <input
+                                                            type="checkbox"
+                                                            className="h-3 w-3"
+                                                            checked={archived}
+                                                            onChange={(e) =>
+                                                                updateSectionMeta(s.id, {
+                                                                    archived: e.target.checked,
+                                                                })
+                                                            }
+                                                        />
+                                                        <span className="whitespace-nowrap">Archive</span>
+                                                    </label>
+                                                </div>
+
+
+                                                {s.type === "hero" &&
+                                                    (() => {
+                                                        const props = s.props as any;
+                                                        const primaryTarget = props.primaryCta?.target || { kind: "none" };
+                                                        const secondaryTarget = props.secondaryCta?.target || { kind: "none" };
+
+                                                        const primaryKind =
+                                                            (primaryTarget.kind as "none" | "external" | "page") || "none";
+                                                        const secondaryKind =
+                                                            (secondaryTarget.kind as "none" | "external" | "page") ||
+                                                            "none";
+
+                                                        const setPrimaryTarget = (next: any) =>
+                                                            updateSection(s.id, {
+                                                                primaryCta: {
+                                                                    ...(props.primaryCta || { label: "Get started" }),
+                                                                    target: next,
+                                                                } as any,
+                                                            });
+
+                                                        const setSecondaryTarget = (next: any) =>
+                                                            updateSection(s.id, {
+                                                                secondaryCta: {
+                                                                    ...(props.secondaryCta || { label: "Learn more" }),
+                                                                    target: next,
+                                                                } as any,
+                                                            });
+
+                                                        return (
+                                                            <div className="space-y-2">
+                                                                <label className="flex flex-col gap-1">
+                                                                    <span>Title (supports HTML)</span>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={props.title || ""}
+                                                                        onChange={(e) =>
+                                                                            updateSection(s.id, {
+                                                                                title: e.target.value,
+                                                                            } as any)
+                                                                        }
+                                                                        className="rounded border border-neutral-300 px-2 py-1 text-xs"
+                                                                    />
+                                                                </label>
+
+                                                                <label className="flex flex-col gap-1">
+                                                                    <span>Subtitle (supports HTML)</span>
+                                                                    <textarea
+                                                                        value={props.subtitle || ""}
+                                                                        onChange={(e) =>
+                                                                            updateSection(s.id, {
+                                                                                subtitle: e.target.value,
+                                                                            } as any)
+                                                                        }
+                                                                        className="rounded border border-neutral-300 px-2 py-1 text-xs"
+                                                                        rows={3}
+                                                                    />
+                                                                </label>
+
+                                                                {/* PRIMARY CTA */}
+                                                                <label className="flex flex-col gap-1">
+                                                                    <span>Primary button label</span>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={props.primaryCta?.label || ""}
+                                                                        onChange={(e) =>
+                                                                            updateSection(s.id, {
+                                                                                primaryCta: {
+                                                                                    ...(props.primaryCta || {
+                                                                                        target: { kind: "none" },
+                                                                                    }),
+                                                                                    label: e.target.value,
+                                                                                } as any,
+                                                                            })
+                                                                        }
+                                                                        className="rounded border border-neutral-300 px-2 py-1 text-xs"
+                                                                    />
+                                                                </label>
+
+                                                                <div className="flex flex-col gap-1">
+                                                                    <span className="text-[11px] text-neutral-700">
+                                                                        Primary button link
+                                                                    </span>
+                                                                    <select
+                                                                        value={primaryKind}
+                                                                        onChange={(e) => {
+                                                                            const kind = e.target
+                                                                                .value as "none" | "external" | "page";
+                                                                            if (kind === "none") {
+                                                                                setPrimaryTarget({ kind: "none" });
+                                                                            } else if (kind === "external") {
+                                                                                setPrimaryTarget({
+                                                                                    kind: "external",
+                                                                                    url: primaryTarget.url || "",
+                                                                                });
+                                                                            } else {
+                                                                                const fallbackPageId =
+                                                                                    primaryTarget.pageId ||
+                                                                                    pages[0]?.id ||
+                                                                                    "";
+                                                                                setPrimaryTarget({
+                                                                                    kind: "page",
+                                                                                    pageId: fallbackPageId,
+                                                                                });
+                                                                            }
+                                                                        }}
+                                                                        className="rounded border border-neutral-300 px-2 py-1 text-xs"
+                                                                    >
+                                                                        <option value="none">None</option>
+                                                                        <option value="external">External URL</option>
+                                                                        <option value="page">Page on this site</option>
+                                                                    </select>
+
+                                                                    {primaryKind === "external" && (
+                                                                        <input
+                                                                            type="text"
+                                                                            placeholder="https://example.com"
+                                                                            value={primaryTarget.url || ""}
+                                                                            onChange={(e) =>
+                                                                                setPrimaryTarget({
+                                                                                    kind: "external",
+                                                                                    url: e.target.value,
+                                                                                })
+                                                                            }
+                                                                            className="rounded border border-neutral-300 px-2 py-1 text-xs"
+                                                                        />
+                                                                    )}
+
+                                                                    {primaryKind === "page" && (
+                                                                        <select
+                                                                            value={primaryTarget.pageId || ""}
+                                                                            onChange={(e) =>
+                                                                                setPrimaryTarget({
+                                                                                    kind: "page",
+                                                                                    pageId: e.target.value,
+                                                                                })
+                                                                            }
+                                                                            className="rounded border border-neutral-300 px-2 py-1 text-xs"
+                                                                        >
+                                                                            {pages.map((p) => (
+                                                                                <option key={p.id} value={p.id}>
+                                                                                    {p.navLabel || p.title || p.slug}
+                                                                                </option>
+                                                                            ))}
+                                                                        </select>
+                                                                    )}
+                                                                </div>
+
+                                                                {/* SECONDARY CTA */}
+                                                                <label className="flex flex-col gap-1">
+                                                                    <span>Secondary button label</span>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={props.secondaryCta?.label || ""}
+                                                                        onChange={(e) =>
+                                                                            updateSection(s.id, {
+                                                                                secondaryCta: {
+                                                                                    ...(props.secondaryCta || {
+                                                                                        target: { kind: "none" },
+                                                                                    }),
+                                                                                    label: e.target.value,
+                                                                                } as any,
+                                                                            })
+                                                                        }
+                                                                        className="rounded border border-neutral-300 px-2 py-1 text-xs"
+                                                                    />
+                                                                </label>
+
+                                                                <div className="flex flex-col gap-1">
+                                                                    <span className="text-[11px] text-neutral-700">
+                                                                        Secondary button link
+                                                                    </span>
+                                                                    <select
+                                                                        value={secondaryKind}
+                                                                        onChange={(e) => {
+                                                                            const kind = e.target
+                                                                                .value as "none" | "external" | "page";
+                                                                            if (kind === "none") {
+                                                                                setSecondaryTarget({ kind: "none" });
+                                                                            } else if (kind === "external") {
+                                                                                setSecondaryTarget({
+                                                                                    kind: "external",
+                                                                                    url: secondaryTarget.url || "",
+                                                                                });
+                                                                            } else {
+                                                                                const fallbackPageId =
+                                                                                    secondaryTarget.pageId ||
+                                                                                    pages[0]?.id ||
+                                                                                    "";
+                                                                                setSecondaryTarget({
+                                                                                    kind: "page",
+                                                                                    pageId: fallbackPageId,
+                                                                                });
+                                                                            }
+                                                                        }}
+                                                                        className="rounded border border-neutral-300 px-2 py-1 text-xs"
+                                                                    >
+                                                                        <option value="none">None</option>
+                                                                        <option value="external">External URL</option>
+                                                                        <option value="page">Page on this site</option>
+                                                                    </select>
+
+                                                                    {secondaryKind === "external" && (
+                                                                        <input
+                                                                            type="text"
+                                                                            placeholder="https://example.com"
+                                                                            value={secondaryTarget.url || ""}
+                                                                            onChange={(e) =>
+                                                                                setSecondaryTarget({
+                                                                                    kind: "external",
+                                                                                    url: e.target.value,
+                                                                                })
+                                                                            }
+                                                                            className="rounded border border-neutral-300 px-2 py-1 text-xs"
+                                                                        />
+                                                                    )}
+
+                                                                    {secondaryKind === "page" && (
+                                                                        <select
+                                                                            value={secondaryTarget.pageId || ""}
+                                                                            onChange={(e) =>
+                                                                                setSecondaryTarget({
+                                                                                    kind: "page",
+                                                                                    pageId: e.target.value,
+                                                                                })
+                                                                            }
+                                                                            className="rounded border border-neutral-300 px-2 py-1 text-xs"
+                                                                        >
+                                                                            {pages.map((p) => (
+                                                                                <option key={p.id} value={p.id}>
+                                                                                    {p.navLabel || p.title || p.slug}
+                                                                                </option>
+                                                                            ))}
+                                                                        </select>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })()}
+
+                                                {s.type === "text" && (
+                                                    <div className="space-y-2">
+                                                        <label className="flex flex-col gap-1">
+                                                            <span>Title</span>
+                                                            <input
+                                                                type="text"
+                                                                value={
+                                                                    (s.props as any)
+                                                                        .title ||
+                                                                    ""
+                                                                }
+                                                                onChange={(e) =>
+                                                                    updateSection(
+                                                                        s.id,
                                                                         {
-                                                                            ...(s
-                                                                                .props
-                                                                                .primaryCta ||
-                                                                            {
-                                                                                target:
-                                                                                {
-                                                                                    kind: "none",
-                                                                                },
-                                                                            }),
-                                                                            label: e
-                                                                                .target
-                                                                                .value,
-                                                                        },
-                                                                    }
-                                                                )
-                                                            }
-                                                            className="rounded border border-neutral-300 px-2 py-1 text-xs"
-                                                        />
-                                                    </label>
-                                                </div>
-                                            )}
-
-                                            {s.type === "text" && (
-                                                <div className="space-y-2">
-                                                    <label className="flex flex-col gap-1">
-                                                        <span>Title</span>
-                                                        <input
-                                                            type="text"
-                                                            value={
-                                                                s.props
-                                                                    .title || ""
-                                                            }
-                                                            onChange={(e) =>
-                                                                updateSection(
-                                                                    s.id,
-                                                                    {
-                                                                        title: e
-                                                                            .target
-                                                                            .value,
-                                                                    }
-                                                                )
-                                                            }
-                                                            className="rounded border border-neutral-300 px-2 py-1 text-xs"
-                                                        />
-                                                    </label>
-                                                    <label className="flex flex-col gap-1">
-                                                        <span>Body</span>
-                                                        <textarea
-                                                            value={
-                                                                s.props
-                                                                    .body || ""
-                                                            }
-                                                            onChange={(e) =>
-                                                                updateSection(
-                                                                    s.id,
-                                                                    {
-                                                                        body: e
-                                                                            .target
-                                                                            .value,
-                                                                    }
-                                                                )
-                                                            }
-                                                            className="rounded border border-neutral-300 px-2 py-1 text-xs"
-                                                            rows={4}
-                                                        />
-                                                    </label>
-                                                </div>
-                                            )}
-
-                                            {s.type === "grid" && (
-                                                <div className="space-y-2">
-                                                    <label className="flex flex-col gap-1">
-                                                        <span>Title</span>
-                                                        <input
-                                                            type="text"
-                                                            value={
-                                                                s.props
-                                                                    .title || ""
-                                                            }
-                                                            onChange={(e) =>
-                                                                updateSection(
-                                                                    s.id,
-                                                                    {
-                                                                        title: e
-                                                                            .target
-                                                                            .value,
-                                                                    }
-                                                                )
-                                                            }
-                                                            className="rounded border border-neutral-300 px-2 py-1 text-xs"
-                                                        />
-                                                    </label>
-                                                    <label className="flex flex-col gap-1">
-                                                        <span>Columns</span>
-                                                        <input
-                                                            type="number"
-                                                            min={1}
-                                                            max={4}
-                                                            value={
-                                                                s.props
-                                                                    .columns ||
-                                                                3
-                                                            }
-                                                            onChange={(e) =>
-                                                                updateSection(
-                                                                    s.id,
-                                                                    {
-                                                                        columns:
-                                                                            Number(
+                                                                            title:
                                                                                 e
                                                                                     .target
-                                                                                    .value
-                                                                            ),
-                                                                    }
-                                                                )
-                                                            }
-                                                            className="rounded border border-neutral-300 px-2 py-1 text-xs w-16"
-                                                        />
-                                                    </label>
-                                                </div>
-                                            )}
-                                        </div>
-                                    ))}
+                                                                                    .value,
+                                                                        } as any
+                                                                    )
+                                                                }
+                                                                className="rounded border border-neutral-300 px-2 py-1 text-xs"
+                                                            />
+                                                        </label>
+                                                        <label className="flex flex-col gap-1">
+                                                            <span>Body</span>
+                                                            <textarea
+                                                                value={
+                                                                    (s.props as any)
+                                                                        .body ||
+                                                                    ""
+                                                                }
+                                                                onChange={(e) =>
+                                                                    updateSection(
+                                                                        s.id,
+                                                                        {
+                                                                            body: e
+                                                                                .target
+                                                                                .value,
+                                                                        } as any
+                                                                    )
+                                                                }
+                                                                className="rounded border border-neutral-300 px-2 py-1 text-xs"
+                                                                rows={4}
+                                                            />
+                                                        </label>
+                                                    </div>
+                                                )}
+
+                                                {s.type === "grid" && (
+                                                    <div className="space-y-2">
+                                                        <label className="flex flex-col gap-1">
+                                                            <span>Title</span>
+                                                            <input
+                                                                type="text"
+                                                                value={
+                                                                    (s.props as any)
+                                                                        .title ||
+                                                                    ""
+                                                                }
+                                                                onChange={(e) =>
+                                                                    updateSection(
+                                                                        s.id,
+                                                                        {
+                                                                            title:
+                                                                                e
+                                                                                    .target
+                                                                                    .value,
+                                                                        } as any
+                                                                    )
+                                                                }
+                                                                className="rounded border border-neutral-300 px-2 py-1 text-xs"
+                                                            />
+                                                        </label>
+                                                        <label className="flex flex-col gap-1">
+                                                            <span>Columns</span>
+                                                            <input
+                                                                type="number"
+                                                                min={1}
+                                                                max={4}
+                                                                value={
+                                                                    (s.props as any)
+                                                                        .columns ||
+                                                                    3
+                                                                }
+                                                                onChange={(e) =>
+                                                                    updateSection(
+                                                                        s.id,
+                                                                        {
+                                                                            columns:
+                                                                                Number(
+                                                                                    e
+                                                                                        .target
+                                                                                        .value
+                                                                                ),
+                                                                        } as any
+                                                                    )
+                                                                }
+                                                                className="rounded border border-neutral-300 px-2 py-1 text-xs w-16"
+                                                            />
+                                                        </label>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </section>
                         </div>
@@ -659,6 +1389,7 @@ export default function EditSitePage() {
                                     selectedSectionId={selectedSectionId}
                                     onSelectSection={setSelectedSectionId}
                                     onEditSection={updateSection}
+                                    viewportMode={viewportMode}
                                 />
                             </div>
                         </div>

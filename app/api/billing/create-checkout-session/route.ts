@@ -21,10 +21,11 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
 
     const isProd = process.env.NODE_ENV === "production";
 
+    console.log("plan: ", plan)
     const priceId =
         plan === "pro"
             ? isProd
-                ? process.env.STRIPE_PRICE_PRO_PRO
+                ? process.env.STRIPE_PRICE_PRO_PROD
                 : process.env.STRIPE_PRICE_PRO_TEST
             : isProd
                 ? process.env.STRIPE_PRICE_PRO_AGENCY

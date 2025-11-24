@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import NavBar from "@/components/NavBar";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
+import { ensureSessionAndCsrf } from "../login/LoginForm";
 
 const ACCENT = "#f55f2a";
 const VERCEL_INTEGRATION_SLUG =
@@ -141,7 +142,13 @@ export default function SettingsPage(): JSX.Element {
     async function handleDisconnectVercel() {
         setDisconnectBusy(true);
         try {
+            const csrf = await ensureSessionAndCsrf();
+
             const res = await fetch("/api/vercel/disconnect", {
+                headers: {
+                    "content-type": "application/json",
+                    ...(csrf ? { "x-csrf": csrf } : {}),
+                },
                 method: "POST",
                 credentials: "include",
             });

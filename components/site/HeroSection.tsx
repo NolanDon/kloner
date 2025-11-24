@@ -1,114 +1,80 @@
-// components/site/HeroSection.tsx
 "use client";
 
-import type { HeroSectionProps, LinkTarget } from "@/lib/siteConfig";
+import React from "react";
+import type { LinkTarget } from "@/lib/siteConfig";
 
-type Props = {
+type HeroSectionProps = {
     sectionId: string;
-    props: HeroSectionProps;
-    resolveHref?: (t: LinkTarget) => string;
+    props: any;
+    resolveHref: (target: LinkTarget) => string;
 };
 
-export function HeroSection({ sectionId, props, resolveHref }: Props) {
+export function HeroSection({ sectionId, props, resolveHref }: HeroSectionProps) {
     const {
-        badge,
+        kicker,
         title,
         subtitle,
         primaryCta,
         secondaryCta,
-        layout = "centered",
-        align = "center",
-    } = props;
+        align,
+    } = props || {};
 
-    const layoutClass =
-        layout === "split"
-            ? "md:grid md:grid-cols-2 md:gap-12 items-center"
-            : "flex flex-col";
+    const alignValue = (align || "center") as "left" | "center" | "right";
+    const alignClass =
+        alignValue === "left"
+            ? "items-start text-left"
+            : alignValue === "right"
+                ? "items-end text-right"
+                : "items-center text-center";
 
-    const textAlignClass =
-        align === "left" ? "text-left items-start" : "text-center items-center";
+    const renderHtml = (value?: string, className?: string) =>
+        value ? (
+            <div
+                className={className}
+                dangerouslySetInnerHTML={{ __html: value }}
+            />
+        ) : null;
 
     const primaryHref =
-        primaryCta && resolveHref
+        primaryCta && primaryCta.target
             ? resolveHref(primaryCta.target)
-            : primaryCta && primaryCta.target.kind === "external"
-                ? primaryCta.target.url
-                : "#";
-
+            : "#";
     const secondaryHref =
-        secondaryCta && resolveHref
+        secondaryCta && secondaryCta.target
             ? resolveHref(secondaryCta.target)
-            : secondaryCta && secondaryCta.target.kind === "external"
-                ? secondaryCta.target.url
-                : "#";
-
-    const primaryVariant = primaryCta?.variant || "solid";
-
-    const primaryClasses =
-        primaryVariant === "solid"
-            ? "bg-[color:var(--color-primary)] text-white"
-            : primaryVariant === "outline"
-                ? "border border-[color:var(--color-primary)] text-[color:var(--color-primary)] bg-transparent"
-                : "text-[color:var(--color-primary)] bg-transparent";
+            : "#";
 
     return (
         <section
             id={sectionId}
-            className="section site-hero py-16"
+            className={`hero-root flex flex-col gap-3 md:gap-4 ${alignClass}`}
         >
-            <div className={`site-hero-inner ${layoutClass} gap-8`}>
-                <div className={`flex flex-col gap-4 ${textAlignClass}`}>
-                    {badge ? (
-                        <div className="hero-badge text-[11px] tracking-wide uppercase text-[color:var(--color-primary)]">
-                            {badge}
-                        </div>
-                    ) : null}
+            {renderHtml(kicker, "hero-kicker")}
+            {renderHtml(title, "hero-title")}
+            {renderHtml(subtitle, "hero-subtitle")}
 
-                    <h1 className="hero-heading-main text-4xl md:text-5xl font-semibold">
-                        {title}
-                    </h1>
-
-                    {subtitle ? (
-                        <p className="hero-subtitle max-w-2xl text-base md:text-lg text-[color:var(--color-body)]">
-                            {subtitle}
-                        </p>
-                    ) : null}
-
-                    {(primaryCta || secondaryCta) && (
-                        <div className="mt-4 flex flex-wrap gap-3">
-                            {primaryCta ? (
-                                <a
-                                    href={primaryHref}
-                                    className={`hero-cta inline-flex items-center justify-center px-6 py-3 text-xs font-medium rounded-full ${primaryClasses}`}
-                                    style={{
-                                        borderRadius: "var(--radius-base)",
-                                    }}
-                                >
-                                    {primaryCta.label}
-                                </a>
-                            ) : null}
-                            {secondaryCta ? (
-                                <a
-                                    href={secondaryHref}
-                                    className="inline-flex items-center justify-center px-6 py-3 text-xs font-medium rounded-full border border-black/10 text-neutral-800 bg-white/80 hover:bg-white"
-                                    style={{
-                                        borderRadius: "var(--radius-base)",
-                                    }}
-                                >
-                                    {secondaryCta.label}
-                                </a>
-                            ) : null}
-                        </div>
+            {(primaryCta?.label || secondaryCta?.label) && (
+                <div className="hero-cta-row">
+                    {primaryCta?.label && (
+                        <a
+                            href={primaryHref}
+                            className="hero-btn hero-btn--primary"
+                            data-allow-interaction
+                        >
+                            {primaryCta.label}
+                        </a>
+                    )}
+                    {secondaryCta?.label && (
+                        <a
+                            href={secondaryHref}
+                            className="hero-btn hero-btn--secondary"
+                            data-allow-interaction
+                        >
+                            {secondaryCta.label}
+                        </a>
                     )}
                 </div>
-
-                {layout === "split" && (
-                    <div className="mt-8 md:mt-0">
-                        {/* simple placeholder for hero media */}
-                        <div className="w-full h-56 md:h-64 rounded-2xl bg-white/40 border border-black/5" />
-                    </div>
-                )}
-            </div>
+            )}
         </section>
     );
 }

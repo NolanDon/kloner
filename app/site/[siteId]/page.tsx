@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SiteRenderer } from "@/components/site/SiteRenderer";
 import { safeSiteConfig, type SiteConfig } from "@/lib/siteConfig";
+import Image from 'next/image';
 
 export const runtime = "nodejs";
 
@@ -88,11 +89,45 @@ export default async function SitePage({ params }: Props) {
     const { config, overridesCss } = await loadSiteConfigForUser(siteId);
 
     return (
-        <SiteRenderer
-            config={config}
-            overridesCss={overridesCss}
-            siteId={siteId}
-            disableNavigation
-        />
+        <>
+            <SiteRenderer
+                config={config}
+                overridesCss={overridesCss}
+                siteId={siteId}
+                disableNavigation
+            />
+            {siteId && (
+                <a
+                    href={`/site/${siteId}/edit`}
+                    className="
+                    fixed
+                    bottom-6 right-6
+                    z-50
+                    flex items-center gap-3
+                    rounded-full
+                    border border-black/10
+                    bg-[#f55f2a]
+                    px-5 py-3
+                    text-sm font-semibold text-white
+                    shadow-xl shadow-black/20
+                    transition-transform
+                    hover:scale-[1.02]
+                    active:scale-[0.99]
+                "
+                >
+                    <span className="relative h-7 w-7 shrink-0">
+                        <Image
+                            src="/images/logo.png"
+                            alt="Kloner"
+                            fill
+                            className="object-contain"
+                        />
+                    </span>
+                    <span>Edit this page in Kloner</span>
+                </a>
+
+            )
+            }
+        </>
     );
 }
