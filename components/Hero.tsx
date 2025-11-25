@@ -190,7 +190,7 @@ export default function Hero() {
             muted
             playsInline
             preload="metadata"
-            poster="/images/hero-poster.png"
+            poster="/images/hero-poster.jpg"
           />
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/45 via-black/15 to-transparent" />
         </div>
