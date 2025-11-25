@@ -4,7 +4,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, useMotionValueEvent, useScroll, useTransform, useSpring } from 'framer-motion';
 import Image from 'next/image';
-import holdup from '@/public/images/holdup.png';
+import holdup from '@/public/images/sub-footer.jpg';
 import { useUrlOverlay } from './UrlOverlayProvider';
 
 const clamp = (n: number, min: number, max: number) => Math.min(Math.max(n, min), max);
