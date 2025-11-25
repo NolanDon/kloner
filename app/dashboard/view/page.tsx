@@ -2803,7 +2803,7 @@ export default function PreviewPage(): JSX.Element {
                                     <div className="x-1 inline-flex ml-1 mt-5 text-sm flex items-center text-neutral-700">
                                         Click{" "}
                                         <span
-                                            className="mx-2 shrink-0 rounded-md px-2 py-1 text-[0.75rem] border border-neutral-400 text-neutral-800 hover:bg-neutral-50 inline-flex items-center gap-1.5"
+                                            className="mx-2 shrink-0 rounded-md px-2 py-1 text-[0.75rem] bg-accent text-white inline-flex items-center gap-1.5"
                                         // style={{ backgroundColor: ACCENT }}
                                         >
                                             Generate preview{" "}
@@ -2891,12 +2891,12 @@ export default function PreviewPage(): JSX.Element {
                                                     }}
                                                     disabled={locked}
                                                     aria-busy={locked}
-                                                    className="inline-flex items-center rounded-md border border-neutral-300 px-2 py-1 text-[11px] font-medium text-neutral-800 hover:bg-neutral-50 disabled:opacity-50"
+                                                    className="inline-flex items-center rounded-md px-2 py-2 text-[13px] bg-accent text-white disabled:opacity-50"
                                                     title="Create editable preview from this snapshot collection"
                                                 >
                                                     <span>{locked ? "In progress" : "Generate preview"}</span>
                                                     <Hammer
-                                                        className={`ml-1 h-3 w-3 ${locked ? "animate-pulse" : ""
+                                                        className={`ml-1 h-4 w-4 ${locked ? "animate-pulse" : ""
                                                             }`}
                                                         aria-hidden
                                                     />
@@ -2910,7 +2910,7 @@ export default function PreviewPage(): JSX.Element {
                                                         !!deletingCollectionById[group.snapshotId]
                                                     }
                                                     aria-busy={!!deletingCollectionById[group.snapshotId]}
-                                                    className="inline-flex items-center rounded-md border border-red-200 px-2 py-1 text-[10px] font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                                                    className="inline-flex items-center rounded-md border border-red-200 px-2 py-2 text-[12px] font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
                                                     title="Permanently delete this snapshot collection and all related images"
                                                 >
                                                     {deletingCollectionById[group.snapshotId]

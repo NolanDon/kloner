@@ -518,8 +518,8 @@ function UrlRow({ uid, r }: UrlRowProps) {
                             target={locked ? undefined : "_blank"}
                             rel={locked ? undefined : "noreferrer"}
                             className={`truncate max-w-full sm:max-w-[70%] text-sm ${locked
-                                ? "text-neutral-400 pointer-events-none"
-                                : "text-neutral-800 hover:underline"
+                                    ? "text-neutral-400 pointer-events-none"
+                                    : "text-neutral-800 hover:underline"
                                 }`}
                             aria-disabled={locked}
                             tabIndex={locked ? -1 : 0}
@@ -546,8 +546,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
                                 ? "Working…"
                                 : isStale
                                     ? "Retry screenshots"
-                                    : "Rescan"
-                            }
+                                    : "Rescan"}
                         </button>
 
                         <a
@@ -557,13 +556,13 @@ function UrlRow({ uid, r }: UrlRowProps) {
                                     : `/dashboard/view?u=${encodeURIComponent(r.url)}`
                             }
                             className={`rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs ${locked
-                                ? "text-neutral-400 pointer-events-none"
-                                : "text-neutral-700 hover:bg-neutral-50"
+                                    ? "text-neutral-400 pointer-events-none"
+                                    : "text-neutral-700 hover:bg-neutral-50"
                                 }`}
                             aria-disabled={locked}
                             tabIndex={locked ? -1 : 0}
                         >
-                            Open
+                            {`${isReady ? 'Generate Preview': 'Open'}`}
                         </a>
 
                         <button
@@ -575,6 +574,15 @@ function UrlRow({ uid, r }: UrlRowProps) {
                             Delete
                         </button>
                     </div>
+
+                    {locked && (
+                        <div className="mt-2 flex items-center gap-2 text-[11px] text-neutral-500">
+                            <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                            <span>
+                                Processing up to 10 pages for this URL. This can take a few minutes.
+                            </span>
+                        </div>
+                    )}
                 </div>
             </div>
 
