@@ -251,10 +251,41 @@ export async function POST(req: NextRequest) {
             }
 
             const vercelDeploymentId = deployJson.id as string | undefined;
+
+            // Vercel v13 returns readyState as "QUEUED" | "BUILDING" | "READY" | "ERROR" | "CANCELED"
+            const vercelReadyStateRaw = (deployJson.readyState as string | undefined) || null;
+            const vercelReadyState = vercelReadyStateRaw
+                ? vercelReadyStateRaw.toLowerCase()
+                : null;
+
             const vercelStateRaw =
-                (deployJson.state as string | undefined) || "building";
+                (deployJson.state as string | undefined) || vercelReadyStateRaw || "building";
             const vercelState = vercelStateRaw.toLowerCase();
+
             const url = deployJson.url ? `https://${deployJson.url}` : null;
+
+            // Derive a meaningful initial event label
+            let initialEvent: string | null = null;
+            switch (vercelReadyState) {
+                case "queued":
+                    initialEvent = "deployment.queued";
+                    break;
+                case "building":
+                    initialEvent = "deployment.building";
+                    break;
+                case "ready":
+                    initialEvent = "deployment.ready";
+                    break;
+                case "error":
+                    initialEvent = "deployment.error";
+                    break;
+                case "canceled":
+                case "cancelled":
+                    initialEvent = "deployment.canceled";
+                    break;
+                default:
+                    initialEvent = "deployment.created";
+            }
 
             if (renderDoc && url) {
                 await renderDoc.ref.set(
@@ -283,10 +314,12 @@ export async function POST(req: NextRequest) {
                             vercelProjectName || resolvedName || null,
                         vercelUrl: url,
                         vercelState,
+                        vercelReadyState,
+                        vercelTarget: "production",
                         vercelTeamId: vercelTeamId ?? null,
                         vercelUserId: null,
                         configurationId: null,
-                        lastEventType: "created",
+                        lastEventType: initialEvent,
                         lastEventId: vercelDeploymentId,
                         lastEventAt: now,
                         createdAt: now,

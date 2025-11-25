@@ -1,3 +1,4 @@
+// src/app/dashboard/deployments/page.tsx
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
@@ -69,6 +70,15 @@ type ProjectGroup = {
     count: number;
 };
 
+type UiState =
+    | "active"
+    | "ready"
+    | "offline"
+    | "building"
+    | "error"
+    | "canceled"
+    | "unknown";
+
 function toDate(v: any): Date | null {
     if (!v) return null;
     if (typeof v.toDate === "function") return v.toDate();
@@ -92,37 +102,63 @@ function formatDate(v: any): string {
     });
 }
 
-function stateColor(state?: string | null): string {
+function stateColor(state?: UiState | string | null): string {
     const s = (state || "").toLowerCase();
-    if (s === "ready" || s === "succeeded")
+
+    if (s === "active" || s === "ready")
         return "bg-emerald-50 text-emerald-700 border-emerald-200";
-    if (s === "error" || s === "failed" || s === "canceled")
+
+    if (s === "offline")
+        return "bg-neutral-50 text-neutral-500 border-neutral-200";
+
+    if (s === "error" || s === "failed")
         return "bg-red-50 text-red-700 border-red-200";
+
+    if (s === "canceled" || s === "cancelled")
+        return "bg-rose-50 text-rose-700 border-rose-200";
+
     if (s === "building" || s === "queued" || s === "pending")
         return "bg-amber-50 text-amber-700 border-amber-200";
+
     return "bg-neutral-50 text-neutral-600 border-neutral-200";
 }
 
 /**
- * Canonicalize state for UI using both vercelState + lastEventType.
+ * Canonicalize state for UI using Vercel fields + lastEventType.
+ * This returns base states only; "active" / "offline" are layered on
+ * top per-project in toUiState.
  */
-function deriveStateFromDoc(
-    d?: DeploymentDoc | null
-): "ready" | "error" | "canceled" | "building" | "unknown" {
+function deriveStateFromDoc(d?: DeploymentDoc | null): UiState {
     if (!d) return "unknown";
-    const raw = (d.vercelState || "").toLowerCase();
-    const evt = (d.lastEventType || "").toLowerCase();
 
-    if (evt.includes("error")) return "error";
-    if (evt.includes("canceled")) return "canceled";
-    if (evt.includes("succeeded") || evt.includes("ready") || evt.includes("promoted")) return "ready";
+    const candidates: string[] = [];
 
-    if (["error", "failed"].includes(raw)) return "error";
-    if (["canceled", "cancelled"].includes(raw)) return "canceled";
-    if (["ready", "succeeded"].includes(raw)) return "ready";
-    if (["queued", "pending", "building"].includes(raw)) return "building";
+    if (d.vercelReadyState) candidates.push(d.vercelReadyState.toLowerCase());
+    if (d.vercelState) candidates.push(d.vercelState.toLowerCase());
+    if (d.lastEventType) candidates.push(d.lastEventType.toLowerCase());
 
-    return raw ? (raw as any) : "unknown";
+    const text = candidates.join(" ");
+
+    if (/error|failed|fail/.test(text)) return "error";
+    if (/cancel/.test(text)) return "canceled";
+    if (/queue|pending|build/.test(text)) return "building";
+    if (/ready|succeed|promoted|complete|completed/.test(text)) return "ready";
+
+    // If we have any signal at all, prefer "building" over "unknown"
+    if (d.vercelReadyState || d.vercelState || d.lastEventType) {
+        return "building";
+    }
+
+    return "unknown";
+}
+
+/**
+ * Project grouping key for resolving "active" vs "offline".
+ */
+function projectKeyForDeployment(d: DeploymentDoc): string {
+    const pid = d.vercelProjectId || "no-id";
+    const pname = d.vercelProjectName || "Unknown project";
+    return `${pid}::${pname}`;
 }
 
 /**
@@ -265,6 +301,29 @@ function buildDefaultHtml(projectName: string, deploymentId: string): string {
   </main>
 </body>
 </html>`;
+}
+
+/**
+ * Lift base state to UI state with "active" / "offline" using per-project latest ready deployment.
+ */
+function toUiState(
+    d: { vercelDeploymentId?: string | null } & DeploymentDoc,
+    latestReadyByProject: Map<string, string>
+): UiState {
+    const base = deriveStateFromDoc(d);
+
+    if (base !== "ready") return base;
+
+    const projKey = projectKeyForDeployment(d);
+    const latestId = latestReadyByProject.get(projKey);
+
+    if (!latestId) return "ready";
+
+    if (latestId === d.vercelDeploymentId) {
+        return "active";
+    }
+
+    return "offline";
 }
 
 export default function DeploymentsPage(): JSX.Element {
@@ -447,6 +506,25 @@ export default function DeploymentsPage(): JSX.Element {
         });
     }, [items, selectedProjectKey]);
 
+    // per-project: newest READY deployment id (for "active"/"offline")
+    const latestReadyByProject = useMemo(() => {
+        const map = new Map<string, string>();
+
+        for (const d of scopedItems) {
+            const baseState = deriveStateFromDoc(d);
+            if (baseState !== "ready") continue;
+            if (!d.vercelDeploymentId) continue;
+
+            const key = projectKeyForDeployment(d);
+            if (!map.has(key)) {
+                // scopedItems ordered newest -> oldest, so first READY wins.
+                map.set(key, d.vercelDeploymentId);
+            }
+        }
+
+        return map;
+    }, [scopedItems]);
+
     // 30s polling for building deployments via refresh-deployments
     useEffect(() => {
         if (!user || scopedItems.length === 0) return;
@@ -514,7 +592,7 @@ export default function DeploymentsPage(): JSX.Element {
         );
     }, [hasNewMeta, scopedItems]);
 
-    const latestState = deriveStateFromDoc(latestFromPreview);
+    const latestState = deriveStateFromDoc(latestFromPreview || undefined);
     const isErrorState = latestState === "error";
     const isSuccessState = latestState === "ready";
 
@@ -1045,7 +1123,7 @@ export default function DeploymentsPage(): JSX.Element {
                                 const d = latestDeployment;
                                 const created = formatDate(d.createdAt);
                                 const updated = formatDate(d.updatedAt || d.lastEventAt);
-                                const state = deriveStateFromDoc(d);
+                                const state = toUiState(d, latestReadyByProject);
                                 const stateStyles = stateColor(state);
                                 const projectName =
                                     d.vercelProjectName || d.vercelProjectId || "Untitled project";
@@ -1081,7 +1159,7 @@ export default function DeploymentsPage(): JSX.Element {
                                                 >
                                                     <span className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
                                                     <span className="capitalize">
-                                                        {state === "unknown" ? "unknown" : state}
+                                                        {state}
                                                     </span>
                                                 </div>
                                             </div>
@@ -1268,7 +1346,7 @@ export default function DeploymentsPage(): JSX.Element {
 
                                     <div className="max-h-72 overflow-y-auto">
                                         {history.map((d) => {
-                                            const state = deriveStateFromDoc(d);
+                                            const state = toUiState(d, latestReadyByProject);
                                             const stateStyles = stateColor(state);
                                             const created = formatDate(d.createdAt);
                                             const lastEvt = d.lastEventType || "–";
@@ -1285,7 +1363,7 @@ export default function DeploymentsPage(): JSX.Element {
                                                         >
                                                             <span className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
                                                             <span className="capitalize">
-                                                                {state === "unknown" ? "unknown" : state}
+                                                                {state}
                                                             </span>
                                                         </span>
                                                     </div>
