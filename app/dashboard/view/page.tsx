@@ -3252,60 +3252,125 @@ export default function PreviewPage(): JSX.Element {
                     </div>
                 )}
 
-                {/* post-customize upgrade prompt */}
                 {showUpgradeAfterCustomize && (
                     <div className="fixed inset-0 z-[12050]">
-                        <div className="absolute inset-0 bg-black/60" />
-                        <div className="absolute inset-0 flex items-center justify-center p-4">
-                            <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border border-neutral-200 p-6 text-sm text-neutral-800">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <Crown className="h-4 w-4 text-amber-500" />
-                                    <h3 className="text-base font-semibold">
-                                        Make this website yours
+                        {/* Backdrop */}
+                        <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+
+                        {/* Shell */}
+                        <div className="absolute inset-0 flex items-center justify-center px-4 sm:px-6">
+                            <div className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-white/8 bg-neutral-950/95 text-neutral-50 shadow-[0_30px_120px_rgba(0,0,0,0.85)]">
+                                {/* Accent glow */}
+                                <div
+                                    className="pointer-events-none absolute inset-x-10 -top-24 h-40 rounded-full blur-3xl opacity-80"
+                                    style={{
+                                        background: `radial-gradient(circle, ${ACCENT}40 0%, transparent 65%)`,
+                                    }}
+                                />
+
+                                <div className="relative p-6 sm:p-7">
+                                    {/* Header row */}
+                                    <div className="mb-4 flex items-start justify-between gap-3">
+                                        <div className="flex items-start gap-3">
+                                            <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-neutral-900/80 border border-white/10">
+                                                <Crown className="h-4 w-4 text-amber-400" />
+                                            </div>
+                                            <div>
+                                                <p className="mb-1 text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-400">
+                                                    You just customized a live preview
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <span className="whitespace-nowrap rounded-full border border-white/10 bg-neutral-900/80 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-400">
+                                            Pro upgrade
+                                        </span>
+                                    </div>
+
+                                    <h3 className="text-2xl mb-4  font-semibold tracking-tight text-white">
+                                        Turn this preview into a real, live site
                                     </h3>
-                                </div>
-                                <p className="text-xs text-neutral-600 mb-3">
-                                    You’ve customized your first preview. The next
-                                    step is to turn it into a live site with your
-                                    own URL and branding.
-                                </p>
-                                <ul className="mb-4 list-disc list-inside text-xs text-neutral-700 space-y-1">
-                                    <li>
-                                        Publish to a live URL in a few clicks
-                                    </li>
-                                    <li>
-                                        Connect your own domain and logo
-                                    </li>
-                                    <li>
-                                        Keep iterating without touching code
-                                    </li>
-                                </ul>
-                                <div className="flex items-center justify-end gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() =>
-                                            setShowUpgradeAfterCustomize(false)
-                                        }
-                                        className="rounded-md border border-neutral-300 px-3 py-1.5 text-xs text-neutral-700 hover:bg-neutral-50"
-                                    >
-                                        Maybe later
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setShowUpgradeAfterCustomize(false);
-                                            router.push("/price");
-                                        }}
-                                        className="rounded-md px-3 py-1.5 text-xs font-semibold text-white"
-                                        style={{ backgroundColor: ACCENT }}
-                                    >
-                                        Upgrade and publish
-                                    </button>
+                                    {/* Value stack */}
+                                    <div className="mb-4 grid gap-2 text-xs sm:text-[13px] text-neutral-200">
+                                        <div className="flex items-start gap-2.5">
+                                            <div
+                                                className="mt-[3px] h-2 w-2 rounded-full"
+                                                style={{ backgroundColor: ACCENT }}
+                                            />
+                                            <div>
+                                                <p className="font-medium text-white">Publish in minutes</p>
+                                                <p className="text-[11px] text-neutral-400">
+                                                    Kloner ships this exact preview to a live URL, no Git, no config.
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-start gap-2.5">
+                                            <div
+                                                className="mt-[3px] h-2 w-2 rounded-full"
+                                                style={{ backgroundColor: ACCENT }}
+                                            />
+                                            <div>
+                                                <p className="font-medium text-white">Your domain, your branding</p>
+                                                <p className="text-[11px] text-neutral-400">
+                                                    Point your own domain, and own the experience.
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-start gap-2.5">
+                                            <div
+                                                className="mt-[3px] h-2 w-2 rounded-full"
+                                                style={{ backgroundColor: ACCENT }}
+                                            />
+                                            <div>
+                                                <p className="font-medium text-white">Keep editing visually</p>
+                                                <p className="text-[11px] text-neutral-400">
+                                                    Keep using the editor you’re in right now. Every change ships with one click.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* What happens next strip */}
+                                    <div className="mb-5 rounded-2xl border border-white/10 bg-neutral-900/80 px-3 py-2.5 text-[14px] text-neutral-300">
+                                        <p className="mb-1 font-medium text-neutral-100">
+                                            What happens when you continue
+                                        </p>
+                                        <p className="text-[12px] text-neutral-200">
+                                            1) Pick a plan · 2) Fast, secure checkout · 3) Click publish and your site goes
+                                            live.
+                                        </p>
+                                    </div>
+
+                                    {/* Actions */}
+                                    <div className="space-y-2.5">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setShowUpgradeAfterCustomize(false);
+                                                router.push("/price");
+                                            }}
+                                            className="flex w-full items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-[0_18px_40px_rgba(0,0,0,0.6)] transition transform hover:-translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-white/20"
+                                            style={{ backgroundColor: ACCENT }}
+                                        >
+                                            Upgrade and publish this site
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowUpgradeAfterCustomize(false)}
+                                            className="flex w-full items-center justify-center rounded-xl px-4 py-2 text-[11px] font-medium text-neutral-400 hover:bg-neutral-900/70 hover:text-neutral-200 transition"
+                                        >
+                                            Keep editing for now
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 )}
+
 
                 {/* deploy next-steps banner */}
                 {showDeployNextSteps && (

@@ -262,13 +262,20 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         return (
             <div className="md:hidden sticky top-0 z-10 bg-white border-b border-neutral-200">
                 <div className="flex items-center justify-between px-4 py-3">
-                    <a href="/" className="inline-flex items-center gap-2">
-                        <div
-                            className="h-8 w-8 grid place-items-center rounded-lg text-white font-black"
-                            style={{ backgroundColor: ACCENT }}
-                        >
+                    <Link
+                        href="/"
+                        className="flex items-center gap-2 font-black tracking-tight text-xl md:text-2xl shrink-0"
+                    >
+                        <div className="relative h-[70px] w-[70px]">
+                            <Image
+                                src={logo}
+                                alt="kloner logo"
+                                fill
+                                priority
+                                className="object-contain"
+                            />
                         </div>
-                    </a>
+                    </Link>
 
                     <button
                         onClick={() => setOpen(true)}

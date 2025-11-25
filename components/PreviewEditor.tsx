@@ -3,6 +3,8 @@
 
 import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import Image from 'next/image'
+import logo from "@/public/images/orange_logo.png";
 
 type Device = "desktop" | "tablet" | "mobile";
 type ViewMode = "code" | "preview" | "screenshot";
@@ -565,9 +567,11 @@ export default function PreviewEditor({
     function applyDraftToPreview() {
         setApplyingPreview(true);
         setPreviewHtml(htmlDraft);
+        emitLive(htmlDraft);          // <-- move live sync here
         setDirty(false);
         window.setTimeout(() => setApplyingPreview(false), 450);
     }
+
 
     async function doSave(options?: { applyToPreview?: boolean }) {
         if (savingDraft) return;
@@ -576,6 +580,9 @@ export default function PreviewEditor({
             const nextHtml = htmlDraft;
             if (!saveDraft) {
                 setPreviewHtml(nextHtml);
+                if (options?.applyToPreview) {
+                    emitLive(nextHtml);
+                }
                 setDirty(false);
                 return;
             }
@@ -610,6 +617,7 @@ export default function PreviewEditor({
             setSavingDraft(false);
         }
     }
+
 
     async function doExport() {
         if (exporting) return;
@@ -797,16 +805,13 @@ export default function PreviewEditor({
                 >
                     {/* Left panel */}
                     <aside className="flex flex-col min-w-0 overflow-auto pr-1 max-lg:order-2">
-                        <div className="mb-3">
-                            <label className="block text-[11px] font-semibold text-neutral-500 mb-1">
-                                Site name
-                            </label>
-                            <input
-                                className="border rounded px-2 py-1 text-sm w-full outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-60"
-                                placeholder="Optional"
-                                value={nameHint}
-                                onChange={(e) => setNameHint(e.target.value)}
-                                disabled={closing}
+                        <div className="relative h-[90px] w-[90px]">
+                            <Image
+                                src={logo}
+                                alt="kloner logo"
+                                fill
+                                priority
+                                className="object-contain"
                             />
                         </div>
 
@@ -836,13 +841,13 @@ export default function PreviewEditor({
                                 View
                             </div>
                             <div className="flex flex-wrap gap-1">
-                                <UiBtn
+                                {/* <UiBtn
                                     pressed={mode === "code"}
                                     onClick={() => handleModeClick("code")}
                                     disabled={closing}
                                 >
                                     Code
-                                </UiBtn>
+                                </UiBtn> */}
                                 <UiBtn
                                     pressed={mode === "preview"}
                                     onClick={() => handleModeClick("preview")}
@@ -1247,7 +1252,7 @@ export default function PreviewEditor({
                             </div>
                         )}
 
-                        {mode === "code" && (
+                        {/* {mode === "code" && (
                             <div className="min-h-0 flex-1">
                                 <textarea
                                     className="h-full w-full border rounded p-2 font-mono text-xs leading-5 outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-60"
@@ -1257,7 +1262,7 @@ export default function PreviewEditor({
                                     disabled={closing}
                                 />
                             </div>
-                        )}
+                        )} */}
 
                         {mode === "screenshot" && (
                             <div className="text-xs text-slate-600">
@@ -1315,8 +1320,8 @@ export default function PreviewEditor({
                                                 .forEach((n) => n.remove());
                                             if (mode === "preview") {
                                                 injectEditableOverlay(doc, (updated) => {
+                                                    // keep draft in React, but do NOT push to parent on every keystroke
                                                     setHtmlDraft(updated);
-                                                    emitLive(updated);
                                                 });
                                                 iframeRef.current?.contentWindow?.focus();
                                             }
