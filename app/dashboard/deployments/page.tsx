@@ -37,7 +37,7 @@ type DeploymentDoc = {
     vercelDeploymentId: string;
     vercelProjectId?: string | null;
     vercelProjectName?: string | null;
-    vercelUrl?: string | null;
+    vercelUrl?: string | null; // raw deployment URL, e.g. https://trywolfer-5yl...
     vercelState?: string | null;
     vercelTeamId?: string | null;
     vercelUserId?: string | null;
@@ -47,6 +47,9 @@ type DeploymentDoc = {
     lastEventAt?: any;
     createdAt?: any;
     updatedAt?: any;
+    vercelReadyState?: string | null;
+    vercelTarget?: string | null;
+    vercelMeta?: Record<string, any> | null;
 };
 
 type ActionState = {
@@ -120,6 +123,33 @@ function deriveStateFromDoc(
     if (["queued", "pending", "building"].includes(raw)) return "building";
 
     return raw ? (raw as any) : "unknown";
+}
+
+/**
+ * Resolve the "public" URL you actually want to show to users.
+ *
+ * Priority:
+ * 1) vercelMeta.publicDomain (if you ever start storing it from backend)
+ * 2) https://{vercelProjectName}.vercel.app
+ * 3) fallback: vercelUrl (deployment URL)
+ */
+function resolvePublicUrl(d?: DeploymentDoc | null): string | null {
+    if (!d) return null;
+
+    const meta = d.vercelMeta as any | undefined;
+
+    if (meta && typeof meta.publicDomain === "string" && meta.publicDomain.trim().length > 0) {
+        const raw = meta.publicDomain.trim();
+        if (/^https?:\/\//i.test(raw)) return raw;
+        return `https://${raw}`;
+    }
+
+    if (typeof d.vercelProjectName === "string" && d.vercelProjectName.trim().length > 0) {
+        const base = d.vercelProjectName.trim();
+        return `https://${base}.vercel.app`;
+    }
+
+    return d.vercelUrl || null;
 }
 
 // Default HTML kept only for other flows; NEVER used as a fallback when a render is missing.
@@ -357,11 +387,12 @@ export default function DeploymentsPage(): JSX.Element {
             const existing = map.get(key);
             if (!existing) {
                 let hostname = null;
-                if (d.vercelUrl) {
+                const publicUrl = resolvePublicUrl(d);
+                if (publicUrl) {
                     try {
-                        hostname = new URL(d.vercelUrl).hostname;
+                        hostname = new URL(publicUrl).hostname;
                     } catch {
-                        hostname = d.vercelUrl;
+                        hostname = publicUrl;
                     }
                 }
 
@@ -374,11 +405,14 @@ export default function DeploymentsPage(): JSX.Element {
                 });
             } else {
                 existing.count += 1;
-                if (!existing.sampleUrl && d.vercelUrl) {
-                    try {
-                        existing.sampleUrl = new URL(d.vercelUrl).hostname;
-                    } catch {
-                        existing.sampleUrl = d.vercelUrl;
+                if (!existing.sampleUrl) {
+                    const publicUrl = resolvePublicUrl(d);
+                    if (publicUrl) {
+                        try {
+                            existing.sampleUrl = new URL(publicUrl).hostname;
+                        } catch {
+                            existing.sampleUrl = publicUrl;
+                        }
                     }
                 }
             }
@@ -412,7 +446,6 @@ export default function DeploymentsPage(): JSX.Element {
             return key === selectedProjectKey;
         });
     }, [items, selectedProjectKey]);
-
 
     // 30s polling for building deployments via refresh-deployments
     useEffect(() => {
@@ -498,6 +531,12 @@ export default function DeploymentsPage(): JSX.Element {
             : bannerVariant === "success"
                 ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                 : "border-neutral-200 bg-neutral-50 text-neutral-700";
+
+    const latestPublicUrl =
+        resolvePublicUrl(latestFromPreview || undefined) ||
+        latestFromPreview?.vercelUrl ||
+        hasNewMeta?.url ||
+        undefined;
 
     function updateActionState(
         key: string,
@@ -816,9 +855,7 @@ export default function DeploymentsPage(): JSX.Element {
         setRefreshing(true);
         setRefreshError(null);
 
-
         const csrf = await ensureSessionAndCsrf();
-
 
         try {
             const res = await fetch("/api/vercel/refresh-deployments", {
@@ -894,9 +931,9 @@ export default function DeploymentsPage(): JSX.Element {
                                                     : ""}
                                             </p>
 
-                                            {(hasNewMeta?.url || latestFromPreview?.vercelUrl) && (
+                                            {latestPublicUrl && (
                                                 <a
-                                                    href={latestFromPreview?.vercelUrl || hasNewMeta?.url}
+                                                    href={latestPublicUrl}
                                                     target="_blank"
                                                     rel="noreferrer"
                                                     className="mt-2 inline-flex items-center gap-1 rounded-md border bg-white/80 px-2.5 py-1 text-sm font-medium hover:bg-white"
@@ -1016,6 +1053,7 @@ export default function DeploymentsPage(): JSX.Element {
                                 const act = actionState[key] || {};
                                 const isCustomLoading = !!act.customLoading;
                                 const isEditorLoading = editorLoadingId === key;
+                                const publicUrl = resolvePublicUrl(d);
 
                                 return (
                                     <section aria-label="Latest deployment">
@@ -1034,7 +1072,7 @@ export default function DeploymentsPage(): JSX.Element {
                                                         </span>
                                                     </div>
                                                     <div className="mt-1 text-xs text-neutral-500 break-all">
-                                                        {d.vercelUrl || "URL pending"}
+                                                        {publicUrl || d.vercelUrl || "URL pending"}
                                                     </div>
                                                 </div>
 
@@ -1118,11 +1156,10 @@ export default function DeploymentsPage(): JSX.Element {
                                                             <span>Deploy edited HTML</span>
                                                         </button>
 
-
                                                         <a
-                                                            href={d.vercelUrl || "#"}
-                                                            target={d.vercelUrl ? "_blank" : undefined}
-                                                            rel={d.vercelUrl ? "noreferrer" : undefined}
+                                                            href={publicUrl || d.vercelUrl || "#"}
+                                                            target={publicUrl || d.vercelUrl ? "_blank" : undefined}
+                                                            rel={publicUrl || d.vercelUrl ? "noreferrer" : undefined}
                                                             className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm font-medium text-neutral-800 hover:bg-neutral-50"
                                                         >
                                                             <span>Open live site</span>
@@ -1137,14 +1174,13 @@ export default function DeploymentsPage(): JSX.Element {
                                                             </p>
 
                                                             <div className="flex flex-col gap-2">
-                                                                {/* Visual reference to the “Open website in preview editor” button */}
                                                                 <button
                                                                     type="button"
                                                                     disabled
                                                                     className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm font-medium text-neutral-800"
                                                                 >
-                                                                    {/* match the real icon if you have one there */}
-                                                                    <span>1. Click
+                                                                    <span>
+                                                                        1. Click
                                                                         <a
                                                                             className="mx-2 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-white cursor-not-allowed"
                                                                             style={{
@@ -1163,22 +1199,27 @@ export default function DeploymentsPage(): JSX.Element {
                                                                     </span>
                                                                 </button>
 
-                                                                {/* Visual reference to the “Export to Vercel” button inside the editor */}
                                                                 <button
                                                                     type="button"
                                                                     disabled
                                                                     className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm font-medium text-neutral-800  whitepace-nowrap "
                                                                 >
-                                                                    <span>2. Click <a
-                                                                        className={"ml-1 inline-flex items-center gap-2 transition focus:outline-none focus:ring-2 focus:ring-neutral-300 cursor-not-allowed text-sm rounded-md px-3 py-1.5 font-semibold text-white shadow-sm"}
-                                                                        style={{ backgroundColor: ACCENT }}
-                                                                    >Export to Vercel</a> inside the editor</span>
+                                                                    <span>
+                                                                        2. Click{" "}
+                                                                        <a
+                                                                            className={
+                                                                                "ml-1 inline-flex items-center gap-2 transition focus:outline-none focus:ring-2 focus:ring-neutral-300 cursor-not-allowed text-sm rounded-md px-3 py-1.5 font-semibold text-white shadow-sm"
+                                                                            }
+                                                                            style={{ backgroundColor: ACCENT }}
+                                                                        >
+                                                                            Export to Vercel
+                                                                        </a>{" "}
+                                                                        inside the editor
+                                                                    </span>
                                                                 </button>
                                                             </div>
                                                         </div>
                                                     )}
-
-
 
                                                     {(act.customError || act.redeployError) && (
                                                         <p className="mt-1 text-[10px] text-red-600">
@@ -1231,6 +1272,7 @@ export default function DeploymentsPage(): JSX.Element {
                                             const stateStyles = stateColor(state);
                                             const created = formatDate(d.createdAt);
                                             const lastEvt = d.lastEventType || "–";
+                                            const publicUrl = resolvePublicUrl(d);
 
                                             return (
                                                 <div
@@ -1250,7 +1292,7 @@ export default function DeploymentsPage(): JSX.Element {
 
                                                     <div className="flex-1 min-w-0 pr-2">
                                                         <div className="truncate text-neutral-800">
-                                                            {d.vercelUrl || "URL pending"}
+                                                            {publicUrl || d.vercelUrl || "URL pending"}
                                                         </div>
                                                         <div className="sm:hidden text-[10px] text-neutral-400">
                                                             {created || "–"} · {lastEvt}
@@ -1267,12 +1309,12 @@ export default function DeploymentsPage(): JSX.Element {
 
                                                     <div className="w-[90px] flex justify-end">
                                                         <a
-                                                            href={d.vercelUrl || "#"}
-                                                            target={d.vercelUrl ? "_blank" : undefined}
-                                                            rel={d.vercelUrl ? "noreferrer" : undefined}
-                                                            className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-medium ${d.vercelUrl
-                                                                ? "border-neutral-200 text-neutral-800 hover:bg-neutral-50"
-                                                                : "border-neutral-200 text-neutral-400 cursor-default"
+                                                            href={publicUrl || d.vercelUrl || "#"}
+                                                            target={publicUrl || d.vercelUrl ? "_blank" : undefined}
+                                                            rel={publicUrl || d.vercelUrl ? "noreferrer" : undefined}
+                                                            className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-medium ${publicUrl || d.vercelUrl
+                                                                    ? "border-neutral-200 text-neutral-800 hover:bg-neutral-50"
+                                                                    : "border-neutral-200 text-neutral-400 cursor-default"
                                                                 }`}
                                                         >
                                                             <span>Open</span>

@@ -181,9 +181,15 @@ function stripEditorArtifacts(html: string): string {
     if (!html) return html;
     let out = html;
 
-    // remove ONLY the route style block by id
+    // remove ONLY the route style block by id (regardless of attribute order or quoting)
     out = out.replace(
-        /<style[^>]+id=["']kloner-active-route["'][\s\S]*?<\/style>/gi,
+        /<style\b[^>]*\bid=(["'])kloner-active-route\1[^>]*>[\s\S]*?<\/style>/gi,
+        ""
+    );
+
+    // extra safety: remove any style tag whose content uses our preview-only data-route rule
+    out = out.replace(
+        /<style\b[^>]*>[\s\S]*?main\.page-root\[data-route\][\s\S]*?<\/style>/gi,
         ""
     );
 
@@ -1665,6 +1671,7 @@ function injectEditableOverlay(doc: Document, onChange: (updatedHtml: string) =>
         );
         return "<!doctype html>\n" + (docClone as any).outerHTML;
     }
+
 
     let hist: string[] = [];
     let idx = -1;

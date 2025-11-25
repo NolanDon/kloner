@@ -636,30 +636,7 @@ export default function PreviewPage(): JSX.Element {
         return previewRemaining > 0;
     }
 
-    // Optional optimistic updates
-    function markScreenshotSuccess() {
-        if (screenshotRemaining === null) return;
-        setCredits((prev) => ({
-            ...prev,
-            screenshotUsed: prev.screenshotUsed + 1,
-            screenshotRemaining: Math.max(
-                (prev.screenshotRemaining ?? 1) - 1,
-                0
-            ),
-        }));
-    }
 
-    function markPreviewSuccess() {
-        if (previewRemaining === null) return;
-        setCredits((prev) => ({
-            ...prev,
-            previewUsed: prev.previewUsed + 1,
-            previewRemaining: Math.max(
-                (prev.previewRemaining ?? 1) - 1,
-                0
-            ),
-        }));
-    }
     /* ───────── storage helpers ───────── */
 
     async function listAllDeep(root: StorageReference): Promise<StorageReference[]> { const out: StorageReference[] = []; async function walk(ref: StorageReference) { const l = await listAll(ref); out.push(...l.items); await Promise.all(l.prefixes.map(walk)); } await walk(root); return out; }
@@ -1409,7 +1386,7 @@ export default function PreviewPage(): JSX.Element {
 
                 if (r.status === 202) {
                     push("Server accepted collection preview job", "ok");
-                    markPreviewSuccess();
+
                     await refreshRenders();
                     return;
                 }
@@ -1417,7 +1394,7 @@ export default function PreviewPage(): JSX.Element {
                 if (!r.ok || !j?.ok)
                     throw new Error(j?.error || "Render failed");
 
-                markPreviewSuccess();
+
                 await refreshRenders();
             } catch (e: any) {
                 setRenders((prev) =>
@@ -1448,7 +1425,7 @@ export default function PreviewPage(): JSX.Element {
             startHardLock,
             pendingByKey,
             canUsePreviewCredit,
-            markPreviewSuccess,
+
         ]
     );
 
@@ -1651,6 +1628,8 @@ export default function PreviewPage(): JSX.Element {
         // If no project name yet, open popover and stop here
         const trimmedName = name?.trim();
         if (!trimmedName) {
+            // Close editor so user fills out project name
+            setEditorOpen(false)
             setPendingDeploy({
                 html,
                 renderId: resolvedRenderId ?? undefined,
@@ -1857,7 +1836,7 @@ export default function PreviewPage(): JSX.Element {
 
             if (
                 !window.confirm(
-                    "Rescan this URL now? This queues a fresh screenshot."
+                    "Queue a fresh snapshot collection for 10 credits?"
                 )
             )
                 return;
@@ -1888,7 +1867,6 @@ export default function PreviewPage(): JSX.Element {
                     push("Rescan failed", "err");
                 } else {
                     push("Rescan started", "ok");
-                    markScreenshotSuccess();
                 }
             } catch (e: any) {
                 setErr(
@@ -1905,7 +1883,6 @@ export default function PreviewPage(): JSX.Element {
             docData,
             push,
             canUseScreenshotCredit,
-            markScreenshotSuccess,
         ]
     );
 
@@ -2031,13 +2008,13 @@ export default function PreviewPage(): JSX.Element {
                                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
                                     <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl border border-neutral-200">
                                         <h2 className="text-sm font-semibold text-neutral-900">
-                                            Name your Vercel project
+                                            Last Step: Name your Vercel project
                                         </h2>
                                         <p className="mt-1 text-xs text-neutral-600">
                                             Choose a short, URL-friendly name for this project.
                                         </p>
 
-                                        <div className="flex flex-inline items-end">
+                                        <div className="flex flex-inline items-end z-1000">
                                             <input
                                                 autoFocus
                                                 ref={projectNameInputRef}

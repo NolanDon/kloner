@@ -203,6 +203,7 @@ export async function POST(req: NextRequest) {
             if (vercelTeamId) {
                 deployParams.set("teamId", vercelTeamId);
             }
+            // keep only supported query params here
             deployParams.set("skipAutoDetectionConfirmation", "1");
 
             const deployUrl = `https://api.vercel.com/v13/deployments?${deployParams.toString()}`;
@@ -217,6 +218,8 @@ export async function POST(req: NextRequest) {
                     devCommand: null,
                     outputDirectory: null,
                 },
+                // THIS is what makes it a production deployment
+                target: "production",
             };
 
             if (vercelProjectId) {

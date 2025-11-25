@@ -226,7 +226,7 @@ export async function POST(req: NextRequest) {
                 // Burn ONE preview credit only on real success (200 from backend).
                 if (r.upstream.ok && status === 200) {
                     try {
-                        await consumeUserCredit(decoded.uid, tier, "preview");
+                await consumeUserCredit(decoded.uid, tier, "preview");
                     } catch (err: any) {
                         console.warn("consumeUserCredit failed (preview)", {
                             uid: decoded.uid,
