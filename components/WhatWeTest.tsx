@@ -26,7 +26,7 @@ const categories: Category[] = [
   { label: 'Assets & Fonts', icon: Droplets },
   { label: 'Routing & Links', icon: Activity },
   { label: 'Forms & Scripts', icon: Flame },
-  { label: 'Images & Media', icon: Zap },
+  { label: 'Generative Images & Media', icon: Zap },
   { label: 'Performance Passes', icon: Scale },
   { label: 'Meta & SEO', icon: Beaker },
   { label: 'Framework Convert', icon: FlaskConical },
@@ -37,33 +37,48 @@ const categories: Category[] = [
 ];
 
 const items = [
-  'HTML snapshot with critical CSS',
-  'Automatic asset downloading',
-  'Route mapping to pages/ and app/',
-  'Link rewriting with safe fallbacks',
+  'Performance focused architecture',
+  'Vercel deployments',
+  'Default Security Implementations',
+  'HTML snapshot with modern CSS',
+  'Route mapping',
+  'Generative Designs',
+  'Link rewriting',
   'Form detection with warnings',
   'Script isolation and toggles',
-  'Responsive image generation',
   'Font discovery and subsetting',
   'Title/description extraction',
   'Open Graph & Twitter tags',
   'Robots & sitemap hints',
-  'Next.js project scaffold',
-  'Layout and partials split',
+  'HTML project scaffold',
+  'Layout and partials',
   'Reusable components pass',
   'Lighthouse sanity check',
-  'Vercel/Netlify deploy hooks',
-  'Env file template',
   'Type-safe config',
+  'Inline AI Code Helpers',
+  'Responsive image generation',
+  'Team Collaberation',
+  'URL to Mobile Application Generation',
+  'Automated AI Developers',
+  'AWS / Netlify Deployments'
 ];
 
 const advancedSet = new Set([
+  'Vercel deployments',
+]);
+
+const comingSoonSet = new Set([
   'Responsive image generation',
-  'Font discovery and subsetting',
-  'Next.js project scaffold',
-  'Vercel/Netlify deploy hooks',
+  'Team Collaberation',
+  'Inline AI Code Helpers',
+  'URL to Mobile Application Generation',
+  'NextJS project scaffold',
+  'Automated AI Developers',
+  'AWS / Netlify Deployments',
+  'Lighthouse sanity check',
   'Type-safe config',
 ]);
+
 
 const softPalettes = [
   { bgFrom: 'from-rose-50', bgTo: 'to-rose-100', ring: 'ring-rose-200/80', icon: 'text-rose-600' },
@@ -170,12 +185,18 @@ export default function WhatWeTest() {
             <ul className="grid grid-cols-1 md:grid-cols-2 gap-y-4 md:gap-x-12">
               {items.map((name) => {
                 const isAdv = advancedSet.has(name);
+                const isBeta = comingSoonSet.has(name);
                 return (
                   <li key={name} className="flex text-xs items-start justify-between">
                     <span className="text-neutral-800">{name}</span>
                     {isAdv && (
-                      <span className="ml-3 shrink-0 rounded-full border border-neutral-200 bg-neutral-100 px-2.5 py-1 text-[11px] leading-none text-neutral-600">
-                        Advanced
+                      <span className="ml-3 shrink-0 rounded-full bg-amber-100 ring-amber-200/80 text-amber-700 px-2.5 py-1 text-[11px] leading-none">
+                        Pro
+                      </span>
+                    )}
+                    {isBeta && (
+                      <span className="ml-3 shrink-0 rounded-full  px-2.5 py-1 text-[11px] leading-none bg-emerald-50 ring-emerald-200/80 text-emerald-700">
+                        Coming Soon
                       </span>
                     )}
                   </li>

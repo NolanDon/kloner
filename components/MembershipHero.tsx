@@ -11,7 +11,9 @@ const BULLETS = [
     "Includes 400 preview credits per month",
     "Free tier with lighter daily credit limits",
     "Clean export with code, assets, and routes",
-    "Edit text, images, and meta before export",
+    "Performance-Focused Architecture",
+    "Sub-minute Deployments",
+    "Edit text, UI and layout before export",
 ];
 
 function RotatingCards() {
@@ -257,7 +259,7 @@ export default function MembershipHero() {
                                 /month · cancel anytime
                             </div>
                             <span className="ml-0 md:ml-2 inline-flex items-center rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-xs font-medium text-neutral-800">
-                                100 preview credits / month (Pro)
+                                400 preview credits / month (Pro)
                             </span>
                             <span className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-xs font-medium text-neutral-700">
                                 Free tier available with lighter limits
