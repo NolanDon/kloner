@@ -1323,7 +1323,7 @@ export default function PreviewPage(): JSX.Element {
 
             if (
                 !window.confirm(
-                    "Generate an editable preview that uses ALL screenshots from this snapshot run?"
+                    "Generate an editable preview for 15 credits?"
                 )
             )
                 return;

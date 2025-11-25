@@ -44,13 +44,49 @@ function currentPeriodEnd(): Date {
 }
 
 /**
+ * Dumb-simple helper to read the correct bucket.
+ * Works whether the doc is:
+ *   { "credits.preview": {...}, "credits.snapshot": {...} }
+ * or:
+ *   { credits: { preview: {...}, snapshot: {...} } }
+ */
+function getCreditsBucket(
+    snap: admin.firestore.DocumentSnapshot,
+    kind: ServerCreditKind
+): any {
+    if (!snap.exists) return {};
+
+    const data = (snap.data() as any) || {};
+    let bucket: any;
+
+    if (kind === "preview") {
+        bucket =
+            data["credits.preview"] ||
+            (data.credits && data.credits.preview) ||
+            {};
+    } else {
+        bucket =
+            data["credits.snapshot"] ||
+            (data.credits && data.credits.snapshot) ||
+            {};
+    }
+
+    return bucket || {};
+}
+
+/**
+ * Dumb-simple helper to get the field name we write back to.
+ */
+function getCreditsFieldName(kind: ServerCreditKind): string {
+    return kind === "preview" ? "credits.preview" : "credits.snapshot";
+}
+
+/**
  * Read-only check of a user's monthly credits.
  * Source of truth is ALWAYS the nested map:
  *
- *   credits: {
- *     preview:  { monthlyLimit, periodEnd, remaining }
- *     snapshot: { monthlyLimit, periodEnd, remaining }
- *   }
+ *   credits.preview
+ *   credits.snapshot
  */
 export async function peekUserCredit(
     uid: string,
@@ -83,8 +119,13 @@ export async function peekUserCredit(
         };
     }
 
-    // Read from nested map "credits.preview" / "credits.snapshot"
-    const bucket = (snap.get(`credits.${kind}`) as any) || {};
+    const bucket = getCreditsBucket(snap, kind);
+
+    console.log("[credits] peekUserCredit bucket", {
+        uid,
+        kind,
+        bucket,
+    });
 
     const now = new Date();
     const periodEndTs = bucket.periodEnd;
@@ -103,8 +144,21 @@ export async function peekUserCredit(
         bucket.remaining < 0
     ) {
         remaining = defaultLimit;
+        console.log("[credits] peekUserCredit reset logical bucket", {
+            uid,
+            kind,
+            periodEndDate,
+            bucketRemaining: bucket.remaining,
+            remaining,
+        });
     } else {
         remaining = bucket.remaining;
+        console.log("[credits] peekUserCredit use existing", {
+            uid,
+            kind,
+            periodEndDate,
+            remaining,
+        });
     }
 
     return {
@@ -116,7 +170,7 @@ export async function peekUserCredit(
 
 /**
  * Atomic decrement of credits for one operation, with period reset.
- * Only touches the nested map:
+ * Only touches:
  *
  *   credits.preview
  *   credits.snapshot
@@ -150,13 +204,20 @@ export async function consumeUserCredit(
     const periodEnd = currentPeriodEnd();
     const periodEndTs = admin.firestore.Timestamp.fromDate(periodEnd);
 
+    const fieldName = getCreditsFieldName(kind);
+
     let finalRemaining = 0;
     let success = false;
 
     await db.runTransaction(async (tx) => {
         const snap = await tx.get(userRef);
+        const bucket = getCreditsBucket(snap, kind);
 
-        const bucket = (snap.get(`credits.${kind}`) as any) || {};
+        console.log("[credits] consumeUserCredit txn bucket", {
+            uid,
+            kind,
+            bucket,
+        });
 
         const bucketPeriodEndTs = bucket.periodEnd;
         const bucketPeriodEndDate: Date | null =
@@ -174,25 +235,44 @@ export async function consumeUserCredit(
             bucket.remaining < 0
         ) {
             remaining = limitForTier;
+            console.log("[credits] consumeUserCredit reset in txn", {
+                uid,
+                kind,
+                bucketPeriodEndDate,
+                bucketRemaining: bucket.remaining,
+                resetTo: remaining,
+            });
         } else {
             remaining = bucket.remaining;
+            console.log("[credits] consumeUserCredit existing in txn", {
+                uid,
+                kind,
+                bucketPeriodEndDate,
+                remaining,
+            });
         }
 
         // Not enough to cover full cost -> do NOT consume
         if (remaining < cost) {
             finalRemaining = remaining;
             success = false;
-            // Still ensure periodEnd/monthlyLimit are sane
+
+            console.log("[credits] consumeUserCredit insufficient", {
+                uid,
+                kind,
+                remaining,
+                cost,
+            });
+
+            // Just persist a sane bucket; do NOT touch monthlyLimit other than keeping it at tier limit
             tx.set(
                 userRef,
                 {
-                    [`credits.${kind}`]: {
-                        remaining: 0,
+                    [fieldName]: {
+                        remaining,
                         monthlyLimit: limitForTier,
                         periodEnd: periodEndTs,
                     },
-                    // hard-delete legacy root map if it exists
-                    credits: admin.firestore.FieldValue.delete()
                 },
                 { merge: true }
             );
@@ -204,16 +284,21 @@ export async function consumeUserCredit(
         finalRemaining = remaining;
         success = true;
 
+        console.log("[credits] consumeUserCredit debiting", {
+            uid,
+            kind,
+            cost,
+            remaining,
+        });
+
         tx.set(
             userRef,
             {
-                [`credits.${kind}`]: {
+                [fieldName]: {
                     remaining,
                     monthlyLimit: limitForTier,
                     periodEnd: periodEndTs,
                 },
-                // hard-delete legacy root map
-                credits: admin.firestore.FieldValue.delete(),
             },
             { merge: true }
         );
