@@ -180,7 +180,7 @@ export default function MembershipSticky() {
               <div className="mt-20">
                 <p className="mt-[-40px] md:mt-3 max-w-md text-neutral-600">
 
-                  Capture any public site, edit in a live preview, export a clean Next.js project, and deploy with one click.
+                  Capture any public site, edit in a live preview, export a clean HTML project, and deploy with one click.
                 </p>
               </div>
 

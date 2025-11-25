@@ -146,7 +146,7 @@ export default function WhatWeTest() {
         <SectionReveal>
           <h2 className="text-5xl md:text-6xl tracking-tight">What we capture for you</h2>
           <p className="mt-3 mb-10 max-w-2xl text-lg text-neutral-600">
-            Everything needed to turn a live site into a clean Next.js project you control.
+            Everything needed to turn a live site into a clean project you control.
           </p>
         </SectionReveal>
 

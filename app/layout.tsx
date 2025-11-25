@@ -19,10 +19,10 @@ export const metadata: Metadata = {
   keywords: [
     "website cloner",
     "clone website",
-    "HTML to Next.js",
+    "URL to Website",
     "instant preview",
     "deploy to Vercel",
-    "Netlify deploy",
+    "Vercel deploy",
   ],
   authors: [{ name: "Kloner" }],
   creator: "Kloner",

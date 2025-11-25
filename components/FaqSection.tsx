@@ -30,7 +30,7 @@ const GROUPS: Group[] = [
             },
             {
                 q: 'Can I run the exported project anywhere?',
-                a: 'Yes. The output is standard Next.js. It runs on Vercel, Netlify, or any Node/Edge host.'
+                a: 'Yes. The output is standard HTML. It runs on Vercel, Netlify, or any Node/Edge host.'
             },
         ],
     },
@@ -43,7 +43,7 @@ const GROUPS: Group[] = [
             },
             {
                 q: 'What’s included in Pro?',
-                a: 'Unlimited previews on your domain, clean Next.js export, image/SEO/route setup, font subsetting, and one-click deploy integrations.'
+                a: 'Unlimited previews on your domain, clean HTML export, image/SEO/route setup, font subsetting, and one-click deploy integrations.'
             },
             {
                 q: 'Can I cancel anytime?',
@@ -63,12 +63,16 @@ const GROUPS: Group[] = [
                 a: 'Pro handles most marketing sites. We show a page and asset count before export. Very large or app-heavy sites may need targeted capture.'
             },
             {
-                q: 'Does it support App Router?',
-                a: 'Yes. You can choose pages/ or app/ output. We scaffold layout.tsx and route groups where appropriate.'
+                q: 'Are mobile apps available?',
+                a: 'URL to mobile app is currently in development and will be available for pro members soon.'
             },
             {
-                q: 'What about frameworks other than Next.js?',
-                a: 'Exporters for Remix, SvelteKit, and Astro are in beta as add-ons. You can still export raw assets and wire your framework of choice.'
+                q: 'Does it support Routing?',
+                a: 'Yes. You can choose pages/ or app/ output. We scaffold route groups where appropriate.'
+            },
+            {
+                q: 'What about frameworks other than hTML?',
+                a: 'Exporters for Remix, SvelteKit, and Astro are in development and will be available soon. You can still export raw assets and wire your framework of choice.'
             },
             {
                 q: 'SEO fidelity guarantees?',

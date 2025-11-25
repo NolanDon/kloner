@@ -353,7 +353,7 @@ export default function DocsPage() {
                                 <li className="flex gap-2">
                                     <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
                                     <span>
-                                        Vercel leans heavily into Next.js workflows and preview
+                                        Vercel leans heavily into HTML workflows and preview
                                         deployments.
                                     </span>
                                 </li>
