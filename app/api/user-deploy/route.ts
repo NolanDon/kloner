@@ -26,12 +26,14 @@ export async function POST(req: NextRequest) {
                 );
             }
 
+
             if (user.tier === "free") {
                 return NextResponse.json(
                     { ok: false, error: "Please upgrade your account to deploy projects." },
                     { status: 400 }
                 );
             }
+
 
             const db = getAdminDb();
 
