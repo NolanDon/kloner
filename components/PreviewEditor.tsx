@@ -642,6 +642,8 @@ export default function PreviewEditor({
                 ? injectClientRouter(baseHtml)
                 : stripEditorArtifacts(baseHtml);
 
+            console.log("Exporting HTML, name hint:", { nameHint });
+
             await onExport(finalHtml, nameHint || undefined);
         } catch (e: any) {
             const msg = String(e?.message || "");
@@ -663,12 +665,22 @@ export default function PreviewEditor({
         return base.slice(-64) || "image";
     }
 
-    async function uploadFileToUserBlob(file: File): Promise<string> {
+    type UploadedAsset = {
+        url: string;  // public URL for rendering
+        path: string; // storage path for deletion later
+    };
+
+    async function uploadFileToUserBlob(
+        file: File,
+        draftId: string
+    ): Promise<UploadedAsset> {
         const csrf = await ensureSessionAndCsrf();
         const safeName = sanitizeName(file.name || "upload.bin");
 
         const res = await fetch(
-            `/api/user-blob/upload-url?filename=${encodeURIComponent(safeName)}`,
+            `/api/user-blob/upload-url?filename=${encodeURIComponent(
+                safeName
+            )}&renderId=${encodeURIComponent(draftId)}`,
             {
                 method: "POST",
                 headers: {
@@ -680,12 +692,19 @@ export default function PreviewEditor({
             }
         );
 
-        const j = await res.json().catch(() => ({}));
-        if (!res.ok || !j?.url) {
-            throw new Error(j?.error || "blob_upload_failed");
+        const j = await res.json().catch(() => ({} as any));
+
+        if (!res.ok || !j?.url || !j?.path) {
+            throw new Error(j?.error || "storage_upload_failed");
         }
-        return j.url as string;
+
+        return {
+            url: j.url as string,
+            path: j.path as string,
+        };
     }
+
+
 
     // iframe messages: uploads + selection meta
     useEffect(() => {
@@ -695,6 +714,7 @@ export default function PreviewEditor({
             if (data?.type === "kloner:upload") {
                 const { id, filename, contentType } = data;
                 const buf: ArrayBuffer | undefined = data.buffer;
+
                 try {
                     if (!buf || !filename || !contentType) {
                         throw new Error("bad_payload");
@@ -708,12 +728,23 @@ export default function PreviewEditor({
                         }
                     );
 
-                    const url = await uploadFileToUserBlob(file);
+                    if (draftId) {
+                        const { url, path } = await uploadFileToUserBlob(file, draftId);
 
-                    iframeRef.current?.contentWindow?.postMessage(
-                        { type: "kloner:upload:done", id, ok: true, url },
-                        "*"
-                    );
+                        iframeRef.current?.contentWindow?.postMessage(
+                            {
+                                type: "kloner:upload:done",
+                                id,
+                                ok: true,
+                                url,
+                                path, // storage path so you can delete later
+                            },
+                            "*"
+                        );
+                    } else {
+                        throw new Error("missing_draft_id");
+                    }
+
                 } catch (err: any) {
                     iframeRef.current?.contentWindow?.postMessage(
                         {
@@ -737,9 +768,11 @@ export default function PreviewEditor({
                 );
             }
         };
+
         window.addEventListener("message", onMsg);
         return () => window.removeEventListener("message", onMsg);
-    }, []);
+    }, [uploadFileToUserBlob]);
+
 
     const sendStyleCommand = useCallback(
         (cmd: StyleCmd) => {
@@ -1903,16 +1936,15 @@ function injectEditableOverlay(doc: Document, onChange: (updatedHtml: string) =>
     }
     markEditable(doc.body);
 
-    // <button class="kbtn kbtn-img"  data-act="img-insert">Insert image</button>
-    // <button class="kbtn kbtn-img"  data-act="img-replace">Replace image</button>
-    // <button class="kbtn kbtn-img"  data-act="img-alt">ALT text</button>
-
     const toolbar = doc.createElement("div");
     toolbar.className = "kloner-toolbar";
     toolbar.innerHTML = `
     <button class="kbtn kbtn-close" data-act="close">Close</button>
     <button class="kbtn kbtn-edit" data-act="dup">Duplicate</button>
     <button class="kbtn kbtn-del"  data-act="del">Delete block</button>
+    <button class="kbtn kbtn-img"  data-act="img-insert">Insert image</button>
+    <button class="kbtn kbtn-img"  data-act="img-replace">Replace image</button>
+    <button class="kbtn kbtn-img"  data-act="img-alt">ALT text</button>
     <button class="kbtn kbtn-img"  data-act="link">Link</button>
   `;
     doc.body.appendChild(toolbar);
@@ -2227,21 +2259,21 @@ function injectEditableOverlay(doc: Document, onChange: (updatedHtml: string) =>
             return;
         }
         if (act === "img-insert") {
-            // insertImageIntoBlock(selected).catch(() => { });
-            // return;
+            insertImageIntoBlock(selected).catch(() => { });
+            return;
         }
         if (act === "img-replace") {
-            // const img =
-            //     (selected.tagName === "IMG"
-            //         ? (selected as HTMLImageElement)
-            //         : (selected.querySelector("img") as HTMLImageElement | null)) ??
-            //     null;
-            // if (!img) {
-            //     showHint("No <img> here. Use Insert image.", selected);
-            //     return;
-            // }
-            // replaceImage(img);
-            // return;
+            const img =
+                (selected.tagName === "IMG"
+                    ? (selected as HTMLImageElement)
+                    : (selected.querySelector("img") as HTMLImageElement | null)) ??
+                null;
+            if (!img) {
+                showHint("No <img> here. Use Insert image.", selected);
+                return;
+            }
+            replaceImage(img);
+            return;
         }
         if (act === "img-alt") {
             const img =

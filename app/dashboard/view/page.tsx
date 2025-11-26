@@ -33,7 +33,8 @@ import {
     serverTimestamp,
     setDoc,
     arrayRemove,
-    getDocFromServer
+    getDocFromServer,
+    getDoc
 } from "firebase/firestore";
 import {
     ref as sRef,
@@ -303,19 +304,20 @@ function RenderCardInner({
                     <div className="pointer-events-auto flex flex-col items-center gap-2 rounded-xl bg-white/90 p-2 ring-1 ring-neutral-200 backdrop-blur md:flex-row">
                         <button
                             onClick={
-                                deployLocked
+                                // deployLocked
+                                //     ? () => {
+                                //         setShowCreditsPaywall("deploy");
+                                //         push(
+                                //             "Deploy is available on paid plans.",
+                                //             "warn",
+                                //         );
+                                //     }
+                                //     : 
+                                isDeployed
                                     ? () => {
-                                        setShowCreditsPaywall("deploy");
-                                        push(
-                                            "Deploy is available on paid plans.",
-                                            "warn",
-                                        );
+                                        router.push("/dashboard/deployments");
                                     }
-                                    : isDeployed
-                                        ? () => {
-                                            router.push("/dashboard/deployments");
-                                        }
-                                        : deployThis
+                                    : deployThis
                             }
                             disabled={
                                 (!r.html && !isDeployed) ||
@@ -332,27 +334,29 @@ function RenderCardInner({
                                         : "Deploy current HTML to Vercel"
                             }
                         >
-                            {deployLocked ? (
-                                <>
-                                    <Lock className="h-4 w-4" />
-                                    <span>Deploy (locked)</span>
-                                </>
-                            ) : isDeploying ? (
-                                <>
-                                    <span>Deploying…</span>
-                                    <Rocket className="h-4 w-4 animate-pulse" />
-                                </>
-                            ) : isDeployed ? (
-                                <>
-                                    <span>View deployment</span>
-                                    <Rocket className="h-4 w-4" />
-                                </>
-                            ) : (
-                                <>
-                                    <span>Deploy</span>
-                                    <Rocket className="h-4 w-4" />
-                                </>
-                            )}
+                            {
+                                // deployLocked ? (
+                                //     <>
+                                //         <Lock className="h-4 w-4" />
+                                //         <span>Deploy (locked)</span>
+                                //     </>
+                                // ) : 
+                                isDeploying ? (
+                                    <>
+                                        <span>Deploying…</span>
+                                        <Rocket className="h-4 w-4 animate-pulse" />
+                                    </>
+                                ) : isDeployed ? (
+                                    <>
+                                        <span>View deployment</span>
+                                        <Rocket className="h-4 w-4" />
+                                    </>
+                                ) : (
+                                    <>
+                                        <span>Deploy</span>
+                                        <Rocket className="h-4 w-4" />
+                                    </>
+                                )}
                         </button>
 
                         {!isDeployed && (
@@ -1843,14 +1847,11 @@ export default function PreviewPage(): JSX.Element {
         [user, push, shots]
     );
 
-
-
     const discardRender = useCallback(
         async (renderId: string) => {
             if (!user) return;
-            const ok = window.confirm(
-                "Discard this editable preview?"
-            );
+
+            const ok = window.confirm("Discard this editable preview?");
             if (!ok) return;
 
             setDeletingRender((m) => ({
@@ -1859,23 +1860,65 @@ export default function PreviewPage(): JSX.Element {
             }));
 
             try {
-                await deleteDoc(
-                    doc(
-                        db,
-                        "kloner_users",
-                        user.uid,
-                        "kloner_renders",
-                        renderId
-                    )
+                const renderRef = doc(
+                    db,
+                    "kloner_users",
+                    user.uid,
+                    "kloner_renders",
+                    renderId
                 );
-                setRenders((prev) =>
-                    prev.filter((r) => r.id !== renderId)
-                );
+                const snap = await getDoc(renderRef);
+                const data = snap.exists() ? (snap.data() as any) : null;
+
+                const storagePaths: string[] = [];
+
+                const maybeExtractPathFromUrl = (u: string | null | undefined) => {
+                    if (!u || typeof u !== "string") return;
+                    // matches .../o/kloner-screenshots%2F{...}?alt=media...
+                    const m = u.match(/\/o\/([^?]+)\?/);
+                    if (m && m[1]) {
+                        storagePaths.push(decodeURIComponent(m[1]));
+                    }
+                };
+
+                // New shape: { referenceImage: { path, url } }
+                if (data?.referenceImage?.path && typeof data.referenceImage.path === "string") {
+                    storagePaths.push(data.referenceImage.path);
+                } else if (typeof data?.referenceImage === "string") {
+                    // legacy string URL
+                    maybeExtractPathFromUrl(data.referenceImage);
+                }
+
+                if (Array.isArray(data?.images)) {
+                    for (const img of data.images) {
+                        if (img && typeof img.path === "string") {
+                            storagePaths.push(img.path);
+                        } else if (img && typeof img === "string") {
+                            maybeExtractPathFromUrl(img);
+                        }
+                    }
+                }
+
+                if (storagePaths.length) {
+                    try {
+                        await fetch("/api/user-storage/delete", {
+                            method: "POST",
+                            headers: {
+                                "content-type": "application/json",
+                            },
+                            body: JSON.stringify({ paths: storagePaths }),
+                        });
+                    } catch (e) {
+                        console.error("storage delete failed (non-fatal)", e);
+                    }
+                }
+
+                await deleteDoc(renderRef);
+
+                setRenders((prev) => prev.filter((r) => r.id !== renderId));
                 push("Preview discarded", "ok");
             } catch (e: any) {
-                setErr(
-                    e?.message || "Failed to discard preview."
-                );
+                setErr(e?.message || "Failed to discard preview.");
                 push("Failed to discard preview", "err");
             } finally {
                 setDeletingRender((m) => {
@@ -1885,8 +1928,9 @@ export default function PreviewPage(): JSX.Element {
                 });
             }
         },
-        [user, push]
+        [user, push, setRenders, setDeletingRender, setErr]
     );
+
 
     const discardShot = useCallback(
         async (shot: Shot) => {
@@ -1974,30 +2018,37 @@ export default function PreviewPage(): JSX.Element {
         name?: string;
         renderId?: string;
     }) {
-        const { html, name, renderId } = opts;
+        setEditorOpen(false);
 
-        if (userTier === "free") {
-            setShowCreditsPaywall("preview");
-            push("Export and deploy are reserved for paid plans.", "warn");
-            return;
-        }
+        const { html, name, renderId } = opts;
 
         // Resolve which render id we're operating on (for state + Firestore)
         const resolvedRenderId = renderId || activeRenderId || null;
 
-        // If no project name yet, open popover and stop here
+        // If no project name yet, start the deploy wizard from a fresh state and bail out
         const trimmedName = name?.trim();
         if (!trimmedName) {
-            // Close editor so user fills out project name
-            setEditorOpen(false)
-            setPendingDeploy({
-                html,
-                renderId: resolvedRenderId ?? undefined,
-            });
-            // input is now uncontrolled; no per-keystroke state
-            setShowProjectNamePopover(true);
+            // reset wizard state
+            setDeployWizardBusy(false);
+            setDeployWizardError(null);
+            setDeployWizardStep(1);
+            autoDeployTriggeredRef.current = false;
+
+            if (resolvedRenderId) {
+                setDeployWizardRenderId(resolvedRenderId);
+
+                // optional: prefill with existing nameHint if we have it
+                const target = renders.find((r) => r.id === resolvedRenderId);
+                setDeployWizardProjectName(target?.nameHint || "");
+            } else {
+                setDeployWizardRenderId(null);
+                setDeployWizardProjectName("");
+            }
+
+            setDeployWizardOpen(true);
             return;
         }
+
 
         // visual feedback: mark this render as deploying
         if (resolvedRenderId) {
@@ -2006,6 +2057,13 @@ export default function PreviewPage(): JSX.Element {
         push("Starting deployment…", "ok");
 
         const csrf = await ensureSessionAndCsrf();
+
+
+        if (userTier === "free") {
+            setShowCreditsPaywall("preview");
+            push("Export and deploy are reserved for paid plans.", "warn");
+            return;
+        }
 
         try {
             const r = await fetch("/api/user-deploy", {
@@ -2036,9 +2094,9 @@ export default function PreviewPage(): JSX.Element {
                         "kloner_users",
                         user.uid,
                         "kloner_renders",
-                        resolvedRenderId
+                        resolvedRenderId,
                     ),
-                    { lastExportedAt: serverTimestamp() }
+                    { lastExportedAt: serverTimestamp() },
                 );
             }
 
@@ -2058,6 +2116,7 @@ export default function PreviewPage(): JSX.Element {
             setDeployingRenderId(null);
         }
     }
+
 
 
     const saveDraft = useCallback(
@@ -3332,7 +3391,7 @@ export default function PreviewPage(): JSX.Element {
                         initialHtml={editorHtml}
                         sourceImage={editorRefImg}
                         onClose={() => {
-                            setEditorOpen(false);
+                            // setEditorOpen(false);
                             setActiveRenderId(undefined);
                         }}
                         onExport={(html, name) =>

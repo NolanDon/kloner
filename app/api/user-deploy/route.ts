@@ -16,11 +16,19 @@ export async function POST(req: NextRequest) {
                 renderId,
                 vercelProjectId: bodyProjectId,
                 vercelProjectName: bodyProjectName,
+                user
             } = await req.json();
 
             if (!html || typeof html !== "string") {
                 return NextResponse.json(
                     { ok: false, error: "Missing html" },
+                    { status: 400 }
+                );
+            }
+
+            if (user.tier === "free") {
+                return NextResponse.json(
+                    { ok: false, error: "Please upgrade your account to deploy projects." },
                     { status: 400 }
                 );
             }

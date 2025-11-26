@@ -25,7 +25,7 @@ if (!admin.apps.length) {
 
     admin.initializeApp({
         credential: admin.credential.cert(credJson),
-        storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+        storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
     });
 }
 
