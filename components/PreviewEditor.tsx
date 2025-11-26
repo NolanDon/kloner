@@ -642,8 +642,6 @@ export default function PreviewEditor({
                 ? injectClientRouter(baseHtml)
                 : stripEditorArtifacts(baseHtml);
 
-            console.log("Exporting HTML, name hint:", { nameHint });
-
             await onExport(finalHtml, nameHint || undefined);
         } catch (e: any) {
             const msg = String(e?.message || "");

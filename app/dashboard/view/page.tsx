@@ -151,7 +151,7 @@ type RenderCardProps = {
     push: (message: string, level?: string) => void;
 };
 
-export function useResolvedImg(pathOrUrl: string) {
+function useResolvedImg(pathOrUrl: string) {
     const [src, setSrc] = React.useState("");
     const retriedRef = React.useRef(false);
 
