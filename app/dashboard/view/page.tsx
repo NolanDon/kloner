@@ -443,7 +443,7 @@ function RenderCardInner({
     );
 }
 
-export const RenderCard = memo(
+const RenderCard = memo(
     RenderCardInner,
     (prev, next) => {
         const a = prev.r as any;
