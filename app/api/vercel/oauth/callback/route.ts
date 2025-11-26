@@ -7,19 +7,45 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-    const base =
-        process.env.OAUTH_REDIRECT_BASE_PROD || "https://kloner.app";
+
+    const isProd = process.env.NODE_ENV === "production";
+
+    const base = isProd ? (process.env.OAUTH_REDIRECT_BASE_PROD || "https://kloner.app") : process.env.OAUTH_REDIRECT_BASE_DEV
 
     const redirectWithStatus = (
         status: "success" | "error",
         reason?: string,
     ) => {
+        const returnCookie = req.cookies.get("vercel_oauth_return")?.value;
+
+        // If we have an explicit return target and the flow was successful,
+        // send the user straight back there (e.g. /dashboard/view?vercel=connected).
+        if (status === "success" && returnCookie) {
+            let target: URL;
+            try {
+                target = new URL(returnCookie, base);
+            } catch {
+                target = new URL("/integrations/vercel/callback", base);
+                target.searchParams.set("status", status);
+                if (reason) target.searchParams.set("reason", reason);
+            }
+
+            const res = NextResponse.redirect(target.toString(), { status: 302 });
+            res.cookies.set("vercel_oauth_state", "", { maxAge: 0, path: "/" });
+            res.cookies.set("vercel_oauth_return", "", { maxAge: 0, path: "/" });
+            return res;
+        }
+
+        // default behaviour (existing callback page)
         const next = new URL("/integrations/vercel/callback", base);
         next.searchParams.set("status", status);
         if (reason) next.searchParams.set("reason", reason);
 
         const res = NextResponse.redirect(next.toString(), { status: 302 });
         res.cookies.set("vercel_oauth_state", "", { maxAge: 0, path: "/" });
+        if (returnCookie) {
+            res.cookies.set("vercel_oauth_return", "", { maxAge: 0, path: "/" });
+        }
         return res;
     };
 

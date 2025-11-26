@@ -3,7 +3,7 @@
 
 import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import Image from 'next/image'
+import Image from "next/image";
 import logo from "@/public/images/orange_logo.png";
 
 type Device = "desktop" | "tablet" | "mobile";
@@ -93,77 +93,55 @@ const FONT_OPTIONS = [
 ];
 
 const TEXT_COLOR_SWATCHES = [
-    // Near-black / dark neutrals
-    "#020617", // slate-950
-    "#0f172a", // slate-900
-    "#111827", // gray-900
-    "#1f2937", // gray-800
-    "#27272a", // zinc-800
-
-    // Mid neutrals
-    "#334155", // slate-700
-    "#4b5563", // gray-600
-    "#6b7280", // gray-500
-    "#9ca3af", // gray-400
-    "#e5e7eb", // gray-200
-
-    // Brand / accent oranges
-    "#f55f2a", // kloner accent
-    "#f97316", // orange-500
-    "#ea580c", // orange-600
-
-    // Reds / rose / pink
-    "#ef4444", // red-500
-    "#dc2626", // red-600
-    "#e11d48", // rose-600
-    "#db2777", // pink-600
-
-    // Greens
-    "#16a34a", // green-600
-    "#22c55e", // green-500
-    "#10b981", // emerald-500
-
-    // Blues
-    "#2563eb", // blue-600
-    "#3b82f6", // blue-500
-    "#0ea5e9", // sky-500
-
-    // Indigo / violet / purple
-    "#4f46e5", // indigo-600
-    "#6366f1", // indigo-500
-    "#8b5cf6", // violet-500
-    "#a855f7", // purple-500
-
-    // Gold / amber
-    "#f59e0b", // amber-500
-    "#d97706", // amber-600
-
-    // Pure white
+    "#020617",
+    "#0f172a",
+    "#111827",
+    "#1f2937",
+    "#27272a",
+    "#334155",
+    "#4b5563",
+    "#6b7280",
+    "#9ca3af",
+    "#e5e7eb",
+    "#f55f2a",
+    "#f97316",
+    "#ea580c",
+    "#ef4444",
+    "#dc2626",
+    "#e11d48",
+    "#db2777",
+    "#16a34a",
+    "#22c55e",
+    "#10b981",
+    "#2563eb",
+    "#3b82f6",
+    "#0ea5e9",
+    "#4f46e5",
+    "#6366f1",
+    "#8b5cf6",
+    "#a855f7",
+    "#f59e0b",
+    "#d97706",
     "#ffffff",
 ];
 
 const BG_COLOR_SWATCHES = [
-    // Light neutrals
-    "#ffffff", // white
-    "#f9fafb", // gray-50
-    "#f3f4f6", // gray-100
-    "#e5e7eb", // gray-200
-    "#d1d5db", // gray-300
-
-    // Slate / dark neutrals (for dark themes)
-    "#111827", // gray-900
-    "#020617", // slate-950
-    "#0b1120", // slate-900
-    "#1f2937", // gray-800
-
-    // Soft brand / accent backgrounds
-    "#fef3c7", // amber-100
-    "#ffedd5", // orange-100
-    "#fee2e2", // rose-100
-    "#e0f2fe", // sky-100
-    "#dbeafe", // blue-100
-    "#dcfce7", // green-100
-    "#f3e8ff", // purple-100
+    "#ffffff",
+    "#f9fafb",
+    "#f3f4f6",
+    "#e5e7eb",
+    "#d1d5db",
+    "#111827",
+    "#020617",
+    "#0b1120",
+    "#1f2937",
+    "#fef3c7",
+    "#ffedd5",
+    "#fee2e2",
+    "#e0f2fe",
+    "#dbeafe",
+    "#dcfce7",
+    "#f3e8ff",
 ];
 
 const FONT_SIZE_PRESETS = [
@@ -179,24 +157,31 @@ function stripScripts(html: string) {
 }
 
 // strip ALL editor/runtime artifacts that should never ship in export or interfere with routing
-function stripEditorArtifacts(html: string): string {
+export function stripEditorArtifacts(html: string): string {
     if (!html) return html;
     let out = html;
 
-    // remove ONLY the route style block by id (regardless of attribute order or quoting)
+    // 1) remove ONLY the route style block by id (quoted id)
     out = out.replace(
-        /<style\b[^>]*\bid=(["'])kloner-active-route\1[^>]*>[\s\S]*?<\/style>/gi,
+        /<style\b[^>]*\bid\s*=\s*(["'])kloner-active-route\1[^>]*>[\s\S]*?<\/style>/gi,
         ""
     );
 
-    // extra safety: remove any style tag whose content uses our preview-only data-route rule
+    // 2) also catch unquoted id=kloner-active-route (defensive for minified HTML)
     out = out.replace(
-        /<style\b[^>]*>[\s\S]*?main\.page-root\[data-route\][\s\S]*?<\/style>/gi,
+        /<style\b[^>]*\bid\s*=\s*kloner-active-route\b[^>]*>[\s\S]*?<\/style>/gi,
         ""
     );
 
-    // remove only style tags that contain *our* editor markers;
-    // leave all other <style> tags (site CSS) intact
+    // 3) extra safety: if a style tag contains the exact preview-only data-route rules,
+    //    strip just that <style> as well (covers weird/minified variants)
+    out = out.replace(
+        /<style\b[^>]*>[\s\S]*?main\.page-root\s*\[\s*data-route\s*\][^{]*\{[^}]*display\s*:\s*none\s*!important[^}]*\}[\s\S]*?main\.page-root\s*\[\s*data-route\s*=\s*["']\/["']\s*\][^{]*\{[^}]*display\s*:\s*block\s*!important[^}]*\}[\s\S]*?<\/style>/gi,
+        ""
+    );
+
+    // 4) remove only style tags that contain *our* editor markers;
+    //    leave all other <style> tags (site CSS) intact
     out = out.replace(
         /<style[^>]*>[\s\S]*?<\/style>/gi,
         (match) => {
@@ -207,7 +192,7 @@ function stripEditorArtifacts(html: string): string {
         }
     );
 
-    // remove hidden file inputs and their hint blocks
+    // 5) remove hidden file inputs and their hint blocks
     out = out.replace(
         /<input[^>]+type=["']file["'][^>]*>\s*<div[^>]*class=["']khint["'][^>]*>[\s\S]*?<\/div>/gi,
         ""
@@ -318,7 +303,12 @@ type StyleCmd =
     | { kind: "bgColor"; value: string }
     | { kind: "transform"; value: "none" | "uppercase" }
     | { kind: "weight"; value: string | number }
-    | { kind: "letterSpacing"; value: string };
+    | { kind: "letterSpacing"; value: string }
+    | { kind: "widthPreset"; value: "auto" | "narrow" | "wide" | "full" }
+    | { kind: "blockAlign"; value: "left" | "center" | "right" }
+    | { kind: "marginTop"; value: "none" | "sm" | "md" | "lg" }
+    | { kind: "marginBottom"; value: "none" | "sm" | "md" | "lg" }
+    | { kind: "wrap"; value: "normal" | "nowrap" | "balance" };
 
 // derive human label from route
 function labelFromRoute(route: string): string {
@@ -338,7 +328,6 @@ function labelFromRoute(route: string): string {
 function derivePagesFromHtml(html: string): EditorPage[] {
     if (typeof window === "undefined") return [];
     try {
-        // scripts + editor artifacts are irrelevant for page discovery
         const cleaned = stripScripts(stripEditorArtifacts(html));
         const parser = new DOMParser();
         const doc = parser.parseFromString(cleaned, "text/html");
@@ -352,7 +341,6 @@ function derivePagesFromHtml(html: string): EditorPage[] {
             const route = el.getAttribute("data-route") || "/";
             const labelAttr = el.getAttribute("data-label") || "";
             const label = labelAttr || labelFromRoute(route);
-            // we keep full HTML for each page so we preserve one monolithic doc
             return {
                 id: route,
                 label,
@@ -413,6 +401,8 @@ export default function PreviewEditor({
     const [closing, setClosing] = useState(false);
     const [closePrompt, setClosePrompt] = useState(false);
     const [exportPrompt, setExportPrompt] = useState(false);
+    const [controlsCollapsed, setControlsCollapsed] = useState(false);
+
 
     const [selectionMeta, setSelectionMeta] = useState<SelectionMeta>({ has: false });
 
@@ -424,11 +414,9 @@ export default function PreviewEditor({
 
     // inject route-specific CSS into the monolithic HTML for iframe preview
     const renderHtml = useMemo(() => {
-        // strip scripts + editor artifacts for preview
         const base = stripScripts(stripEditorArtifacts(previewHtml || ""));
         if (!base) return base;
 
-        // no multi-page routing: just render as-is
         if (!allPages || !activePageId || activePageId === "single") return base;
 
         const styleTag = `<style id="kloner-active-route">main.page-root[data-route]{display:none!important;}main.page-root[data-route="${activePageId}"]{display:block!important;}</style>`;
@@ -479,25 +467,20 @@ export default function PreviewEditor({
     // set initial active page, and keep it valid when page set changes
     useEffect(() => {
         if (!allPages || allPages.length === 0) {
-            // no multi-page semantics, treat as single
             if (!activePageId) setActivePageId("single");
             return;
         }
 
-        // if current active id is still valid, keep it
         const stillExists =
-            activePageId &&
-            allPages.some((p) => p.id === activePageId);
+            activePageId && allPages.some((p) => p.id === activePageId);
 
         if (stillExists) return;
 
-        // prefer initialPageId if it's valid
         if (initialPageId && allPages.some((p) => p.id === initialPageId)) {
             setActivePageId(initialPageId);
             return;
         }
 
-        // fallback to first page
         setActivePageId(allPages[0].id);
     }, [allPages, activePageId, initialPageId]);
 
@@ -509,6 +492,24 @@ export default function PreviewEditor({
         }
         setDirty(true);
     }, [htmlDraft, draftId]);
+
+    // ---------- NEW: snapshot helper for saving/exporting ----------
+    const snapshotFromIframeOrDraft = useCallback(() => {
+        // In code mode, textarea is the source of truth.
+        if (mode === "code") return htmlDraft;
+
+        const doc = iframeRef.current?.contentDocument;
+        if (!doc) return htmlDraft;
+
+        try {
+            const htmlEl = doc.documentElement;
+            if (!htmlEl) return htmlDraft;
+            const raw = "<!doctype html>\n" + htmlEl.outerHTML;
+            return stripEditorArtifacts(raw);
+        } catch {
+            return htmlDraft;
+        }
+    }, [htmlDraft, mode]);
 
     // bump iframe key when HTML or mode changes (except pure screenshot mode)
     useEffect(() => {
@@ -566,18 +567,21 @@ export default function PreviewEditor({
 
     function applyDraftToPreview() {
         setApplyingPreview(true);
-        setPreviewHtml(htmlDraft);
-        emitLive(htmlDraft);          // <-- move live sync here
+        const nextHtml = snapshotFromIframeOrDraft();
+        setHtmlDraft(nextHtml);
+        setPreviewHtml(nextHtml);
+        emitLive(nextHtml);
         setDirty(false);
         window.setTimeout(() => setApplyingPreview(false), 450);
     }
-
 
     async function doSave(options?: { applyToPreview?: boolean }) {
         if (savingDraft) return;
         setSavingDraft(true);
         try {
-            const nextHtml = htmlDraft;
+            const nextHtml = snapshotFromIframeOrDraft();
+            setHtmlDraft(nextHtml);
+
             if (!saveDraft) {
                 setPreviewHtml(nextHtml);
                 if (options?.applyToPreview) {
@@ -618,7 +622,6 @@ export default function PreviewEditor({
         }
     }
 
-
     async function doExport() {
         if (exporting) return;
         setExportNote("");
@@ -628,9 +631,9 @@ export default function PreviewEditor({
                 await doSave({ applyToPreview: true });
             }
 
-            const baseHtml = (htmlDraft || previewHtml || "").trim();
+            const baseHtmlRaw = snapshotFromIframeOrDraft();
+            const baseHtml = (baseHtmlRaw || previewHtml || "").trim();
 
-            // Detect multi-page layout: at least one page-root with a data-route
             const hasMultiPage =
                 baseHtml.includes('class="page-root"') &&
                 baseHtml.includes("data-route=");
@@ -654,8 +657,6 @@ export default function PreviewEditor({
             setExporting(false);
         }
     }
-
-    // ---------- NEW: single-step blob upload helper ----------
 
     function sanitizeName(name: string) {
         const base = name.toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
@@ -707,7 +708,6 @@ export default function PreviewEditor({
                         }
                     );
 
-                    // Single-step upload to your own API, which calls Vercel Blob
                     const url = await uploadFileToUserBlob(file);
 
                     iframeRef.current?.contentWindow?.postMessage(
@@ -745,21 +745,21 @@ export default function PreviewEditor({
         (cmd: StyleCmd) => {
             const win = iframeRef.current?.contentWindow as any;
             try {
-                win?.__klonerApi?.style?.(cmd);
+                win?.__klonerApi?.style?.({ ...cmd, device });
             } catch {
                 // ignore
             }
         },
-        []
+        [device]
     );
 
     const performClose = useCallback(
-        async (mode: "save" | "discard") => {
+        async (closeMode: "save" | "discard") => {
             if (closing) return;
             setClosing(true);
             tryClearIframeSelection();
             try {
-                if (mode === "save" && dirty) {
+                if (closeMode === "save") {
                     await doSave();
                 }
                 setClosePrompt(false);
@@ -768,7 +768,7 @@ export default function PreviewEditor({
                 setClosing(false);
             }
         },
-        [closing, dirty, doSave, onClose, tryClearIframeSelection]
+        [closing, doSave, onClose, tryClearIframeSelection]
     );
 
     const handleModeClick = useCallback(
@@ -803,24 +803,704 @@ export default function PreviewEditor({
                         height: `${100 / uiScale}%`,
                     }}
                 >
-                    {/* Left panel */}
                     <aside className="flex flex-col min-w-0 overflow-auto pr-1 max-lg:order-2">
-                        <div className="relative h-[90px] w-[90px]">
-                            <Image
-                                src={logo}
-                                alt="kloner logo"
-                                fill
-                                priority
-                                className="object-contain"
-                            />
+                        {/* Compact header + toggle – always visible */}
+                        <div className="sticky top-0 z-10 mb-3 flex items-center justify-between bg-white/95 pb-2 backdrop-blur-sm">
+                            <div className="flex items-center gap-2">
+                                <div className="relative h-[30px] w-[30px]">
+                                    <Image
+                                        src={logo}
+                                        alt="kloner logo"
+                                        fill
+                                        priority
+                                        className="object-contain"
+                                    />
+                                </div>
+                                <span className="text-[10px] font-medium text-neutral-500 lg:hidden">
+                                    Editor controls
+                                </span>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={() => setControlsCollapsed((v) => !v)}
+                                disabled={closing}
+                                className="inline-flex items-center gap-1 rounded border border-neutral-200 bg-white px-2 py-1 text-[10px] font-medium text-neutral-600 shadow-sm hover:bg-neutral-50 active:scale-95 disabled:opacity-50 lg:text-xs"
+                            >
+                                {controlsCollapsed ? "Show controls" : "Hide controls"}
+                            </button>
                         </div>
 
+                        {/* All existing controls – only hidden when collapsed */}
+                        {!controlsCollapsed && (
+                            <>
+                                <div className="mb-3">
+                                    <div className="text-[11px] font-semibold text-neutral-500 mb-1">
+                                        View
+                                    </div>
+                                    <div className="flex flex-wrap gap-1">
+                                        {/* <UiBtn
+                                            pressed={mode === "code"}
+                                            onClick={() => handleModeClick("code")}
+                                            disabled={closing}
+                                        >
+                                            Code
+                                        </UiBtn> */}
+                                        <UiBtn
+                                            pressed={mode === "preview"}
+                                            onClick={() => handleModeClick("preview")}
+                                            disabled={closing}
+                                        >
+                                            Editable preview
+                                        </UiBtn>
+                                        <UiBtn
+                                            pressed={mode === "screenshot"}
+                                            onClick={() => handleModeClick("screenshot")}
+                                            disabled={closing}
+                                        >
+                                            Screenshot
+                                        </UiBtn>
+                                    </div>
+                                </div>
+
+                                <div className="mb-3">
+                                    <div className="text-[11px] font-semibold text-neutral-500 mb-1">
+                                        Device
+                                    </div>
+                                    <div className="flex flex-wrap gap-1">
+                                        <UiBtn
+                                            pressed={device === "desktop"}
+                                            onClick={() => setDevice("desktop")}
+                                            disabled={closing}
+                                        >
+                                            Desktop
+                                        </UiBtn>
+                                        <UiBtn
+                                            pressed={device === "tablet"}
+                                            onClick={() => setDevice("tablet")}
+                                            disabled={closing}
+                                        >
+                                            Tablet
+                                        </UiBtn>
+                                        <UiBtn
+                                            pressed={device === "mobile"}
+                                            onClick={() => setDevice("mobile")}
+                                            disabled={closing}
+                                        >
+                                            Mobile
+                                        </UiBtn>
+                                    </div>
+                                </div>
+
+                                <div className="mb-3">
+                                    <div className="text-[11px] font-semibold text-neutral-500 mb-1">
+                                        Actions
+                                    </div>
+                                    <div className="flex flex-wrap gap-2 items-center">
+                                        <UiBtn
+                                            variant="outline"
+                                            onClick={() => doSave()}
+                                            disabled={closing || savingDraft}
+                                            ariaBusy={savingDraft}
+                                        >
+                                            {savingDraft ? "Saving…" : "Save draft"}
+                                        </UiBtn>
+                                        <UiBtn
+                                            variant="filled"
+                                            onClick={() => setExportPrompt(true)}
+                                            disabled={closing || exporting}
+                                            ariaBusy={exporting}
+                                        >
+                                            {exporting ? "Exporting…" : "Export to Vercel"}
+                                        </UiBtn>
+                                        <UiBtn
+                                            variant="outline-quiet"
+                                            onClick={() => {
+                                                if (dirty) setClosePrompt(true);
+                                                else performClose("discard");
+                                            }}
+                                            disabled={closing}
+                                            ariaBusy={closing}
+                                        >
+                                            Close
+                                        </UiBtn>
+                                        <span className="ml-auto text-xs text-slate-500 self-center">
+                                            v{version}
+                                        </span>
+                                        <div className="flex items-center gap-1 text-[11px] text-slate-500">
+                                            <button
+                                                className="px-1.5 py-0.5 border rounded hover:bg-neutral-50 active:scale-[.99] focus:outline-none focus:ring-2 focus:ring-neutral-300"
+                                                onClick={() =>
+                                                    setUiScale((s) =>
+                                                        Math.max(0.5, +(s - 0.05).toFixed(2))
+                                                    )
+                                                }
+                                                disabled={closing}
+                                            >
+                                                -
+                                            </button>
+                                            <span className="w-10 text-center">
+                                                {Math.round(uiScale * 100)}%
+                                            </span>
+                                            <button
+                                                className="px-1.5 py-0.5 border rounded hover:bg-neutral-50 active:scale-[.99] focus:outline-none focus:ring-2 focus:ring-neutral-300"
+                                                onClick={() =>
+                                                    setUiScale((s) =>
+                                                        Math.min(1.25, +(s + 0.05).toFixed(2))
+                                                    )
+                                                }
+                                                disabled={closing}
+                                            >
+                                                +
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {exportNote && (
+                                        <div className="mt-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[12px] text-amber-800">
+                                            {exportNote}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Selection styling sidebar */}
+                                {mode === "preview" && (
+                                    <div className="mb-3 border-t pt-3 mt-2">
+                                        <div className="flex items-center justify-between mb-1">
+                                            <div className="text-[11px] font-semibold text-neutral-500">
+                                                Selection style
+                                            </div>
+                                            <div className="text-[10px] text-neutral-400">
+                                                {selectionMeta.has
+                                                    ? selectionMeta.tagName || "Element"
+                                                    : "Click any block to style it"}
+                                            </div>
+                                        </div>
+                                        <div className="mb-1 text-[10px] text-neutral-400">
+                                            Styles here are scoped to the current{" "}
+                                            <span className="font-semibold">{device}</span>{" "}
+                                            layout.
+                                        </div>
+
+                                        <div className="space-y-2 text-[11px] max-h-64 lg:max-h-none overflow-y-auto pr-1">
+                                            {/* Font family */}
+                                            <div>
+                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
+                                                    Font
+                                                </div>
+                                                <select
+                                                    className="w-full border rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-50"
+                                                    disabled={closing}
+                                                    onChange={(e) => {
+                                                        const opt = FONT_OPTIONS.find(
+                                                            (f) => f.id === e.target.value
+                                                        );
+                                                        if (!opt) return;
+                                                        sendStyleCommand({
+                                                            kind: "fontFamily",
+                                                            value: opt.css,
+                                                        });
+                                                    }}
+                                                    defaultValue=""
+                                                >
+                                                    <option value="" disabled>
+                                                        Choose font
+                                                    </option>
+                                                    {FONT_OPTIONS.map((f) => (
+                                                        <option key={f.id} value={f.id}>
+                                                            {f.label}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+
+                                            {/* Font size */}
+                                            <div>
+                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
+                                                    Size
+                                                </div>
+                                                <div className="flex flex-wrap gap-1">
+                                                    {FONT_SIZE_PRESETS.map((s) => (
+                                                        <button
+                                                            key={s.id}
+                                                            type="button"
+                                                            className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            disabled={closing}
+                                                            onClick={() =>
+                                                                sendStyleCommand({
+                                                                    kind: "fontSizePx",
+                                                                    value: s.px,
+                                                                })
+                                                            }
+                                                        >
+                                                            {s.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {/* Align */}
+                                            <div>
+                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
+                                                    Text align
+                                                </div>
+                                                <div className="flex gap-1">
+                                                    {[
+                                                        { id: "left", label: "L" },
+                                                        { id: "center", label: "C" },
+                                                        { id: "right", label: "R" },
+                                                    ].map((a) => (
+                                                        <button
+                                                            key={a.id}
+                                                            type="button"
+                                                            className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            disabled={closing}
+                                                            onClick={() =>
+                                                                sendStyleCommand({
+                                                                    kind: "align",
+                                                                    value: a.id as
+                                                                        | "left"
+                                                                        | "center"
+                                                                        | "right",
+                                                                })
+                                                            }
+                                                        >
+                                                            {a.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {/* Weight / transform */}
+                                            <div className="flex flex-wrap gap-1">
+                                                <button
+                                                    type="button"
+                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                    disabled={closing}
+                                                    onClick={() =>
+                                                        sendStyleCommand({
+                                                            kind: "weight",
+                                                            value: "600",
+                                                        })
+                                                    }
+                                                >
+                                                    Semi-bold
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                    disabled={closing}
+                                                    onClick={() =>
+                                                        sendStyleCommand({
+                                                            kind: "weight",
+                                                            value: "400",
+                                                        })
+                                                    }
+                                                >
+                                                    Normal
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                    disabled={closing}
+                                                    onClick={() =>
+                                                        sendStyleCommand({
+                                                            kind: "transform",
+                                                            value: "uppercase",
+                                                        })
+                                                    }
+                                                >
+                                                    UPPERCASE
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                    disabled={closing}
+                                                    onClick={() =>
+                                                        sendStyleCommand({
+                                                            kind: "transform",
+                                                            value: "none",
+                                                        })
+                                                    }
+                                                >
+                                                    Aa
+                                                </button>
+                                            </div>
+
+                                            {/* Text color */}
+                                            <div>
+                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
+                                                    Text color
+                                                </div>
+                                                <div className="flex flex-wrap gap-1">
+                                                    {TEXT_COLOR_SWATCHES.map((c) => (
+                                                        <button
+                                                            key={c}
+                                                            type="button"
+                                                            className="w-6 h-6 rounded-full border border-black/10 shadow-sm hover:scale-105 active:scale-95 disabled:opacity-40"
+                                                            style={{ background: c }}
+                                                            disabled={closing}
+                                                            onClick={() =>
+                                                                sendStyleCommand({
+                                                                    kind: "textColor",
+                                                                    value: c,
+                                                                })
+                                                            }
+                                                        />
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {/* Background color */}
+                                            <div>
+                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
+                                                    Background
+                                                </div>
+                                                <div className="flex flex-wrap gap-1">
+                                                    {BG_COLOR_SWATCHES.map((c) => (
+                                                        <button
+                                                            key={c}
+                                                            type="button"
+                                                            className="w-6 h-6 rounded-full border border-black/10 shadow-sm hover:scale-105 active:scale-95 disabled:opacity-40"
+                                                            style={{ background: c }}
+                                                            disabled={closing}
+                                                            onClick={() =>
+                                                                sendStyleCommand({
+                                                                    kind: "bgColor",
+                                                                    value: c,
+                                                                })
+                                                            }
+                                                        />
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {/* Spacing (letter-spacing) */}
+                                            <div>
+                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
+                                                    Letter spacing
+                                                </div>
+                                                <div className="flex flex-wrap gap-1">
+                                                    <button
+                                                        type="button"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        disabled={closing}
+                                                        onClick={() =>
+                                                            sendStyleCommand({
+                                                                kind: "letterSpacing",
+                                                                value: "-0.02em",
+                                                            })
+                                                        }
+                                                    >
+                                                        Tight
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        disabled={closing}
+                                                        onClick={() =>
+                                                            sendStyleCommand({
+                                                                kind: "letterSpacing",
+                                                                value: "0",
+                                                            })
+                                                        }
+                                                    >
+                                                        Normal
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        disabled={closing}
+                                                        onClick={() =>
+                                                            sendStyleCommand({
+                                                                kind: "letterSpacing",
+                                                                value: "0.08em",
+                                                            })
+                                                        }
+                                                    >
+                                                        Wide
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* Layout width */}
+                                            <div>
+                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
+                                                    Layout width
+                                                </div>
+                                                <div className="flex flex-wrap gap-1">
+                                                    <button
+                                                        type="button"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        disabled={closing}
+                                                        onClick={() =>
+                                                            sendStyleCommand({
+                                                                kind: "widthPreset",
+                                                                value: "auto",
+                                                            })
+                                                        }
+                                                    >
+                                                        Auto
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        disabled={closing}
+                                                        onClick={() =>
+                                                            sendStyleCommand({
+                                                                kind: "widthPreset",
+                                                                value: "narrow",
+                                                            })
+                                                        }
+                                                    >
+                                                        Narrow
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        disabled={closing}
+                                                        onClick={() =>
+                                                            sendStyleCommand({
+                                                                kind: "widthPreset",
+                                                                value: "wide",
+                                                            })
+                                                        }
+                                                    >
+                                                        Wide
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        disabled={closing}
+                                                        onClick={() =>
+                                                            sendStyleCommand({
+                                                                kind: "widthPreset",
+                                                                value: "full",
+                                                            })
+                                                        }
+                                                    >
+                                                        Full bleed
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* Block alignment */}
+                                            <div>
+                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
+                                                    Block align
+                                                </div>
+                                                <div className="flex flex-wrap gap-1">
+                                                    <button
+                                                        type="button"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        disabled={closing}
+                                                        onClick={() =>
+                                                            sendStyleCommand({
+                                                                kind: "blockAlign",
+                                                                value: "left",
+                                                            })
+                                                        }
+                                                    >
+                                                        Left
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        disabled={closing}
+                                                        onClick={() =>
+                                                            sendStyleCommand({
+                                                                kind: "blockAlign",
+                                                                value: "center",
+                                                            })
+                                                        }
+                                                    >
+                                                        Center
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        disabled={closing}
+                                                        onClick={() =>
+                                                            sendStyleCommand({
+                                                                kind: "blockAlign",
+                                                                value: "right",
+                                                            })
+                                                        }
+                                                    >
+                                                        Right
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* Vertical spacing */}
+                                            <div>
+                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
+                                                    Vertical spacing
+                                                </div>
+                                                <div className="flex flex-wrap gap-1 mb-1">
+                                                    <button
+                                                        type="button"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        disabled={closing}
+                                                        onClick={() =>
+                                                            sendStyleCommand({
+                                                                kind: "marginTop",
+                                                                value: "none",
+                                                            })
+                                                        }
+                                                    >
+                                                        No top
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        disabled={closing}
+                                                        onClick={() =>
+                                                            sendStyleCommand({
+                                                                kind: "marginTop",
+                                                                value: "md",
+                                                            })
+                                                        }
+                                                    >
+                                                        Top space
+                                                    </button>
+                                                </div>
+                                                <div className="flex flex-wrap gap-1">
+                                                    <button
+                                                        type="button"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        disabled={closing}
+                                                        onClick={() =>
+                                                            sendStyleCommand({
+                                                                kind: "marginBottom",
+                                                                value: "none",
+                                                            })
+                                                        }
+                                                    >
+                                                        No bottom
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        disabled={closing}
+                                                        onClick={() =>
+                                                            sendStyleCommand({
+                                                                kind: "marginBottom",
+                                                                value: "lg",
+                                                            })
+                                                        }
+                                                    >
+                                                        Bottom space
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* Text wrapping */}
+                                            <div>
+                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
+                                                    Text wrapping
+                                                </div>
+                                                <div className="flex flex-wrap gap-1">
+                                                    <button
+                                                        type="button"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        disabled={closing}
+                                                        onClick={() =>
+                                                            sendStyleCommand({
+                                                                kind: "wrap",
+                                                                value: "normal",
+                                                            })
+                                                        }
+                                                    >
+                                                        Normal
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        disabled={closing}
+                                                        onClick={() =>
+                                                            sendStyleCommand({
+                                                                kind: "wrap",
+                                                                value: "nowrap",
+                                                            })
+                                                        }
+                                                    >
+                                                        No wrap
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        disabled={closing}
+                                                        onClick={() =>
+                                                            sendStyleCommand({
+                                                                kind: "wrap",
+                                                                value: "balance",
+                                                            })
+                                                        }
+                                                    >
+                                                        Balanced
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="block lg:hidden mb-3 fixed bottom-0 w-full">
+                                    <button
+                                        onClick={applyDraftToPreview}
+                                        disabled={closing || !dirty}
+                                        aria-busy={applyingPreview}
+                                        className={`rounded px-3 py-3 text-lg w-full transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${dirty
+                                            ? "bg-emerald-600 text-white hover:brightness-95"
+                                            : "bg-emerald-50 text-emerald-700"
+                                            }`}
+                                        title="Apply current draft to the live preview"
+                                    >
+                                        {applyingPreview
+                                            ? "Updating preview…"
+                                            : dirty
+                                                ? "Apply changes to preview"
+                                                : "Preview is up to date"}
+                                    </button>
+                                </div>
+
+                                {/* {mode === "code" && (
+                                    <div className="min-h-0 flex-1">
+                                        <textarea
+                                            className="h-full w-full border rounded p-2 font-mono text-xs leading-5 outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-60"
+                                            value={htmlDraft}
+                                            onChange={(e) => setHtmlDraft(e.target.value)}
+                                            spellCheck={false}
+                                            disabled={closing}
+                                        />
+                                    </div>
+                                )} */}
+
+                                {mode === "screenshot" && (
+                                    <div className="text-xs text-slate-600">
+                                        Edit in Preview or Code, apply with “Apply changes to
+                                        preview”, then save or export.
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </aside>
+
+
+                    {/* Right / canvas */}
+                    <section
+                        className="relative bg-slate-50 rounded-lg border overflow-hidden flex flex-col max-lg:order-1"
+                        onPointerDown={(e) => {
+                            if (!(e.target as HTMLElement).closest("iframe"))
+                                tryClearIframeSelection();
+                        }}
+                    >
                         {/* Page selector */}
+                        <span className="m-2 text-[10px] font-medium text-neutral-500 lg:hidden">
+                            Pages
+                        </span>
                         {allPages && allPages.length > 0 && (
                             <div className="mb-3">
-                                <div className="text-[11px] font-semibold text-neutral-500 mb-1">
-                                    Page
-                                </div>
                                 <div className="flex flex-wrap gap-1">
                                     {allPages.map((p) => (
                                         <UiBtn
@@ -835,451 +1515,6 @@ export default function PreviewEditor({
                                 </div>
                             </div>
                         )}
-
-                        <div className="mb-3">
-                            <div className="text-[11px] font-semibold text-neutral-500 mb-1">
-                                View
-                            </div>
-                            <div className="flex flex-wrap gap-1">
-                                {/* <UiBtn
-                                    pressed={mode === "code"}
-                                    onClick={() => handleModeClick("code")}
-                                    disabled={closing}
-                                >
-                                    Code
-                                </UiBtn> */}
-                                <UiBtn
-                                    pressed={mode === "preview"}
-                                    onClick={() => handleModeClick("preview")}
-                                    disabled={closing}
-                                >
-                                    Editable preview
-                                </UiBtn>
-                                <UiBtn
-                                    pressed={mode === "screenshot"}
-                                    onClick={() =>
-                                        handleModeClick("screenshot")
-                                    }
-                                    disabled={closing}
-                                >
-                                    Screenshot
-                                </UiBtn>
-                            </div>
-                        </div>
-
-                        <div className="mb-3">
-                            <div className="text-[11px] font-semibold text-neutral-500 mb-1">
-                                Device
-                            </div>
-                            <div className="flex flex-wrap gap-1">
-                                <UiBtn
-                                    pressed={device === "desktop"}
-                                    onClick={() => setDevice("desktop")}
-                                    disabled={closing}
-                                >
-                                    Desktop
-                                </UiBtn>
-                                <UiBtn
-                                    pressed={device === "tablet"}
-                                    onClick={() => setDevice("tablet")}
-                                    disabled={closing}
-                                >
-                                    Tablet
-                                </UiBtn>
-                                <UiBtn
-                                    pressed={device === "mobile"}
-                                    onClick={() => setDevice("mobile")}
-                                    disabled={closing}
-                                >
-                                    Mobile
-                                </UiBtn>
-                            </div>
-                        </div>
-
-                        <div className="mb-3">
-                            <div className="text-[11px] font-semibold text-neutral-500 mb-1">
-                                Actions
-                            </div>
-                            <div className="flex flex-wrap gap-2 items-center">
-                                <UiBtn
-                                    variant="outline"
-                                    onClick={() => doSave()}
-                                    disabled={closing || savingDraft}
-                                    ariaBusy={savingDraft}
-                                >
-                                    {savingDraft ? "Saving…" : "Save draft"}
-                                </UiBtn>
-                                <UiBtn
-                                    variant="filled"
-                                    onClick={() => setExportPrompt(true)}
-                                    disabled={closing || exporting}
-                                    ariaBusy={exporting}
-                                >
-                                    {exporting ? "Exporting…" : "Export to Vercel"}
-                                </UiBtn>
-                                <UiBtn
-                                    variant="outline-quiet"
-                                    onClick={() => {
-                                        if (dirty) setClosePrompt(true);
-                                        else performClose("discard");
-                                    }}
-                                    disabled={closing}
-                                    ariaBusy={closing}
-                                >
-                                    Close
-                                </UiBtn>
-                                <span className="ml-auto text-xs text-slate-500 self-center">
-                                    v{version}
-                                </span>
-                                <div className="flex items-center gap-1 text-[11px] text-slate-500">
-                                    <button
-                                        className="px-1.5 py-0.5 border rounded hover:bg-neutral-50 active:scale-[.99] focus:outline-none focus:ring-2 focus:ring-neutral-300"
-                                        onClick={() =>
-                                            setUiScale((s) =>
-                                                Math.max(
-                                                    0.5,
-                                                    +(s - 0.05).toFixed(2)
-                                                )
-                                            )
-                                        }
-                                        disabled={closing}
-                                    >
-                                        -
-                                    </button>
-                                    <span className="w-10 text-center">
-                                        {Math.round(uiScale * 100)}%
-                                    </span>
-                                    <button
-                                        className="px-1.5 py-0.5 border rounded hover:bg-neutral-50 active:scale-[.99] focus:outline-none focus:ring-2 focus:ring-neutral-300"
-                                        onClick={() =>
-                                            setUiScale((s) =>
-                                                Math.min(
-                                                    1.25,
-                                                    +(s + 0.05).toFixed(2)
-                                                )
-                                            )
-                                        }
-                                        disabled={closing}
-                                    >
-                                        +
-                                    </button>
-                                </div>
-                            </div>
-                            {exportNote && (
-                                <div className="mt-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[12px] text-amber-800">
-                                    {exportNote}
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="mb-3">
-                            <div className="text-[11px] font-semibold text-neutral-500 mb-1">
-                                Preview sync
-                            </div>
-                            <button
-                                onClick={applyDraftToPreview}
-                                disabled={closing || !dirty}
-                                aria-busy={applyingPreview}
-                                className={`rounded px-3 py-1.5 text-sm w-full transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${dirty
-                                    ? "bg-emerald-600 text-white hover:brightness-95"
-                                    : "bg-emerald-50 text-emerald-700"
-                                    }`}
-                                title="Apply current draft to the live preview"
-                            >
-                                {applyingPreview
-                                    ? "Updating preview…"
-                                    : dirty
-                                        ? "Apply changes to preview"
-                                        : "Preview is up to date"}
-                            </button>
-                        </div>
-
-                        {/* Selection styling sidebar */}
-                        {mode === "preview" && (
-                            <div className="mb-3 border-t pt-3 mt-2">
-                                <div className="flex items-center justify-between mb-1">
-                                    <div className="text-[11px] font-semibold text-neutral-500">
-                                        Selection style
-                                    </div>
-                                    <div className="text-[10px] text-neutral-400">
-                                        {selectionMeta.has
-                                            ? selectionMeta.tagName || "Element"
-                                            : "Click any block to style it"}
-                                    </div>
-                                </div>
-
-                                <div className="space-y-2 text-[11px]">
-                                    {/* Font family */}
-                                    <div>
-                                        <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
-                                            Font
-                                        </div>
-                                        <select
-                                            className="w-full border rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-50"
-                                            disabled={closing}
-                                            onChange={(e) => {
-                                                const opt = FONT_OPTIONS.find(
-                                                    (f) => f.id === e.target.value
-                                                );
-                                                if (!opt) return;
-                                                sendStyleCommand({
-                                                    kind: "fontFamily",
-                                                    value: opt.css,
-                                                });
-                                            }}
-                                            defaultValue=""
-                                        >
-                                            <option value="" disabled>
-                                                Choose font
-                                            </option>
-                                            {FONT_OPTIONS.map((f) => (
-                                                <option key={f.id} value={f.id}>
-                                                    {f.label}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    {/* Font size */}
-                                    <div>
-                                        <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
-                                            Size
-                                        </div>
-                                        <div className="flex flex-wrap gap-1">
-                                            {FONT_SIZE_PRESETS.map((s) => (
-                                                <button
-                                                    key={s.id}
-                                                    type="button"
-                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                    disabled={closing}
-                                                    onClick={() =>
-                                                        sendStyleCommand({
-                                                            kind: "fontSizePx",
-                                                            value: s.px,
-                                                        })
-                                                    }
-                                                >
-                                                    {s.label}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {/* Align */}
-                                    <div>
-                                        <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
-                                            Align
-                                        </div>
-                                        <div className="flex gap-1">
-                                            {[
-                                                { id: "left", label: "L" },
-                                                { id: "center", label: "C" },
-                                                { id: "right", label: "R" },
-                                            ].map((a) => (
-                                                <button
-                                                    key={a.id}
-                                                    type="button"
-                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                    disabled={closing}
-                                                    onClick={() =>
-                                                        sendStyleCommand({
-                                                            kind: "align",
-                                                            value: a.id as
-                                                                | "left"
-                                                                | "center"
-                                                                | "right",
-                                                        })
-                                                    }
-                                                >
-                                                    {a.label}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {/* Weight / transform */}
-                                    <div className="flex flex-wrap gap-1">
-                                        <button
-                                            type="button"
-                                            className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                            disabled={closing}
-                                            onClick={() =>
-                                                sendStyleCommand({
-                                                    kind: "weight",
-                                                    value: "600",
-                                                })
-                                            }
-                                        >
-                                            Semi-bold
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                            disabled={closing}
-                                            onClick={() =>
-                                                sendStyleCommand({
-                                                    kind: "weight",
-                                                    value: "400",
-                                                })
-                                            }
-                                        >
-                                            Normal
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                            disabled={closing}
-                                            onClick={() =>
-                                                sendStyleCommand({
-                                                    kind: "transform",
-                                                    value: "uppercase",
-                                                })
-                                            }
-                                        >
-                                            UPPERCASE
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                            disabled={closing}
-                                            onClick={() =>
-                                                sendStyleCommand({
-                                                    kind: "transform",
-                                                    value: "none",
-                                                })
-                                            }
-                                        >
-                                            Aa
-                                        </button>
-                                    </div>
-
-                                    {/* Text color */}
-                                    <div>
-                                        <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
-                                            Text color
-                                        </div>
-                                        <div className="flex flex-wrap gap-1">
-                                            {TEXT_COLOR_SWATCHES.map((c) => (
-                                                <button
-                                                    key={c}
-                                                    type="button"
-                                                    className="w-6 h-6 rounded-full border border-black/10 shadow-sm hover:scale-105 active:scale-95 disabled:opacity-40"
-                                                    style={{ background: c }}
-                                                    disabled={closing}
-                                                    onClick={() =>
-                                                        sendStyleCommand({
-                                                            kind: "textColor",
-                                                            value: c,
-                                                        })
-                                                    }
-                                                />
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {/* Background color */}
-                                    <div>
-                                        <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
-                                            Background
-                                        </div>
-                                        <div className="flex flex-wrap gap-1">
-                                            {BG_COLOR_SWATCHES.map((c) => (
-                                                <button
-                                                    key={c}
-                                                    type="button"
-                                                    className="w-6 h-6 rounded-full border border-black/10 shadow-sm hover:scale-105 active:scale-95 disabled:opacity-40"
-                                                    style={{ background: c }}
-                                                    disabled={closing}
-                                                    onClick={() =>
-                                                        sendStyleCommand({
-                                                            kind: "bgColor",
-                                                            value: c,
-                                                        })
-                                                    }
-                                                />
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {/* Spacing */}
-                                    <div>
-                                        <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
-                                            Spacing
-                                        </div>
-                                        <div className="flex flex-wrap gap-1">
-                                            <button
-                                                type="button"
-                                                className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                disabled={closing}
-                                                onClick={() =>
-                                                    sendStyleCommand({
-                                                        kind: "letterSpacing",
-                                                        value: "-0.02em",
-                                                    })
-                                                }
-                                            >
-                                                Tight
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                disabled={closing}
-                                                onClick={() =>
-                                                    sendStyleCommand({
-                                                        kind: "letterSpacing",
-                                                        value: "0",
-                                                    })
-                                                }
-                                            >
-                                                Normal
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                disabled={closing}
-                                                onClick={() =>
-                                                    sendStyleCommand({
-                                                        kind: "letterSpacing",
-                                                        value: "0.08em",
-                                                    })
-                                                }
-                                            >
-                                                Wide
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* {mode === "code" && (
-                            <div className="min-h-0 flex-1">
-                                <textarea
-                                    className="h-full w-full border rounded p-2 font-mono text-xs leading-5 outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-60"
-                                    value={htmlDraft}
-                                    onChange={(e) => setHtmlDraft(e.target.value)}
-                                    spellCheck={false}
-                                    disabled={closing}
-                                />
-                            </div>
-                        )} */}
-
-                        {mode === "screenshot" && (
-                            <div className="text-xs text-slate-600">
-                                Edit in Preview or Code, apply with “Apply changes to
-                                preview”, then save or export.
-                            </div>
-                        )}
-                    </aside>
-
-                    {/* Right / canvas */}
-                    <section
-                        className="relative bg-slate-50 rounded-lg border overflow-hidden flex flex-col max-lg:order-1"
-                        onPointerDown={(e) => {
-                            if (!(e.target as HTMLElement).closest("iframe"))
-                                tryClearIframeSelection();
-                        }}
-                    >
                         {activeSourceImage && mode !== "screenshot" && (
                             <img
                                 src={activeSourceImage}
@@ -1320,7 +1555,6 @@ export default function PreviewEditor({
                                                 .forEach((n) => n.remove());
                                             if (mode === "preview") {
                                                 injectEditableOverlay(doc, (updated) => {
-                                                    // keep draft in React, but do NOT push to parent on every keystroke
                                                     setHtmlDraft(updated);
                                                 });
                                                 iframeRef.current?.contentWindow?.focus();
@@ -1344,7 +1578,7 @@ export default function PreviewEditor({
                                             className="w-full h-auto rounded border bg-white"
                                         />
                                     ) : (
-                                        <div className="h-[60vh] grid place-items-center text-slate-500 text-sm">
+                                        <div className="h-[60vh] grid place-items-center text-slate-500 text-xs">
                                             No reference screenshot
                                         </div>
                                     )}
@@ -1354,11 +1588,32 @@ export default function PreviewEditor({
 
                         {closing && (
                             <div className="absolute inset-0 bg-white/80 grid place-items-center">
-                                <div className="flex items-center gap-3 rounded border px-3 py-2 bg-white text-sm text-neutral-800">
+                                <div className="flex items-center gap-3 rounded border px-3 py-2 bg-white text-xs text-neutral-800">
                                     <Spinner /> Saving & closing…
                                 </div>
                             </div>
                         )}
+
+                        <div className="hidden lg:block mb-3">
+                            <button
+                                onClick={applyDraftToPreview}
+                                disabled={closing || !dirty}
+                                aria-busy={applyingPreview}
+                                className={`rounded px-3 py-3 text-lg w-full transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${dirty
+                                    ? "bg-emerald-600 text-white hover:brightness-95"
+                                    : "bg-emerald-50 text-emerald-700"
+                                    }`}
+                                title="Apply current draft to the live preview"
+                            >
+                                {applyingPreview
+                                    ? "Updating preview…"
+                                    : dirty
+                                        ? "Apply changes to preview"
+                                        : "Preview is up to date"}
+                            </button>
+                        </div>
+
+
                     </section>
                 </div>
 
@@ -1366,7 +1621,7 @@ export default function PreviewEditor({
                 {closePrompt && (
                     <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/40">
                         <div className="bg-white rounded-lg shadow-xl p-4 w-full max-w-sm border border-neutral-200">
-                            <div className="text-sm font-semibold text-neutral-900 mb-2">
+                            <div className="text-xs font-semibold text-neutral-900 mb-2">
                                 Close editor?
                             </div>
                             <p className="text-xs text-neutral-600 mb-3">
@@ -1404,7 +1659,7 @@ export default function PreviewEditor({
                 {exportPrompt && (
                     <div className="fixed inset-0 z-[10010] flex items-center justify-center bg-black/40">
                         <div className="bg-white rounded-lg shadow-xl p-4 w-full max-w-sm border border-neutral-200">
-                            <div className="text-sm font-semibold text-neutral-900 mb-2">
+                            <div className="text-xs font-semibold text-neutral-900 mb-2">
                                 Deploy to Vercel?
                             </div>
                             <p className="text-xs text-neutral-600 mb-2">
@@ -1472,7 +1727,7 @@ function UiBtn({
     ariaBusy?: boolean;
 }) {
     const base =
-        "inline-flex items-center justify-center gap-2 transition active:scale-[.99] focus:outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-60 disabled:cursor-not-allowed text-sm";
+        "inline-flex items-center justify-center gap-2 transition active:scale-[.99] focus:outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-60 disabled:cursor-not-allowed text-xs";
 
     const withBusy = (
         <>
@@ -1518,14 +1773,15 @@ function UiBtn({
             </button>
         );
     }
+
     return (
         <button
             onClick={onClick}
             disabled={disabled}
             aria-busy={ariaBusy}
-            className={`${base} px-2.5 py-1 rounded-full border text-xs ${pressed
-                ? "bg-slate-900 text-white border-slate-900"
-                : "bg-white text-neutral-800 border-neutral-300 hover:bg-neutral-50"
+            className={`${base} rounded-full px-2.5 py-1 text-[11px] border ${pressed
+                ? "border-neutral-900 bg-neutral-900 text-white"
+                : "border-neutral-300 bg-white hover:bg-neutral-50"
                 }`}
         >
             {withBusy}

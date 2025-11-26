@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
             const integrationSnap = await integrationRef.get();
             if (!integrationSnap.exists) {
                 return NextResponse.json(
-                    { ok: false, error: "Vercel is not connected for this account." },
+                    { ok: false, error: "Vercel is not connected for this account. Visit settings to fix this." },
                     { status: 400 }
                 );
             }

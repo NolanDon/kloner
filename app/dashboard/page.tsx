@@ -562,7 +562,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
                             aria-disabled={locked}
                             tabIndex={locked ? -1 : 0}
                         >
-                            {`${isReady ? 'Generate Preview': 'Open'}`}
+                            Open Builder
                         </a>
 
                         <button
