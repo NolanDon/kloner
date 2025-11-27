@@ -369,6 +369,104 @@ type UploadedAsset = {
     path: string;
 };
 
+type DerivedTheme = {
+    textColors: string[];
+    bgColors: string[];
+    fontFamilies: string[];
+};
+
+type SidePanelMode = "style" | "meta";
+
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+    let h = hex.replace("#", "").trim();
+    if (h.length === 3) {
+        h = h
+            .split("")
+            .map((ch) => ch + ch)
+            .join("");
+    }
+    if (h.length !== 6) return null;
+    const num = parseInt(h, 16);
+    return {
+        r: (num >> 16) & 255,
+        g: (num >> 8) & 255,
+        b: num & 255,
+    };
+}
+
+function luminance(hex: string): number {
+    const rgb = hexToRgb(hex);
+    if (!rgb) return 0;
+    const norm = ["r", "g", "b"].map((k) => {
+        let v = (rgb as any)[k] / 255;
+        return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    });
+    // relative luminance
+    return 0.2126 * norm[0] + 0.7152 * norm[1] + 0.0722 * norm[2];
+}
+
+function deriveThemeFromInitialHtml(html: string | undefined | null): DerivedTheme {
+    if (!html) return { textColors: [], bgColors: [], fontFamilies: [] };
+
+    const hexRe = /#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/g;
+    const fontRe = /font-family\s*:\s*([^;]+);?/gi;
+
+    const colorSet = new Set<string>();
+    let m: RegExpExecArray | null;
+
+    while ((m = hexRe.exec(html))) {
+        const c = m[0].toLowerCase();
+        colorSet.add(c);
+    }
+
+    const allColors = Array.from(colorSet);
+
+    // classify: darker → text, lighter → background (rough cut)
+    const textColors: string[] = [];
+    const bgColors: string[] = [];
+
+    for (const c of allColors) {
+        const L = luminance(c);
+        if (L <= 0.5) textColors.push(c);
+        else bgColors.push(c);
+    }
+
+    // cap counts so the UI doesn’t explode
+    const textColorsTrimmed = textColors.slice(0, 10);
+    const bgColorsTrimmed = bgColors.slice(0, 10);
+
+    // fonts
+    const fontSet = new Set<string>();
+    while ((m = fontRe.exec(html))) {
+        const decl = m[1];
+        const families = decl.split(",").map((p) =>
+            p.trim().replace(/^["']|["']$/g, "")
+        );
+        for (const fam of families) {
+            const lower = fam.toLowerCase();
+            if (!fam) continue;
+            if (
+                lower === "sans-serif" ||
+                lower === "serif" ||
+                lower === "monospace" ||
+                lower === "system-ui"
+            ) {
+                continue;
+            }
+            fontSet.add(fam);
+        }
+    }
+
+    const fontFamilies = Array.from(fontSet).slice(0, 8);
+
+    return {
+        textColors: textColorsTrimmed,
+        bgColors: bgColorsTrimmed,
+        fontFamilies,
+    };
+}
+
 export default function PreviewEditor({
     initialHtml,
     sourceImage,
@@ -381,6 +479,12 @@ export default function PreviewEditor({
     initialPageId,
     onPageHtmlChange,
 }: Props) {
+
+    const theme = useMemo(
+        () => deriveThemeFromInitialHtml(initialHtml),
+        [initialHtml]
+    );
+
     // monolithic HTML draft for the entire document
     const [htmlDraft, setHtmlDraft] = useState<string>("");
     const [previewHtml, setPreviewHtml] = useState<string>("");
@@ -420,7 +524,7 @@ export default function PreviewEditor({
     const [closePrompt, setClosePrompt] = useState(false);
     const [exportPrompt, setExportPrompt] = useState(false);
     const [controlsCollapsed, setControlsCollapsed] = useState(false);
-
+    
     const [selectionMeta, setSelectionMeta] = useState<SelectionMeta>({ has: false });
 
     const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -1151,15 +1255,15 @@ export default function PreviewEditor({
                                                     {[
                                                         {
                                                             id: "left",
-                                                            label: "L",
+                                                            label: "Left",
                                                         },
                                                         {
                                                             id: "center",
-                                                            label: "C",
+                                                            label: "Center",
                                                         },
                                                         {
                                                             id: "right",
-                                                            label: "R",
+                                                            label: "Right",
                                                         },
                                                     ].map((a) => (
                                                         <button
@@ -1185,8 +1289,51 @@ export default function PreviewEditor({
                                                 </div>
                                             </div>
 
+                                            <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
+                                                Font weight & transform
+                                            </div>
                                             {/* Weight / transform */}
                                             <div className="flex flex-wrap gap-1">
+                                                {/* font-weight */}
+                                                <button
+                                                    type="button"
+                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                    disabled={closing}
+                                                    onClick={() =>
+                                                        sendStyleCommand({
+                                                            kind: "weight",
+                                                            value: "300",
+                                                        })
+                                                    }
+                                                >
+                                                    Light
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                    disabled={closing}
+                                                    onClick={() =>
+                                                        sendStyleCommand({
+                                                            kind: "weight",
+                                                            value: "400",
+                                                        })
+                                                    }
+                                                >
+                                                    Regular
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                    disabled={closing}
+                                                    onClick={() =>
+                                                        sendStyleCommand({
+                                                            kind: "weight",
+                                                            value: "500",
+                                                        })
+                                                    }
+                                                >
+                                                    Medium
+                                                </button>
                                                 <button
                                                     type="button"
                                                     className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
@@ -1207,12 +1354,27 @@ export default function PreviewEditor({
                                                     onClick={() =>
                                                         sendStyleCommand({
                                                             kind: "weight",
-                                                            value: "400",
+                                                            value: "700",
                                                         })
                                                     }
                                                 >
-                                                    Normal
+                                                    Bold
                                                 </button>
+                                                <button
+                                                    type="button"
+                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                    disabled={closing}
+                                                    onClick={() =>
+                                                        sendStyleCommand({
+                                                            kind: "weight",
+                                                            value: "800",
+                                                        })
+                                                    }
+                                                >
+                                                    Extra-bold
+                                                </button>
+
+                                                {/* text-transform */}
                                                 <button
                                                     type="button"
                                                     className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
@@ -1240,6 +1402,160 @@ export default function PreviewEditor({
                                                     Aa
                                                 </button>
                                             </div>
+
+
+                                            {/* Theme from page */}
+                                            {(theme.textColors.length ||
+                                                theme.bgColors.length ||
+                                                theme.fontFamilies.length) > 0 && (
+                                                    <div className="mt-4 space-y-3 border-t border-neutral-200 pt-3">
+                                                        <div className="text-[10px] uppercase tracking-wide text-neutral-400">
+                                                            Theme (from this page)
+                                                        </div>
+
+                                                        {/* Theme text colors */}
+                                                        {theme.textColors.length > 0 && (
+                                                            <div>
+                                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
+                                                                    Theme text color
+                                                                </div>
+                                                                <div className="flex flex-wrap gap-1">
+                                                                    {theme.textColors.map((c) => (
+                                                                        <button
+                                                                            key={c}
+                                                                            type="button"
+                                                                            className="w-6 h-6 rounded-full border border-black/10 shadow-sm hover:scale-105 active:scale-95 disabled:opacity-40"
+                                                                            style={{ background: c }}
+                                                                            disabled={closing}
+                                                                            onClick={() =>
+                                                                                sendStyleCommand({
+                                                                                    kind: "textColor",
+                                                                                    value: c,
+                                                                                })
+                                                                            }
+                                                                        />
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Theme background colors */}
+                                                        {theme.bgColors.length > 0 && (
+                                                            <div>
+                                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
+                                                                    Theme background
+                                                                </div>
+                                                                <div className="flex flex-wrap gap-1">
+                                                                    {theme.bgColors.map((c) => (
+                                                                        <button
+                                                                            key={c}
+                                                                            type="button"
+                                                                            className="w-6 h-6 rounded-full border border-black/10 shadow-sm hover:scale-105 active:scale-95 disabled:opacity-40"
+                                                                            style={{ background: c }}
+                                                                            disabled={closing}
+                                                                            onClick={() =>
+                                                                                sendStyleCommand({
+                                                                                    kind: "bgColor",
+                                                                                    value: c,
+                                                                                })
+                                                                            }
+                                                                        />
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Theme font families */}
+                                                        {theme.fontFamilies.length > 0 && (
+                                                            <div>
+                                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
+                                                                    Theme fonts
+                                                                </div>
+                                                                <div className="flex flex-wrap gap-1">
+                                                                    {theme.fontFamilies.map((f) => (
+                                                                        <button
+                                                                            key={f}
+                                                                            type="button"
+                                                                            disabled={closing}
+                                                                            onClick={() =>
+                                                                                sendStyleCommand({
+                                                                                    kind: "fontFamily",
+                                                                                    value: f,
+                                                                                })
+                                                                            }
+                                                                            className="px-2 py-1 rounded-full border border-black/10 bg-white text-[11px] shadow-sm hover:scale-105 active:scale-95 disabled:opacity-40"
+                                                                            style={{ fontFamily: f }}
+                                                                        >
+                                                                            {f}
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                            {/* Image size */}
+                                            <div>
+                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
+                                                    Image size
+                                                </div>
+                                                <div className="flex flex-wrap gap-1">
+                                                    <button
+                                                        type="button"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        disabled={closing}
+                                                        onClick={() =>
+                                                            sendStyleCommand({
+                                                                kind: "widthPreset",
+                                                                value: "auto",
+                                                            })
+                                                        }
+                                                    >
+                                                        Auto
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        disabled={closing}
+                                                        onClick={() =>
+                                                            sendStyleCommand({
+                                                                kind: "widthPreset",
+                                                                value: "narrow",
+                                                            })
+                                                        }
+                                                    >
+                                                        Small
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        disabled={closing}
+                                                        onClick={() =>
+                                                            sendStyleCommand({
+                                                                kind: "widthPreset",
+                                                                value: "wide",
+                                                            })
+                                                        }
+                                                    >
+                                                        Medium
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        disabled={closing}
+                                                        onClick={() =>
+                                                            sendStyleCommand({
+                                                                kind: "widthPreset",
+                                                                value: "full",
+                                                            })
+                                                        }
+                                                    >
+                                                        Full
+                                                    </button>
+                                                </div>
+                                            </div>
+
 
                                             {/* Text color */}
                                             <div>
@@ -1577,6 +1893,7 @@ export default function PreviewEditor({
                                         </div>
                                     </div>
                                 )}
+
 
                                 <div className="block lg:hidden mb-3 fixed bottom-0 w-full">
                                     <button
