@@ -198,6 +198,18 @@ export function stripEditorArtifacts(html: string): string {
         ""
     );
 
+    // 6) strip ALL contenteditable attributes (any value) so nothing ships editable
+    out = out.replace(
+        /\scontenteditable\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi,
+        ""
+    );
+
+    // 7) strip kloner toolbar markup entirely from export
+    out = out.replace(
+        /<div[^>]*\bclass=["'][^"']*kloner-toolbar[^"']*["'][^>]*>[\s\S]*?<\/div>/gi,
+        ""
+    );
+
     return out;
 }
 
@@ -674,7 +686,7 @@ export default function PreviewEditor({
     ): Promise<UploadedAsset> {
 
         console.log("renderId for upload:", draftId);
-        
+
         const csrf = await ensureSessionAndCsrf();
         const safeName = sanitizeName(file.name || "upload.bin");
 
@@ -807,7 +819,7 @@ export default function PreviewEditor({
             tryClearIframeSelection();
             try {
                 if (closeMode === "save") {
-                     setClosePrompt(false);
+                    setClosePrompt(false);
                     await doSave();
                 }
                 await onClose?.();
@@ -889,13 +901,13 @@ export default function PreviewEditor({
                                         View
                                     </div>
                                     <div className="flex flex-wrap gap-1">
-                                        {/* <UiBtn
+                                        <UiBtn
                                             pressed={mode === "code"}
                                             onClick={() => handleModeClick("code")}
                                             disabled={closing}
                                         >
                                             Code
-                                        </UiBtn> */}
+                                        </UiBtn>
                                         <UiBtn
                                             pressed={mode === "preview"}
                                             onClick={() =>
@@ -1572,8 +1584,8 @@ export default function PreviewEditor({
                                         disabled={closing || !dirty}
                                         aria-busy={applyingPreview}
                                         className={`rounded px-3 py-3 text-lg w-full transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${dirty
-                                                ? "bg-emerald-600 text-white hover:brightness-95"
-                                                : "bg-emerald-50 text-emerald-700"
+                                            ? "bg-emerald-600 text-white hover:brightness-95"
+                                            : "bg-emerald-50 text-emerald-700"
                                             }`}
                                         title="Apply current draft to the live preview"
                                     >
@@ -1585,7 +1597,7 @@ export default function PreviewEditor({
                                     </button>
                                 </div>
 
-                                {/* {mode === "code" && (
+                                {mode === "code" && (
                                     <div className="min-h-0 flex-1">
                                         <textarea
                                             className="h-full w-full border rounded p-2 font-mono text-xs leading-5 outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-60"
@@ -1595,7 +1607,7 @@ export default function PreviewEditor({
                                             disabled={closing}
                                         />
                                     </div>
-                                )} */}
+                                )}
 
                                 {mode === "screenshot" && (
                                     <div className="text-xs text-slate-600">
@@ -1730,8 +1742,8 @@ export default function PreviewEditor({
                                 disabled={closing || !dirty}
                                 aria-busy={applyingPreview}
                                 className={`rounded px-3 py-3 text-lg w-full transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${dirty
-                                        ? "bg-emerald-600 text-white hover:brightness-95"
-                                        : "bg-emerald-50 text-emerald-700"
+                                    ? "bg-emerald-600 text-white hover:brightness-95"
+                                    : "bg-emerald-50 text-emerald-700"
                                     }`}
                                 title="Apply current draft to the live preview"
                             >
@@ -1908,8 +1920,8 @@ function UiBtn({
             disabled={disabled}
             aria-busy={ariaBusy}
             className={`${base} rounded-full px-2.5 py-1 text-[11px] border ${pressed
-                    ? "border-neutral-900 bg-neutral-900 text-white"
-                    : "border-neutral-300 bg-white hover:bg-neutral-50"
+                ? "border-neutral-900 bg-neutral-900 text-white"
+                : "border-neutral-300 bg-white hover:bg-neutral-50"
                 }`}
         >
             {withBusy}

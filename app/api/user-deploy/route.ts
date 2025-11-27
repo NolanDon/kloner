@@ -16,7 +16,6 @@ export async function POST(req: NextRequest) {
                 renderId,
                 vercelProjectId: bodyProjectId,
                 vercelProjectName: bodyProjectName,
-                user
             } = await req.json();
 
             if (!html || typeof html !== "string") {
@@ -26,16 +25,24 @@ export async function POST(req: NextRequest) {
                 );
             }
 
+            const db = getAdminDb();
 
-            if (user.tier === "free") {
+            // Server-side tier guard (never trust client)
+            const userSnap = await db.doc(`kloner_users/${uid}`).get();
+            const userData = userSnap.exists ? (userSnap.data() as any) : {};
+            const userTier = userData?.tier ?? "free";
+
+            if (userTier === "free") {
                 return NextResponse.json(
-                    { ok: false, error: "Please upgrade your account to deploy projects." },
-                    { status: 400 }
+                    {
+                        ok: false,
+                        error: "Please upgrade your account to deploy projects.",
+                    },
+                    { status: 400 },
                 );
             }
 
-
-            const db = getAdminDb();
+            // ───────────────── existing code continues ─────────────────
 
             let renderDoc:
                 | FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData>
@@ -60,7 +67,6 @@ export async function POST(req: NextRequest) {
                 vercelProjectName =
                     (data.vercelProjectName as string) || vercelProjectName;
 
-                // support your client-side save `{ projectVercelName: trimmed }`
                 renderStoredName =
                     (data.projectVercelName as string) ||
                     (data.vercelProjectName as string) ||
@@ -76,8 +82,12 @@ export async function POST(req: NextRequest) {
             const integrationSnap = await integrationRef.get();
             if (!integrationSnap.exists) {
                 return NextResponse.json(
-                    { ok: false, error: "Vercel is not connected for this account. Visit settings to fix this." },
-                    { status: 400 }
+                    {
+                        ok: false,
+                        error:
+                            "Vercel is not connected for this account. Visit settings to fix this.",
+                    },
+                    { status: 400 },
                 );
             }
 

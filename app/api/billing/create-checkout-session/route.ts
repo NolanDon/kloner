@@ -12,9 +12,9 @@ const stripe = getStripe();
 const db = admin.firestore();
 
 async function handler({ req, uid }: { req: NextRequest; uid: string }) {
-    const body = await req.json().catch(() => ({}));
-    const { plan } = body as { plan?: "pro" | "agency" };
 
+    const body = await req.json().catch(() => ({}));
+    const { plan, returnRenderId, returnStep } = body as any;
     if (!plan) {
         return NextResponse.json({ error: "Missing plan" }, { status: 400 });
     }
@@ -64,11 +64,23 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         await linkCustomerToUid(customerId, uid);
     }
 
-    const successUrl = isProd
-        ? process.env.STRIPE_SUCCESS_URL_PROD ||
-        "https://kloner.app/dashboard?billing=success"
-        : process.env.STRIPE_SUCCESS_URL_TEST ||
-        "http://localhost:3000/dashboard?billing=success";
+
+    const appOrigin = isProd
+        ? process.env.NEXT_PUBLIC_APP_ORIGIN || "https://kloner.app"
+        : process.env.NEXT_PUBLIC_APP_ORIGIN || "http://localhost:3000";
+
+    let successUrl: string;
+
+    if (returnRenderId && returnStep) {
+        // always go through /dashboard/view for wizard flows
+        const step = returnStep || 2;
+        successUrl = `${appOrigin}/dashboard/view?wizard=1&step=${step}&render=${encodeURIComponent(
+            returnRenderId || "",
+        )}&billing=success`;
+    } else {
+        // generic billing success
+        successUrl = `${appOrigin}/dashboard/view?billing=success`;
+    }
 
     const cancelUrl = isProd
         ? process.env.STRIPE_CANCEL_URL_PROD ||

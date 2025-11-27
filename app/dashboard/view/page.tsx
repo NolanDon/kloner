@@ -54,6 +54,7 @@ import {
     Crown,
     BrushIcon,
     Clock10,
+    MessageCircleWarning,
 } from "lucide-react";
 import {
     isHttpUrl,
@@ -643,6 +644,14 @@ export default function PreviewPage(): JSX.Element {
     const [showUpgradeAfterCustomize, setShowUpgradeAfterCustomize] =
         useState(false);
 
+
+    const [deployWizardOpen, setDeployWizardOpen] = useState(false);
+    const [deployWizardStep, setDeployWizardStep] = useState<1 | 2 | 3 | 5>(1);
+    const [deployWizardProjectName, setDeployWizardProjectName] = useState("");
+    const [deployWizardBusy, setDeployWizardBusy] = useState(false);
+    const [deployWizardError, setDeployWizardError] = useState<string | null>(null);
+    const [deployWizardRenderId, setDeployWizardRenderId] = useState<string | null>(null);
+
     const [urls, setUrls] = useState<Array<{ id: string } & UrlDoc>>([]);
     const [urlsLoading, setUrlsLoading] = useState<boolean>(true);
 
@@ -650,6 +659,8 @@ export default function PreviewPage(): JSX.Element {
     const [info, setInfo] = useState<string>("");
 
     const [loading, setLoading] = useState<boolean>(true);
+
+    const projectNameSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const [docSnap, setDocSnap] =
         useState<QueryDocumentSnapshot<DocumentData> | null>(null);
@@ -697,18 +708,57 @@ export default function PreviewPage(): JSX.Element {
         html: string;
         renderId?: string;
     }>(null);
-    const [previewConfirmOpen, setPreviewConfirmOpen] = useState(false);
-    const [previewConfirmLoading, setPreviewConfirmLoading] = useState(false);
 
+    const billing = search.get("billing");
+    const wizard = search.get("wizard");
+    const step = Number(search.get("step"));
+    const render = search.get("render");
 
-    function handleCancelProjectName() {
-        setShowProjectNamePopover(false);
-        setPendingDeploy(null);
-        setProjectNameBusy(false);
-        if (projectNameInputRef.current) {
-            projectNameInputRef.current.value = "";
+    useEffect(() => {
+        if (billing === "success" && wizard === "1") {
+            if (render) setDeployWizardRenderId(render);
+            if (step) setDeployWizardStep(step as any);
+            setDeployWizardOpen(true);
         }
-    }
+    }, [billing, wizard, step, render]);
+
+
+    const persistProjectNameHint = useCallback(
+        (renderId: string, name: string) => {
+            if (!user) return;
+
+            if (projectNameSaveTimeoutRef.current) {
+                clearTimeout(projectNameSaveTimeoutRef.current);
+            }
+
+            projectNameSaveTimeoutRef.current = setTimeout(() => {
+                const trimmed = name.trim();
+
+                void updateDoc(
+                    doc(db, "kloner_users", user.uid, "kloner_renders", renderId),
+                    {
+                        nameHint: trimmed || null,
+                    },
+                ).catch((err) => {
+                    console.error("Failed to persist project name hint", err);
+                });
+            }, 400); // small debounce so we don't write every keystroke
+        },
+        [user],
+    );
+
+    // const [previewConfirmOpen, setPreviewConfirmOpen] = useState(false);
+    // const [previewConfirmLoading, setPreviewConfirmLoading] = useState(false);
+
+
+    // function handleCancelProjectName() {
+    //     setShowProjectNamePopover(false);
+    //     setPendingDeploy(null);
+    //     setProjectNameBusy(false);
+    //     if (projectNameInputRef.current) {
+    //         projectNameInputRef.current.value = "";
+    //     }
+    // }
 
 
     // async function handleConfirmProjectName() {
@@ -1112,6 +1162,9 @@ export default function PreviewPage(): JSX.Element {
             // ignore
         }
     }, []);
+
+    const [checkoutBusy, setCheckoutBusy] = useState(false);
+
 
     const nextShot = useCallback(() => {
         if (!shots.length) return;
@@ -2012,7 +2065,7 @@ export default function PreviewPage(): JSX.Element {
 
                 // optional: prefill with existing nameHint if we have it
                 const target = renders.find((r) => r.id === resolvedRenderId);
-                setDeployWizardProjectName(target?.nameHint || "");
+                setDeployWizardProjectName("");
             } else {
                 setDeployWizardRenderId(null);
                 setDeployWizardProjectName("");
@@ -2023,6 +2076,29 @@ export default function PreviewPage(): JSX.Element {
         }
 
 
+        if (userTier === "free") {
+            if (deployWizardStep !== 5) {
+                setDeployWizardBusy(false);
+                setDeployWizardError(null);
+                setDeployWizardStep(5);
+
+                if (resolvedRenderId) {
+                    setDeployWizardRenderId(resolvedRenderId);
+                    const target = renders.find((r) => r.id === resolvedRenderId);
+                    setDeployWizardProjectName(target?.nameHint || trimmedName || "");
+                } else {
+                    setDeployWizardRenderId(null);
+                    setDeployWizardProjectName(trimmedName || "");
+                }
+
+                setDeployWizardOpen(true);
+                push("Export and deploy are reserved for paid plans.", "warn");
+            }
+
+            return; // hard stop
+        }
+
+
         // visual feedback: mark this render as deploying
         if (resolvedRenderId) {
             setDeployingRenderId(resolvedRenderId);
@@ -2030,13 +2106,6 @@ export default function PreviewPage(): JSX.Element {
         push("Starting deployment…", "ok");
 
         const csrf = await ensureSessionAndCsrf();
-
-
-        if (userTier === "free") {
-            setShowCreditsPaywall("preview");
-            push("Export and deploy are reserved for paid plans.", "warn");
-            return;
-        }
 
         try {
             const r = await fetch("/api/user-deploy", {
@@ -2089,8 +2158,6 @@ export default function PreviewPage(): JSX.Element {
             setDeployingRenderId(null);
         }
     }
-
-
 
     const saveDraft = useCallback(
         async (payload: {
@@ -2208,6 +2275,7 @@ export default function PreviewPage(): JSX.Element {
         []
     );
 
+
     const rescan = useCallback(
         async () => {
             if (
@@ -2308,13 +2376,6 @@ export default function PreviewPage(): JSX.Element {
     }, [urlsLoading, targetUrl, urls, router]);
 
     // ───────── deploy wizard state: project name → vercel → deploy ─────────
-
-    const [deployWizardOpen, setDeployWizardOpen] = useState(false);
-    const [deployWizardStep, setDeployWizardStep] = useState<1 | 2 | 3>(1);
-    const [deployWizardProjectName, setDeployWizardProjectName] = useState("");
-    const [deployWizardBusy, setDeployWizardBusy] = useState(false);
-    const [deployWizardError, setDeployWizardError] = useState<string | null>(null);
-    const [deployWizardRenderId, setDeployWizardRenderId] = useState<string | null>(null);
 
     const {
         status: vercelStatus,
@@ -2451,6 +2512,56 @@ export default function PreviewPage(): JSX.Element {
         autoDeployTriggeredRef.current = false;
     }, []);
 
+
+    const startProCheckout = useCallback(async () => {
+        if (checkoutBusy) return;
+        setCheckoutBusy(true);
+
+        try {
+            const csrfRes = await fetch("/api/auth/csrf", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                credentials: "include",
+                cache: "no-store",
+            });
+
+            const csrfData = csrfRes.ok ? await csrfRes.json().catch(() => null) : null;
+            const csrf = csrfData?.csrf ?? null;
+
+            const res = await fetch("/api/billing/create-checkout-session", {
+                method: "POST",
+                headers: {
+                    "content-type": "application/json",
+                    ...(csrf ? { "x-csrf": csrf } : {}),
+                },
+                credentials: "include",
+                body: JSON.stringify({
+                    plan: "pro",
+                    returnRenderId: deployWizardRenderId,
+                    // ⬇️ come back into the wizard at step 2, not 5
+                    returnStep: 2,
+                }),
+            });
+
+            if (res.status === 401) {
+                const next = encodeURIComponent("/dashboard/view?upgraded=1");
+                window.location.href = `/login?next=${next}`;
+                return;
+            }
+
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.url) {
+                alert(data?.error || "Unable to start checkout.");
+                return;
+            }
+
+            window.location.href = data.url;
+        } finally {
+            setCheckoutBusy(false);
+        }
+    }, [checkoutBusy, deployWizardRenderId]);
+
+
     // ───────── auto-advance from step 2 → 3 only if we have a render id ─────────
 
     useEffect(() => {
@@ -2475,30 +2586,30 @@ export default function PreviewPage(): JSX.Element {
 
     // ───────── actual deploy call ─────────
 
-    const submitDeployWizard = useCallback(async () => {
-        if (!deployWizardRenderId) return;
-        const target = renders.find((r) => r.id === deployWizardRenderId);
-        if (!target || !target.html?.trim()) return;
+    const submitDeployWizard = useCallback(
+        async (target: { id: string; html: string; nameHint?: string | null }) => {
+            setDeployWizardBusy(true);
+            setDeployWizardError(null);
 
-        setDeployWizardBusy(true);
-        setDeployWizardError(null);
-        try {
-            await exportToVercel({
-                html: target.html,
-                name: deployWizardProjectName || target.nameHint || "",
-                renderId: target.id,
-            });
-            // keep step=3; UI will switch from “Deploying…” → “Deployment created”
-            setDeployWizardStep(3);
-        } catch (e) {
-            console.error("Deploy failed", e);
-            setDeployWizardError(
-                "We couldn’t finish the deploy. Check your Vercel connection and try again.",
-            );
-        } finally {
-            setDeployWizardBusy(false);
-        }
-    }, [deployWizardRenderId, deployWizardProjectName, renders, exportToVercel]);
+            try {
+                await exportToVercel({
+                    html: target.html,
+                    name: deployWizardProjectName || target.nameHint || "",
+                    renderId: target.id,
+                });
+            } catch (e) {
+                console.error("Deploy failed", e);
+                setDeployWizardError(
+                    "We couldn’t finish the deploy. Check your Vercel connection and try again.",
+                );
+            } finally {
+                setDeployWizardBusy(false);
+            }
+        },
+        [deployWizardProjectName, exportToVercel],
+    );
+
+
 
     // ───────── auto-deploy exactly once when we land on step 3 ─────────
 
@@ -2506,16 +2617,21 @@ export default function PreviewPage(): JSX.Element {
         if (!deployWizardOpen) return;
         if (deployWizardStep !== 3) return;
         if (deployWizardBusy) return;
-        if (!deployWizardRenderId) return; // nothing to deploy
+        if (!deployWizardRenderId) return;
+        if (!renders || renders.length === 0) return;
         if (autoDeployTriggeredRef.current) return;
 
+        const target = renders.find((r) => r.id === deployWizardRenderId);
+        if (!target || !target.html?.trim()) return;
+
         autoDeployTriggeredRef.current = true;
-        void submitDeployWizard();
+        void submitDeployWizard(target as any);
     }, [
         deployWizardOpen,
         deployWizardStep,
         deployWizardBusy,
         deployWizardRenderId,
+        renders,
         submitDeployWizard,
     ]);
 
@@ -3301,7 +3417,6 @@ export default function PreviewPage(): JSX.Element {
                                             View Deployment
                                             <Rocket className="ml-1 h-3 w-3" />
                                         </button>
-                                        <span>below.</span>
                                     </>
                                 ) : step3Done ? (
                                     <>
@@ -3429,7 +3544,7 @@ export default function PreviewPage(): JSX.Element {
                                             </div>
                                         </div>
                                         <span className="mt-6 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-[11px] font-medium text-neutral-600">
-                                            Step {deployWizardStep} of 3
+                                            Step {deployWizardStep == 5 ? "2" : deployWizardStep} of 3
                                         </span>
                                     </div>
 
@@ -3446,11 +3561,15 @@ export default function PreviewPage(): JSX.Element {
                                                 <div className="flex items-center gap-2">
                                                     <input
                                                         autoFocus
-                                                        onChange={(e) =>
-                                                            setDeployWizardProjectName(
-                                                                e.target.value,
-                                                            )
-                                                        }
+                                                        value={deployWizardProjectName}
+                                                        onChange={(e) => {
+                                                            const value = e.target.value;
+                                                            setDeployWizardProjectName(value);
+
+                                                            if (deployWizardRenderId) {
+                                                                persistProjectNameHint(deployWizardRenderId, value);
+                                                            }
+                                                        }}
                                                         placeholder="e.g. kloner-landing, client-site-01"
                                                         className="mt-0.5 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-[rgba(245,95,42,0.6)] focus:border-transparent"
                                                     />
@@ -3543,20 +3662,17 @@ export default function PreviewPage(): JSX.Element {
                                     {deployWizardStep === 3 && (
                                         <div className="space-y-4">
                                             <p className="text-xs text-neutral-600">
-                                                We&apos;re sending this preview to Vercel as
-                                                a new deployment.
+                                                We&apos;re sending this preview to Vercel as a new deployment.
                                             </p>
 
                                             <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-xs text-neutral-700 flex items-center gap-3">
-                                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-900">
+                                                <div className="flex items-center justify-center">
                                                     {deployWizardBusy ? (
                                                         <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
                                                     ) : deployWizardError ? (
-                                                        <span className="text-sm text-red-500">
-                                                            !
-                                                        </span>
+                                                        <span className="text-sm text-red-500">!</span>
                                                     ) : (
-                                                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                                                        <CheckCircle2 className="h-10 w-10 text-emerald-500" />
                                                     )}
                                                 </div>
                                                 <div>
@@ -3565,16 +3681,18 @@ export default function PreviewPage(): JSX.Element {
                                                             ? "Deploying to Vercel…"
                                                             : deployWizardError
                                                                 ? "Deploy failed"
-                                                                : "Deployment created"}
+                                                                : autoDeployTriggeredRef.current
+                                                                    ? "Deployment created"
+                                                                    : "Ready to deploy"}
                                                     </p>
                                                     <p className="text-[11px] text-neutral-600">
                                                         {deployWizardBusy &&
                                                             "This can take up to a minute depending on your project."}
                                                         {!deployWizardBusy &&
                                                             !deployWizardError &&
+                                                            autoDeployTriggeredRef.current &&
                                                             "Open the Deployments tab to see build status and your live URL."}
-                                                        {deployWizardError &&
-                                                            deployWizardError}
+                                                        {deployWizardError && deployWizardError}
                                                     </p>
                                                 </div>
                                             </div>
@@ -3592,9 +3710,7 @@ export default function PreviewPage(): JSX.Element {
                                                         type="button"
                                                         onClick={() => {
                                                             closeDeployWizard();
-                                                            router.push(
-                                                                "/dashboard/deployments",
-                                                            );
+                                                            router.push("/dashboard/deployments");
                                                         }}
                                                         className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white"
                                                         style={{ backgroundColor: ACCENT }}
@@ -3605,6 +3721,120 @@ export default function PreviewPage(): JSX.Element {
                                             </div>
                                         </div>
                                     )}
+
+                                    {deployWizardStep === 5 && (
+                                        <div className="space-y-5">
+                                            <div className="space-y-1.5">
+                                                <p className="text-sm font-semibold text-neutral-900">
+                                                    Upgrade required to publish this site
+                                                </p>
+                                                <p className="text-[11px] text-neutral-600 leading-relaxed">
+                                                    Deploying previews to Vercel is a paid feature. Upgrading unlocks instant
+                                                    publishing, higher limits, and full multi-site workflows.
+                                                </p>
+                                            </div>
+
+                                            <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-xs text-neutral-700 space-y-3">
+                                                <div className="flex items-start gap-3">
+                                                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-neutral-900">
+                                                        <MessageCircleWarning className="text-white h-3.5 w-3.5" />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <p className="font-medium text-neutral-900">What you get on Pro</p>
+                                                        <ul className="space-y-1.5 text-[11px] text-neutral-600">
+                                                            <li className="flex items-start gap-1.5">
+                                                                <span className="mt-[3px] h-1.5 w-1.5 rounded-full" style={{ backgroundColor: ACCENT }} />
+                                                                <span>Deploy this site live in seconds from Kloner</span>
+                                                            </li>
+                                                            <li className="flex items-start gap-1.5">
+                                                                <span className="mt-[3px] h-1.5 w-1.5 rounded-full" style={{ backgroundColor: ACCENT }} />
+                                                                <span>Higher preview and screenshot limits for real work</span>
+                                                            </li>
+                                                            <li className="flex items-start gap-1.5">
+                                                                <span className="mt-[3px] h-1.5 w-1.5 rounded-full" style={{ backgroundColor: ACCENT }} />
+                                                                <span>Multiple live projects / client sites under one account</span>
+                                                            </li>
+                                                            <li className="flex items-start gap-1.5">
+                                                                <span className="mt-[3px] h-1.5 w-1.5 rounded-full" style={{ backgroundColor: ACCENT }} />
+                                                                <span>Full visual customization unlocked for more sections</span>
+                                                            </li>
+                                                            <li className="flex items-start gap-1.5">
+                                                                <span className="mt-[3px] h-1.5 w-1.5 rounded-full" style={{ backgroundColor: ACCENT }} />
+                                                                <span>Priority rendering queue for faster preview generation</span>
+                                                            </li>
+                                                            <li className="flex items-start gap-1.5">
+                                                                <span className="mt-[3px] h-1.5 w-1.5 rounded-full" style={{ backgroundColor: ACCENT }} />
+                                                                <span>One-click Vercel deployment from inside Kloner</span>
+                                                            </li>
+                                                        </ul>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => void startProCheckout()}
+                                                disabled={checkoutBusy}
+                                                className="flex w-full items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-[0_18px_40px_rgba(0,0,0,0.6)] transition transform hover:-translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-white/20 disabled:opacity-70 disabled:cursor-wait"
+                                                style={{ backgroundColor: ACCENT }}
+                                            >
+                                                {checkoutBusy ? "Redirecting to Stripe…" : "Upgrade to Pro and deploy"}
+                                            </button>
+
+                                            <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-xs text-neutral-700 flex items-center gap-3">
+                                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-900">
+                                                    {deployWizardBusy ? (
+                                                        <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                                                    ) : deployWizardError ? (
+                                                        <span className="text-sm text-red-500">!</span>
+                                                    ) : (
+                                                        <MessageCircleWarning className="h-4 w-4 text-white" />
+                                                    )}
+                                                </div>
+                                                <div>
+                                                    <p className="font-medium text-neutral-900">
+                                                        {deployWizardBusy
+                                                            ? "Checking your plan…"
+                                                            : deployWizardError
+                                                                ? "Upgrade check failed"
+                                                                : "Upgrade required"}
+                                                    </p>
+                                                    <p className="text-[11px] text-neutral-600">
+                                                        {deployWizardBusy &&
+                                                            "This can take a moment while we verify your current plan."}
+                                                        {!deployWizardBusy &&
+                                                            !deployWizardError &&
+                                                            "Publishing and exporting previews requires a paid plan."}
+                                                        {deployWizardError && deployWizardError}
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <div className="mt-4 flex items-center justify-between gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={closeDeployWizard}
+                                                    className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-600 hover:bg-neutral-50"
+                                                >
+                                                    Close
+                                                </button>
+                                                {/* {!deployWizardBusy && !deployWizardError && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            closeDeployWizard();
+                                                            router.push("/dashboard/deployments");
+                                                        }}
+                                                        className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white"
+                                                        style={{ backgroundColor: ACCENT }}
+                                                    >
+                                                        View deployments
+                                                    </button>
+                                                )} */}
+                                            </div>
+                                        </div>
+                                    )}
+
                                 </div>
                             </div>
                         </div>
@@ -3691,9 +3921,9 @@ export default function PreviewPage(): JSX.Element {
                                 </div>
                                 <p className="text-xs text-neutral-600 mb-3">
                                     {showCreditsPaywall === "screenshot" &&
-                                        "You have used all monhtly screenshot credits. Upgrade to capture more pages and monitor more sites."}
+                                        "You have used all monthly screenshot credits. Upgrade to capture more pages and monitor more sites."}
                                     {showCreditsPaywall === "preview" &&
-                                        "You have used all monhtly preview credits. Upgrade to generate more designs and unlock one-click deploy."}
+                                        "You have used all monthly preview credits. Upgrade to generate more designs and unlock one-click deploy."}
                                     {showCreditsPaywall === "deploy" &&
                                         "To deploy your website live, upgrade to a paid plan to unlock one-click deploy."}
                                 </p>
