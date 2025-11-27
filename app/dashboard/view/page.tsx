@@ -50,12 +50,10 @@ import {
     Plus,
     ChevronDown,
     Hammer,
-    Eye,
     CheckCircle2,
-    Timer,
-    Lock,
     Crown,
     BrushIcon,
+    Clock10,
 } from "lucide-react";
 import {
     isHttpUrl,
@@ -69,7 +67,6 @@ import {
 import { CREDIT_LIMITS, UserTier } from "@/src/lib/credits";
 import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 import { UrlDoc } from "../page";
-
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 
 const VERCEL_INTEGRATION_SLUG =
@@ -185,8 +182,8 @@ function RenderCardInner({
     continueRender,
     discardRender,
     startDeployWizard,
-    setShowCreditsPaywall,
-    push,
+    // setShowCreditsPaywall,
+    // push,
 }: RenderCardProps) {
     const router = useRouter();
 
@@ -564,25 +561,25 @@ const GhostActionRow = memo(function GhostActionCard({
             type="button"
             onClick={onClick}
             disabled={disabled}
-            className={`group relative p-6 flex w-full items-center justify-center rounded-xl border-2 border-dashed bg-white text-center transition ${disabled
-                ? "opacity-60 cursor-not-allowed"
-                : "hover:border-neutral-400"
-                }`}
+            className={`group relative w-full rounded-lg border border-dashed border-neutral-200 bg-neutral-50/60 px-3 py-2 text-left text-[11px] text-neutral-500 transition
+                ${disabled ? "opacity-50 cursor-not-allowed" : "hover:bg-neutral-50"}`}
             title={title}
             aria-disabled={disabled}
         >
-            <div className="pointer-events-none flex flex-col items-center">
-                <div className="grid h-14 w-14 place-items-center rounded-full border border-neutral-200 bg-neutral-50 transition group-hover:scale-105">
-                    <Plus className="h-7 w-7 text-neutral-600" />
+            <div className="pointer-events-none flex items-center gap-2">
+                <div className="grid h-6 w-6 place-items-center rounded-full border border-neutral-200 bg-white">
+                    <Plus className="h-3.5 w-3.5 text-neutral-500" />
                 </div>
-                <div className="mt-3 text-sm font-semibold text-neutral-800">
-                    {title}
+                <div className="flex flex-col">
+                    <span className="font-medium text-[11px] text-neutral-600">
+                        {title}
+                    </span>
+                    {subtitle ? (
+                        <span className="mt-0.5 text-[10px] text-neutral-400">
+                            {subtitle}
+                        </span>
+                    ) : null}
                 </div>
-                {subtitle ? (
-                    <div className="mt-1 text-xs text-neutral-500">
-                        {subtitle}
-                    </div>
-                ) : null}
             </div>
         </button>
     );
@@ -1847,6 +1844,7 @@ export default function PreviewPage(): JSX.Element {
         [user, push, shots]
     );
 
+
     const discardRender = useCallback(
         async (renderId: string) => {
             if (!user) return;
@@ -1870,49 +1868,24 @@ export default function PreviewPage(): JSX.Element {
                 const snap = await getDoc(renderRef);
                 const data = snap.exists() ? (snap.data() as any) : null;
 
-                const storagePaths: string[] = [];
-
-                const maybeExtractPathFromUrl = (u: string | null | undefined) => {
-                    if (!u || typeof u !== "string") return;
-                    // matches .../o/kloner-screenshots%2F{...}?alt=media...
-                    const m = u.match(/\/o\/([^?]+)\?/);
-                    if (m && m[1]) {
-                        storagePaths.push(decodeURIComponent(m[1]));
-                    }
-                };
-
-                // New shape: { referenceImage: { path, url } }
-                if (data?.referenceImage?.path && typeof data.referenceImage.path === "string") {
-                    storagePaths.push(data.referenceImage.path);
-                } else if (typeof data?.referenceImage === "string") {
-                    // legacy string URL
-                    maybeExtractPathFromUrl(data.referenceImage);
+                console.log("deleting render", renderId, data);
+                // fire-and-forget delete of ALL storage objects for this render
+                try {
+                    const csrf = await ensureSessionAndCsrf();
+                    await fetch("/api/user-blob/delete", {
+                        method: "POST",
+                        headers: {
+                            "content-type": "application/json",
+                            ...(csrf ? { "x-csrf": csrf } : {}),
+                        },
+                        credentials: "include",
+                        body: JSON.stringify({ renderId }),
+                    });
+                } catch (e) {
+                    console.error("storage delete by renderId failed (non-fatal)", e);
                 }
 
-                if (Array.isArray(data?.images)) {
-                    for (const img of data.images) {
-                        if (img && typeof img.path === "string") {
-                            storagePaths.push(img.path);
-                        } else if (img && typeof img === "string") {
-                            maybeExtractPathFromUrl(img);
-                        }
-                    }
-                }
-
-                if (storagePaths.length) {
-                    try {
-                        await fetch("/api/user-storage/delete", {
-                            method: "POST",
-                            headers: {
-                                "content-type": "application/json",
-                            },
-                            body: JSON.stringify({ paths: storagePaths }),
-                        });
-                    } catch (e) {
-                        console.error("storage delete failed (non-fatal)", e);
-                    }
-                }
-
+                // delete Firestore doc last
                 await deleteDoc(renderRef);
 
                 setRenders((prev) => prev.filter((r) => r.id !== renderId));
@@ -2887,9 +2860,11 @@ export default function PreviewPage(): JSX.Element {
                                     1
                                 </span>
                                 <span>URLs</span>
-                                {step1Done && (
+                                {step1Done ? (
                                     <CheckCircle2 className="h-4.5 w-4.5 text-emerald-500" />
-                                )}
+                                ) :
+                                    <Clock10 className="h-4 w-4 text-amber-500" />
+                                }
                             </div>
 
                             <p className="text-xs text-neutral-500">
@@ -2903,25 +2878,26 @@ export default function PreviewPage(): JSX.Element {
                         {urlsLoading ? (
                             <div className="h-10 rounded-xl bg-neutral-100 animate-pulse" />
                         ) : urls.length === 0 ? (
-                            <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-2 text-sm text-neutral-700 my-2">
+                            <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-2 text-sm text-neutral-700 my-2 flex items-center gap-2">
                                 <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1">
                                     {step1Done ? (
                                         <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                                     ) : (
-                                        <Timer className="h-4 w-4 text-orange-400" />
+                                        <Clock10 className="h-4 w-4 text-amber-500" />
                                     )}
                                     Step 1
                                 </strong>{" "}
-                                — Add a URL in Dashboard. Return here to capture
-                                screenshots and build previews.
+                                — Add a URL in<a className="underline font-semibold tracking-wide text-amber-500" href="/dashboard">Dashboard</a>
                             </div>
                         ) : (
                             <div className="relative inline-block" ref={urlMenuRef}>
-                                <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-2 text-sm text-neutral-700 my-2">
+                                <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-2 text-sm text-neutral-700 my-2 flex items-center gap-2">
                                     <strong className="text-neutral-800 font-semibold inline-flex gap-1">
-                                        {step1Done && (
+                                        {step1Done ? (
                                             <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                                        )}
+                                        ) :
+                                            <Clock10 className="h-4 w-4 text-amber-500" />
+                                        }
                                         Step 1
                                     </strong>{" "}
                                     — You have chosen a URL.
@@ -3008,8 +2984,10 @@ export default function PreviewPage(): JSX.Element {
                                     2
                                 </span>
                                 <span>Screenshot collections</span>
-                                {step2Done && (
+                                {step2Done ? (
                                     <CheckCircle2 className="h-4.5 w-4.5 text-emerald-500" />
+                                ) : (
+                                    <Clock10 className="h-4 w-4 text-amber-500" />
                                 )}
                             </div>
 
@@ -3022,12 +3000,12 @@ export default function PreviewPage(): JSX.Element {
 
                     {!targetUrl ? (
                         <>
-                            <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-2 text-sm text-neutral-700 flex items-center gap-3">
+                            <div className="mt-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-3 text-sm text-neutral-700 flex flex-wrap items-center gap-2 my-4">
                                 <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1">
                                     {step2Done ? (
                                         <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                                     ) : (
-                                        <Timer className="h-4 w-4 text-orange-400" />
+                                        <Clock10 className="h-4 w-4 text-amber-500" />
                                     )}
                                     <span>Step 2</span>
                                 </strong>
@@ -3056,7 +3034,7 @@ export default function PreviewPage(): JSX.Element {
                                     {step2Done ? (
                                         <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                                     ) : (
-                                        <Timer className="h-4 w-4 text-orange-400" />
+                                        <Clock10 className="h-4 w-4 text-amber-500" />
                                     )}
                                     Step 2
                                 </strong>{" "}
@@ -3084,7 +3062,7 @@ export default function PreviewPage(): JSX.Element {
                                     {step2Done ? (
                                         <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                                     ) : (
-                                        <Timer className="h-4 w-4 text-orange-400" />
+                                        <Clock10 className="h-4 w-4 text-amber-500" />
                                     )}
                                     Step 2
                                 </strong>{" "}
@@ -3261,9 +3239,11 @@ export default function PreviewPage(): JSX.Element {
                                     3
                                 </span>
                                 <span>Website previews</span>
-                                {step3Done && (
+                                {step3Done ? (
                                     <CheckCircle2 className="h-4.5 w-4.5 text-emerald-500" />
-                                )}
+                                ) :
+                                    <Clock10 className="h-4 w-4 text-amber-500" />
+                                }
                             </div>
 
                         </div>
@@ -3281,13 +3261,12 @@ export default function PreviewPage(): JSX.Element {
                                         {step3Done ? (
                                             <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                                         ) : (
-                                            <Timer className="h-4 w-4 text-orange-400" />
+                                            <Clock10 className="h-4 w-4 text-amber-500" />
                                         )}
                                         <span>Step 3</span>
                                     </strong>
                                     <span className="text-neutral-800">
-                                        — Generate a preview from your screenshot
-                                        collection options above.
+                                        {`${step2Done ? '— Generate a preview from your screenshot collection options above.' : '—  Below will host your website previews.'}`}
                                     </span>
                                 </div>
                             </div>
@@ -3302,7 +3281,7 @@ export default function PreviewPage(): JSX.Element {
                                     {step3Done ? (
                                         <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                                     ) : (
-                                        <Timer className="h-4 w-4 text-orange-400" />
+                                        <Clock10 className="h-4 w-4 text-amber-500" />
                                     )}
                                     Step 3
                                 </strong>
@@ -3391,7 +3370,7 @@ export default function PreviewPage(): JSX.Element {
                         initialHtml={editorHtml}
                         sourceImage={editorRefImg}
                         onClose={() => {
-                            // setEditorOpen(false);
+                            setEditorOpen(false);
                             setActiveRenderId(undefined);
                         }}
                         onExport={(html, name) =>

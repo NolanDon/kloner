@@ -352,6 +352,11 @@ function derivePagesFromHtml(html: string): EditorPage[] {
     }
 }
 
+type UploadedAsset = {
+    url: string;
+    path: string;
+};
+
 export default function PreviewEditor({
     initialHtml,
     sourceImage,
@@ -385,7 +390,8 @@ export default function PreviewEditor({
     );
 
     const activePage = useMemo(
-        () => (allPages ? allPages.find((p) => p.id === activePageId) ?? null : null),
+        () =>
+            allPages ? allPages.find((p) => p.id === activePageId) ?? null : null,
         [allPages, activePageId]
     );
 
@@ -402,7 +408,6 @@ export default function PreviewEditor({
     const [closePrompt, setClosePrompt] = useState(false);
     const [exportPrompt, setExportPrompt] = useState(false);
     const [controlsCollapsed, setControlsCollapsed] = useState(false);
-
 
     const [selectionMeta, setSelectionMeta] = useState<SelectionMeta>({ has: false });
 
@@ -663,15 +668,13 @@ export default function PreviewEditor({
         return base.slice(-64) || "image";
     }
 
-    type UploadedAsset = {
-        url: string;  // public URL for rendering
-        path: string; // storage path for deletion later
-    };
-
     async function uploadFileToUserBlob(
         file: File,
         draftId: string
     ): Promise<UploadedAsset> {
+
+        console.log("renderId for upload:", draftId);
+        
         const csrf = await ensureSessionAndCsrf();
         const safeName = sanitizeName(file.name || "upload.bin");
 
@@ -702,9 +705,7 @@ export default function PreviewEditor({
         };
     }
 
-
-
-    // iframe messages: uploads + selection meta
+    // iframe messages: uploads + selection meta + delete-assets
     useEffect(() => {
         const onMsg = async (e: MessageEvent) => {
             const data = e.data || {};
@@ -735,14 +736,13 @@ export default function PreviewEditor({
                                 id,
                                 ok: true,
                                 url,
-                                path, // storage path so you can delete later
+                                path, // storage path so iframe can tag and later delete
                             },
                             "*"
                         );
                     } else {
                         throw new Error("missing_draft_id");
                     }
-
                 } catch (err: any) {
                     iframeRef.current?.contentWindow?.postMessage(
                         {
@@ -757,20 +757,36 @@ export default function PreviewEditor({
                 return;
             }
 
+            if (data?.type === "kloner:delete-assets") {
+                const paths = Array.isArray(data.paths)
+                    ? data.paths.filter((p: unknown) => typeof p === "string" && p)
+                    : [];
+                if (!paths.length) return;
+                try {
+                    await fetch("/api/user-blob/delete", {
+                        method: "POST",
+                        headers: {
+                            "content-type": "application/json",
+                        },
+                        body: JSON.stringify({ paths }),
+                    });
+                } catch (err) {
+                    console.error("asset delete from iframe failed", err);
+                }
+                return;
+            }
+
             if (data?.type === "kloner:selection") {
                 const meta = data.meta as SelectionMeta | undefined;
                 setSelectionMeta(
-                    meta && typeof meta.has === "boolean"
-                        ? meta
-                        : { has: false }
+                    meta && typeof meta.has === "boolean" ? meta : { has: false }
                 );
             }
         };
 
         window.addEventListener("message", onMsg);
         return () => window.removeEventListener("message", onMsg);
-    }, [uploadFileToUserBlob]);
-
+    }, [draftId]);
 
     const sendStyleCommand = useCallback(
         (cmd: StyleCmd) => {
@@ -791,9 +807,9 @@ export default function PreviewEditor({
             tryClearIframeSelection();
             try {
                 if (closeMode === "save") {
+                     setClosePrompt(false);
                     await doSave();
                 }
-                setClosePrompt(false);
                 await onClose?.();
             } finally {
                 setClosing(false);
@@ -813,8 +829,7 @@ export default function PreviewEditor({
 
     const activeSourceImage = useMemo(
         () =>
-            (allPages && activePage && activePage.screenshotUrl) ||
-            sourceImage,
+            (allPages && activePage && activePage.screenshotUrl) || sourceImage,
         [allPages, activePage, sourceImage]
     );
 
@@ -854,11 +869,15 @@ export default function PreviewEditor({
 
                             <button
                                 type="button"
-                                onClick={() => setControlsCollapsed((v) => !v)}
+                                onClick={() =>
+                                    setControlsCollapsed((v) => !v)
+                                }
                                 disabled={closing}
                                 className="inline-flex items-center gap-1 rounded border border-neutral-200 bg-white px-2 py-1 text-[10px] font-medium text-neutral-600 shadow-sm hover:bg-neutral-50 active:scale-95 disabled:opacity-50 lg:text-xs"
                             >
-                                {controlsCollapsed ? "Show controls" : "Hide controls"}
+                                {controlsCollapsed
+                                    ? "Show controls"
+                                    : "Hide controls"}
                             </button>
                         </div>
 
@@ -879,14 +898,18 @@ export default function PreviewEditor({
                                         </UiBtn> */}
                                         <UiBtn
                                             pressed={mode === "preview"}
-                                            onClick={() => handleModeClick("preview")}
+                                            onClick={() =>
+                                                handleModeClick("preview")
+                                            }
                                             disabled={closing}
                                         >
                                             Editable preview
                                         </UiBtn>
                                         <UiBtn
                                             pressed={mode === "screenshot"}
-                                            onClick={() => handleModeClick("screenshot")}
+                                            onClick={() =>
+                                                handleModeClick("screenshot")
+                                            }
                                             disabled={closing}
                                         >
                                             Screenshot
@@ -901,21 +924,27 @@ export default function PreviewEditor({
                                     <div className="flex flex-wrap gap-1">
                                         <UiBtn
                                             pressed={device === "desktop"}
-                                            onClick={() => setDevice("desktop")}
+                                            onClick={() =>
+                                                setDevice("desktop")
+                                            }
                                             disabled={closing}
                                         >
                                             Desktop
                                         </UiBtn>
                                         <UiBtn
                                             pressed={device === "tablet"}
-                                            onClick={() => setDevice("tablet")}
+                                            onClick={() =>
+                                                setDevice("tablet")
+                                            }
                                             disabled={closing}
                                         >
                                             Tablet
                                         </UiBtn>
                                         <UiBtn
                                             pressed={device === "mobile"}
-                                            onClick={() => setDevice("mobile")}
+                                            onClick={() =>
+                                                setDevice("mobile")
+                                            }
                                             disabled={closing}
                                         >
                                             Mobile
@@ -934,15 +963,21 @@ export default function PreviewEditor({
                                             disabled={closing || savingDraft}
                                             ariaBusy={savingDraft}
                                         >
-                                            {savingDraft ? "Saving…" : "Save draft"}
+                                            {savingDraft
+                                                ? "Saving…"
+                                                : "Save draft"}
                                         </UiBtn>
                                         <UiBtn
                                             variant="filled"
-                                            onClick={() => setExportPrompt(true)}
+                                            onClick={() =>
+                                                setExportPrompt(true)
+                                            }
                                             disabled={closing || exporting}
                                             ariaBusy={exporting}
                                         >
-                                            {exporting ? "Exporting…" : "Export to Vercel"}
+                                            {exporting
+                                                ? "Exporting…"
+                                                : "Export to Vercel"}
                                         </UiBtn>
                                         <UiBtn
                                             variant="outline-quiet"
@@ -963,7 +998,12 @@ export default function PreviewEditor({
                                                 className="px-1.5 py-0.5 border rounded hover:bg-neutral-50 active:scale-[.99] focus:outline-none focus:ring-2 focus:ring-neutral-300"
                                                 onClick={() =>
                                                     setUiScale((s) =>
-                                                        Math.max(0.5, +(s - 0.05).toFixed(2))
+                                                        Math.max(
+                                                            0.5,
+                                                            +(
+                                                                s - 0.05
+                                                            ).toFixed(2)
+                                                        )
                                                     )
                                                 }
                                                 disabled={closing}
@@ -977,7 +1017,12 @@ export default function PreviewEditor({
                                                 className="px-1.5 py-0.5 border rounded hover:bg-neutral-50 active:scale-[.99] focus:outline-none focus:ring-2 focus:ring-neutral-300"
                                                 onClick={() =>
                                                     setUiScale((s) =>
-                                                        Math.min(1.25, +(s + 0.05).toFixed(2))
+                                                        Math.min(
+                                                            1.25,
+                                                            +(
+                                                                s + 0.05
+                                                            ).toFixed(2)
+                                                        )
                                                     )
                                                 }
                                                 disabled={closing}
@@ -1002,13 +1047,16 @@ export default function PreviewEditor({
                                             </div>
                                             <div className="text-[10px] text-neutral-400">
                                                 {selectionMeta.has
-                                                    ? selectionMeta.tagName || "Element"
+                                                    ? selectionMeta.tagName ||
+                                                    "Element"
                                                     : "Click any block to style it"}
                                             </div>
                                         </div>
                                         <div className="mb-1 text-[10px] text-neutral-400">
                                             Styles here are scoped to the current{" "}
-                                            <span className="font-semibold">{device}</span>{" "}
+                                            <span className="font-semibold">
+                                                {device}
+                                            </span>{" "}
                                             layout.
                                         </div>
 
@@ -1022,9 +1070,13 @@ export default function PreviewEditor({
                                                     className="w-full border rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-50"
                                                     disabled={closing}
                                                     onChange={(e) => {
-                                                        const opt = FONT_OPTIONS.find(
-                                                            (f) => f.id === e.target.value
-                                                        );
+                                                        const opt =
+                                                            FONT_OPTIONS.find(
+                                                                (f) =>
+                                                                    f.id ===
+                                                                    e.target
+                                                                        .value
+                                                            );
                                                         if (!opt) return;
                                                         sendStyleCommand({
                                                             kind: "fontFamily",
@@ -1037,7 +1089,10 @@ export default function PreviewEditor({
                                                         Choose font
                                                     </option>
                                                     {FONT_OPTIONS.map((f) => (
-                                                        <option key={f.id} value={f.id}>
+                                                        <option
+                                                            key={f.id}
+                                                            value={f.id}
+                                                        >
                                                             {f.label}
                                                         </option>
                                                     ))}
@@ -1050,22 +1105,28 @@ export default function PreviewEditor({
                                                     Size
                                                 </div>
                                                 <div className="flex flex-wrap gap-1">
-                                                    {FONT_SIZE_PRESETS.map((s) => (
-                                                        <button
-                                                            key={s.id}
-                                                            type="button"
-                                                            className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                            disabled={closing}
-                                                            onClick={() =>
-                                                                sendStyleCommand({
-                                                                    kind: "fontSizePx",
-                                                                    value: s.px,
-                                                                })
-                                                            }
-                                                        >
-                                                            {s.label}
-                                                        </button>
-                                                    ))}
+                                                    {FONT_SIZE_PRESETS.map(
+                                                        (s) => (
+                                                            <button
+                                                                key={s.id}
+                                                                type="button"
+                                                                className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                disabled={
+                                                                    closing
+                                                                }
+                                                                onClick={() =>
+                                                                    sendStyleCommand(
+                                                                        {
+                                                                            kind: "fontSizePx",
+                                                                            value: s.px,
+                                                                        }
+                                                                    )
+                                                                }
+                                                            >
+                                                                {s.label}
+                                                            </button>
+                                                        )
+                                                    )}
                                                 </div>
                                             </div>
 
@@ -1076,9 +1137,18 @@ export default function PreviewEditor({
                                                 </div>
                                                 <div className="flex gap-1">
                                                     {[
-                                                        { id: "left", label: "L" },
-                                                        { id: "center", label: "C" },
-                                                        { id: "right", label: "R" },
+                                                        {
+                                                            id: "left",
+                                                            label: "L",
+                                                        },
+                                                        {
+                                                            id: "center",
+                                                            label: "C",
+                                                        },
+                                                        {
+                                                            id: "right",
+                                                            label: "R",
+                                                        },
                                                     ].map((a) => (
                                                         <button
                                                             key={a.id}
@@ -1086,13 +1156,15 @@ export default function PreviewEditor({
                                                             className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                             disabled={closing}
                                                             onClick={() =>
-                                                                sendStyleCommand({
-                                                                    kind: "align",
-                                                                    value: a.id as
-                                                                        | "left"
-                                                                        | "center"
-                                                                        | "right",
-                                                                })
+                                                                sendStyleCommand(
+                                                                    {
+                                                                        kind: "align",
+                                                                        value: a.id as
+                                                                            | "left"
+                                                                            | "center"
+                                                                            | "right",
+                                                                    }
+                                                                )
                                                             }
                                                         >
                                                             {a.label}
@@ -1163,21 +1235,30 @@ export default function PreviewEditor({
                                                     Text color
                                                 </div>
                                                 <div className="flex flex-wrap gap-1">
-                                                    {TEXT_COLOR_SWATCHES.map((c) => (
-                                                        <button
-                                                            key={c}
-                                                            type="button"
-                                                            className="w-6 h-6 rounded-full border border-black/10 shadow-sm hover:scale-105 active:scale-95 disabled:opacity-40"
-                                                            style={{ background: c }}
-                                                            disabled={closing}
-                                                            onClick={() =>
-                                                                sendStyleCommand({
-                                                                    kind: "textColor",
-                                                                    value: c,
-                                                                })
-                                                            }
-                                                        />
-                                                    ))}
+                                                    {TEXT_COLOR_SWATCHES.map(
+                                                        (c) => (
+                                                            <button
+                                                                key={c}
+                                                                type="button"
+                                                                className="w-6 h-6 rounded-full border border-black/10 shadow-sm hover:scale-105 active:scale-95 disabled:opacity-40"
+                                                                style={{
+                                                                    background:
+                                                                        c,
+                                                                }}
+                                                                disabled={
+                                                                    closing
+                                                                }
+                                                                onClick={() =>
+                                                                    sendStyleCommand(
+                                                                        {
+                                                                            kind: "textColor",
+                                                                            value: c,
+                                                                        }
+                                                                    )
+                                                                }
+                                                            />
+                                                        )
+                                                    )}
                                                 </div>
                                             </div>
 
@@ -1187,21 +1268,30 @@ export default function PreviewEditor({
                                                     Background
                                                 </div>
                                                 <div className="flex flex-wrap gap-1">
-                                                    {BG_COLOR_SWATCHES.map((c) => (
-                                                        <button
-                                                            key={c}
-                                                            type="button"
-                                                            className="w-6 h-6 rounded-full border border-black/10 shadow-sm hover:scale-105 active:scale-95 disabled:opacity-40"
-                                                            style={{ background: c }}
-                                                            disabled={closing}
-                                                            onClick={() =>
-                                                                sendStyleCommand({
-                                                                    kind: "bgColor",
-                                                                    value: c,
-                                                                })
-                                                            }
-                                                        />
-                                                    ))}
+                                                    {BG_COLOR_SWATCHES.map(
+                                                        (c) => (
+                                                            <button
+                                                                key={c}
+                                                                type="button"
+                                                                className="w-6 h-6 rounded-full border border-black/10 shadow-sm hover:scale-105 active:scale-95 disabled:opacity-40"
+                                                                style={{
+                                                                    background:
+                                                                        c,
+                                                                }}
+                                                                disabled={
+                                                                    closing
+                                                                }
+                                                                onClick={() =>
+                                                                    sendStyleCommand(
+                                                                        {
+                                                                            kind: "bgColor",
+                                                                            value: c,
+                                                                        }
+                                                                    )
+                                                                }
+                                                            />
+                                                        )
+                                                    )}
                                                 </div>
                                             </div>
 
@@ -1482,8 +1572,8 @@ export default function PreviewEditor({
                                         disabled={closing || !dirty}
                                         aria-busy={applyingPreview}
                                         className={`rounded px-3 py-3 text-lg w-full transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${dirty
-                                            ? "bg-emerald-600 text-white hover:brightness-95"
-                                            : "bg-emerald-50 text-emerald-700"
+                                                ? "bg-emerald-600 text-white hover:brightness-95"
+                                                : "bg-emerald-50 text-emerald-700"
                                             }`}
                                         title="Apply current draft to the live preview"
                                     >
@@ -1509,14 +1599,13 @@ export default function PreviewEditor({
 
                                 {mode === "screenshot" && (
                                     <div className="text-xs text-slate-600">
-                                        Edit in Preview or Code, apply with “Apply changes to
-                                        preview”, then save or export.
+                                        Edit in Preview or Code, apply with “Apply
+                                        changes to preview”, then save or export.
                                     </div>
                                 )}
                             </>
                         )}
                     </aside>
-
 
                     {/* Right / canvas */}
                     <section
@@ -1537,7 +1626,9 @@ export default function PreviewEditor({
                                         <UiBtn
                                             key={p.id}
                                             pressed={p.id === activePageId}
-                                            onClick={() => setActivePageId(p.id)}
+                                            onClick={() =>
+                                                setActivePageId(p.id)
+                                            }
                                             disabled={closing}
                                         >
                                             {p.label || p.id}
@@ -1576,18 +1667,26 @@ export default function PreviewEditor({
                                         }
                                         onLoad={() => {
                                             const doc =
-                                                iframeRef.current?.contentDocument;
+                                                iframeRef.current
+                                                    ?.contentDocument;
                                             if (!doc) return;
                                             doc
-                                                .querySelectorAll(".kloner-toolbar")
+                                                .querySelectorAll(
+                                                    ".kloner-toolbar"
+                                                )
                                                 .forEach((n) => n.remove());
                                             doc
-                                                .querySelectorAll(".kloner-style-panel")
+                                                .querySelectorAll(
+                                                    ".kloner-style-panel"
+                                                )
                                                 .forEach((n) => n.remove());
                                             if (mode === "preview") {
-                                                injectEditableOverlay(doc, (updated) => {
-                                                    setHtmlDraft(updated);
-                                                });
+                                                injectEditableOverlay(
+                                                    doc,
+                                                    (updated) => {
+                                                        setHtmlDraft(updated);
+                                                    }
+                                                );
                                                 iframeRef.current?.contentWindow?.focus();
                                             }
                                         }}
@@ -1631,8 +1730,8 @@ export default function PreviewEditor({
                                 disabled={closing || !dirty}
                                 aria-busy={applyingPreview}
                                 className={`rounded px-3 py-3 text-lg w-full transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${dirty
-                                    ? "bg-emerald-600 text-white hover:brightness-95"
-                                    : "bg-emerald-50 text-emerald-700"
+                                        ? "bg-emerald-600 text-white hover:brightness-95"
+                                        : "bg-emerald-50 text-emerald-700"
                                     }`}
                                 title="Apply current draft to the live preview"
                             >
@@ -1643,8 +1742,6 @@ export default function PreviewEditor({
                                         : "Preview is up to date"}
                             </button>
                         </div>
-
-
                     </section>
                 </div>
 
@@ -1656,8 +1753,8 @@ export default function PreviewEditor({
                                 Close editor?
                             </div>
                             <p className="text-xs text-neutral-600 mb-3">
-                                You have unsaved changes. Save them before closing, or
-                                discard this draft.
+                                You have unsaved changes. Save them before closing,
+                                or discard this draft.
                             </p>
                             <div className="flex justify-end gap-2 text-xs">
                                 <button
@@ -1811,8 +1908,8 @@ function UiBtn({
             disabled={disabled}
             aria-busy={ariaBusy}
             className={`${base} rounded-full px-2.5 py-1 text-[11px] border ${pressed
-                ? "border-neutral-900 bg-neutral-900 text-white"
-                : "border-neutral-300 bg-white hover:bg-neutral-50"
+                    ? "border-neutral-900 bg-neutral-900 text-white"
+                    : "border-neutral-300 bg-white hover:bg-neutral-50"
                 }`}
         >
             {withBusy}
@@ -1821,7 +1918,10 @@ function UiBtn({
 }
 
 /* ------------------------ in-iframe edit layer ------------------------ */
-function injectEditableOverlay(doc: Document, onChange: (updatedHtml: string) => void) {
+function injectEditableOverlay(
+    doc: Document,
+    onChange: (updatedHtml: string) => void
+) {
     doc.querySelectorAll(".kloner-toolbar").forEach((n) => n.remove());
     doc.querySelectorAll(".kloner-style-panel").forEach((n) => n.remove());
 
@@ -1888,7 +1988,10 @@ function injectEditableOverlay(doc: Document, onChange: (updatedHtml: string) =>
     function showHint(text: string, near: HTMLElement) {
         hint.textContent = text;
         const r = near.getBoundingClientRect();
-        hint.style.left = `${Math.min(r.left, doc.defaultView!.innerWidth - 340)}px`;
+        hint.style.left = `${Math.min(
+            r.left,
+            doc.defaultView!.innerWidth - 340
+        )}px`;
         hint.style.top = `${r.bottom + 8}px`;
         hint.style.display = "block";
         setTimeout(() => (hint.style.display = "none"), 4000);
@@ -1942,9 +2045,11 @@ function injectEditableOverlay(doc: Document, onChange: (updatedHtml: string) =>
     <button class="kbtn kbtn-del"  data-act="del">Delete block</button>
     <button class="kbtn kbtn-img"  data-act="img-insert">Insert image</button>
     <button class="kbtn kbtn-img"  data-act="img-replace">Replace image</button>
+    <button class="kbtn kbtn-img"  data-act="img-del">Delete image</button>
     <button class="kbtn kbtn-img"  data-act="img-alt">ALT text</button>
     <button class="kbtn kbtn-img"  data-act="link">Link</button>
   `;
+
     doc.body.appendChild(toolbar);
 
     let selected: HTMLElement | null = null;
@@ -1962,7 +2067,6 @@ function injectEditableOverlay(doc: Document, onChange: (updatedHtml: string) =>
         );
         return "<!doctype html>\n" + (docClone as any).outerHTML;
     }
-
 
     let hist: string[] = [];
     let idx = -1;
@@ -2119,7 +2223,9 @@ function injectEditableOverlay(doc: Document, onChange: (updatedHtml: string) =>
         true
     );
 
-    async function requestParentUpload(file: File): Promise<{ url: string }> {
+    async function requestParentUpload(
+        file: File
+    ): Promise<{ url: string; path?: string }> {
         const id = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         const buf = await file.arrayBuffer();
         return new Promise((resolve, reject) => {
@@ -2127,8 +2233,19 @@ function injectEditableOverlay(doc: Document, onChange: (updatedHtml: string) =>
                 const d = ev.data || {};
                 if (d?.type !== "kloner:upload:done" || d?.id !== id) return;
                 doc.defaultView?.removeEventListener("message", onMsg as any);
-                if (d.ok) resolve({ url: d.url as string });
-                else reject(new Error(String(d.error || "upload_failed")));
+                if (d.ok) {
+                    resolve({
+                        url: d.url as string,
+                        path:
+                            typeof d.path === "string"
+                                ? (d.path as string)
+                                : undefined,
+                    });
+                } else {
+                    reject(
+                        new Error(String(d.error || "upload_failed"))
+                    );
+                }
             };
             doc.defaultView?.addEventListener("message", onMsg as any);
             doc.defaultView?.parent?.postMessage(
@@ -2146,7 +2263,7 @@ function injectEditableOverlay(doc: Document, onChange: (updatedHtml: string) =>
 
     async function pickFileAndUpload(
         anchor: HTMLElement
-    ): Promise<{ url: string; file: File }> {
+    ): Promise<{ url: string; path?: string; file: File }> {
         return new Promise((resolve, reject) => {
             fileInput.onchange = async () => {
                 const f = (fileInput.files && fileInput.files[0]) || null;
@@ -2161,8 +2278,8 @@ function injectEditableOverlay(doc: Document, onChange: (updatedHtml: string) =>
                     return reject(new Error("bad_type"));
                 }
                 try {
-                    const { url } = await requestParentUpload(f);
-                    resolve({ url, file: f });
+                    const { url, path } = await requestParentUpload(f);
+                    resolve({ url, path, file: f });
                 } catch (e) {
                     showHint("Upload failed.", anchor);
                     reject(e as any);
@@ -2172,13 +2289,43 @@ function injectEditableOverlay(doc: Document, onChange: (updatedHtml: string) =>
         });
     }
 
+    function deleteImageOnBlock(block: HTMLElement) {
+        const img =
+            (block.tagName === "IMG"
+                ? (block as HTMLImageElement)
+                : (block.querySelector("img") as HTMLImageElement | null)) ??
+            null;
+
+        if (!img) {
+            showHint("Select a block with an <img> to delete.", block);
+            return;
+        }
+
+        const path = img.getAttribute("data-kloner-path");
+        if (path) {
+            doc.defaultView?.parent?.postMessage(
+                {
+                    type: "kloner:delete-assets",
+                    paths: [path],
+                },
+                "*"
+            );
+        }
+
+        img.remove();
+        saveHistory();
+        notify();
+        showHint("Image deleted.", block);
+    }
+
     async function insertImageIntoBlock(block: HTMLElement) {
-        const { url } = await pickFileAndUpload(block);
+        const { url, path } = await pickFileAndUpload(block);
 
         const img = doc.createElement("img");
         img.src = url;
         img.alt = "";
         img.style.display = "block";
+        if (path) img.setAttribute("data-kloner-path", path);
 
         const box = cssBox(block);
         if (box.w > 4) img.setAttribute("width", String(Math.round(box.w)));
@@ -2193,12 +2340,28 @@ function injectEditableOverlay(doc: Document, onChange: (updatedHtml: string) =>
 
     async function replaceImage(el: HTMLImageElement) {
         const box = cssBox(el);
-        const { url } = await pickFileAndUpload(el);
+        const oldPath = el.getAttribute("data-kloner-path") || undefined;
+        const { url, path } = await pickFileAndUpload(el);
+
         if (!el.getAttribute("width") && !el.style.width)
             el.setAttribute("width", `${Math.round(box.w)}`);
         if (!el.getAttribute("height") && !el.style.height)
             el.setAttribute("height", `${Math.round(box.h)}`);
+
+        // delete old asset if we had one
+        if (oldPath) {
+            doc.defaultView?.parent?.postMessage(
+                {
+                    type: "kloner:delete-assets",
+                    paths: [oldPath],
+                },
+                "*"
+            );
+        }
+
         el.src = url;
+        if (path) el.setAttribute("data-kloner-path", path);
+
         saveHistory();
         notify();
         showHint("Image replaced.", el);
@@ -2273,6 +2436,10 @@ function injectEditableOverlay(doc: Document, onChange: (updatedHtml: string) =>
             replaceImage(img);
             return;
         }
+        if (act === "img-del") {
+            deleteImageOnBlock(selected);
+            return;
+        }
         if (act === "img-alt") {
             const img =
                 (selected.tagName === "IMG"
@@ -2310,34 +2477,6 @@ function injectEditableOverlay(doc: Document, onChange: (updatedHtml: string) =>
 
     toolbar.addEventListener("click", actionListener);
 
-    doc.addEventListener("keydown", (e) => {
-        const key = e.key.toLowerCase();
-        const mod = e.metaKey || e.ctrlKey;
-        if (mod && key === "z") {
-            e.preventDefault();
-            if (e.shiftKey) redo();
-            else undo();
-            return;
-        }
-        if (e.key === "Escape") (doc.defaultView as any).__klonerApi?.clear();
-        if ((key === "backspace" || key === "delete") && selected) {
-            const active = doc.activeElement as HTMLElement | null;
-            if (
-                !active?.isContentEditable &&
-                active?.tagName !== "INPUT" &&
-                active?.tagName !== "TEXTAREA"
-            ) {
-                e.preventDefault();
-                const parent = selected.parentElement;
-                selected.remove();
-                (doc.defaultView as any).__klonerApi?.clear();
-                parent?.focus?.();
-                saveHistory();
-                notify();
-            }
-        }
-    });
-
     const notify = (() => {
         let t = 0 as unknown as number;
         let raf = 0 as unknown as number;
@@ -2361,6 +2500,35 @@ function injectEditableOverlay(doc: Document, onChange: (updatedHtml: string) =>
         attributes: true,
     });
     doc.addEventListener("input", notify, true);
+
+    doc.addEventListener("keydown", (e) => {
+        const key = e.key.toLowerCase();
+        const mod = e.metaKey || e.ctrlKey;
+        if (mod && key === "z") {
+            e.preventDefault();
+            if (e.shiftKey) redo();
+            else undo();
+            return;
+        }
+        if (e.key === "Escape")
+            (doc.defaultView as any).__klonerApi?.clear();
+        if ((key === "backspace" || key === "delete") && selected) {
+            const active = doc.activeElement as HTMLElement | null;
+            if (
+                !active?.isContentEditable &&
+                active?.tagName !== "INPUT" &&
+                active?.tagName !== "TEXTAREA"
+            ) {
+                e.preventDefault();
+                const parent = selected.parentElement;
+                selected.remove();
+                (doc.defaultView as any).__klonerApi?.clear();
+                parent?.focus?.();
+                saveHistory();
+                notify();
+            }
+        }
+    });
 
     updateUndoRedoState();
     publishSelection();
