@@ -1009,19 +1009,19 @@ export default function DeploymentsPage(): JSX.Element {
                                                     : ""}
                                             </p>
 
-                                            {latestPublicUrl && (
+                                            {/* {latestPublicUrl && (
                                                 <a
                                                     href={latestPublicUrl}
                                                     target="_blank"
                                                     rel="noreferrer"
-                                                    className="mt-2 inline-flex items-center gap-1 rounded-md border bg-white/80 px-2.5 py-1 text-sm font-medium hover:bg-white"
+                                                    className="mt-2 inline-flex items-center gap-1 rounded-md text-neutral-800 border border-neutral-500 bg-white/80 px-2.5 py-1 text-sm  hover:bg-white"
                                                 >
                                                     {bannerVariant === "error"
                                                         ? "Open deployment in Vercel"
                                                         : "Open latest URL"}
                                                     <ArrowUpRight className="h-3 w-3" />
                                                 </a>
-                                            )}
+                                            )} */}
                                         </div>
                                     </div>
                                 </div>
@@ -1029,7 +1029,7 @@ export default function DeploymentsPage(): JSX.Element {
 
                             <p className="text-xs sm:text-sm text-neutral-500 max-w-xl">
                                 Every time Kloner deploys to your Vercel account, we record the deployment here.
-                                Status is refreshed by querying the Vercel API (and webhooks if available).
+                                Status is refreshed automatically.
                             </p>
                         </div>
                     </div>
@@ -1037,7 +1037,7 @@ export default function DeploymentsPage(): JSX.Element {
                     <div className="flex flex-col items-end gap-3">
                         {projectGroups.length > 0 && (
                             <div className="w-full sm:w-64">
-                                <label className="block text-sm font-medium text-neutral-500 mb-1">
+                                <label className="block text-sm  text-neutral-500 mb-1">
                                     Project / URL scope
                                 </label>
                                 <select
@@ -1075,7 +1075,7 @@ export default function DeploymentsPage(): JSX.Element {
                                     type="button"
                                     disabled={refreshing || scopedItems.length === 0}
                                     onClick={refreshFromVercel}
-                                    className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm font-medium text-neutral-800 hover:bg-neutral-50 disabled:opacity-60 disabled:cursor-default"
+                                    className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm  text-neutral-800 hover:bg-neutral-50 disabled:opacity-60 disabled:cursor-default"
                                 >
                                     {refreshing ? (
                                         <Loader2 className="h-3.5 w-3.5 animate-spin text-neutral-500" />
@@ -1155,7 +1155,7 @@ export default function DeploymentsPage(): JSX.Element {
                                                 </div>
 
                                                 <div
-                                                    className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-sm font-medium ${stateStyles}`}
+                                                    className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs  ${stateStyles}`}
                                                 >
                                                     <span className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
                                                     <span className="capitalize">
@@ -1181,7 +1181,7 @@ export default function DeploymentsPage(): JSX.Element {
                                                         <span className="h-1 w-1 rounded-full bg-neutral-300" />
                                                         <span>
                                                             Last event:{" "}
-                                                            <span className="font-medium text-neutral-700">
+                                                            <span className=" text-neutral-700">
                                                                 {d.lastEventType}
                                                             </span>
                                                         </span>
@@ -1205,7 +1205,7 @@ export default function DeploymentsPage(): JSX.Element {
                                                             type="button"
                                                             onClick={() => openEditorForDeployment(d)}
                                                             disabled={isEditorLoading}
-                                                            className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-white"
+                                                            className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm  text-white"
                                                             style={{
                                                                 backgroundColor: ACCENT,
                                                                 boxShadow:
@@ -1215,16 +1215,16 @@ export default function DeploymentsPage(): JSX.Element {
                                                             {isEditorLoading ? (
                                                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                                             ) : (
-                                                                <Code2 className="h-3.5 w-3.5" />
+                                                                <Code2 className="h-4 w-4" />
                                                             )}
                                                             <span>Open in Preview Editor</span>
                                                         </button>
-
+{/* 
                                                         <button
                                                             type="button"
                                                             onClick={() => setShowDeployHint(true)}
                                                             disabled={isEditorLoading}
-                                                            className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm font-medium text-neutral-800 hover:bg-neutral-50 disabled:opacity-60 disabled:cursor-not-allowed"
+                                                            className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm  text-neutral-800 hover:bg-neutral-50 disabled:opacity-60 disabled:cursor-not-allowed"
                                                         >
                                                             {isEditorLoading ? (
                                                                 <Loader2 className="h-3.5 w-3.5 animate-spin text-neutral-500" />
@@ -1232,15 +1232,15 @@ export default function DeploymentsPage(): JSX.Element {
                                                                 <RefreshCw className="h-3.5 w-3.5 text-neutral-500" />
                                                             )}
                                                             <span>Deploy edited HTML</span>
-                                                        </button>
+                                                        </button> */}
 
                                                         <a
                                                             href={publicUrl || d.vercelUrl || "#"}
                                                             target={publicUrl || d.vercelUrl ? "_blank" : undefined}
                                                             rel={publicUrl || d.vercelUrl ? "noreferrer" : undefined}
-                                                            className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm font-medium text-neutral-800 hover:bg-neutral-50"
+                                                            className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm  text-neutral-800 hover:bg-neutral-50"
                                                         >
-                                                            <span>Open live site</span>
+                                                            <span>Open site</span>
                                                             <ArrowUpRight className="h-3 w-3" />
                                                         </a>
                                                     </div>
@@ -1255,12 +1255,12 @@ export default function DeploymentsPage(): JSX.Element {
                                                                 <button
                                                                     type="button"
                                                                     disabled
-                                                                    className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm font-medium text-neutral-800"
+                                                                    className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm  text-neutral-800"
                                                                 >
                                                                     <span>
                                                                         1. Click
                                                                         <a
-                                                                            className="mx-2 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-white cursor-not-allowed"
+                                                                            className="mx-2 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm  text-white cursor-not-allowed"
                                                                             style={{
                                                                                 backgroundColor: ACCENT,
                                                                                 boxShadow:
@@ -1280,7 +1280,7 @@ export default function DeploymentsPage(): JSX.Element {
                                                                 <button
                                                                     type="button"
                                                                     disabled
-                                                                    className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm font-medium text-neutral-800  whitepace-nowrap "
+                                                                    className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm  text-neutral-800  whitepace-nowrap "
                                                                 >
                                                                     <span>
                                                                         2. Click{" "}
@@ -1359,7 +1359,7 @@ export default function DeploymentsPage(): JSX.Element {
                                                 >
                                                     <div className="w-[120px]">
                                                         <span
-                                                            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] sm:text-sm ${stateStyles}`}
+                                                            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] text-xs ${stateStyles}`}
                                                         >
                                                             <span className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
                                                             <span className="capitalize">
@@ -1390,7 +1390,7 @@ export default function DeploymentsPage(): JSX.Element {
                                                             href={publicUrl || d.vercelUrl || "#"}
                                                             target={publicUrl || d.vercelUrl ? "_blank" : undefined}
                                                             rel={publicUrl || d.vercelUrl ? "noreferrer" : undefined}
-                                                            className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-medium ${publicUrl || d.vercelUrl
+                                                            className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px]  ${publicUrl || d.vercelUrl
                                                                     ? "border-neutral-200 text-neutral-800 hover:bg-neutral-50"
                                                                     : "border-neutral-200 text-neutral-400 cursor-default"
                                                                 }`}

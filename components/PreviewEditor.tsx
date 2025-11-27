@@ -901,13 +901,13 @@ export default function PreviewEditor({
                                         View
                                     </div>
                                     <div className="flex flex-wrap gap-1">
-                                        <UiBtn
+                                        {/* <UiBtn
                                             pressed={mode === "code"}
                                             onClick={() => handleModeClick("code")}
                                             disabled={closing}
                                         >
                                             Code
-                                        </UiBtn>
+                                        </UiBtn> */}
                                         <UiBtn
                                             pressed={mode === "preview"}
                                             onClick={() =>
@@ -1597,7 +1597,7 @@ export default function PreviewEditor({
                                     </button>
                                 </div>
 
-                                {mode === "code" && (
+                                {/* {mode === "code" && (
                                     <div className="min-h-0 flex-1">
                                         <textarea
                                             className="h-full w-full border rounded p-2 font-mono text-xs leading-5 outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-60"
@@ -1607,7 +1607,7 @@ export default function PreviewEditor({
                                             disabled={closing}
                                         />
                                     </div>
-                                )}
+                                )} */}
 
                                 {mode === "screenshot" && (
                                     <div className="text-xs text-slate-600">
