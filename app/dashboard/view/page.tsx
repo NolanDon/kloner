@@ -44,7 +44,7 @@ import {
     type StorageReference,
 } from "firebase/storage";
 import { auth, db, storage } from "@/lib/firebase";
-import PreviewEditor from "@/components/PreviewEditor";
+import PreviewEditor, { SeoMeta } from "@/components/PreviewEditor";
 import {
     Rocket,
     Plus,
@@ -76,6 +76,24 @@ const VERCEL_INTEGRATION_SLUG =
 const ACCENT = "#f55f2a";
 
 /* ───────── types ───────── */
+
+export type SeoMetaByPage = Record<string, SeoMeta>;
+
+export type KlonerRender = {
+    id: string;
+    html: string;
+    referenceImage?: string | null;
+    status: string;
+    url?: string | null;
+    urlHash?: string | null;
+    nameHint?: string | null;
+    multiPageMode?: boolean;
+    htmlStoragePath?: string | null;
+    htmlByteLength?: number | null;
+    // NEW
+    seoMetaByPage?: SeoMetaByPage | null;
+};
+
 
 type Shot = {
     path: string;
@@ -109,6 +127,7 @@ type RenderDoc = {
     vercelProjectId?: string | null;
     vercelProjectName?: string | null;
     lastDeployUrl?: string | null;
+    seoMetaByPage?: SeoMetaByPage | null;
 };
 
 type ToastMsg = {
@@ -682,32 +701,24 @@ export default function PreviewPage(): JSX.Element {
     const [editorOpen, setEditorOpen] = useState(false);
     const [editorHtml, setEditorHtml] = useState<string>("");
     const [editorRefImg, setEditorRefImg] = useState<string>("");
-    const [activeRenderId, setActiveRenderId] = useState<
-        string | undefined
-    >(undefined);
+    const [activeRenderId, setActiveRenderId] = useState<string | undefined>(undefined);
+
+    const [activeSeoMetaByPage, setActiveSeoMetaByPage] = useState<
+        Record<string, SeoMeta> | null
+    >(null);
 
     const [renders, setRenders] = useState<
         Array<{ id: string } & RenderDoc>
     >([]);
     const [loadingRenders, setLoadingRenders] = useState(false);
-    const [projectNameBusy, setProjectNameBusy] = useState(false);
-
     const [lockUntilByKey, setLockUntilByKey] = useState<
         Record<string, number>
     >({});
     const [lockUntilByRender, setLockUntilByRender] = useState<
         Record<string, number>
     >({});
-
     const [viewerOpen, setViewerOpen] = useState(false);
     const [viewerIdx, setViewerIdx] = useState(0);
-
-    const projectNameInputRef = useRef<HTMLInputElement | null>(null);
-    const [showProjectNamePopover, setShowProjectNamePopover] = useState(false);
-    const [pendingDeploy, setPendingDeploy] = useState<null | {
-        html: string;
-        renderId?: string;
-    }>(null);
 
     const billing = search.get("billing");
     const wizard = search.get("wizard");
@@ -721,6 +732,61 @@ export default function PreviewPage(): JSX.Element {
             setDeployWizardOpen(true);
         }
     }, [billing, wizard, step, render]);
+
+
+    async function loadRenders(uid: string): Promise<KlonerRender[]> {
+        const colRef = collection(db, "kloner_users", uid, "kloner_renders");
+        const snap = await getDocs(colRef);
+
+        return snap.docs.map((doc) => {
+            const data = doc.data();
+
+            const seoMetaByPage =
+                (data.seoMetaByPage as Record<string, SeoMeta> | undefined) ?? null;
+            setActiveSeoMetaByPage(seoMetaByPage);
+
+            return {
+                id: doc.id,
+                html: (data.html as string) || "",
+                referenceImage: (data.referenceImage as string) || null,
+                status: (data.status as string) || "unknown",
+                url: (data.url as string) || null,
+                urlHash: (data.urlHash as string) || null,
+                nameHint: (data.nameHint as string) || null,
+                multiPageMode: !!data.multiPageMode,
+                htmlStoragePath: (data.htmlStoragePath as string) || null,
+                htmlByteLength:
+                    typeof data.htmlByteLength === "number" ? data.htmlByteLength : null,
+                seoMetaByPage,
+            } satisfies KlonerRender;
+        });
+    }
+
+    const handleSaveMeta = useCallback(
+        async (
+            route: string | null,
+            meta: SeoMeta,
+            byPage: Record<string, SeoMeta>
+        ) => {
+            if (!user || !activeRenderId) return;
+
+            // keep local state so re-opening editor uses latest meta
+            setActiveSeoMetaByPage(byPage);
+
+            const dref = doc(
+                db,
+                "kloner_users",
+                user.uid,
+                "kloner_renders",
+                activeRenderId
+            );
+
+            await updateDoc(dref, {
+                seoMetaByPage: byPage,
+            });
+        },
+        [user, activeRenderId]
+    );
 
 
     const persistProjectNameHint = useCallback(
@@ -746,67 +812,6 @@ export default function PreviewPage(): JSX.Element {
         },
         [user],
     );
-
-    // const [previewConfirmOpen, setPreviewConfirmOpen] = useState(false);
-    // const [previewConfirmLoading, setPreviewConfirmLoading] = useState(false);
-
-
-    // function handleCancelProjectName() {
-    //     setShowProjectNamePopover(false);
-    //     setPendingDeploy(null);
-    //     setProjectNameBusy(false);
-    //     if (projectNameInputRef.current) {
-    //         projectNameInputRef.current.value = "";
-    //     }
-    // }
-
-
-    // async function handleConfirmProjectName() {
-    //     if (projectNameBusy) return; // guard against double-clicks
-    //     if (!pendingDeploy) {
-    //         setShowProjectNamePopover(false);
-    //         return;
-    //     }
-
-    //     const raw = projectNameInputRef.current?.value ?? "";
-    //     const trimmed = raw.trim();
-
-    //     if (!trimmed) {
-    //         push("Please enter a project name.", "err");
-    //         return;
-    //     }
-
-    //     setProjectNameBusy(true);
-    //     try {
-    //         // persist projectVercelName on the render
-    //         if (user && pendingDeploy.renderId) {
-    //             await updateDoc(
-    //                 doc(
-    //                     db,
-    //                     "kloner_users",
-    //                     user.uid,
-    //                     "kloner_renders",
-    //                     pendingDeploy.renderId
-    //                 ),
-    //                 { projectVercelName: trimmed }
-    //             );
-    //         }
-
-    //         setShowProjectNamePopover(false);
-
-    //         const { html, renderId } = pendingDeploy;
-    //         setPendingDeploy(null);
-
-    //         // re-run export with the confirmed name
-    //         void exportToVercel({
-    //             html,
-    //             renderId,
-    //             name: trimmed,
-    //         });
-    //     } finally {
-    //         setProjectNameBusy(false);
-    //     }
-    // }
 
 
     const [optimisticByKey, setOptimisticByKey] = useState<
@@ -1850,53 +1855,59 @@ export default function PreviewPage(): JSX.Element {
             setErr("");
             setLoading(true);
 
-            const dref = doc(
-                db,
-                "kloner_users",
-                user.uid,
-                "kloner_renders",
-                renderId
-            );
+            try {
+                const dref = doc(
+                    db,
+                    "kloner_users",
+                    user.uid,
+                    "kloner_renders",
+                    renderId,
+                );
 
-            // force fresh read, not cache
-            const snap = await getDocFromServer(dref);
-            // if you don’t want getDocFromServer:
-            // const snap = await getDoc(dref, { source: "server" as const });
+                const snap = await getDocFromServer(dref);
 
-            if (!snap.exists()) {
-                setErr("Preview not found.");
-                push("Preview not found", "err");
+                if (!snap.exists()) {
+                    setErr("Preview not found.");
+                    push("Preview not found", "err");
+                    return;
+                }
+
+                const data = snap.data() as RenderDoc;
+
+                // hydrate meta map from Firestore (may be undefined)
+                const seoMetaByPage =
+                    (data.seoMetaByPage as SeoMetaByPage | undefined) ?? null;
+
+                let refSrc =
+                    (data.referenceImage &&
+                        (await resolveStorageUrl(data.referenceImage))) ||
+                    (data.key && (await resolveStorageUrl(data.key))) ||
+                    "";
+
+                if (!refSrc) {
+                    const byKey = data.key
+                        ? shots.find((s) => s.path === data.key)
+                        : undefined;
+                    refSrc = byKey?.url || shots[0]?.url || "";
+                }
+
+                const html = data.html || "";
+
+                setEditorHtml(html);
+                setEditorRefImg(refSrc);
+                setActiveRenderId(renderId);
+                setActiveSeoMetaByPage(seoMetaByPage);
+                setEditorOpen(true);
+            } catch (e) {
+                console.error("continueRender failed", e);
+                setErr("Failed to open preview.");
+                push("Failed to open preview", "err");
+            } finally {
                 setLoading(false);
-                return;
             }
-
-            const data = snap.data() as RenderDoc;
-
-            let refSrc =
-                (data.referenceImage &&
-                    (await resolveStorageUrl(data.referenceImage))) ||
-                (data.key && (await resolveStorageUrl(data.key))) ||
-                "";
-
-            if (!refSrc) {
-                const byKey = data.key
-                    ? shots.find((s) => s.path === data.key)
-                    : undefined;
-                refSrc = byKey?.url || shots[0]?.url || "";
-            }
-
-            const html = data.html || "";
-
-            // editor UI
-            setEditorHtml(html);
-            setEditorRefImg(refSrc);
-            setActiveRenderId(renderId);
-            setEditorOpen(true);
-            setLoading(false);
         },
-        [user, push, shots]
+        [user, shots, push],
     );
-
 
     const discardRender = useCallback(
         async (renderId: string) => {
@@ -3479,14 +3490,15 @@ export default function PreviewPage(): JSX.Element {
                     </div>
                 </div>
 
-                {/* editor overlay */}
                 {editorOpen && (
                     <PreviewEditor
                         initialHtml={editorHtml}
                         sourceImage={editorRefImg}
+                        initialSeoMetaByPage={activeSeoMetaByPage || undefined}
                         onClose={() => {
                             setEditorOpen(false);
                             setActiveRenderId(undefined);
+                            setActiveSeoMetaByPage(null);
                         }}
                         onExport={(html, name) =>
                             exportToVercel({
@@ -3505,8 +3517,36 @@ export default function PreviewPage(): JSX.Element {
                                 ),
                             );
                         }}
+                        onSaveMeta={async (pageId, meta, fullMap) => {
+                            if (!user || !activeRenderId) return;
+
+                            // 1) persist in Firestore
+                            const dref = doc(
+                                db,
+                                "kloner_users",
+                                user.uid,
+                                "kloner_renders",
+                                activeRenderId,
+                            );
+                            await updateDoc(dref, {
+                                seoMetaByPage: fullMap,
+                                updatedAt: serverTimestamp(),
+                            });
+
+                            // 2) keep local render list in sync
+                            setRenders((prev) =>
+                                prev.map((r) =>
+                                    r.id === activeRenderId ? { ...r, seoMetaByPage: fullMap } : r,
+                                ),
+                            );
+
+                            // 3) keep active map in sync (so Meta tab shows correct data)
+                            setActiveSeoMetaByPage(fullMap);
+                        }}
                     />
                 )}
+
+
 
                 {/* deploy wizard */}
                 {deployWizardOpen && (

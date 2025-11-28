@@ -1209,7 +1209,7 @@ export default function DeploymentsPage(): JSX.Element {
                                                             style={{
                                                                 backgroundColor: ACCENT,
                                                                 boxShadow:
-                                                                    "0 10px 30px rgba(245,95,42,0.40)",
+                                                                    "0 5px 15px rgba(245,95,42,0.40)",
                                                             }}
                                                         >
                                                             {isEditorLoading ? (

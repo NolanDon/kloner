@@ -2,9 +2,8 @@
 "use client";
 
 import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback, ChangeEvent } from "react";
 import Image from "next/image";
-import logo from "@/public/images/orange_logo.png";
 
 type Device = "desktop" | "tablet" | "mobile";
 type ViewMode = "code" | "preview" | "screenshot";
@@ -14,6 +13,13 @@ type EditorPage = {
     label: string;
     html: string;
     screenshotUrl?: string;
+};
+
+export type SeoMeta = {
+    title: string;
+    description: string;
+    ogImageUrl: string;
+    faviconUrl: string;
 };
 
 type Props = {
@@ -35,7 +41,19 @@ type Props = {
     }) => Promise<void>;
     onLiveHtml?: (html: string) => void;
 
-    // Optional precomputed pages (id should equal data-route if you want route-based switching)
+    // optional single-page fallback
+    initialSeoMeta?: SeoMeta;
+
+    // full per-page map, keyed by route / page id
+    initialSeoMetaByPage?: Record<string, SeoMeta> | null;
+
+    // notify parent with pageId + meta + full map
+    onSaveMeta?: (
+        pageId: string | null,
+        meta: SeoMeta,
+        fullMap: Record<string, SeoMeta>
+    ) => Promise<void> | void;
+
     pages?: EditorPage[];
     initialPageId?: string;
     onPageHtmlChange?: (pageId: string, html: string) => void;
@@ -151,12 +169,18 @@ const FONT_SIZE_PRESETS = [
     { id: "lg", label: "L", px: 20 },
     { id: "xl", label: "XL", px: 28 },
 ];
+// 1) strip all runtime <script> tags EXCEPT SEO JSON-LD
+export function stripScripts(html: string) {
+    if (!html) return html;
 
-function stripScripts(html: string) {
-    return html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
+    // remove any <script> that is NOT type="application/ld+json"
+    return html.replace(
+        /<script\b(?![^>]*type\s*=\s*["']application\/ld\+json["'])[^>]*>[\s\S]*?<\/script>/gi,
+        ""
+    );
 }
 
-// strip ALL editor/runtime artifacts that should never ship in export or interfere with routing
+// 2) strip editor/runtime artifacts + localhost origins + unsafe attrs
 export function stripEditorArtifacts(html: string): string {
     if (!html) return html;
     let out = html;
@@ -210,8 +234,58 @@ export function stripEditorArtifacts(html: string): string {
         ""
     );
 
+    // 8) strip editor data attributes (paths, selection markers, etc.)
+    //    e.g. data-kloner-sel, data-kloner-path, data-kloner-*
+    out = out.replace(/\sdata-kloner-[a-z0-9_-]+\s*=\s*"[^"]*"/gi, "");
+    out = out.replace(/\sdata-kloner-[a-z0-9_-]+\s*=\s*'[^']*'/gi, "");
+    out = out.replace(/\sdata-kloner-[a-z0-9_-]+\s*=\s*[^\s>]+/gi, "");
+
+    // 9) strip inline event handlers (onclick, onmouseover, etc.)
+    //    static HTML doesn’t need these and they’re a security risk to ship.
+    out = out.replace(
+        /\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi,
+        ""
+    );
+
+    // 10) strip localhost / 127.0.0.1 origins from href/src, keep path only
+    //     so <a href="http://localhost:3000/about"> => <a href="/about">
+    out = out.replace(
+        /\b(href|src)\s*=\s*(")(https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?)(\/[^"']*)?(")/gi,
+        (_match, attr, quote, _origin, path = "/", endQuote) =>
+            `${attr}=${quote}${path || "/"}${endQuote}`
+    );
+    out = out.replace(
+        /\b(href|src)\s*=\s*(')(https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?)(\/[^"']*)?(')/gi,
+        (_match, attr, quote, _origin, path = "/", endQuote) =>
+            `${attr}=${quote}${path || "/"}${endQuote}`
+    );
+
+    // 11) optional: strip blob: and data: URLs from href/src (defensive)
+    //     keep this narrow to avoid killing legitimate data-URI favicons if you ever want them
+    out = out.replace(
+        /\b(href|src)\s*=\s*(")(blob:|data:)[^"]*(")/gi,
+        (_m, attr, quote, _scheme, endQuote) => `${attr}=${quote}#${endQuote}`
+    );
+    out = out.replace(
+        /\b(href|src)\s*=\s*(')(blob:|data:)[^']*(')/gi,
+        (_m, attr, quote, _scheme, endQuote) => `${attr}=${quote}#${endQuote}`
+    );
+
     return out;
 }
+
+// 3) single entry point you call before saving/exporting HTML
+export function sanitizeExportHtml(html: string): string {
+    if (!html) return html;
+    let out = html;
+
+    // order matters: first remove scripts, then strip editor artifacts
+    out = stripScripts(out);
+    out = stripEditorArtifacts(out);
+
+    return out;
+}
+
 
 function injectClientRouter(html: string): string {
     if (!html) return html;
@@ -317,10 +391,12 @@ type StyleCmd =
     | { kind: "weight"; value: string | number }
     | { kind: "letterSpacing"; value: string }
     | { kind: "widthPreset"; value: "auto" | "narrow" | "wide" | "full" }
+    | { kind: "imageWidthPx"; value: number }          // NEW
     | { kind: "blockAlign"; value: "left" | "center" | "right" }
     | { kind: "marginTop"; value: "none" | "sm" | "md" | "lg" }
     | { kind: "marginBottom"; value: "none" | "sm" | "md" | "lg" }
     | { kind: "wrap"; value: "normal" | "nowrap" | "balance" };
+
 
 // derive human label from route
 function labelFromRoute(route: string): string {
@@ -335,6 +411,9 @@ function labelFromRoute(route: string): string {
         .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
         .join(" ");
 }
+
+
+
 
 // derive pages from a monolithic HTML with <main class="page-root" data-route="...">
 function derivePagesFromHtml(html: string): EditorPage[] {
@@ -377,6 +456,8 @@ type DerivedTheme = {
 
 type SidePanelMode = "style" | "meta";
 
+
+export type SeoMetaByPage = Record<string, SeoMeta>;
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
     let h = hex.replace("#", "").trim();
@@ -467,6 +548,8 @@ function deriveThemeFromInitialHtml(html: string | undefined | null): DerivedThe
     };
 }
 
+const SINGLE_PAGE_KEY = "__single__";
+
 export default function PreviewEditor({
     initialHtml,
     sourceImage,
@@ -478,22 +561,34 @@ export default function PreviewEditor({
     pages,
     initialPageId,
     onPageHtmlChange,
+    initialSeoMeta,
+    onSaveMeta,
+    initialSeoMetaByPage,
 }: Props) {
-
-    const theme = useMemo(
-        () => deriveThemeFromInitialHtml(initialHtml),
-        [initialHtml]
-    );
-
-    // monolithic HTML draft for the entire document
+    const [nameHint, setNameHint] = useState<string>("");
+    const [version, setVersion] = useState<number>(1);
+    const [mode, setMode] = useState<ViewMode>("preview");
+    const [device, setDevice] = useState<Device>("desktop");
+    const [dirty, setDirty] = useState(false);
+    const [savingDraft, setSavingDraft] = useState(false);
+    const [exporting, setExporting] = useState(false);
+    const [exportNote, setExportNote] = useState<string>("");
+    const [applyingPreview, setApplyingPreview] = useState(false);
+    const [closing, setClosing] = useState(false);
+    const [closePrompt, setClosePrompt] = useState(false);
+    const [exportPrompt, setExportPrompt] = useState(false);
+    const [controlsCollapsed, setControlsCollapsed] = useState<boolean>(false);
+    const [sidePanelMode, setSidePanelMode] = useState<SidePanelMode>("style");
+    const [selectionMeta, setSelectionMeta] = useState<SelectionMeta>({ has: false });
     const [htmlDraft, setHtmlDraft] = useState<string>("");
     const [previewHtml, setPreviewHtml] = useState<string>("");
-
-    // derived pages from initialHtml if caller didn't pass pages
+    const iframeRef = useRef<HTMLIFrameElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [iframeKey, setIframeKey] = useState<number>(0);
     const [derivedPages, setDerivedPages] = useState<EditorPage[]>([]);
-
-    // active page id (normally matches data-route, or "single" for non-multi-page docs)
     const [activePageId, setActivePageId] = useState<string>("");
+    const [activeSeoMetaByPage, setActiveSeoMetaByPage] =
+        useState<SeoMetaByPage | null>(null);
 
     const allPages = useMemo<EditorPage[] | null>(
         () =>
@@ -511,27 +606,340 @@ export default function PreviewEditor({
         [allPages, activePageId]
     );
 
-    const [nameHint, setNameHint] = useState<string>("");
-    const [version, setVersion] = useState<number>(1);
-    const [mode, setMode] = useState<ViewMode>("preview");
-    const [device, setDevice] = useState<Device>("desktop");
-    const [dirty, setDirty] = useState(false);
-    const [savingDraft, setSavingDraft] = useState(false);
-    const [exporting, setExporting] = useState(false);
-    const [exportNote, setExportNote] = useState<string>("");
-    const [applyingPreview, setApplyingPreview] = useState(false);
-    const [closing, setClosing] = useState(false);
-    const [closePrompt, setClosePrompt] = useState(false);
-    const [exportPrompt, setExportPrompt] = useState(false);
-    const [controlsCollapsed, setControlsCollapsed] = useState(false);
-    
-    const [selectionMeta, setSelectionMeta] = useState<SelectionMeta>({ has: false });
 
-    const iframeRef = useRef<HTMLIFrameElement>(null);
-    const containerRef = useRef<HTMLDivElement>(null);
-    const [iframeKey, setIframeKey] = useState<number>(0);
+    const devicePx =
+        device === "desktop" ? 1440 : device === "tablet" ? 768 : 390;
 
-    const devicePx = device === "desktop" ? 1440 : device === "tablet" ? 768 : 390;
+
+    const emptyMeta: SeoMeta = {
+        title: "",
+        description: "",
+        ogImageUrl: "",
+        faviconUrl: "",
+    };
+
+
+    const [seoMetaByPage, setSeoMetaByPage] = useState<SeoMetaByPage>(() => {
+        if (initialSeoMetaByPage && Object.keys(initialSeoMetaByPage).length > 0) {
+            return { ...initialSeoMetaByPage };
+        }
+
+        const baseKey =
+            (initialPageId && initialPageId !== "single" && initialPageId) ||
+            SINGLE_PAGE_KEY;
+
+        return {
+            [baseKey]: initialSeoMeta ?? emptyMeta,
+        };
+    });
+
+    const currentPageKey = useMemo(() => {
+        if (!allPages || !activePageId || activePageId === "single") {
+            return SINGLE_PAGE_KEY;
+        }
+        return activePageId;
+    }, [allPages, activePageId]);
+
+    const currentSeoMeta: SeoMeta = useMemo(() => {
+        const base = seoMetaByPage[currentPageKey] ?? emptyMeta;
+
+        // If this page already has a favicon, use it as-is.
+        if (base.faviconUrl) return base;
+
+        // Otherwise, fall back to ANY favicon in the map (global favicon).
+        const anyFavicon = Object.values(seoMetaByPage).find(
+            (m) => m.faviconUrl && m.faviconUrl.trim() !== "",
+        );
+
+        if (!anyFavicon) return base;
+
+        return {
+            ...base,
+            faviconUrl: anyFavicon.faviconUrl,
+        };
+    }, [seoMetaByPage, currentPageKey]);
+
+    const setCurrentSeoMeta = useCallback(
+        (updater: SeoMeta | ((prev: SeoMeta) => SeoMeta)) => {
+            setSeoMetaByPage((prev) => {
+                const prevMap: SeoMetaByPage = prev || {};
+                const prevForPage = prevMap[currentPageKey] ?? emptyMeta;
+
+                const nextForPage =
+                    typeof updater === "function"
+                        ? (updater as (p: SeoMeta) => SeoMeta)(prevForPage)
+                        : updater;
+
+                const faviconUrl = nextForPage.faviconUrl;
+
+                // Start with this page’s updated meta (title/desc per-page)
+                let nextMap: SeoMetaByPage = {
+                    ...prevMap,
+                    [currentPageKey]: nextForPage,
+                };
+
+                // If favicon is set here, propagate it to all pages so it’s global.
+                if (faviconUrl && faviconUrl.trim() !== "") {
+                    nextMap = Object.fromEntries(
+                        Object.entries(nextMap).map(([key, val]) => [
+                            key,
+                            key === currentPageKey
+                                ? val
+                                : { ...val, faviconUrl },
+                        ]),
+                    );
+                }
+
+                return nextMap;
+            });
+        },
+        [currentPageKey],
+    );
+
+
+    const theme = useMemo(
+        () => deriveThemeFromInitialHtml(initialHtml),
+        [initialHtml],
+    );
+
+    function MetaSettings({
+        draftId,
+        meta,
+        uploadFileToUserBlob,
+        onSaveMeta,
+    }: {
+        draftId?: string;
+        meta: SeoMeta;
+        uploadFileToUserBlob: (file: File, draftId: string) => Promise<UploadedAsset>;
+        onSaveMeta?: (meta: SeoMeta) => Promise<void> | void;
+    }) {
+        const [uploading, setUploading] = useState(false);
+
+        // local UX state
+        const [saving, setSaving] = useState(false);
+        const [justSaved, setJustSaved] = useState(false);
+
+        // local form copy so typing doesn’t fight parent state
+        const [draftMeta, setDraftMeta] = useState<SeoMeta>(meta);
+
+        // when page / meta changes, re-seed the form
+        useEffect(() => {
+            setDraftMeta(meta);
+        }, [meta]);
+
+        const handleMetaChange = (key: keyof SeoMeta, value: string) => {
+            setDraftMeta((prev) => ({ ...prev, [key]: value }));
+        };
+
+        const handleMetaSaveClick = async () => {
+            if (!onSaveMeta) {
+                console.warn("[MetaSettings] onSaveMeta is undefined – no persistence wired");
+                return;
+            }
+
+            setSaving(true);
+            setJustSaved(false);
+            try {
+                await onSaveMeta(draftMeta);
+                setJustSaved(true);
+                setTimeout(() => setJustSaved(false), 1500);
+            } catch (err) {
+                console.error("Failed to save SEO meta", err);
+                alert("Failed to save metadata. See console for details.");
+            } finally {
+                setSaving(false);
+            }
+        };
+
+        const uploadFavicon = async (e: ChangeEvent<HTMLInputElement>) => {
+            const file = e.target.files?.[0];
+            e.target.value = ""; // Clear input for next upload
+            if (!file || !draftId) return;
+            if (!file.type.startsWith("image/")) {
+                alert("Please upload a valid image file for the favicon.");
+                return;
+            }
+
+            setUploading(true);
+            try {
+                const { url } = await uploadFileToUserBlob(file, draftId);
+                setDraftMeta((prev) => ({ ...prev, faviconUrl: url }));
+                alert("Favicon uploaded successfully!");
+            } catch (error) {
+                console.error("Favicon upload failed:", error);
+                alert("Favicon upload failed. See console for details.");
+            } finally {
+                setUploading(false);
+            }
+        };
+
+        return (
+            <div className="space-y-4">
+                <h3 className="text-lg font-bold">SEO & Site Metadata 📊</h3>
+
+                <UiBtn
+                    variant="outline"
+                    onClick={() => doSave()}
+                    disabled={closing || savingDraft}
+                    ariaBusy={savingDraft}
+                >
+                    {savingDraft ? "💾 Saving…" : "💾 Save draft"}
+                </UiBtn>
+                <UiBtn
+                    variant="filled"
+                    onClick={() => setExportPrompt(true)}
+                    disabled={closing || exporting}
+                    ariaBusy={exporting}
+                >
+                    {exporting ? "🚀 Exporting…" : "🚀 Export to Vercel"}
+                </UiBtn>
+                <UiBtn
+                    variant="outline-quiet"
+                    onClick={() => {
+                        if (dirty) setClosePrompt(true);
+                        else performClose("discard");
+                    }}
+                    disabled={closing}
+                    ariaBusy={closing}
+                >
+                    ❌ Close
+                </UiBtn>
+
+                <div>
+                    <label
+                        htmlFor="meta-title"
+                        className="block text-sm font-medium text-gray-700"
+                    >
+                        Page Title
+                    </label>
+                    <input
+                        id="meta-title"
+                        name="meta-title"
+                        type="text"
+                        value={draftMeta.title}
+                        onChange={(e) => handleMetaChange("title", e.target.value)}
+                        placeholder="E.g. My Amazing Website"
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500 sm:text-sm p-2 border"
+                        maxLength={60}
+                        autoComplete="off"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                        Used in browser tabs and search results. (Max 60 characters)
+                    </p>
+                </div>
+
+                <div>
+                    <label
+                        htmlFor="meta-description"
+                        className="block text-sm font-medium text-gray-700"
+                    >
+                        Meta Description
+                    </label>
+                    <textarea
+                        id="meta-description"
+                        name="meta-description"
+                        value={draftMeta.description}
+                        onChange={(e) => handleMetaChange("description", e.target.value)}
+                        placeholder="A short, catchy summary of this page..."
+                        rows={2}
+                        className="mt-1 min-h-[100px] block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500 sm:text-sm p-2 border"
+                        maxLength={160}
+                        autoComplete="off"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                        Used for search snippet. (Max 160 characters)
+                    </p>
+                </div>
+
+                <div>
+                    <label
+                        htmlFor="meta-og-image"
+                        className="block text-sm font-medium text-gray-700"
+                    >
+                        Social Share Image URL (OpenGraph)
+                    </label>
+                    <input
+                        id="meta-og-image"
+                        name="meta-og-image"
+                        type="url"
+                        value={draftMeta.ogImageUrl}
+                        onChange={(e) =>
+                            handleMetaChange("ogImageUrl", e.target.value)
+                        }
+                        placeholder="https://example.com/share.png"
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500 sm:text-sm p-2 border"
+                        autoComplete="off"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                        URL for the image displayed when sharing on platforms like Twitter/Facebook.
+                    </p>
+                </div>
+
+                <div>
+                    <label
+                        htmlFor="meta-favicon"
+                        className="block text-sm font-medium text-gray-700"
+                    >
+                        Favicon
+                    </label>
+                    <div className="flex items-center space-x-3 mt-1">
+                        {draftMeta.faviconUrl ? (
+                            <span className="inline-block w-6 h-6 border rounded-sm flex items-center justify-center overflow-hidden">
+                                <img
+                                    src={draftMeta.faviconUrl}
+                                    alt="Favicon preview"
+                                    className="object-cover w-full h-full"
+                                />
+                            </span>
+                        ) : (
+                            <span className="text-sm text-gray-500">
+                                No favicon uploaded
+                            </span>
+                        )}
+                        <label
+                            className={`cursor-pointer inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md shadow-sm text-white ${uploading
+                                ? "bg-gray-400"
+                                : "bg-orange-600 hover:bg-orange-700"
+                                } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500`}
+                        >
+                            {uploading ? "Uploading..." : "Upload Favicon"}
+                            <input
+                                id="meta-favicon"
+                                name="meta-favicon"
+                                type="file"
+                                accept="image/*"
+                                onChange={uploadFavicon}
+                                disabled={uploading}
+                                className="sr-only"
+                            />
+                        </label>
+                    </div>
+                </div>
+
+
+                <div className="pt-2">
+                    <button
+                        type="button"
+                        onClick={handleMetaSaveClick}
+                        disabled={saving}
+                        className={`inline-flex items-center rounded-md px-3 py-2 text-sm font-medium transition ${saving
+                            ? "bg-emerald-50 text-emerald-700 cursor-not-allowed"
+                            : justSaved
+                                ? "bg-emerald-50 text-emerald-700 border border-emerald-300"
+                                : "bg-emerald-600 text-white hover:brightness-95"
+                            }`}
+                    >
+                        {saving
+                            ? "Saving..."
+                            : justSaved
+                                ? "Saved Changes!"
+                                : "Save Changes"}
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
 
     // inject route-specific CSS into the monolithic HTML for iframe preview
     const renderHtml = useMemo(() => {
@@ -560,6 +968,7 @@ export default function PreviewEditor({
         if (typeof window === "undefined") return;
         localStorage.setItem("kloner:uiScale", String(uiScale));
     }, [uiScale]);
+
 
     // derive pages from initialHtml once
     useEffect(() => {
@@ -667,6 +1076,14 @@ export default function PreviewEditor({
             // ignore
         }
     }, []);
+
+    // NEW: Device toggle logic
+    const handleDeviceChange = useCallback((next: Device) => {
+        if (device === next) return;
+        setDevice(next);
+        tryClearIframeSelection();
+    }, [device, tryClearIframeSelection]);
+
 
     // ESC clears iframe selection
     useEffect(() => {
@@ -966,10 +1383,107 @@ export default function PreviewEditor({
                     }}
                 >
                     <aside className="flex flex-col min-w-0 overflow-auto pr-1 max-lg:order-2">
+
+                        {/* NEW: Style/Meta Toggle */}
+                        <div className="inline-flex rounded-md shadow-sm mb-4">
+                            <button
+                                onClick={() => setSidePanelMode("style")}
+                                className={`px-3 py-1 text-sm font-medium rounded-l-md transition-colors ${sidePanelMode === "style"
+                                    ? "bg-accent text-white"
+                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                    }`}
+                            >
+                                ✨ Styles
+                            </button>
+                            <button
+                                onClick={() => setSidePanelMode("meta")}
+                                className={`px-3 py-1 text-sm font-medium rounded-r-md transition-colors ${sidePanelMode === "meta"
+                                    ? "bg-accent text-white"
+                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                    }`}
+                            >
+                                📝 Meta
+                            </button>
+
+                            {/* <button
+                                type="button"
+                                onClick={() =>
+                                    setControlsCollapsed((v) => !v)
+                                }
+                                disabled={closing}
+                                className={`ml-2 px-3 py-1 text-sm font-medium rounded-md transition-colors ${controlsCollapsed
+                                    ? "bg-accent text-white"
+                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                    }`}
+                            >
+                                {controlsCollapsed ? "Show Controls" : "Collapse Controls"}
+                            </button> */}
+                        </div>
+
                         {/* Compact header + toggle – always visible */}
-                        <div className="sticky top-0 z-10 mb-3 flex items-center justify-between bg-white/95 pb-2 backdrop-blur-sm">
+                        <div className="sticky top-0 z-10 flex items-center justify-between bg-white/95 pb-2 backdrop-blur-sm">
+
+                            {/* Compact header + toggle – always visible */}
+                            <div className="flex items-center justify-between w-full">
+                                {/* <div className="flex items-center gap-2">
+                                    <div className="relative h-[30px] w-[30px]">
+                                        <Image
+                                            src={logo}
+                                            alt="kloner logo"
+                                            fill
+                                            priority
+                                            className="object-contain"
+                                        />
+                                    </div>
+                                    <span className="text-[10px] font-medium text-neutral-500 lg:hidden">
+                                        Editor control
+                                    </span>
+                                </div> */}
+
+                                {sidePanelMode === "meta" && (
+                                    <MetaSettings
+                                        key={currentPageKey}
+                                        draftId={draftId}
+                                        meta={currentSeoMeta}
+                                        uploadFileToUserBlob={uploadFileToUserBlob}
+                                        onSaveMeta={async (meta) => {
+                                            setSeoMetaByPage((prev) => {
+                                                const prevMap: SeoMetaByPage = prev || {};
+                                                const faviconUrl = meta.faviconUrl?.trim() || "";
+
+                                                let next: SeoMetaByPage = {
+                                                    ...prevMap,
+                                                    [currentPageKey]: meta,
+                                                };
+
+                                                // favicon is global: propagate across pages if set
+                                                if (faviconUrl) {
+                                                    next = Object.fromEntries(
+                                                        Object.entries(next).map(([key, val]) => [
+                                                            key,
+                                                            key === currentPageKey ? val : { ...val, faviconUrl },
+                                                        ]),
+                                                    );
+                                                }
+
+                                                if (onSaveMeta) {
+                                                    void onSaveMeta(
+                                                        currentPageKey === SINGLE_PAGE_KEY ? null : currentPageKey,
+                                                        meta,
+                                                        next,
+                                                    );
+                                                }
+
+                                                return next;
+                                            });
+                                        }}
+                                    />
+                                )}
+
+                            </div>
+
                             <div className="flex items-center gap-2">
-                                <div className="relative h-[30px] w-[30px]">
+                                {/* <div className="relative h-[30px] w-[30px]">
                                     <Image
                                         src={logo}
                                         alt="kloner logo"
@@ -977,33 +1491,21 @@ export default function PreviewEditor({
                                         priority
                                         className="object-contain"
                                     />
-                                </div>
+                                </div> */}
                                 <span className="text-[10px] font-medium text-neutral-500 lg:hidden">
                                     Editor controls
                                 </span>
                             </div>
-
-                            <button
-                                type="button"
-                                onClick={() =>
-                                    setControlsCollapsed((v) => !v)
-                                }
-                                disabled={closing}
-                                className="inline-flex items-center gap-1 rounded border border-neutral-200 bg-white px-2 py-1 text-[10px] font-medium text-neutral-600 shadow-sm hover:bg-neutral-50 active:scale-95 disabled:opacity-50 lg:text-xs"
-                            >
-                                {controlsCollapsed
-                                    ? "Show controls"
-                                    : "Hide controls"}
-                            </button>
                         </div>
-
                         {/* All existing controls – only hidden when collapsed */}
-                        {!controlsCollapsed && (
+                        {(!controlsCollapsed && sidePanelMode === "style") && (
                             <>
+
                                 <div className="mb-3">
-                                    <div className="text-[11px] font-semibold text-neutral-500 mb-1">
+                                    <div className="text-xs font-semibold text-neutral-500 mb-1">
                                         View
                                     </div>
+
                                     <div className="flex flex-wrap gap-1">
                                         {/* <UiBtn
                                             pressed={mode === "code"}
@@ -1012,7 +1514,32 @@ export default function PreviewEditor({
                                         >
                                             Code
                                         </UiBtn> */}
-                                        <UiBtn
+                                        <button
+                                            onClick={() =>
+                                                handleModeClick("preview")
+                                            }
+                                            disabled={closing}
+                                            className={`px-3 py-1 text-sm font-medium rounded-l-md transition-colors ${mode === "preview"
+                                                ? "bg-accent text-white"
+                                                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                                }`}
+                                        >
+                                            ✍️ Preview
+                                        </button>
+                                        <button
+                                            onClick={() =>
+                                                handleModeClick("screenshot")
+                                            }
+                                            disabled={closing}
+                                            className={`px-3 py-1 text-sm font-medium rounded-r-md transition-colors ${mode === "screenshot"
+                                                ? "bg-accent text-white"
+                                                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                                }`}
+                                        >
+                                            👁️ Screenshot
+                                        </button>
+
+                                        {/* <UiBtn
                                             pressed={mode === "preview"}
                                             onClick={() =>
                                                 handleModeClick("preview")
@@ -1029,15 +1556,15 @@ export default function PreviewEditor({
                                             disabled={closing}
                                         >
                                             Screenshot
-                                        </UiBtn>
+                                        </UiBtn> */}
                                     </div>
                                 </div>
 
                                 <div className="mb-3">
-                                    <div className="text-[11px] font-semibold text-neutral-500 mb-1">
+                                    <div className="text-xs font-semibold text-neutral-500 mb-1">
                                         Device
                                     </div>
-                                    <div className="flex flex-wrap gap-1">
+                                    {/* <div className="flex flex-wrap gap-1">
                                         <UiBtn
                                             pressed={device === "desktop"}
                                             onClick={() =>
@@ -1065,62 +1592,93 @@ export default function PreviewEditor({
                                         >
                                             Mobile
                                         </UiBtn>
+                                    </div> */}
+                                    <div className="inline-flex rounded-md shadow-sm">
+                                        <button
+                                            onClick={() => handleDeviceChange("desktop")}
+                                            className={`p-2 text-lg rounded-l-md transition-colors ${device === "desktop"
+                                                ? "bg-blue-600 text-white"
+                                                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                                }`}
+                                            title="Desktop"
+                                        >
+                                            💻
+                                        </button>
+                                        <button
+                                            onClick={() => handleDeviceChange("tablet")}
+                                            className={`p-2 text-lg transition-colors ${device === "tablet"
+                                                ? "bg-blue-600 text-white"
+                                                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                                }`}
+                                            title="Tablet"
+                                        >
+                                            📱
+                                        </button>
+                                        <button
+                                            onClick={() => handleDeviceChange("mobile")}
+                                            className={`p-2 text-lg rounded-r-md transition-colors ${device === "mobile"
+                                                ? "bg-blue-600 text-white"
+                                                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                                }`}
+                                            title="Mobile"
+                                        >
+                                            🤳
+                                        </button>
                                     </div>
                                 </div>
 
                                 <div className="mb-3">
-                                    <div className="text-[11px] font-semibold text-neutral-500 mb-1">
+                                    <div className="text-xs font-semibold text-neutral-500 mb-1">
                                         Actions
                                     </div>
-                                    <div className="flex flex-wrap gap-2 items-center">
-                                        <UiBtn
-                                            variant="outline"
+
+                                    {/* MATCHES 1) EXACT LOOK + FEEL */}
+                                    <div className="flex flex-wrap items-center gap-1">
+
+                                        {/* Save Draft */}
+                                        <button
                                             onClick={() => doSave()}
                                             disabled={closing || savingDraft}
-                                            ariaBusy={savingDraft}
+                                            className={`px-3 py-1 text-sm font-medium rounded-md transition-colors
+                ${savingDraft
+                                                    ? "bg-accent text-white opacity-80 cursor-not-allowed"
+                                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                                }`}
                                         >
-                                            {savingDraft
-                                                ? "Saving…"
-                                                : "Save draft"}
-                                        </UiBtn>
-                                        <UiBtn
-                                            variant="filled"
-                                            onClick={() =>
-                                                setExportPrompt(true)
-                                            }
+                                            {savingDraft ? "💾 Saving…" : "💾 Save draft"}
+                                        </button>
+
+                                        {/* Export to Vercel */}
+                                        <button
+                                            onClick={() => setExportPrompt(true)}
                                             disabled={closing || exporting}
-                                            ariaBusy={exporting}
+                                            className={`px-3 py-1 text-sm font-medium rounded-md transition-colors
+                ${exporting
+                                                    ? "bg-accent text-white opacity-80 cursor-not-allowed"
+                                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                                }`}
                                         >
-                                            {exporting
-                                                ? "Exporting…"
-                                                : "Export to Vercel"}
-                                        </UiBtn>
-                                        <UiBtn
-                                            variant="outline-quiet"
-                                            onClick={() => {
-                                                if (dirty) setClosePrompt(true);
-                                                else performClose("discard");
-                                            }}
-                                            disabled={closing}
-                                            ariaBusy={closing}
-                                        >
-                                            Close
-                                        </UiBtn>
+                                            {exporting ? "🚀 Exporting…" : "🚀 Export to Vercel"}
+                                        </button>
+
+
+
+                                        {/* Spacer */}
                                         <span className="ml-auto text-xs text-slate-500 self-center">
                                             v{version}
                                         </span>
-                                        <div className="flex items-center gap-1 text-[11px] text-slate-500">
+
+
+
+                                        <div className="flex items-center gap-1 text-sm text-slate-500 mt-3">
+                                            <div className="text-xs font-semibold text-neutral-500 mb-1">
+                                                UI Scale
+                                            </div>
+
                                             <button
-                                                className="px-1.5 py-0.5 border rounded hover:bg-neutral-50 active:scale-[.99] focus:outline-none focus:ring-2 focus:ring-neutral-300"
+                                                className="px-2 py-1 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 disabled:opacity-50"
                                                 onClick={() =>
-                                                    setUiScale((s) =>
-                                                        Math.max(
-                                                            0.5,
-                                                            +(
-                                                                s - 0.05
-                                                            ).toFixed(2)
-                                                        )
-                                                    )
+                                                    setUiScale((s) => Math.max(0.5, +(s - 0.05).toFixed(2)))
                                                 }
                                                 disabled={closing}
                                             >
@@ -1130,16 +1688,9 @@ export default function PreviewEditor({
                                                 {Math.round(uiScale * 100)}%
                                             </span>
                                             <button
-                                                className="px-1.5 py-0.5 border rounded hover:bg-neutral-50 active:scale-[.99] focus:outline-none focus:ring-2 focus:ring-neutral-300"
+                                                className="px-2 py-1 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 disabled:opacity-50"
                                                 onClick={() =>
-                                                    setUiScale((s) =>
-                                                        Math.min(
-                                                            1.25,
-                                                            +(
-                                                                s + 0.05
-                                                            ).toFixed(2)
-                                                        )
-                                                    )
+                                                    setUiScale((s) => Math.min(1.25, +(s + 0.05).toFixed(2)))
                                                 }
                                                 disabled={closing}
                                             >
@@ -1147,6 +1698,7 @@ export default function PreviewEditor({
                                             </button>
                                         </div>
                                     </div>
+
                                     {exportNote && (
                                         <div className="mt-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[12px] text-amber-800">
                                             {exportNote}
@@ -1154,11 +1706,12 @@ export default function PreviewEditor({
                                     )}
                                 </div>
 
+
                                 {/* Selection styling sidebar */}
                                 {mode === "preview" && (
                                     <div className="mb-3 border-t pt-3 mt-2">
                                         <div className="flex items-center justify-between mb-1">
-                                            <div className="text-[11px] font-semibold text-neutral-500">
+                                            <div className="text-sm font-semibold text-neutral-500">
                                                 Selection style
                                             </div>
                                             <div className="text-[10px] text-neutral-400">
@@ -1176,7 +1729,7 @@ export default function PreviewEditor({
                                             layout.
                                         </div>
 
-                                        <div className="space-y-2 text-[11px] max-h-64 lg:max-h-none overflow-y-auto pr-1">
+                                        <div className="space-y-2 text-sm max-h-64 lg:max-h-none overflow-y-auto pr-1">
                                             {/* Font family */}
                                             <div>
                                                 <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
@@ -1483,7 +2036,7 @@ export default function PreviewEditor({
                                                                                     value: f,
                                                                                 })
                                                                             }
-                                                                            className="px-2 py-1 rounded-full border border-black/10 bg-white text-[11px] shadow-sm hover:scale-105 active:scale-95 disabled:opacity-40"
+                                                                            className="px-2 py-1 rounded-full border border-black/10 bg-white text-sm shadow-sm hover:scale-105 active:scale-95 disabled:opacity-40"
                                                                             style={{ fontFamily: f }}
                                                                         >
                                                                             {f}
@@ -1895,23 +2448,42 @@ export default function PreviewEditor({
                                 )}
 
 
-                                <div className="block lg:hidden mb-3 fixed bottom-0 w-full">
-                                    <button
-                                        onClick={applyDraftToPreview}
-                                        disabled={closing || !dirty}
-                                        aria-busy={applyingPreview}
-                                        className={`rounded px-3 py-3 text-lg w-full transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${dirty
-                                            ? "bg-emerald-600 text-white hover:brightness-95"
-                                            : "bg-emerald-50 text-emerald-700"
-                                            }`}
-                                        title="Apply current draft to the live preview"
-                                    >
-                                        {applyingPreview
-                                            ? "Updating preview…"
-                                            : dirty
-                                                ? "Apply changes to preview"
-                                                : "Preview is up to date"}
-                                    </button>
+                                <div className="block lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 border-t border-neutral-200 px-4 py-3">
+                                    <div className="flex flex-col gap-2">
+
+                                        {/* Apply to preview (TOP) */}
+                                        <button
+                                            onClick={applyDraftToPreview}
+                                            disabled={closing || !dirty}
+                                            aria-busy={applyingPreview}
+                                            className={`w-full rounded-md px-3 py-3 text-lg font-medium transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${dirty
+                                                ? "bg-emerald-600 text-white hover:brightness-95"
+                                                : "bg-emerald-50 text-emerald-700"
+                                                }`}
+                                            title="Apply current draft to the live preview"
+                                        >
+                                            {applyingPreview
+                                                ? "Updating preview…"
+                                                : dirty
+                                                    ? "Apply changes to preview"
+                                                    : "Preview is up to date"}
+                                        </button>
+
+                                        {/* Close (BOTTOM) */}
+                                        <button
+                                            onClick={() => {
+                                                if (dirty) setClosePrompt(true);
+                                                else performClose("discard");
+                                            }}
+                                            disabled={closing}
+                                            className={`w-full px-3 py-3 text-lg font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${closing
+                                                ? "bg-accent text-white opacity-80 cursor-not-allowed"
+                                                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                                }`}
+                                        >
+                                            ❌ Close
+                                        </button>
+                                    </div>
                                 </div>
 
                                 {/* {mode === "code" && (
@@ -1944,7 +2516,22 @@ export default function PreviewEditor({
                                 tryClearIframeSelection();
                         }}
                     >
-                        {/* Page selector */}
+
+                        {allPages && allPages.length > 1 && (
+                            <div className="flex items-center gap-2 ml-2 mt-2">
+                                <label className="text-xs font-medium text-gray-700">Page:</label>
+                                <select
+                                    value={activePageId}
+                                    onChange={(e) => setActivePageId(e.target.value)}
+                                    className="px-2 py-1 text-sm rounded-md border border-gray-300"
+                                >
+                                    {allPages.map((p) => (
+                                        <option key={p.id} value={p.id}>{p.label}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+                        {/* Page selector
                         <span className="m-2 text-[10px] font-medium text-neutral-500 lg:hidden">
                             Pages
                         </span>
@@ -1965,7 +2552,7 @@ export default function PreviewEditor({
                                     ))}
                                 </div>
                             </div>
-                        )}
+                        )} */}
                         {activeSourceImage && mode !== "screenshot" && (
                             <img
                                 src={activeSourceImage}
@@ -2054,21 +2641,38 @@ export default function PreviewEditor({
                         )}
 
                         <div className="hidden lg:block mb-3">
+                            {/* Utility Buttons: Increased size and a cohesive look (using lg:px-4 lg:py-2.5 lg:text-base) */}
+
+                            {/* Main Action Button: HUGE size and full width */}
                             <button
                                 onClick={applyDraftToPreview}
                                 disabled={closing || !dirty}
                                 aria-busy={applyingPreview}
-                                className={`rounded px-3 py-3 text-lg w-full transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${dirty
-                                    ? "bg-emerald-600 text-white hover:brightness-95"
-                                    : "bg-emerald-50 text-emerald-700"
+                                // Increased padding (px-4 py-4) and font size (text-xl/text-2xl) to make it HUGE
+                                className={`rounded px-4 py-4 text-xl w-full transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${dirty
+                                    ? "bg-emerald-600 text-white hover:brightness-95 shadow-lg" // Added shadow for emphasis
+                                    : "bg-emerald-50 text-emerald-700 pointer-events-none" // Added pointer-events-none when up to date
                                     }`}
                                 title="Apply current draft to the live preview"
                             >
                                 {applyingPreview
-                                    ? "Updating preview…"
+                                    ? "🔄 Updating preview…"
                                     : dirty
-                                        ? "Apply changes to preview"
-                                        : "Preview is up to date"}
+                                        ? "🔥 Apply changes to preview" // Changed text and added emoji for urgency
+                                        : "✅ Preview is up to date"}
+                            </button>
+                            <button
+                                onClick={() => {
+                                    if (dirty) setClosePrompt(true);
+                                    else performClose("discard");
+                                }}
+                                disabled={closing}
+                                className={`w-full px-3 py-3 text-lg mt-2 font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${closing
+                                    ? "bg-accent text-white opacity-80 cursor-not-allowed"
+                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                    }`}
+                            >
+                                ❌ Close Editor
                             </button>
                         </div>
                     </section>
@@ -2236,7 +2840,7 @@ function UiBtn({
             onClick={onClick}
             disabled={disabled}
             aria-busy={ariaBusy}
-            className={`${base} rounded-full px-2.5 py-1 text-[11px] border ${pressed
+            className={`${base} rounded-full px-2.5 py-1 text-sm border ${pressed
                 ? "border-neutral-900 bg-neutral-900 text-white"
                 : "border-neutral-300 bg-white hover:bg-neutral-50"
                 }`}
