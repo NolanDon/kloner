@@ -110,6 +110,31 @@ type Shot = {
     bytes?: number;
 };
 
+export const RenderCard = memo(
+    RenderCardInner,
+    (prev, next) => {
+        const a = prev.r as any;
+        const b = next.r as any;
+
+        return (
+            a.id === b.id &&
+            a.status === b.status &&
+            (a.html || "") === (b.html || "") &&
+            (a.key || "") === (b.key || "") &&
+            (a.nameHint || "") === (b.nameHint || "") &&
+            (a.lastExportedAt || "") === (b.lastExportedAt || "") &&
+            (a.siteConfigId || "") === (b.siteConfigId || "") &&
+            (a.controllerVersion || "") === (b.controllerVersion || "") &&
+            prev.isDeleting === next.isDeleting &&
+            prev.isOpening === next.isOpening &&
+            prev.hardLocked === next.hardLocked &&
+            prev.isDeploying === next.isDeploying &&
+            prev.deployLocked === next.deployLocked &&
+            (prev.urlHash || "") === (next.urlHash || "")
+        );
+    },
+);
+
 export type RenderDoc = {
     url?: string | null;
     urlHash?: string | null;
@@ -494,31 +519,6 @@ function RenderCardInner({
     );
 }
 
-
-export const RenderCard = memo(
-    RenderCardInner,
-    (prev, next) => {
-        const a = prev.r as any;
-        const b = next.r as any;
-
-        return (
-            a.id === b.id &&
-            a.status === b.status &&
-            (a.html || "") === (b.html || "") &&
-            (a.key || "") === (b.key || "") &&
-            (a.nameHint || "") === (b.nameHint || "") &&
-            (a.lastExportedAt || "") === (b.lastExportedAt || "") &&
-            (a.siteConfigId || "") === (b.siteConfigId || "") &&
-            (a.controllerVersion || "") === (b.controllerVersion || "") &&
-            prev.isDeleting === next.isDeleting &&
-            prev.isOpening === next.isOpening &&
-            prev.hardLocked === next.hardLocked &&
-            prev.isDeploying === next.isDeploying &&
-            prev.deployLocked === next.deployLocked &&
-            (prev.urlHash || "") === (next.urlHash || "")
-        );
-    },
-);
 
 /* ───────── toasts ───────── */
 
