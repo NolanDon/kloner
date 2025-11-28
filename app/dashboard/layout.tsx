@@ -158,6 +158,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         const inDashboard = pathname === "/dashboard";
         const inPreview = pathname.startsWith("/dashboard/view") || pathname === "/dashboard";
         const inDeployments = pathname.startsWith("/dashboard/deployments");
+        const inArchived = pathname.startsWith("/dashboard/archived");
 
         return (
             <div className="flex h-full flex-col w-full">
@@ -195,6 +196,13 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                         </NavItem>
                         <NavItem href="/dashboard/view" active={inPreview && !inDashboard}>
                             Preview Builder
+                        </NavItem>
+                    </div>
+
+                    <SectionLabel>Archive</SectionLabel>
+                    <div className="space-y-1">
+                        <NavItem href="/dashboard/archived" active={inArchived}>
+                            Archived previews
                         </NavItem>
                     </div>
 

@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import { verifySession } from "../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
-import logo from "@/public/images/orange_logo.png";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -26,22 +25,11 @@ type SignupPayload = {
   method?: string;
 };
 
-// Build absolute logo URL for email clients
-const APP_URL =
-  process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "https://kloner.app";
-
-// Next image imports return an object with .src in most setups
-const LOGO_PATH =
-  typeof logo === "string" ? logo : ((logo as any).src as string) || "/images/orange_logo.png";
-
-const LOGO_URL = `${APP_URL}${LOGO_PATH.startsWith("/") ? LOGO_PATH : `/${LOGO_PATH}`}`;
-
 function buildWelcomeHtml(email: string, name: string | undefined) {
   const accent = "#f55f2a";
   const dark = "#111827";
-  const muted = "#4b5563";
-
-  const safeName = name && name.trim().length > 0 ? name.trim() : "there";
+  const muted = "#6b7280";
+  const safeName = name?.trim() || "there";
 
   return `
 <!doctype html>
@@ -50,31 +38,27 @@ function buildWelcomeHtml(email: string, name: string | undefined) {
     <meta charSet="utf-8" />
     <title>Welcome to Kloner</title>
   </head>
-  <body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
-    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#f5f5f5;padding:24px 0;">
+  <body style="margin:0;padding:0;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#ffffff;padding:24px 0;">
       <tr>
         <td align="center">
-          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:640px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:640px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #fee2d5;">
+            <!-- HEADER -->
             <tr>
-              <td style="padding:24px 28px;border-bottom:1px solid #f3f4f6;background:radial-gradient(circle at top left,#fde7d7,#ffffff);">
+              <td style="padding:18px 24px;border-bottom:1px solid #fee2d5;background:${accent};">
                 <div style="display:flex;align-items:center;gap:12px;">
-                  <div style="width:40px;height:40px;border-radius:14px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#1118270d;">
-                    <img
-                      src="${LOGO_URL}"
-                      alt="Kloner"
-                      width="40"
-                      height="40"
-                      style="display:block;width:40px;height:40px;object-fit:contain;border-radius:12px;"
-                    />
+                  <div style="height:32px;width:32px;border-radius:999px;background:#ffffff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:${accent};">
+                    K
                   </div>
                   <div>
-                    <div style="font-size:16px;font-weight:600;color:${dark};">Welcome to Kloner</div>
-                    <div style="font-size:12px;color:${muted};margin-top:2px;">Clone a site, customize it, and deploy in a few clicks.</div>
+                    <div style="font-size:16px;font-weight:600;color:#ffffff;">Welcome to Kloner</div>
+                    <div style="font-size:12px;color:#ffe7dc;margin-top:2px;">Clone a site, customize it, and deploy in a few clicks.</div>
                   </div>
                 </div>
               </td>
             </tr>
 
+            <!-- BODY -->
             <tr>
               <td style="padding:24px 28px 8px 28px;">
                 <p style="margin:0 0 12px 0;font-size:14px;color:${dark};">
@@ -84,7 +68,7 @@ function buildWelcomeHtml(email: string, name: string | undefined) {
                   Thanks for signing up for <strong>Kloner</strong>, your website cloner with one-click deploy.
                 </p>
                 <p style="margin:0 0 14px 0;font-size:13px;color:${muted};line-height:1.6;">
-                  You can paste any public URL, capture a clean snapshot, and turn it into an editable project without touching the original site. Once you like the result, deploy it to your own space and keep iterating visually.
+                  Paste any public URL, capture a clean snapshot, and turn it into an editable project without touching the original site. Once you like the result, deploy it to your own space and keep iterating visually.
                 </p>
 
                 <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0 4px 0;">
@@ -97,7 +81,7 @@ function buildWelcomeHtml(email: string, name: string | undefined) {
                   </tr>
                 </table>
 
-                <p style="margin:16px 0 4px 0;font-size:12px;color:${muted};font-weight:600;">
+                <p style="margin:16px 0 4px 0;font-size:12px;color:${dark};font-weight:600;">
                   What you can do next:
                 </p>
                 <ul style="margin:4px 0 0 18px;padding:0;font-size:12px;color:${muted};line-height:1.6;">
@@ -109,6 +93,7 @@ function buildWelcomeHtml(email: string, name: string | undefined) {
               </td>
             </tr>
 
+            <!-- SUPPORT -->
             <tr>
               <td style="padding:12px 28px 20px 28px;">
                 <p style="margin:12px 0 6px 0;font-size:12px;color:${muted};">
@@ -121,8 +106,9 @@ function buildWelcomeHtml(email: string, name: string | undefined) {
               </td>
             </tr>
 
+            <!-- FOOTER -->
             <tr>
-              <td style="padding:14px 28px;border-top:1px solid #f3f4f6;background:#fafafa;">
+              <td style="padding:14px 28px;border-top:1px solid #fee2d5;background:#fff7f3;">
                 <div style="font-size:11px;color:#9ca3af;">
                   This email was sent to ${email}. If you didn’t create a Kloner account, you can ignore this message.
                 </div>
@@ -137,6 +123,7 @@ function buildWelcomeHtml(email: string, name: string | undefined) {
 </html>
 `;
 }
+
 
 export async function POST(req: NextRequest) {
   return requireSessionAndMaybeCsrf(

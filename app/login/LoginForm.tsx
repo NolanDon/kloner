@@ -394,6 +394,38 @@ export default function LoginPage(): JSX.Element {
         <main className="min-h-screen bg-white text-black grid place-items-center px-6">
             <NavBar />
             <div className="w-full max-w-md rounded-2xl border border-black/10 bg-white p-8 shadow-md">
+                {/* TOP MODE TOGGLE */}
+                <div className="mb-4 flex justify-center">
+                    <div className="inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 p-1 text-xs">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setMode("signin");
+                                setErr("");
+                            }}
+                            className={`px-3 py-1.5 rounded-full font-medium transition ${mode === "signin"
+                                    ? "bg-accent text-white"
+                                    : "text-neutral-600 hover:text-black"
+                                }`}
+                        >
+                            Sign in
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setMode("signup");
+                                setErr("");
+                            }}
+                            className={`px-3 py-1.5 rounded-full font-medium transition ${mode === "signup"
+                                    ? "bg-accent text-white"
+                                    : "text-neutral-600 hover:text-black"
+                                }`}
+                        >
+                            Create account
+                        </button>
+                    </div>
+                </div>
+
                 <div className="text-center">
                     <h1 className="text-2xl mb-4 font-semibold tracking-tight">
                         {mode === "signin" ? "Sign in" : "Create account"}
@@ -530,7 +562,7 @@ export default function LoginPage(): JSX.Element {
                 <button
                     onClick={signInWithGoogle}
                     disabled={loading}
-                    className="w-full inline-flex items-center justify-center gap-3 rounded-xl border border-neutral-200 bg-white text-black px-4 py-3 font-medium hover:bg-neutral-50 transition disabled:opacity-50 focus:outline-none"
+                    className="w-full inline-flex items-center justify-center gap-3 rounded-xl border border-neutral-200 bg-white text-black px-4 py-3 font-medium hover:bg-neutral-50 transition disabled:opacity-50 focus:outline-none text-sm"
                 >
                     <Image
                         src="/images/g.webp"
@@ -549,7 +581,7 @@ export default function LoginPage(): JSX.Element {
                     </p>
                 ) : null}
 
-                <div className="mt-4 flex items-center justify-between text-xs">
+                <div className="mt-4 flex items-center justify-between text-sm">
                     <button
                         type="button"
                         onClick={() => {

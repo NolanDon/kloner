@@ -55,6 +55,7 @@ import {
     BrushIcon,
     Clock10,
     MessageCircleWarning,
+    Archive,
 } from "lucide-react";
 import {
     isHttpUrl,
@@ -69,6 +70,7 @@ import { CREDIT_LIMITS, UserTier } from "@/src/lib/credits";
 import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 import { UrlDoc } from "../page";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
+import { archiveRender } from "@/src/lib/renders";
 
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
@@ -150,17 +152,14 @@ async function resolveStorageUrl(
 
 type RenderCardProps = {
     r: { id: string } & RenderDoc;
-
-    // primitive flags – derive once in parent
     isDeleting: boolean;
     isOpening: boolean;
     hardLocked: boolean;
     isDeploying: boolean;
     deployLocked: boolean;
-
     urlHash: string | null;
-
-    // callbacks from parent; keep them stable there with useCallback
+    archiveRender: (id: string) => void;
+    unarchiveRender: (id: string) => void;
     continueRender: (id: string) => void;
     discardRender: (id: string) => void;
     startDeployWizard: (opts: { id: string; nameHint?: string | null }) => void;
@@ -202,17 +201,18 @@ function RenderCardInner({
     continueRender,
     discardRender,
     startDeployWizard,
-    // setShowCreditsPaywall,
-    // push,
+    archiveRender,
+    unarchiveRender,
 }: RenderCardProps) {
     const router = useRouter();
 
     const isQueued = r.status === "queued";
     const isFailed = r.status === "failed";
     const isDeployed = !!r.lastExportedAt;
+    const isArchived = !!r.archived;
 
     const disableOpen =
-        isOpening || isQueued || isFailed || hardLocked || isDeploying;
+        isOpening || isQueued || isFailed || hardLocked || isDeploying || isArchived;
 
     const { src: refImgUrl, onError: refImgErr } = useResolvedImg(r.key || "");
 
@@ -265,29 +265,51 @@ function RenderCardInner({
     const deployThis = () => {
         if (!r.html?.trim()) return;
         if (isDeployed) return;
+        if (isArchived) return;
         startDeployWizard({ id: r.id, nameHint: r.nameHint ?? undefined });
     };
 
+    const handleArchiveClick = () => {
+        if (isDeleting || isDeploying) return;
+        if (isArchived) {
+            unarchiveRender(r.id);
+        } else {
+            archiveRender(r.id);
+        }
+    };
+
     return (
-        <div className="relative flex flex-col overflow-visible rounded-xl border border-neutral-200 bg-white shadow-sm">
-            <span
+        <div
+            className={`relative flex flex-col overflow-visible rounded-xl border bg-white shadow-sm ${isArchived ? "border-amber-300/70 bg-amber-50/50" : "border-neutral-200"
+                }`}
+        >
+            {/* <span
                 className="absolute left-2 top-2 z-30 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow"
                 style={{ backgroundColor: "#1d4ed8" }}
                 title={`Version ${versionLabel}`}
             >
                 {versionLabel}
-            </span>
+            </span> */}
 
             {controllerVersion && (
                 <span
                     className="absolute right-2 top-2 z-30 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-neutral-900 shadow bg-amber-300"
                     title={`Controller v${controllerVersion}`}
                 >
-                    ctrl v{controllerVersion}
+                    v{controllerVersion}
                 </span>
             )}
 
-            {!isDeployed && (
+            {isArchived && (
+                <span
+                    className="absolute left-2 top-7 z-30 mt-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-amber-900 shadow bg-amber-200/90"
+                    title="Archived previews are hidden from the main dashboard"
+                >
+                    Archived
+                </span>
+            )}
+
+            {!isDeployed && !isArchived && (
                 <button
                     onClick={() => discardRender(r.id)}
                     disabled={isDeleting}
@@ -311,25 +333,17 @@ function RenderCardInner({
                             alt={r.nameHint || "preview"}
                             loading="lazy"
                             onError={refImgErr}
-                            className="h-full w-full max-h-[260px] object-cover opacity-[0.25] select-none pointer-events-none"
+                            className={`h-full w-full max-h-[260px] object-cover opacity-[0.25] select-none pointer-events-none ${isArchived ? "grayscale" : ""
+                                }`}
                             draggable={false}
                         />
                     </a>
                 )}
 
                 <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
-                    <div className="pointer-events-auto flex flex-col items-center gap-2 rounded-xl bg-white/90 p-2 ring-1 ring-neutral-200 backdrop-blur md:flex-row">
+                    <div className="pointer-events-auto flex flex-col items-center gap-2 rounded-xl bg-white/90 p-2 ring-1 ring-neutral-200 backdrop-blur md:flex-col">
                         <button
                             onClick={
-                                // deployLocked
-                                //     ? () => {
-                                //         setShowCreditsPaywall("deploy");
-                                //         push(
-                                //             "Deploy is available on paid plans.",
-                                //             "warn",
-                                //         );
-                                //     }
-                                //     : 
                                 isDeployed
                                     ? () => {
                                         router.push("/dashboard/deployments");
@@ -337,43 +351,59 @@ function RenderCardInner({
                                     : deployThis
                             }
                             disabled={
+                                isArchived ||
                                 (!r.html && !isDeployed) ||
                                 isDeleting ||
                                 isQueued ||
                                 isDeploying
                             }
-                            className="shrink-0 rounded-md px-2 py-1 text-[0.75rem] border border-neutral-400 text-neutral-800 hover:bg-neutral-50 inline-flex items-center gap-1.5 disabled:opacity-60"
+                            className={`shrink-0 rounded-md px-2 py-1 text-sm border inline-flex items-center gap-1.5 ${isArchived
+                                ? "border-neutral-300 text-neutral-400 cursor-not-allowed bg-neutral-50"
+                                : "border-neutral-400 text-neutral-800 hover:bg-neutral-50 disabled:opacity-60"
+                                }`}
                             title={
-                                deployLocked
-                                    ? "Upgrade to publish live sites"
-                                    : isDeployed
-                                        ? "View and modify this deployment"
-                                        : "Deploy current HTML to Vercel"
+                                isArchived
+                                    ? "Unarchive this preview to deploy it"
+                                    : deployLocked
+                                        ? "Upgrade to publish live sites"
+                                        : isDeployed
+                                            ? "View and modify this deployment"
+                                            : "Deploy current HTML to Vercel"
                             }
                         >
-                            {
-                                // deployLocked ? (
-                                //     <>
-                                //         <Lock className="h-4 w-4" />
-                                //         <span>Deploy (locked)</span>
-                                //     </>
-                                // ) : 
-                                isDeploying ? (
-                                    <>
-                                        <span>Deploying…</span>
-                                        <Rocket className="h-4 w-4 animate-pulse" />
-                                    </>
-                                ) : isDeployed ? (
-                                    <>
-                                        <span>View deployment</span>
-                                        <Rocket className="h-4 w-4" />
-                                    </>
-                                ) : (
-                                    <>
-                                        <span>Deploy</span>
-                                        <Rocket className="h-4 w-4" />
-                                    </>
-                                )}
+                            {isDeploying ? (
+                                <>
+                                    <span>Deploying…</span>
+                                    <Rocket className="h-4 w-4 animate-pulse" />
+                                </>
+                            ) : isDeployed ? (
+                                <>
+                                    <span>View deployment</span>
+                                    <Rocket className="h-4 w-4" />
+                                </>
+                            ) : (
+                                <>
+                                    <span>Deploy</span>
+                                    <Rocket className="h-4 w-4" />
+                                </>
+                            )}
+                        </button>
+
+                        <button
+                            onClick={handleArchiveClick}
+                            disabled={isDeleting || isDeploying}
+                            className={`inline-flex items-center gap-2 rounded-md border px-3 py-1 text-sm shadow-sm ${isArchived
+                                ? "border-amber-500 text-amber-900 bg-amber-50 hover:bg-amber-100"
+                                : "border-neutral-400 text-neutral-800 hover:bg-neutral-50"
+                                }`}
+                            title={
+                                isArchived
+                                    ? "Move back to active previews"
+                                    : "Move this preview into your archive"
+                            }
+                        >
+                            <span>{isArchived ? "Unarchive" : "Archive"}</span>
+                            <Archive className="h-4 w-4" />
                         </button>
 
                         {!isDeployed && (
@@ -382,11 +412,13 @@ function RenderCardInner({
                                 disabled={disableOpen || isDeleting}
                                 className="inline-flex items-center gap-2 rounded-md border border-neutral-400 px-3 py-1 text-sm text-neutral-800 shadow-sm"
                                 title={
-                                    isQueued
-                                        ? "Still building preview"
-                                        : isFailed
-                                            ? "Open editor to fix"
-                                            : "Open editor to customize"
+                                    isArchived
+                                        ? "Unarchive to customize this preview"
+                                        : isQueued
+                                            ? "Still building preview"
+                                            : isFailed
+                                                ? "Open editor to fix"
+                                                : "Open editor to customize"
                                 }
                             >
                                 {isQueued
@@ -416,11 +448,13 @@ function RenderCardInner({
                     className="absolute bottom-2 left-2 z-20 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-neutral-600 ring-1 ring-neutral-200"
                     title="Preview status label"
                 >
-                    {isFailed
-                        ? "Failed"
-                        : r.html?.trim()
-                            ? "Preview ready"
-                            : "Awaiting HTML"}
+                    {isArchived
+                        ? "Archived"
+                        : isFailed
+                            ? "Failed"
+                            : r.html?.trim()
+                                ? "Preview ready"
+                                : "Awaiting HTML"}
                 </span>
                 <span className="absolute bottom-2 right-2 z-20 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-neutral-600 ring-1 ring-neutral-200">
                     {isDeploying
@@ -430,7 +464,7 @@ function RenderCardInner({
                             : r.status}
                 </span>
 
-                {isDeleting && <CenterSpinner label="Deleting…" />}
+                {isDeleting && <CenterSpinner />}
 
                 {(isQueued || hardLocked || isDeploying) && (
                     <CenterSpinner
@@ -460,7 +494,8 @@ function RenderCardInner({
     );
 }
 
-const RenderCard = memo(
+
+export const RenderCard = memo(
     RenderCardInner,
     (prev, next) => {
         const a = prev.r as any;
@@ -663,6 +698,27 @@ export default function PreviewPage(): JSX.Element {
     const [showUpgradeAfterCustomize, setShowUpgradeAfterCustomize] =
         useState(false);
 
+    const [archivingRender, setArchivingRender] = useState<Record<string, boolean>>({});
+
+    async function handleArchiveRender(id: string) {
+        setArchivingRender((prev) => ({ ...prev, [id]: true }));
+        try {
+            await archiveRender(id);
+            // hide from active list once archived
+            setRenders((prev) => prev.filter((r) => r.id !== id));
+        } finally {
+            setArchivingRender((prev) => {
+                const next = { ...prev };
+                delete next[id];
+                return next;
+            });
+        }
+    }
+
+    // you probably won’t use this on the main dashboard
+    function handleUnarchiveRender(_id: string) {
+        // no-op here; real unarchive happens on /dashboard/archived
+    }
 
     const [deployWizardOpen, setDeployWizardOpen] = useState(false);
     const [deployWizardStep, setDeployWizardStep] = useState<1 | 2 | 3 | 5>(1);
@@ -1841,7 +1897,6 @@ export default function PreviewPage(): JSX.Element {
                 setEditorHtml(html);
                 setEditorRefImg(refSrc);
                 setActiveRenderId(renderId);
-                console.log("seoMetaByPage", seoMetaByPage)
                 setActiveSeoMetaByPage(seoMetaByPage);
                 setEditorOpen(true);
             } catch (e) {
@@ -1878,7 +1933,6 @@ export default function PreviewPage(): JSX.Element {
                 const snap = await getDoc(renderRef);
                 const data = snap.exists() ? (snap.data() as any) : null;
 
-                console.log("deleting render", renderId, data);
                 // fire-and-forget delete of ALL storage objects for this render
                 try {
                     const csrf = await ensureSessionAndCsrf();
@@ -2080,7 +2134,6 @@ export default function PreviewPage(): JSX.Element {
 
             const j = (await r.json().catch(() => ({}))) as any;
 
-            console.log("deploy response", j);
 
 
             if (!r.ok || !j?.url) {
@@ -2913,15 +2966,15 @@ export default function PreviewPage(): JSX.Element {
                     <div className="flex items-center justify-between gap-3 flex-wrap">
                         <div className="space-y-2">
                             <div className="inline-flex items-center gap-2 rounded-full bg-neutral-100 pl-1 pr-3 py-1 text-[20px] mb-4 font-medium text-neutral-600">
-                                <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-neutral-900 text-white text-[20px]">
+                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent text-white text-[10px]">
                                     1
                                 </span>
                                 <span>URLs</span>
-                                {step1Done ? (
+                                {/* {step1Done ? (
                                     <CheckCircle2 className="h-4.5 w-4.5 text-emerald-500" />
                                 ) :
                                     <Clock10 className="h-4 w-4 text-amber-500" />
-                                }
+                                } */}
                             </div>
 
                             <p className="text-sm text-neutral-500">
@@ -2949,7 +3002,7 @@ export default function PreviewPage(): JSX.Element {
                         ) : (
                             <div className="relative inline-block" ref={urlMenuRef}>
                                 <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-2 text-sm text-neutral-700 my-2 flex items-center gap-2">
-                                    <strong className="text-neutral-800 font-semibold inline-flex gap-1">
+                                    <strong className="text-neutral-800 font-semibold inline-flex gap-1 flex items-center">
                                         {step1Done ? (
                                             <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                                         ) :
@@ -2957,7 +3010,7 @@ export default function PreviewPage(): JSX.Element {
                                         }
                                         Step 1
                                     </strong>{" "}
-                                    — You have chosen a URL.
+                                    — chosen URL.
                                 </div>
 
                                 <button
@@ -3037,15 +3090,15 @@ export default function PreviewPage(): JSX.Element {
                     <div className="mb-3 flex items-center justify-between gap-2">
                         <div className="space-y-1">
                             <div className="inline-flex items-center gap-2 rounded-full bg-neutral-100 pl-1 pr-3 py-1 text-[20px] mb-4 font-medium text-neutral-600">
-                                <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-neutral-900 text-white text-[20px]">
-                                    2
-                                </span>
-                                <span>Screenshot collections</span>
-                                {step2Done ? (
+                                {/* {step2Done ? (
                                     <CheckCircle2 className="h-4.5 w-4.5 text-emerald-500" />
                                 ) : (
                                     <Clock10 className="h-4 w-4 text-amber-500" />
-                                )}
+                                )} */}
+                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent text-white text-[10px]">
+                                    2
+                                </span>
+                                <span>Screenshot collections</span>
                             </div>
 
                             <p className="my-1 text-sm text-neutral-500">
@@ -3057,7 +3110,7 @@ export default function PreviewPage(): JSX.Element {
 
                     {!targetUrl ? (
                         <>
-                            <div className="mt-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-3 text-sm text-neutral-700 flex flex-wrap items-center gap-2 my-4">
+                            <div className="mt-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-2 text-sm text-neutral-700 flex flex-wrap items-center gap-2 my-4">
                                 <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1">
                                     {step2Done ? (
                                         <CheckCircle2 className="h-4 w-4 text-emerald-500" />
@@ -3115,7 +3168,7 @@ export default function PreviewPage(): JSX.Element {
                     ) : (
                         <>
                             <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-2 text-sm text-neutral-700 my-4">
-                                <strong className="text-neutral-800 font-semibold inline-flex gap-1">
+                                <strong className="text flex items-center text-neutral-800 font-semibold inline-flex gap-1">
                                     {step2Done ? (
                                         <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                                     ) : (
@@ -3127,7 +3180,7 @@ export default function PreviewPage(): JSX.Element {
                                 {renders.length === 0 && (
                                     <span className="inline-flex ml-1 mt-2 text-sm items-center text-neutral-700">
                                         Click{" "}
-                                        <span className="mx-2 shrink-0 rounded-md px-2 py-1 text-[0.75rem] bg-accent text-white inline-flex items-center gap-1.5">
+                                        <span className="mx-2 shrink-0 rounded-md px-2 py-1 text-[0.75rem] bg-accent font-semibold text-white inline-flex items-center gap-1.5">
                                             Generate preview <Hammer className="h-4 w-4" />
                                         </span>
                                         to create your first website preview.
@@ -3225,7 +3278,7 @@ export default function PreviewPage(): JSX.Element {
                                                     }}
                                                     disabled={locked}
                                                     aria-busy={locked}
-                                                    className="inline-flex items-center rounded-md px-2 py-2 text-[13px] bg-accent text-white disabled:opacity-50"
+                                                    className="inline-flex items-center rounded-md px-2 py-2 text-[13px] bg-accent text-white font-semibold disabled:opacity-50"
                                                     title="Create editable preview from this snapshot collection"
                                                 >
                                                     <span>
@@ -3292,15 +3345,15 @@ export default function PreviewPage(): JSX.Element {
                     <div className="mb-3 flex items-center justify-between">
                         <div className="space-y-1">
                             <div className="inline-flex items-center gap-2 rounded-full bg-neutral-100 pl-1 pr-3 py-1 text-[20px] mb-4 font-medium text-neutral-600">
-                                <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-neutral-900 text-white text-[20px]">
+                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent text-white text-[10px]">
                                     3
                                 </span>
                                 <span>Website previews</span>
-                                {step3Done ? (
+                                {/* {step3Done ? (
                                     <CheckCircle2 className="h-4.5 w-4.5 text-emerald-500" />
                                 ) :
                                     <Clock10 className="h-4 w-4 text-amber-500" />
-                                }
+                                } */}
                             </div>
 
                         </div>
@@ -3312,7 +3365,7 @@ export default function PreviewPage(): JSX.Element {
 
                     {renders.length === 0 ? (
                         <>
-                            <div className="mt-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-3 text-sm text-neutral-700 flex flex-wrap items-center gap-2 my-4">
+                            <div className="mt-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-2 text-sm text-neutral-700 flex flex-wrap items-center gap-2 my-4">
                                 <div className="flex items-center gap-1 p-2">
                                     <strong className="inline-flex items-center gap-2 text-neutral-800 font-semibold">
                                         {step3Done ? (
@@ -3333,7 +3386,7 @@ export default function PreviewPage(): JSX.Element {
                         </>
                     ) : (
                         <>
-                            <div className="mt-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-3 text-sm text-neutral-700 flex flex-wrap items-center gap-1 my-4">
+                            <div className="mt-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-1 text-sm text-neutral-700 flex flex-wrap items-center gap-1 my-4">
                                 <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1">
                                     {step3Done ? (
                                         <CheckCircle2 className="h-4 w-4 text-emerald-500" />
@@ -3346,13 +3399,12 @@ export default function PreviewPage(): JSX.Element {
                                 {step4Done ? (
                                     <>
                                         <span>
-                                            — Your render has been deployed. Modify your
-                                            website by clicking{" "}
+                                            — Render deployed. Modify it by clicking{" "}
                                         </span>
 
                                         <button
                                             type="button"
-                                            className="mx-1 inline-flex items-center rounded-md border border-neutral-400 bg-white px-3 py-1.5 text-sm font-semibold text-neutral-800 shadow-sm"
+                                            className="mx-1 inline-flex items-center rounded-md border border-neutral-400 bg-white px-3 py-1.5 text-xs text-neutral-800 shadow-sm"
                                             disabled
                                         >
                                             View Deployment
@@ -3362,8 +3414,7 @@ export default function PreviewPage(): JSX.Element {
                                 ) : step3Done ? (
                                     <>
                                         <span>
-                                            — Customize your website preview. When it's
-                                            ready, click{" "}
+                                            — Customize your preview. When ready, click{" "}
                                         </span>
 
                                         <button
@@ -3377,8 +3428,7 @@ export default function PreviewPage(): JSX.Element {
                                     </>
                                 ) : (
                                     <span className="text-neutral-800">
-                                        — Generate a preview from one of your screenshot
-                                        collections above.
+                                        — Generate previews from the collections above.
                                     </span>
                                 )}
                             </div>
@@ -3391,7 +3441,7 @@ export default function PreviewPage(): JSX.Element {
                                     <RenderCard
                                         key={r.id}
                                         r={r}
-                                        isDeleting={!!deletingRender[r.id]}
+                                        isDeleting={!!deletingRender[r.id] || !!archivingRender[r.id]}
                                         isOpening={loading}
                                         hardLocked={
                                             !!lockUntilByRender[r.id] &&
@@ -3405,8 +3455,11 @@ export default function PreviewPage(): JSX.Element {
                                         startDeployWizard={startDeployWizard}
                                         setShowCreditsPaywall={setShowCreditsPaywall}
                                         push={push as any}
+                                        archiveRender={handleArchiveRender}
+                                        unarchiveRender={handleUnarchiveRender}
                                     />
                                 ))}
+
                             </div>
                         </>
                     )}

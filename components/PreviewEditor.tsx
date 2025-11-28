@@ -982,23 +982,8 @@ export default function PreviewEditor({
             <div className="space-y-4">
                 <h3 className="text-lg font-bold">SEO & Site Metadata 📊</h3>
 
-                <UiBtn
-                    variant="outline"
-                    onClick={() => doSave()}
-                    disabled={closing || savingDraft}
-                    ariaBusy={savingDraft}
-                >
-                    {savingDraft ? "💾 Saving…" : "💾 Save draft"}
-                </UiBtn>
-                <UiBtn
-                    variant="filled"
-                    onClick={() => setExportPrompt(true)}
-                    disabled={closing || exporting}
-                    ariaBusy={exporting}
-                >
-                    {exporting ? "🚀 Exporting…" : "🚀 Export to Vercel"}
-                </UiBtn>
-                <UiBtn
+
+                {/* <UiBtn
                     variant="outline-quiet"
                     onClick={() => {
                         if (dirty) setClosePrompt(true);
@@ -1008,7 +993,7 @@ export default function PreviewEditor({
                     ariaBusy={closing}
                 >
                     ❌ Close
-                </UiBtn>
+                </UiBtn> */}
 
                 <div>
                     <label
@@ -1024,7 +1009,7 @@ export default function PreviewEditor({
                         value={draftMeta.title}
                         onChange={(e) => handleMetaChange("title", e.target.value)}
                         placeholder="E.g. My Amazing Website"
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500 sm:text-sm p-2 border"
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-accent focus:ring-accent sm:text-sm p-2 border"
                         maxLength={60}
                         autoComplete="off"
                     />
@@ -1047,7 +1032,7 @@ export default function PreviewEditor({
                         onChange={(e) => handleMetaChange("description", e.target.value)}
                         placeholder="A short, catchy summary of this page..."
                         rows={2}
-                        className="mt-1 min-h-[100px] block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500 sm:text-sm p-2 border"
+                        className="mt-1 min-h-[100px] block w-full rounded-md border-gray-300 shadow-sm focus:border-accent focus:ring-accent sm:text-sm p-2 border"
                         maxLength={160}
                         autoComplete="off"
                     />
@@ -1072,7 +1057,7 @@ export default function PreviewEditor({
                             handleMetaChange("ogImageUrl", e.target.value)
                         }
                         placeholder="https://example.com/share.png"
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500 sm:text-sm p-2 border"
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-accent focus:ring-accent sm:text-sm p-2 border"
                         autoComplete="off"
                     />
                     <p className="text-xs text-gray-500 mt-1">
@@ -1102,10 +1087,10 @@ export default function PreviewEditor({
                             </span>
                         )}
                         <label
-                            className={`cursor-pointer inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md shadow-sm text-white ${uploading
+                            className={`cursor-pointer inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md shadow-sm text-white ${uploading
                                 ? "bg-gray-400"
                                 : "bg-orange-600 hover:bg-orange-700"
-                                } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500`}
+                                } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent`}
                         >
                             {uploading ? "Uploading..." : "Upload Favicon"}
                             <input
@@ -1121,9 +1106,24 @@ export default function PreviewEditor({
                     </div>
                 </div>
 
-
-                <div className="pt-2">
-                    <button
+                <UiBtn
+                    variant="outline"
+                    onClick={() => doSave()}
+                    disabled={closing || savingDraft}
+                    ariaBusy={savingDraft}
+                >
+                    {savingDraft ? "💾 Saving…" : "💾 Save draft"}
+                </UiBtn>
+                {/* <UiBtn
+                    variant="filled"
+                    onClick={() => setExportPrompt(true)}
+                    disabled={closing || exporting}
+                    ariaBusy={exporting}
+                >
+                    {exporting ? "🚀 Exporting…" : "🚀 Export to Vercel"}
+                </UiBtn> */}
+                {/* <div className="pt-2"> */}
+                {/* <button
                         type="button"
                         onClick={handleMetaSaveClick}
                         disabled={saving}
@@ -1139,8 +1139,8 @@ export default function PreviewEditor({
                             : justSaved
                                 ? "Saved Changes!"
                                 : "Save Changes"}
-                    </button>
-                </div>
+                    </button> */}
+                {/* </div> */}
             </div>
         );
     }
@@ -1689,13 +1689,13 @@ export default function PreviewEditor({
                                     </div>
 
                                     <div className="flex flex-wrap gap-1">
-                                        <UiBtn
+                                        {/* <UiBtn
                                             pressed={mode === "code"}
                                             onClick={() => handleModeClick("code")}
                                             disabled={closing}
                                         >
                                             Code
-                                        </UiBtn>
+                                        </UiBtn> */}
                                         <button
                                             onClick={() =>
                                                 handleModeClick("preview")
@@ -2668,7 +2668,7 @@ export default function PreviewEditor({
                                     </div>
                                 </div>
 
-                                {mode === "code" && (
+                                {/* {mode === "code" && (
                                     <div className="min-h-0 flex-1">
                                         <textarea
                                             className="h-full w-full border rounded p-2 font-mono text-xs leading-5 outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-60"
@@ -2678,7 +2678,7 @@ export default function PreviewEditor({
                                             disabled={closing}
                                         />
                                     </div>
-                                )}
+                                )} */}
 
                                 {mode === "screenshot" && (
                                     <div className="text-xs text-slate-600">
@@ -2970,7 +2970,7 @@ function UiBtn({
     ariaBusy?: boolean;
 }) {
     const base =
-        "inline-flex items-center justify-center gap-2 transition active:scale-[.99] focus:outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-60 disabled:cursor-not-allowed text-xs";
+        "m-1 inline-flex items-center justify-center gap-2 transition active:scale-[.99] focus:outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-60 disabled:cursor-not-allowed text-sm";
 
     const withBusy = (
         <>

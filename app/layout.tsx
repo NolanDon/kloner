@@ -80,7 +80,27 @@ export default function RootLayout({
         <AuthProviderServer>
           <AppClientProviders>{children}</AppClientProviders>
         </AuthProviderServer>
+
+        {/* Google Analytics */}
+        <script
+          async
+          src="https://www.googletagmanager.com/gtag/js?id=G-FVKJJK0379"
+        />
+
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.dataLayer = window.dataLayer || [];
+              function gtag(){dataLayer.push(arguments);}
+              gtag('js', new Date());
+              gtag('config', 'G-FVKJJK0379', {
+                page_path: window.location.pathname,
+              });
+            `,
+          }}
+        />
       </body>
     </html>
   );
 }
+
