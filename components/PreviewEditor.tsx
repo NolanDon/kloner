@@ -16,11 +16,13 @@ type EditorPage = {
 };
 
 export type SeoMeta = {
-    title: string;
-    description: string;
-    ogImageUrl: string;
-    faviconUrl: string;
+    title?: string;
+    description?: string;
+    faviconUrl?: string;
+    byRoute?: SeoMetaMap; // NEW: per-route SEO
+    ogImageUrl?: string;
 };
+
 
 type Props = {
     initialHtml: string;
@@ -169,6 +171,21 @@ const FONT_SIZE_PRESETS = [
     { id: "lg", label: "L", px: 20 },
     { id: "xl", label: "XL", px: 28 },
 ];
+
+// helper: convert editor-style map → export-style map
+function buildSeoMetaMapForExport(byPage: SeoMetaByPage): SeoMetaMap {
+    const out: SeoMetaMap = {};
+    for (const [key, value] of Object.entries(byPage)) {
+        out[key] = {
+            title: value.title ?? "",
+            description: value.description ?? "",
+            // you can thread JSON-LD into SeoMeta later if you want
+            jsonLd: (value as any).jsonLd ?? null,
+        };
+    }
+    return out;
+}
+
 // 1) strip all runtime <script> tags EXCEPT SEO JSON-LD
 export function stripScripts(html: string) {
     if (!html) return html;
@@ -179,6 +196,72 @@ export function stripScripts(html: string) {
         ""
     );
 }
+
+export function applySeoMetaToHtml(html: string, meta: SeoMetaMap): string {
+    if (!html) return html;
+
+    let out = html;
+
+    // Helper: escape double quotes for HTML attribute
+    const escapeAttr = (value: string) =>
+        value.replace(/"/g, "&quot;").replace(/\s+/g, " ").trim();
+
+    // Regex to find <main ... class="...page-root..." ...>
+    out = out.replace(
+        /<main([^>]*class="[^"]*page-root[^"]*"[^>]*)>/g,
+        (fullMatch, attrs) => {
+            // Extract data-route if present
+            const routeMatch = attrs.match(/data-route="([^"]*)"/);
+            const route = routeMatch ? routeMatch[1] || "/" : "__single__";
+
+            const key = meta[route] ? route : meta["__single__"] ? "__single__" : null;
+            if (!key) return fullMatch; // nothing to attach
+
+            const m = meta[key];
+
+            // Remove any existing data-meta-* to avoid duplicates
+            let newAttrs = attrs
+                .replace(/\sdata-meta-title="[^"]*"/g, "")
+                .replace(/\sdata-meta-description="[^"]*"/g, "");
+
+            newAttrs += ` data-meta-title="${escapeAttr(m.title)}"`;
+            newAttrs += ` data-meta-description="${escapeAttr(m.description)}"`;
+
+            return `<main${newAttrs}>`;
+        }
+    );
+
+    return out;
+}
+
+
+export function injectJsonLdGraph(html: string, meta: SeoMetaMap): string {
+    if (!html) return html;
+
+    const graph = Object.values(meta)
+        .map((m) => m.jsonLd)
+        .filter(Boolean);
+
+    if (!graph.length) return html;
+
+    const jsonLd = JSON.stringify(
+        {
+            "@context": "https://schema.org",
+            "@graph": graph,
+        },
+        null,
+        0
+    );
+
+    const scriptTag = `<script type="application/ld+json">${jsonLd}</script>`;
+
+    if (html.includes("</head>")) {
+        return html.replace("</head>", scriptTag + "\n</head>");
+    }
+
+    return scriptTag + "\n" + html;
+}
+
 
 // 2) strip editor/runtime artifacts + localhost origins + unsafe attrs
 export function stripEditorArtifacts(html: string): string {
@@ -274,24 +357,104 @@ export function stripEditorArtifacts(html: string): string {
     return out;
 }
 
-// 3) single entry point you call before saving/exporting HTML
-export function sanitizeExportHtml(html: string): string {
-    if (!html) return html;
+
+
+function applySeoToHtml(html: string, meta?: SeoMeta): string {
+    if (!meta) return html;
     let out = html;
 
-    // order matters: first remove scripts, then strip editor artifacts
-    out = stripScripts(out);
-    out = stripEditorArtifacts(out);
+    // <title>
+    if (meta.title && typeof meta.title === "string") {
+        if (/<title>.*?<\/title>/i.test(out)) {
+            out = out.replace(
+                /<title>.*?<\/title>/i,
+                `<title>${meta.title}</title>`
+            );
+        } else {
+            out = out.replace(
+                /<head([^>]*)>/i,
+                `<head$1><title>${meta.title}</title>`
+            );
+        }
+    }
+
+    // <meta name="description">
+    if (meta.description && typeof meta.description === "string") {
+        if (/<meta[^>]+name=["']description["'][^>]*>/i.test(out)) {
+            out = out.replace(
+                /<meta[^>]+name=["']description["'][^>]*>/i,
+                `<meta name="description" content="${meta.description}">`
+            );
+        } else {
+            out = out.replace(
+                /<head([^>]*)>/i,
+                `<head$1><meta name="description" content="${meta.description}">`
+            );
+        }
+    }
+
+    // favicon
+    if (meta.faviconUrl && typeof meta.faviconUrl === "string") {
+        if (/<link[^>]+rel=["']icon["'][^>]*>/i.test(out)) {
+            out = out.replace(
+                /<link[^>]+rel=["']icon["'][^>]*>/i,
+                `<link rel="icon" href="${meta.faviconUrl}">`
+            );
+        } else {
+            out = out.replace(
+                /<head([^>]*)>/i,
+                `<head$1><link rel="icon" href="${meta.faviconUrl}">`
+            );
+        }
+    }
 
     return out;
 }
+
+export function sanitizeExportHtml(html: string, meta?: SeoMeta): string {
+    if (!html) return html;
+    let out = html;
+
+    out = stripScripts(out);
+    out = stripEditorArtifacts(out);
+
+    out = applySeoToHtml(out, meta);
+
+    return out;
+}
+
+export function buildFinalExport(
+    html: string,
+    rootMeta?: SeoMeta,
+    metaByRoute?: SeoMetaMap
+): string {
+    if (!html) return html;
+
+    // 1) scrub + apply base SEO (home/global meta + favicon)
+    let out = sanitizeExportHtml(html, rootMeta);
+
+    // 2) If we have per-route SEO, attach data-meta-* and JSON-LD
+    if (metaByRoute) {
+        out = applySeoMetaToHtml(out, metaByRoute);
+        out = injectJsonLdGraph(out, metaByRoute);
+    }
+
+    // 3) detect multi-page & inject router
+    const hasMultiPage =
+        out.includes('class="page-root"') &&
+        out.includes("data-route=");
+
+    const withRouter = hasMultiPage ? injectClientRouter(out) : out;
+
+    return withRouter;
+}
+
 
 
 function injectClientRouter(html: string): string {
     if (!html) return html;
 
-    // clean up editor junk and any previous route CSS before injecting the SPA router
-    let out = stripEditorArtifacts(html);
+    let out = html; // NO stripping here
 
     const routerCss = `
 <style id="kloner-active-route">
@@ -314,16 +477,41 @@ function injectClientRouter(html: string): string {
     return path || "/";
   }
 
+  function updateHeadFromPage(pageEl) {
+    if (!pageEl) return;
+
+    var metaTitle = pageEl.getAttribute("data-meta-title");
+    var metaDesc = pageEl.getAttribute("data-meta-description");
+
+    // Title
+    if (metaTitle && typeof metaTitle === "string") {
+      document.title = metaTitle;
+    }
+
+    // Description
+    if (metaDesc && typeof metaDesc === "string") {
+      var descTag = document.querySelector('meta[name="description"]');
+      if (!descTag) {
+        descTag = document.createElement("meta");
+        descTag.setAttribute("name", "description");
+        document.head.appendChild(descTag);
+      }
+      descTag.setAttribute("content", metaDesc);
+    }
+  }
+
   function setActiveRoute(path) {
     path = normalizePath(path);
     var pages = document.querySelectorAll("main.page-root");
     var found = false;
+    var activePage = null;
 
     pages.forEach(function (el) {
       var route = normalizePath(el.getAttribute("data-route") || "/");
       if (route === path) {
         el.classList.add("is-active");
         found = true;
+        activePage = el;
       } else {
         el.classList.remove("is-active");
       }
@@ -332,11 +520,16 @@ function injectClientRouter(html: string): string {
     if (!found) {
       pages.forEach(function (el) {
         var route = normalizePath(el.getAttribute("data-route") || "/");
-        el.classList.toggle("is-active", route === "/");
+        var isHome = route === "/";
+        el.classList.toggle("is-active", isHome);
+        if (isHome) activePage = el;
       });
     }
+
+    updateHeadFromPage(activePage);
   }
 
+  // Initial load
   setActiveRoute(window.location.pathname);
 
   document.addEventListener("click", function (e) {
@@ -362,7 +555,6 @@ function injectClientRouter(html: string): string {
 })();
 </script>`.trim();
 
-    // Insert CSS into <head>
     if (out.includes("</head>")) {
         out = out.replace("</head>", routerCss + "\n</head>");
     } else if (out.includes("<head>")) {
@@ -371,7 +563,6 @@ function injectClientRouter(html: string): string {
         out = routerCss + "\n" + out;
     }
 
-    // Insert script before </body>
     if (out.includes("</body>")) {
         out = out.replace("</body>", routerScript + "\n</body>");
     } else {
@@ -380,6 +571,16 @@ function injectClientRouter(html: string): string {
 
     return out;
 }
+
+type SeoMetaMap = Record<
+    string,
+    {
+        title: string;
+        description: string;
+        jsonLd: any;
+    }
+>;
+
 
 type StyleCmd =
     | { kind: "fontFamily"; value: string }
@@ -587,8 +788,7 @@ export default function PreviewEditor({
     const [iframeKey, setIframeKey] = useState<number>(0);
     const [derivedPages, setDerivedPages] = useState<EditorPage[]>([]);
     const [activePageId, setActivePageId] = useState<string>("");
-    const [activeSeoMetaByPage, setActiveSeoMetaByPage] =
-        useState<SeoMetaByPage | null>(null);
+
 
     const allPages = useMemo<EditorPage[] | null>(
         () =>
@@ -633,6 +833,7 @@ export default function PreviewEditor({
         };
     });
 
+
     const currentPageKey = useMemo(() => {
         if (!allPages || !activePageId || activePageId === "single") {
             return SINGLE_PAGE_KEY;
@@ -659,41 +860,45 @@ export default function PreviewEditor({
         };
     }, [seoMetaByPage, currentPageKey]);
 
-    const setCurrentSeoMeta = useCallback(
-        (updater: SeoMeta | ((prev: SeoMeta) => SeoMeta)) => {
+    const handleSaveMetaForCurrentPage = useCallback(
+        async (meta: SeoMeta) => {
             setSeoMetaByPage((prev) => {
                 const prevMap: SeoMetaByPage = prev || {};
-                const prevForPage = prevMap[currentPageKey] ?? emptyMeta;
 
-                const nextForPage =
-                    typeof updater === "function"
-                        ? (updater as (p: SeoMeta) => SeoMeta)(prevForPage)
-                        : updater;
+                const pageKey =
+                    currentPageKey && currentPageKey !== "single"
+                        ? currentPageKey
+                        : SINGLE_PAGE_KEY;
 
-                const faviconUrl = nextForPage.faviconUrl;
+                const faviconUrl = meta.faviconUrl?.trim() || "";
 
-                // Start with this page’s updated meta (title/desc per-page)
-                let nextMap: SeoMetaByPage = {
+                let next: SeoMetaByPage = {
                     ...prevMap,
-                    [currentPageKey]: nextForPage,
+                    [pageKey]: meta,
                 };
 
-                // If favicon is set here, propagate it to all pages so it’s global.
-                if (faviconUrl && faviconUrl.trim() !== "") {
-                    nextMap = Object.fromEntries(
-                        Object.entries(nextMap).map(([key, val]) => [
+                // favicon is global: propagate across pages if set
+                if (faviconUrl) {
+                    next = Object.fromEntries(
+                        Object.entries(next).map(([key, val]) => [
                             key,
-                            key === currentPageKey
-                                ? val
-                                : { ...val, faviconUrl },
+                            key === pageKey ? val : { ...val, faviconUrl },
                         ]),
+                    ) as SeoMetaByPage;
+                }
+
+                if (onSaveMeta) {
+                    void onSaveMeta(
+                        pageKey === SINGLE_PAGE_KEY ? null : pageKey,
+                        meta,
+                        next,
                     );
                 }
 
-                return nextMap;
+                return next;
             });
         },
-        [currentPageKey],
+        [currentPageKey, onSaveMeta],
     );
 
 
@@ -1164,6 +1369,7 @@ export default function PreviewEditor({
         if (exporting) return;
         setExportNote("");
         setExporting(true);
+
         try {
             if (dirty) {
                 await doSave({ applyToPreview: true });
@@ -1171,14 +1377,22 @@ export default function PreviewEditor({
 
             const baseHtmlRaw = snapshotFromIframeOrDraft();
             const baseHtml = (baseHtmlRaw || previewHtml || "").trim();
+            if (!baseHtml) {
+                throw new Error("No HTML available to export");
+            }
 
-            const hasMultiPage =
-                baseHtml.includes('class="page-root"') &&
-                baseHtml.includes("data-route=");
+            // root/home/global meta (includes favicon fallback logic)
+            const rootMeta = currentSeoMeta || initialSeoMeta || undefined;
 
-            const finalHtml = hasMultiPage
-                ? injectClientRouter(baseHtml)
-                : stripEditorArtifacts(baseHtml);
+            // if we actually have any per-page records, use them
+            const hasPerPage =
+                seoMetaByPage && Object.keys(seoMetaByPage).length > 0;
+            const metaByRoute = hasPerPage
+                ? buildSeoMetaMapForExport(seoMetaByPage)
+                : undefined;
+
+            // scrub, apply SEO, then inject SPA router if multipage
+            const finalHtml = buildFinalExport(baseHtml, rootMeta, metaByRoute);
 
             await onExport(finalHtml, nameHint || undefined);
         } catch (e: any) {
@@ -1196,6 +1410,8 @@ export default function PreviewEditor({
         }
     }
 
+
+
     function sanitizeName(name: string) {
         const base = name.toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
         return base.slice(-64) || "image";
@@ -1205,9 +1421,6 @@ export default function PreviewEditor({
         file: File,
         draftId: string
     ): Promise<UploadedAsset> {
-
-        console.log("renderId for upload:", draftId);
-
         const csrf = await ensureSessionAndCsrf();
         const safeName = sanitizeName(file.name || "upload.bin");
 
@@ -1446,40 +1659,9 @@ export default function PreviewEditor({
                                         draftId={draftId}
                                         meta={currentSeoMeta}
                                         uploadFileToUserBlob={uploadFileToUserBlob}
-                                        onSaveMeta={async (meta) => {
-                                            setSeoMetaByPage((prev) => {
-                                                const prevMap: SeoMetaByPage = prev || {};
-                                                const faviconUrl = meta.faviconUrl?.trim() || "";
-
-                                                let next: SeoMetaByPage = {
-                                                    ...prevMap,
-                                                    [currentPageKey]: meta,
-                                                };
-
-                                                // favicon is global: propagate across pages if set
-                                                if (faviconUrl) {
-                                                    next = Object.fromEntries(
-                                                        Object.entries(next).map(([key, val]) => [
-                                                            key,
-                                                            key === currentPageKey ? val : { ...val, faviconUrl },
-                                                        ]),
-                                                    );
-                                                }
-
-                                                if (onSaveMeta) {
-                                                    void onSaveMeta(
-                                                        currentPageKey === SINGLE_PAGE_KEY ? null : currentPageKey,
-                                                        meta,
-                                                        next,
-                                                    );
-                                                }
-
-                                                return next;
-                                            });
-                                        }}
+                                        onSaveMeta={handleSaveMetaForCurrentPage}
                                     />
                                 )}
-
                             </div>
 
                             <div className="flex items-center gap-2">
@@ -1507,13 +1689,13 @@ export default function PreviewEditor({
                                     </div>
 
                                     <div className="flex flex-wrap gap-1">
-                                        {/* <UiBtn
+                                        <UiBtn
                                             pressed={mode === "code"}
                                             onClick={() => handleModeClick("code")}
                                             disabled={closing}
                                         >
                                             Code
-                                        </UiBtn> */}
+                                        </UiBtn>
                                         <button
                                             onClick={() =>
                                                 handleModeClick("preview")
@@ -2486,7 +2668,7 @@ export default function PreviewEditor({
                                     </div>
                                 </div>
 
-                                {/* {mode === "code" && (
+                                {mode === "code" && (
                                     <div className="min-h-0 flex-1">
                                         <textarea
                                             className="h-full w-full border rounded p-2 font-mono text-xs leading-5 outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-60"
@@ -2496,7 +2678,7 @@ export default function PreviewEditor({
                                             disabled={closing}
                                         />
                                     </div>
-                                )} */}
+                                )}
 
                                 {mode === "screenshot" && (
                                     <div className="text-xs text-slate-600">

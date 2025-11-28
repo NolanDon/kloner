@@ -108,7 +108,7 @@ type Shot = {
     bytes?: number;
 };
 
-type RenderDoc = {
+export type RenderDoc = {
     url?: string | null;
     urlHash?: string | null;
     key?: string | null;
@@ -301,7 +301,7 @@ function RenderCardInner({
 
             <div className="relative">
                 {!refImgUrl ? (
-                    <div className="aspect-[4/3] w-full grid place-items-center text-xs text-neutral-500">
+                    <div className="aspect-[4/3] w-full grid place-items-center text-sm text-neutral-500">
                         No snapshot available
                     </div>
                 ) : (
@@ -380,7 +380,7 @@ function RenderCardInner({
                             <button
                                 onClick={() => continueRender(r.id)}
                                 disabled={disableOpen || isDeleting}
-                                className="inline-flex items-center gap-2 rounded-md border border-neutral-400 px-3 py-1 text-xs text-neutral-800 shadow-sm"
+                                className="inline-flex items-center gap-2 rounded-md border border-neutral-400 px-3 py-1 text-sm text-neutral-800 shadow-sm"
                                 title={
                                     isQueued
                                         ? "Still building preview"
@@ -402,7 +402,7 @@ function RenderCardInner({
                             <button
                                 onClick={() => router.push(`/site/${r.siteConfigId}`)}
                                 disabled={isDeleting}
-                                className="inline-flex items-center gap-2 rounded-md border border-neutral-400 px-3 py-1 text-xs text-neutral-800 shadow-sm"
+                                className="inline-flex items-center gap-2 rounded-md border border-neutral-400 px-3 py-1 text-sm text-neutral-800 shadow-sm"
                                 title="Open generated layout site"
                             >
                                 <span>Open site</span>
@@ -545,7 +545,7 @@ const CenterSpinner = memo(function CenterSpinner({
                 }`}
         >
             <div
-                className="flex items-center gap-2 rounded border px-3 py-1.5 text-xs text-neutral-800 bg-white"
+                className="flex items-center gap-2 rounded border px-3 py-1.5 text-sm text-neutral-800 bg-white"
                 role="status"
                 aria-live="polite"
             >
@@ -637,7 +637,7 @@ const GhostActionCard = memo(function GhostActionCard({
                     {title}
                 </div>
                 {subtitle ? (
-                    <div className="mt-1 text-xs text-neutral-500">
+                    <div className="mt-1 text-sm text-neutral-500">
                         {subtitle}
                     </div>
                 ) : null}
@@ -732,61 +732,6 @@ export default function PreviewPage(): JSX.Element {
             setDeployWizardOpen(true);
         }
     }, [billing, wizard, step, render]);
-
-
-    async function loadRenders(uid: string): Promise<KlonerRender[]> {
-        const colRef = collection(db, "kloner_users", uid, "kloner_renders");
-        const snap = await getDocs(colRef);
-
-        return snap.docs.map((doc) => {
-            const data = doc.data();
-
-            const seoMetaByPage =
-                (data.seoMetaByPage as Record<string, SeoMeta> | undefined) ?? null;
-            setActiveSeoMetaByPage(seoMetaByPage);
-
-            return {
-                id: doc.id,
-                html: (data.html as string) || "",
-                referenceImage: (data.referenceImage as string) || null,
-                status: (data.status as string) || "unknown",
-                url: (data.url as string) || null,
-                urlHash: (data.urlHash as string) || null,
-                nameHint: (data.nameHint as string) || null,
-                multiPageMode: !!data.multiPageMode,
-                htmlStoragePath: (data.htmlStoragePath as string) || null,
-                htmlByteLength:
-                    typeof data.htmlByteLength === "number" ? data.htmlByteLength : null,
-                seoMetaByPage,
-            } satisfies KlonerRender;
-        });
-    }
-
-    const handleSaveMeta = useCallback(
-        async (
-            route: string | null,
-            meta: SeoMeta,
-            byPage: Record<string, SeoMeta>
-        ) => {
-            if (!user || !activeRenderId) return;
-
-            // keep local state so re-opening editor uses latest meta
-            setActiveSeoMetaByPage(byPage);
-
-            const dref = doc(
-                db,
-                "kloner_users",
-                user.uid,
-                "kloner_renders",
-                activeRenderId
-            );
-
-            await updateDoc(dref, {
-                seoMetaByPage: byPage,
-            });
-        },
-        [user, activeRenderId]
-    );
 
 
     const persistProjectNameHint = useCallback(
@@ -1896,6 +1841,7 @@ export default function PreviewPage(): JSX.Element {
                 setEditorHtml(html);
                 setEditorRefImg(refSrc);
                 setActiveRenderId(renderId);
+                console.log("seoMetaByPage", seoMetaByPage)
                 setActiveSeoMetaByPage(seoMetaByPage);
                 setEditorOpen(true);
             } catch (e) {
@@ -2075,7 +2021,6 @@ export default function PreviewPage(): JSX.Element {
                 setDeployWizardRenderId(resolvedRenderId);
 
                 // optional: prefill with existing nameHint if we have it
-                const target = renders.find((r) => r.id === resolvedRenderId);
                 setDeployWizardProjectName("");
             } else {
                 setDeployWizardRenderId(null);
@@ -2134,6 +2079,9 @@ export default function PreviewPage(): JSX.Element {
             });
 
             const j = (await r.json().catch(() => ({}))) as any;
+
+            console.log("deploy response", j);
+
 
             if (!r.ok || !j?.url) {
                 push(j?.error || "Vercel deploy failed", "err");
@@ -2245,24 +2193,6 @@ export default function PreviewPage(): JSX.Element {
                 push("Draft updated", "ok");
                 await refreshRenders();
             }
-
-            // try {
-            //     if (user) {
-            //         const flagKey = `kloner.firstCustomize.${user.uid}`;
-            //         const seen =
-            //             typeof window !== "undefined"
-            //                 ? localStorage.getItem(flagKey)
-            //                 : "1";
-            //         if (!seen) {
-            //             if (typeof window !== "undefined") {
-            //                 localStorage.setItem(flagKey, "1");
-            //             }
-            //             setShowUpgradeAfterCustomize(true);
-            //         }
-            //     }
-            // } catch {
-            //     // ignore
-            // }
         },
         [
             user,
@@ -2816,7 +2746,7 @@ export default function PreviewPage(): JSX.Element {
     //                             </div>
     //                         </a>
 
-    //                         <figcaption className="px-3 py-2 text-xs text-neutral-700 rounded-b-xl">
+    //                         <figcaption className="px-3 py-2 text-sm text-neutral-700 rounded-b-xl">
     //                             <div className="flex items-center justify-between gap-2 flex-wrap">
     //                                 <span className="truncate text-[11px] text-neutral-500">
     //                                     {s.fileName}
@@ -2918,7 +2848,7 @@ export default function PreviewPage(): JSX.Element {
                 </div>
 
                 {/* plan + credits banner */}
-                <div className="mb-6 rounded-2xl border border-neutral-200 bg-gradient-to-r from-neutral-50 to-white px-4 py-3 sm:px-5 sm:py-4 text-xs sm:text-sm text-neutral-700 shadow-sm">
+                <div className="mb-6 rounded-2xl border border-neutral-200 bg-gradient-to-r from-neutral-50 to-white px-4 py-3 sm:px-5 sm:py-4 text-sm sm:text-sm text-neutral-700 shadow-sm">
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                         <div className="space-y-2">
                             <div className="flex items-center gap-2">
@@ -2933,7 +2863,7 @@ export default function PreviewPage(): JSX.Element {
                                 </span>
                             </div>
                             <div className="flex flex-wrap gap-2">
-                                <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] sm:text-xs text-neutral-700">
+                                <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] sm:text-sm text-neutral-700">
                                     Screenshots Remaining:&nbsp;
                                     <span className="font-semibold text-neutral-900">
                                         {screenshotRemaining === null ||
@@ -2943,7 +2873,7 @@ export default function PreviewPage(): JSX.Element {
                                     </span>
                                 </span>
 
-                                <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] sm:text-xs text-neutral-700">
+                                <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] sm:text-sm text-neutral-700">
                                     Previews Remaining:&nbsp;
                                     <span className="font-semibold text-neutral-900">
                                         {previewRemaining === null ||
@@ -2966,7 +2896,7 @@ export default function PreviewPage(): JSX.Element {
                         <button
                             type="button"
                             onClick={() => router.push("/price")}
-                            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 hover:border-amber-300 transition-colors"
+                            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-800 hover:bg-amber-100 hover:border-amber-300 transition-colors"
                         >
                             <Crown className="h-3.5 w-3.5" />
                             <span>
@@ -2994,7 +2924,7 @@ export default function PreviewPage(): JSX.Element {
                                 }
                             </div>
 
-                            <p className="text-xs text-neutral-500">
+                            <p className="text-sm text-neutral-500">
                                 Choose which site Kloner should capture and generate from.
                             </p>
                         </div>
@@ -3118,7 +3048,7 @@ export default function PreviewPage(): JSX.Element {
                                 )}
                             </div>
 
-                            <p className="my-1 text-xs text-neutral-500">
+                            <p className="my-1 text-sm text-neutral-500">
                                 These are the original screenshots captured directly from
                                 your entered URL.
                             </p>
@@ -3236,7 +3166,7 @@ export default function PreviewPage(): JSX.Element {
                                     return (
                                         <div
                                             key={group.snapshotId + "-" + groupIndex}
-                                            className="flex items-center justify-between rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs shadow-sm"
+                                            className="flex items-center justify-between rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm"
                                         >
                                             {/* left side: tiny preview + meta */}
                                             <button
@@ -3375,7 +3305,7 @@ export default function PreviewPage(): JSX.Element {
 
                         </div>
                     </div>
-                    <p className="mt-1 text-xs text-neutral-500">
+                    <p className="mt-1 text-sm text-neutral-500">
                         These are the concept sites generated from your chosen
                         snapshot.
                     </p>
@@ -3422,7 +3352,7 @@ export default function PreviewPage(): JSX.Element {
 
                                         <button
                                             type="button"
-                                            className="mx-1 inline-flex items-center rounded-md border border-neutral-400 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm"
+                                            className="mx-1 inline-flex items-center rounded-md border border-neutral-400 bg-white px-3 py-1.5 text-sm font-semibold text-neutral-800 shadow-sm"
                                             disabled
                                         >
                                             View Deployment
@@ -3438,7 +3368,7 @@ export default function PreviewPage(): JSX.Element {
 
                                         <button
                                             type="button"
-                                            className="inline-flex items-center rounded-md border border-neutral-400 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm"
+                                            className="inline-flex items-center rounded-md border border-neutral-400 bg-white px-3 py-1.5 text-sm font-semibold text-neutral-800 shadow-sm"
                                             disabled
                                         >
                                             Deploy
@@ -3547,7 +3477,6 @@ export default function PreviewPage(): JSX.Element {
                 )}
 
 
-
                 {/* deploy wizard */}
                 {deployWizardOpen && (
                     <div className="fixed inset-0 z-[11500]">
@@ -3560,7 +3489,7 @@ export default function PreviewPage(): JSX.Element {
                                 <button
                                     type="button"
                                     onClick={closeDeployWizard}
-                                    className="absolute right-3 top-3 z-10 h-7 w-7 rounded-full border border-neutral-200 bg-white text-xs text-neutral-500 hover:bg-neutral-50"
+                                    className="absolute right-3 top-3 z-10 h-7 w-7 rounded-full border border-neutral-200 bg-white text-sm text-neutral-500 hover:bg-neutral-50"
                                 >
                                     ✕
                                 </button>
@@ -3590,7 +3519,7 @@ export default function PreviewPage(): JSX.Element {
 
                                     {deployWizardStep === 1 && (
                                         <div className="space-y-4">
-                                            <p className="text-xs text-neutral-600">
+                                            <p className="text-sm text-neutral-600">
                                                 Name your Vercel project. This becomes the
                                                 base for your live URL and deployment.
                                             </p>
@@ -3623,7 +3552,7 @@ export default function PreviewPage(): JSX.Element {
                                                 <button
                                                     type="button"
                                                     onClick={closeDeployWizard}
-                                                    className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-600 hover:bg-neutral-50"
+                                                    className="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-semibold text-neutral-600 hover:bg-neutral-50"
                                                 >
                                                     Cancel
                                                 </button>
@@ -3635,7 +3564,7 @@ export default function PreviewPage(): JSX.Element {
                                                     disabled={
                                                         !deployWizardProjectName.trim()
                                                     }
-                                                    className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                                                    className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60"
                                                     style={{ backgroundColor: ACCENT }}
                                                 >
                                                     Continue
@@ -3647,7 +3576,7 @@ export default function PreviewPage(): JSX.Element {
                                     {deployWizardStep === 2 && (
                                         <div className="space-y-4">
                                             {vercelStatus === "connected" ? (
-                                                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs text-emerald-800 flex items-center gap-2">
+                                                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800 flex items-center gap-2">
                                                     <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white border border-emerald-200">
                                                         <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
                                                     </div>
@@ -3662,14 +3591,14 @@ export default function PreviewPage(): JSX.Element {
                                                 </div>
                                             ) : (
                                                 <>
-                                                    <p className="text-xs text-neutral-600">
+                                                    <p className="text-sm text-neutral-600">
                                                         Kloner deploys using your saved Vercel integration. Connect once, then future deploys are one click.
                                                     </p>
 
                                                     {/* <button
                                                         type="button"
                                                         onClick={handleConnectVercelFromWizard}
-                                                        className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white"
+                                                        className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white"
                                                         style={{ backgroundColor: ACCENT }}
                                                     >
                                                         Connect Vercel
@@ -3681,7 +3610,7 @@ export default function PreviewPage(): JSX.Element {
                                                 <button
                                                     type="button"
                                                     onClick={() => setDeployWizardStep(1)}
-                                                    className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-600 hover:bg-neutral-50"
+                                                    className="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-semibold text-neutral-600 hover:bg-neutral-50"
                                                 >
                                                     Back
                                                 </button>
@@ -3689,7 +3618,7 @@ export default function PreviewPage(): JSX.Element {
                                                     <button
                                                         type="button"
                                                         onClick={handleConnectVercelFromWizard}
-                                                        className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white"
+                                                        className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white"
                                                         style={{ backgroundColor: ACCENT }}
                                                     >
                                                         Connect Vercel
@@ -3701,18 +3630,18 @@ export default function PreviewPage(): JSX.Element {
 
                                     {deployWizardStep === 3 && (
                                         <div className="space-y-4">
-                                            <p className="text-xs text-neutral-600">
+                                            <p className="text-sm text-neutral-600">
                                                 We&apos;re sending this preview to Vercel as a new deployment.
                                             </p>
 
-                                            <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-xs text-neutral-700 flex items-center gap-3">
+                                            <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-sm text-neutral-700 flex items-center gap-3">
                                                 <div className="flex items-center justify-center">
                                                     {deployWizardBusy ? (
                                                         <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
                                                     ) : deployWizardError ? (
                                                         <span className="text-sm text-red-500">!</span>
                                                     ) : (
-                                                        <CheckCircle2 className="h-10 w-10 text-emerald-500" />
+                                                        <CheckCircle2 className="h-5 w-5 text-emerald-500" />
                                                     )}
                                                 </div>
                                                 <div>
@@ -3741,7 +3670,7 @@ export default function PreviewPage(): JSX.Element {
                                                 <button
                                                     type="button"
                                                     onClick={closeDeployWizard}
-                                                    className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-600 hover:bg-neutral-50"
+                                                    className="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-semibold text-neutral-600 hover:bg-neutral-50"
                                                 >
                                                     Close
                                                 </button>
@@ -3752,10 +3681,10 @@ export default function PreviewPage(): JSX.Element {
                                                             closeDeployWizard();
                                                             router.push("/dashboard/deployments");
                                                         }}
-                                                        className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white"
+                                                        className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white"
                                                         style={{ backgroundColor: ACCENT }}
                                                     >
-                                                        View deployments
+                                                        View deployment
                                                     </button>
                                                 )}
                                             </div>
@@ -3774,7 +3703,7 @@ export default function PreviewPage(): JSX.Element {
                                                 </p>
                                             </div>
 
-                                            <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-xs text-neutral-700 space-y-3">
+                                            <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-700 space-y-3">
                                                 <div className="flex items-start gap-3">
                                                     <div className="flex h-7 w-7 items-center justify-center rounded-full bg-neutral-900">
                                                         <MessageCircleWarning className="text-white h-3.5 w-3.5" />
@@ -3821,7 +3750,7 @@ export default function PreviewPage(): JSX.Element {
                                                 {checkoutBusy ? "Redirecting to Stripe…" : "Upgrade to Pro and deploy"}
                                             </button>
 
-                                            <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-xs text-neutral-700 flex items-center gap-3">
+                                            <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-sm text-neutral-700 flex items-center gap-3">
                                                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-900">
                                                     {deployWizardBusy ? (
                                                         <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
@@ -3854,7 +3783,7 @@ export default function PreviewPage(): JSX.Element {
                                                 <button
                                                     type="button"
                                                     onClick={closeDeployWizard}
-                                                    className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-600 hover:bg-neutral-50"
+                                                    className="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-semibold text-neutral-600 hover:bg-neutral-50"
                                                 >
                                                     Close
                                                 </button>
@@ -3865,7 +3794,7 @@ export default function PreviewPage(): JSX.Element {
                                                             closeDeployWizard();
                                                             router.push("/dashboard/deployments");
                                                         }}
-                                                        className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white"
+                                                        className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white"
                                                         style={{ backgroundColor: ACCENT }}
                                                     >
                                                         View deployments
@@ -3897,7 +3826,7 @@ export default function PreviewPage(): JSX.Element {
                         <div className="absolute inset-0 p-4 sm:p-6 md:p-8 grid place-items-center">
                             <div className="relative w-full h-full max-w-[min(95vw,1400px)]">
                                 <div className="absolute top-0 bg-black/70 h-20 left-0 right-0 z-10 flex items-center justify-between gap-2 p-2 sm:p-3">
-                                    <div className="text-[11px] sm:text-xs text-white/80 truncate">
+                                    <div className="text-[11px] sm:text-sm text-white/80 truncate">
                                         {shots[viewerIdx].fileName}
                                     </div>
                                     <button
@@ -3959,7 +3888,7 @@ export default function PreviewPage(): JSX.Element {
                                         {userTier === "free" ? "free" : userTier} plan
                                     </h3>
                                 </div>
-                                <p className="text-xs text-neutral-600 mb-3">
+                                <p className="text-sm text-neutral-600 mb-3">
                                     {showCreditsPaywall === "screenshot" &&
                                         "You have used all monthly screenshot credits. Upgrade to capture more pages and monitor more sites."}
                                     {showCreditsPaywall === "preview" &&
@@ -3967,7 +3896,7 @@ export default function PreviewPage(): JSX.Element {
                                     {showCreditsPaywall === "deploy" &&
                                         "To deploy your website live, upgrade to a paid plan to unlock one-click deploy."}
                                 </p>
-                                <ul className="mb-4 list-disc list-inside text-xs text-neutral-700 space-y-1">
+                                <ul className="mb-4 list-disc list-inside text-sm text-neutral-700 space-y-1">
                                     <li>
                                         Higher monthly limits for screenshots and previews
                                     </li>
@@ -3980,7 +3909,7 @@ export default function PreviewPage(): JSX.Element {
                                     <button
                                         type="button"
                                         onClick={() => setShowCreditsPaywall(null)}
-                                        className="rounded-md border border-neutral-300 px-3 py-1.5 text-xs text-neutral-700 hover:bg-neutral-50"
+                                        className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
                                     >
                                         Not now
                                     </button>
@@ -3990,7 +3919,7 @@ export default function PreviewPage(): JSX.Element {
                                             setShowCreditsPaywall(null);
                                             router.push("/price");
                                         }}
-                                        className="rounded-md px-3 py-1.5 text-xs font-semibold text-white"
+                                        className="rounded-md px-3 py-1.5 text-sm font-semibold text-white"
                                         style={{ backgroundColor: ACCENT }}
                                     >
                                         View upgrade options
@@ -4040,7 +3969,7 @@ export default function PreviewPage(): JSX.Element {
                                         Turn this preview into a real, live site
                                     </h3>
                                     {/* Value stack */}
-                                    <div className="mb-4 grid gap-2 text-xs sm:text-[13px] text-neutral-200">
+                                    <div className="mb-4 grid gap-2 text-sm sm:text-[13px] text-neutral-200">
                                         <div className="flex items-start gap-2.5">
                                             <div
                                                 className="mt-[3px] h-2 w-2 rounded-full"
@@ -4134,13 +4063,13 @@ export default function PreviewPage(): JSX.Element {
                 {/* deploy next-steps banner */}
                 {showDeployNextSteps && (
                     <div className="fixed bottom-4 left-1/2 z-[9000] -translate-x-1/2 px-4">
-                        <div className="max-w-xl rounded-2xl border border-neutral-400 bg-white shadow-lg px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 text-xs sm:text-sm text-neutral-800">
+                        <div className="max-w-xl rounded-2xl border border-neutral-400 bg-white shadow-lg px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 text-sm sm:text-sm text-neutral-800">
                             <div className="flex-1">
                                 <div className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-800">
                                     <CheckCircle2 className="text-green-600" />
                                     <span>New deployment in progress</span>
                                 </div>
-                                <p className="mt-1 text-[11px] sm:text-xs text-neutral-600">
+                                <p className="mt-1 text-[11px] sm:text-sm text-neutral-600">
                                     Watch build status, logs, and history on the
                                     Deployments tab. Your latest deploy has just been
                                     created.
@@ -4153,7 +4082,7 @@ export default function PreviewPage(): JSX.Element {
                                         setShowDeployNextSteps(false);
                                         router.push("/dashboard/deployments");
                                     }}
-                                    className="rounded-md px-3 py-1.5 text-[11px] sm:text-xs text-white"
+                                    className="rounded-md px-3 py-1.5 text-[11px] sm:text-sm text-white"
                                     style={{ backgroundColor: ACCENT }}
                                 >
                                     Open deployments
@@ -4161,7 +4090,7 @@ export default function PreviewPage(): JSX.Element {
                                 <button
                                     type="button"
                                     onClick={() => setShowDeployNextSteps(false)}
-                                    className="rounded-md border border-neutral-300 px-3 py-1.5 text-[11px] sm:text-xs text-neutral-700 hover:bg-neutral-50"
+                                    className="rounded-md border border-neutral-300 px-3 py-1.5 text-[11px] sm:text-sm text-neutral-700 hover:bg-neutral-50"
                                 >
                                     Dismiss
                                 </button>

@@ -46,7 +46,6 @@ export async function POST(req: NextRequest) {
         async ({ uid, req: authedReq }) => {
             try {
                 const { searchParams } = new URL(authedReq.url);
-                console.log("authed upload-url req", searchParams);
                 const filename = searchParams.get("filename") || "upload.bin";
                 const renderId = searchParams.get("renderId") || "orphan";
 

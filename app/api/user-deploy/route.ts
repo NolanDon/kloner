@@ -38,11 +38,9 @@ export async function POST(req: NextRequest) {
                         ok: false,
                         error: "Please upgrade your account to deploy projects.",
                     },
-                    { status: 400 },
+                    { status: 400 }
                 );
             }
-
-            // ───────────────── existing code continues ─────────────────
 
             let renderDoc:
                 | FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData>
@@ -87,7 +85,7 @@ export async function POST(req: NextRequest) {
                         error:
                             "Vercel is not connected for this account. Visit settings to fix this.",
                     },
-                    { status: 400 },
+                    { status: 400 }
                 );
             }
 
@@ -97,14 +95,12 @@ export async function POST(req: NextRequest) {
             };
 
             // ───────────────── project name handling ─────────────────
-            // Prefer explicit projectName from client, then stored names, then default.
             const rawNameCandidate =
                 (typeof projectName === "string" && projectName.trim()) ||
                 (typeof renderStoredName === "string" && renderStoredName.trim()) ||
                 (typeof vercelProjectName === "string" && vercelProjectName.trim()) ||
                 "kloner-site";
 
-            // Slugify: lowercase, alnum + hyphen only, no leading/trailing hyphens
             let projectBaseName = rawNameCandidate
                 .toLowerCase()
                 .replace(/[^a-z0-9-]/g, "-")
@@ -115,10 +111,9 @@ export async function POST(req: NextRequest) {
                 projectBaseName = "kloner-site";
             }
 
-            // Keep a human-readable name around too (before slug) if you want
             const resolvedName = projectBaseName;
 
-            // We want a pure static site
+            // pure static
             const FRAMEWORK: null = null;
 
             // ───────────────── create project if needed ─────────────────
@@ -136,7 +131,7 @@ export async function POST(req: NextRequest) {
                         "Content-Type": "application/json",
                     },
                     body: JSON.stringify({
-                        name: resolvedName, // required `name`
+                        name: resolvedName,
                         framework: FRAMEWORK,
                         buildCommand: null,
                         devCommand: null,
@@ -172,7 +167,6 @@ export async function POST(req: NextRequest) {
                     );
                 }
             } else {
-                // Project already exists
                 const patchUrl = vercelTeamId
                     ? `https://api.vercel.com/v10/projects/${vercelProjectId}?teamId=${encodeURIComponent(
                         vercelTeamId
@@ -194,11 +188,10 @@ export async function POST(req: NextRequest) {
                     }),
                 });
 
-                // Ignore patch failure here; deployment will still attempt
                 await patchRes.text().catch(() => undefined);
             }
 
-            // ───────────────── create deployment to project ─────────────────
+            // ───────────────── create deployment ─────────────────
 
             const indexFile = {
                 file: "index.html",
@@ -223,12 +216,10 @@ export async function POST(req: NextRequest) {
             if (vercelTeamId) {
                 deployParams.set("teamId", vercelTeamId);
             }
-            // keep only supported query params here
             deployParams.set("skipAutoDetectionConfirmation", "1");
 
             const deployUrl = `https://api.vercel.com/v13/deployments?${deployParams.toString()}`;
 
-            // Always include `name`; include `project` if we have an id.
             const deployBody: any = {
                 name: vercelProjectName || resolvedName || "kloner-site",
                 files,
@@ -238,12 +229,10 @@ export async function POST(req: NextRequest) {
                     devCommand: null,
                     outputDirectory: null,
                 },
-                // THIS is what makes it a production deployment
                 target: "production",
             };
 
             if (vercelProjectId) {
-                // Some APIs still accept `project`; harmless to include alongside `name`.
                 deployBody.project = vercelProjectId;
             }
 
@@ -272,19 +261,70 @@ export async function POST(req: NextRequest) {
 
             const vercelDeploymentId = deployJson.id as string | undefined;
 
-            // Vercel v13 returns readyState as "QUEUED" | "BUILDING" | "READY" | "ERROR" | "CANCELED"
-            const vercelReadyStateRaw = (deployJson.readyState as string | undefined) || null;
+            const vercelReadyStateRaw =
+                (deployJson.readyState as string | undefined) || null;
             const vercelReadyState = vercelReadyStateRaw
                 ? vercelReadyStateRaw.toLowerCase()
                 : null;
 
             const vercelStateRaw =
-                (deployJson.state as string | undefined) || vercelReadyStateRaw || "building";
+                (deployJson.state as string | undefined) ||
+                vercelReadyStateRaw ||
+                "building";
             const vercelState = vercelStateRaw.toLowerCase();
 
-            const url = deployJson.url ? `https://${deployJson.url}` : null;
+            const deploymentUrl = deployJson.url ? `https://${deployJson.url}` : null;
 
-            // Derive a meaningful initial event label
+            // ───────── resolve canonical public domain ─────────
+            let publicDomain: string | null = null;
+
+            if (vercelProjectId) {
+                try {
+                    const domainsUrl = vercelTeamId
+                        ? `https://api.vercel.com/v10/projects/${vercelProjectId}/domains?teamId=${encodeURIComponent(
+                            vercelTeamId
+                        )}`
+                        : `https://api.vercel.com/v10/projects/${vercelProjectId}/domains`;
+
+                    const domainsRes = await fetch(domainsUrl, {
+                        method: "GET",
+                        headers: {
+                            Authorization: `Bearer ${accessToken}`,
+                        },
+                    });
+
+                    if (domainsRes.ok) {
+                        const domainsJson = (await domainsRes.json().catch(
+                            () => ({} as any)
+                        )) as any;
+                        const domains = (domainsJson?.domains || []) as any[];
+
+                        const primary =
+                            domains.find((d: any) => d?.primary) ||
+                            domains.find((d: any) => d?.verified) ||
+                            domains[0];
+
+                        if (
+                            primary &&
+                            typeof primary.name === "string" &&
+                            primary.name.trim().length > 0
+                        ) {
+                            publicDomain = primary.name.trim();
+                        }
+                    }
+                } catch {
+                    // ignore; deploymentUrl still usable
+                }
+            }
+
+            // if domains API doesn't give anything, fall back to the project .vercel.app name
+            if (!publicDomain && vercelProjectName) {
+                publicDomain = `${vercelProjectName}.vercel.app`;
+            }
+
+            const publicUrl = publicDomain ? `https://${publicDomain}` : null;
+            const url = publicUrl || deploymentUrl;
+
             let initialEvent: string | null = null;
             switch (vercelReadyState) {
                 case "queued":
@@ -326,13 +366,17 @@ export async function POST(req: NextRequest) {
                     .collection("deployments")
                     .doc(vercelDeploymentId);
 
+                const vercelMeta: any = {};
+                if (publicDomain) vercelMeta.publicDomain = publicDomain;
+                if (deploymentUrl) vercelMeta.deploymentUrl = deploymentUrl;
+
                 await deploymentRef.set(
                     {
                         vercelDeploymentId,
                         vercelProjectId: vercelProjectId ?? null,
                         vercelProjectName:
                             vercelProjectName || resolvedName || null,
-                        vercelUrl: url,
+                        vercelUrl: deploymentUrl,
                         vercelState,
                         vercelReadyState,
                         vercelTarget: "production",
@@ -344,6 +388,13 @@ export async function POST(req: NextRequest) {
                         lastEventAt: now,
                         createdAt: now,
                         updatedAt: now,
+
+                        // NEW: top-level canonical fields you can trust
+                        publicDomain: publicDomain || null,
+                        publicUrl: url || null,
+
+                        vercelMeta:
+                            Object.keys(vercelMeta).length > 0 ? vercelMeta : null,
                     },
                     { merge: true }
                 );
@@ -354,6 +405,8 @@ export async function POST(req: NextRequest) {
                 url,
                 projectId: vercelProjectId,
                 projectName: vercelProjectName || resolvedName,
+                publicDomain: publicDomain || null,
+                deploymentUrl: deploymentUrl || null,
             });
         },
         { methods: ["POST"], csrf: true }

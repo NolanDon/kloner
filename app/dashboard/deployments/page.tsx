@@ -14,6 +14,7 @@ import {
     getDocs,
     doc,
     setDoc,
+    updateDoc,
     serverTimestamp,
     type QueryDocumentSnapshot,
     type DocumentData,
@@ -29,8 +30,9 @@ import {
     Code2,
     Loader2,
 } from "lucide-react";
-import PreviewEditor from "@/components/PreviewEditor";
+import PreviewEditor, { SeoMeta } from "@/components/PreviewEditor";
 import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
+import { RenderDoc } from "../view/page";
 
 const ACCENT = "#f55f2a";
 
@@ -38,7 +40,7 @@ type DeploymentDoc = {
     vercelDeploymentId: string;
     vercelProjectId?: string | null;
     vercelProjectName?: string | null;
-    vercelUrl?: string | null; // raw deployment URL, e.g. https://trywolfer-5yl...
+    vercelUrl?: string | null; // raw deployment URL, e.g. https://crumbs-xyz.vercel.app
     vercelState?: string | null;
     vercelTeamId?: string | null;
     vercelUserId?: string | null;
@@ -51,6 +53,10 @@ type DeploymentDoc = {
     vercelReadyState?: string | null;
     vercelTarget?: string | null;
     vercelMeta?: Record<string, any> | null;
+
+    // NEW canonical fields written by user-deploy
+    publicDomain?: string | null; // e.g. crumbs-eight.vercel.app
+    publicUrl?: string | null; // e.g. https://crumbs-eight.vercel.app
 };
 
 type ActionState = {
@@ -125,8 +131,6 @@ function stateColor(state?: UiState | string | null): string {
 
 /**
  * Canonicalize state for UI using Vercel fields + lastEventType.
- * This returns base states only; "active" / "offline" are layered on
- * top per-project in toUiState.
  */
 function deriveStateFromDoc(d?: DeploymentDoc | null): UiState {
     if (!d) return "unknown";
@@ -144,7 +148,6 @@ function deriveStateFromDoc(d?: DeploymentDoc | null): UiState {
     if (/queue|pending|build/.test(text)) return "building";
     if (/ready|succeed|promoted|complete|completed/.test(text)) return "ready";
 
-    // If we have any signal at all, prefer "building" over "unknown"
     if (d.vercelReadyState || d.vercelState || d.lastEventType) {
         return "building";
     }
@@ -159,148 +162,6 @@ function projectKeyForDeployment(d: DeploymentDoc): string {
     const pid = d.vercelProjectId || "no-id";
     const pname = d.vercelProjectName || "Unknown project";
     return `${pid}::${pname}`;
-}
-
-/**
- * Resolve the "public" URL you actually want to show to users.
- *
- * Priority:
- * 1) vercelMeta.publicDomain (if you ever start storing it from backend)
- * 2) https://{vercelProjectName}.vercel.app
- * 3) fallback: vercelUrl (deployment URL)
- */
-function resolvePublicUrl(d?: DeploymentDoc | null): string | null {
-    if (!d) return null;
-
-    const meta = d.vercelMeta as any | undefined;
-
-    if (meta && typeof meta.publicDomain === "string" && meta.publicDomain.trim().length > 0) {
-        const raw = meta.publicDomain.trim();
-        if (/^https?:\/\//i.test(raw)) return raw;
-        return `https://${raw}`;
-    }
-
-    if (typeof d.vercelProjectName === "string" && d.vercelProjectName.trim().length > 0) {
-        const base = d.vercelProjectName.trim();
-        return `https://${base}.vercel.app`;
-    }
-
-    return d.vercelUrl || null;
-}
-
-// Default HTML kept only for other flows; NEVER used as a fallback when a render is missing.
-function buildDefaultHtml(projectName: string, deploymentId: string): string {
-    return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>${projectName}</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    :root {
-      --accent: ${ACCENT};
-      --bg: #0b0c10;
-      --fg: #f9fafb;
-      --muted: #9ca3af;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      min-height: 100vh;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-      background: radial-gradient(circle at top left, rgba(245,95,42,0.16), transparent 55%), #050608;
-      color: var(--fg);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-    }
-    .shell {
-      max-width: 720px;
-      width: 100%;
-      border-radius: 24px;
-      background: radial-gradient(circle at top, rgba(245,95,42,0.18), rgba(15,23,42,0.96));
-      box-shadow:
-        0 24px 60px rgba(15,23,42,0.65),
-        0 0 0 1px rgba(148,163,184,0.18);
-      padding: 24px 24px 20px;
-      border: 1px solid rgba(148,163,184,0.35);
-    }
-    .pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 4px 10px;
-      border-radius: 999px;
-      background: rgba(15,23,42,0.85);
-      border: 1px solid rgba(148,163,184,0.5);
-      color: var(--muted);
-      font-size: 11px;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-    }
-    .pill-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 999px;
-      background: var(--accent);
-      box-shadow: 0 0 0 4px rgba(245,95,42,0.24);
-    }
-    .title {
-      margin: 14px 0 6px;
-      font-size: 24px;
-      letter-spacing: -0.03em;
-      font-weight: 650;
-    }
-    .subtitle {
-      margin: 0;
-      font-size: 13px;
-      color: var(--muted);
-      max-width: 40rem;
-    }
-    .footer {
-      margin-top: 18px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      font-size: 11px;
-      color: var(--muted);
-    }
-    .badge {
-      padding: 4px 10px;
-      border-radius: 999px;
-      border: 1px solid rgba(148,163,184,0.5);
-      background: rgba(15,23,42,0.9);
-    }
-    .tagline span {
-      color: var(--accent);
-      font-weight: 600;
-    }
-  </style>
-</head>
-<body>
-  <main class="shell">
-    <div class="pill">
-      <span class="pill-dot"></span>
-      <span>Deployed with Kloner</span>
-    </div>
-    <h1 class="title">${projectName}</h1>
-    <p class="subtitle">
-      This deployment was pushed from the Kloner dashboard. Edit this HTML directly in the Deployments view
-      to test your Vercel webhooks and project wiring.
-    </p>
-    <div class="footer">
-      <div class="badge">
-        Deployment id: <strong>${deploymentId.slice(0, 8)}…</strong>
-      </div>
-      <div class="tagline">
-        <span>Kloner</span> · turn any site into your project
-      </div>
-    </div>
-  </main>
-</body>
-</html>`;
 }
 
 /**
@@ -331,8 +192,13 @@ export default function DeploymentsPage(): JSX.Element {
     const [loading, setLoading] = useState(true);
     const [items, setItems] = useState<Array<{ id: string } & DeploymentDoc>>([]);
     const [showDeployHint, setShowDeployHint] = useState(false);
-
-    // "new deploy" flag coming from Preview Builder via localStorage
+    const [activeRenderId, setActiveRenderId] = useState<string | undefined>(undefined);
+    const [activeSeoMetaByPage, setActiveSeoMetaByPage] = useState<
+        Record<string, SeoMeta> | null
+    >(null);
+    const [renders, setRenders] = useState<
+        Array<{ id: string } & RenderDoc>
+    >([]);
     const [hasNewFlag, setHasNewFlag] = useState(false);
     const [hasNewMeta, setHasNewMeta] = useState<{
         url?: string;
@@ -342,7 +208,6 @@ export default function DeploymentsPage(): JSX.Element {
 
     const [actionState, setActionState] = useState<ActionState>({});
 
-    // editor integration (using reference render)
     const [editorOpen, setEditorOpen] = useState(false);
     const [editorHtml, setEditorHtml] = useState<string>("");
     const [editorRefImg, setEditorRefImg] = useState<string | undefined>(undefined);
@@ -351,15 +216,12 @@ export default function DeploymentsPage(): JSX.Element {
         useState<({ id: string } & DeploymentDoc) | null>(null);
     const [editorLoadingId, setEditorLoadingId] = useState<string | null>(null);
 
-    // local draft cache
     const [htmlDrafts, setHtmlDrafts] = useState<Record<string, string>>({});
 
     const BUILDING_STATES = ["building", "queued", "pending"];
 
-    // project/url scoping dropdown
     const [selectedProjectKey, setSelectedProjectKey] = useState<string>("all");
 
-    // manual Vercel API sync
     const [refreshing, setRefreshing] = useState(false);
     const [lastGlobalCheck, setLastGlobalCheck] = useState<Date | null>(null);
     const [refreshError, setRefreshError] = useState<string | null>(null);
@@ -380,7 +242,9 @@ export default function DeploymentsPage(): JSX.Element {
     useEffect(() => {
         try {
             const raw =
-                typeof window !== "undefined" ? localStorage.getItem("kloner.deployments.hasNew") : null;
+                typeof window !== "undefined"
+                    ? localStorage.getItem("kloner.deployments.hasNew")
+                    : null;
             if (!raw) return;
             const parsed = JSON.parse(raw) as {
                 ts?: number;
@@ -444,14 +308,16 @@ export default function DeploymentsPage(): JSX.Element {
             const key = `${pid}::${pname}`;
 
             const existing = map.get(key);
+            const displayUrl = d.publicUrl || d.vercelUrl || null;
+
             if (!existing) {
-                let hostname = null;
-                const publicUrl = resolvePublicUrl(d);
-                if (publicUrl) {
+                let hostname: string | null = null;
+
+                if (displayUrl) {
                     try {
-                        hostname = new URL(publicUrl).hostname;
+                        hostname = new URL(displayUrl).hostname;
                     } catch {
-                        hostname = publicUrl;
+                        hostname = displayUrl;
                     }
                 }
 
@@ -464,14 +330,11 @@ export default function DeploymentsPage(): JSX.Element {
                 });
             } else {
                 existing.count += 1;
-                if (!existing.sampleUrl) {
-                    const publicUrl = resolvePublicUrl(d);
-                    if (publicUrl) {
-                        try {
-                            existing.sampleUrl = new URL(publicUrl).hostname;
-                        } catch {
-                            existing.sampleUrl = publicUrl;
-                        }
+                if (!existing.sampleUrl && displayUrl) {
+                    try {
+                        existing.sampleUrl = new URL(displayUrl).hostname;
+                    } catch {
+                        existing.sampleUrl = displayUrl;
                     }
                 }
             }
@@ -482,7 +345,6 @@ export default function DeploymentsPage(): JSX.Element {
         );
     }, [items]);
 
-    // keep selection stable when items/projects change
     useEffect(() => {
         if (projectGroups.length === 0) {
             setSelectedProjectKey("all");
@@ -495,7 +357,6 @@ export default function DeploymentsPage(): JSX.Element {
         }
     }, [projectGroups, selectedProjectKey]);
 
-    // apply project/url filter
     const scopedItems = useMemo(() => {
         if (selectedProjectKey === "all") return items;
         return items.filter((d) => {
@@ -506,7 +367,6 @@ export default function DeploymentsPage(): JSX.Element {
         });
     }, [items, selectedProjectKey]);
 
-    // per-project: newest READY deployment id (for "active"/"offline")
     const latestReadyByProject = useMemo(() => {
         const map = new Map<string, string>();
 
@@ -517,7 +377,6 @@ export default function DeploymentsPage(): JSX.Element {
 
             const key = projectKeyForDeployment(d);
             if (!map.has(key)) {
-                // scopedItems ordered newest -> oldest, so first READY wins.
                 map.set(key, d.vercelDeploymentId);
             }
         }
@@ -525,7 +384,7 @@ export default function DeploymentsPage(): JSX.Element {
         return map;
     }, [scopedItems]);
 
-    // 30s polling for building deployments via refresh-deployments
+    // 30s polling
     useEffect(() => {
         if (!user || scopedItems.length === 0) return;
 
@@ -551,14 +410,11 @@ export default function DeploymentsPage(): JSX.Element {
                     },
                     body: JSON.stringify({ deploymentIds: buildingIds }),
                 }).catch(() => {
-                    // ignore errors here; UI still has manual refresh + Firestore
+                    // ignore
                 });
             };
 
-            // immediate sync once
             hitApi();
-
-            // poll every 30s while there are building deployments in this scope
             id = window.setInterval(hitApi, 30_000);
         })();
 
@@ -611,7 +467,7 @@ export default function DeploymentsPage(): JSX.Element {
                 : "border-neutral-200 bg-neutral-50 text-neutral-700";
 
     const latestPublicUrl =
-        resolvePublicUrl(latestFromPreview || undefined) ||
+        latestFromPreview?.publicUrl ||
         latestFromPreview?.vercelUrl ||
         hasNewMeta?.url ||
         undefined;
@@ -697,11 +553,15 @@ export default function DeploymentsPage(): JSX.Element {
         return best;
     }
 
-    // Stronger association: try multiple keys to locate the render for a deployment.
     async function fetchRenderForDeployment(opts: {
         uid: string;
         deployment: { id: string } & DeploymentDoc;
-    }): Promise<{ id: string; html: string; referenceImage?: string }> {
+    }): Promise<{
+        id: string;
+        html: string;
+        referenceImage?: string;
+        seoMetaByPage?: Record<string, SeoMeta> | null;
+    }> {
         const { uid, deployment } = opts;
         const colRef = collection(db, "kloner_users", uid, "kloner_renders");
 
@@ -748,6 +608,7 @@ export default function DeploymentsPage(): JSX.Element {
             if (!docSnap) continue;
 
             const data = docSnap.data() as any;
+
             const rawHtml = typeof data.html === "string" ? data.html.trim() : "";
             if (!rawHtml) {
                 throw new Error(
@@ -760,10 +621,16 @@ export default function DeploymentsPage(): JSX.Element {
                     ? data.referenceImage
                     : undefined;
 
+            const seoMetaByPage: Record<string, SeoMeta> | null =
+                data.seoMetaByPage && typeof data.seoMetaByPage === "object"
+                    ? (data.seoMetaByPage as Record<string, SeoMeta>)
+                    : null;
+
             return {
                 id: docSnap.id,
                 html: rawHtml,
                 referenceImage: refImg,
+                seoMetaByPage,
             };
         }
 
@@ -772,7 +639,7 @@ export default function DeploymentsPage(): JSX.Element {
         );
     }
 
-    // open reference render for this deployment (using association helper above)
+
     async function openEditorForDeployment(d: { id: string } & DeploymentDoc) {
         if (!user) return;
 
@@ -790,16 +657,24 @@ export default function DeploymentsPage(): JSX.Element {
             const initialHtml = render.html;
             const refImg = render.referenceImage;
             const draftId = render.id;
+            const seoMap = render.seoMetaByPage ?? null;
 
+            // HTML draft cache
             setHtmlDrafts((prev) => ({
                 ...prev,
                 [draftId]: initialHtml,
             }));
 
+            // Wire up deployment + render IDs
             setActiveDeployment(d);
             setEditorHtml(initialHtml);
             setEditorRefImg(refImg);
             setEditorDraftId(draftId);
+
+            // IMPORTANT: these were never set, so meta + saves had no ID + no map
+            setActiveRenderId(draftId);
+            setActiveSeoMetaByPage(seoMap);
+
             setEditorOpen(true);
         } catch (e: any) {
             updateActionState(key, {
@@ -813,12 +688,19 @@ export default function DeploymentsPage(): JSX.Element {
             setEditorHtml("");
             setEditorDraftId(null);
             setEditorRefImg(undefined);
+            setActiveRenderId(undefined);
+            setActiveSeoMetaByPage(null);
         } finally {
             setEditorLoadingId(null);
         }
     }
 
-    async function exportToVercel(args: { html: string; name?: string | null }) {
+
+    async function exportToVercel(args: {
+        html: string;
+        name?: string;
+        renderId?: string;
+    }) {
         if (!activeDeployment) return;
 
         const key = activeDeployment.vercelDeploymentId || activeDeployment.id;
@@ -882,7 +764,6 @@ export default function DeploymentsPage(): JSX.Element {
         }
     }
 
-    // Firestore-backed saveDraft, modeled after your working version
     const handleSaveDraft = async (payload: {
         draftId?: string;
         html: string;
@@ -916,11 +797,10 @@ export default function DeploymentsPage(): JSX.Element {
                 setEditorHtml(payload.html);
             }
         } catch {
-            // PreviewEditor has its own UX
+            // PreviewEditor UX handles failures
         }
     };
 
-    // manual sync using Vercel API via backend
     async function refreshFromVercel() {
         if (!user) return;
         const ids = scopedItems
@@ -958,6 +838,7 @@ export default function DeploymentsPage(): JSX.Element {
 
     const latestDeployment = scopedItems[0] || null;
     const history = scopedItems.slice(1);
+
 
     return (
         <main className="min-h-screen bg-white">
@@ -1004,24 +885,7 @@ export default function DeploymentsPage(): JSX.Element {
                                                     : bannerVariant === "success"
                                                         ? "Your preview finished building on Vercel. You can open the live site or review its history below."
                                                         : "A deployment was just triggered from the Preview Builder. Kloner will query the Vercel API periodically or when you manually refresh to keep this status in sync."}
-                                                {hasNewMeta?.projectName
-                                                    ? ` Project: ${hasNewMeta.projectName}.`
-                                                    : ""}
                                             </p>
-
-                                            {/* {latestPublicUrl && (
-                                                <a
-                                                    href={latestPublicUrl}
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                    className="mt-2 inline-flex items-center gap-1 rounded-md text-neutral-800 border border-neutral-500 bg-white/80 px-2.5 py-1 text-sm  hover:bg-white"
-                                                >
-                                                    {bannerVariant === "error"
-                                                        ? "Open deployment in Vercel"
-                                                        : "Open latest URL"}
-                                                    <ArrowUpRight className="h-3 w-3" />
-                                                </a>
-                                            )} */}
                                         </div>
                                     </div>
                                 </div>
@@ -1046,7 +910,8 @@ export default function DeploymentsPage(): JSX.Element {
                                     className="w-full rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm sm:text-xs text-neutral-800 shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400"
                                 >
                                     <option value="all">
-                                        All projects ({items.length} deployment{items.length === 1 ? "" : "s"})
+                                        All projects ({items.length} deployment
+                                        {items.length === 1 ? "" : "s"})
                                     </option>
                                     {projectGroups.map((g) => (
                                         <option key={g.key} value={g.key}>
@@ -1075,7 +940,7 @@ export default function DeploymentsPage(): JSX.Element {
                                     type="button"
                                     disabled={refreshing || scopedItems.length === 0}
                                     onClick={refreshFromVercel}
-                                    className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm  text-neutral-800 hover:bg-neutral-50 disabled:opacity-60 disabled:cursor-default"
+                                    className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-xs text-neutral-800 hover:bg-neutral-50 disabled:opacity-60 disabled:cursor-default"
                                 >
                                     {refreshing ? (
                                         <Loader2 className="h-3.5 w-3.5 animate-spin text-neutral-500" />
@@ -1131,13 +996,17 @@ export default function DeploymentsPage(): JSX.Element {
                                 const act = actionState[key] || {};
                                 const isCustomLoading = !!act.customLoading;
                                 const isEditorLoading = editorLoadingId === key;
-                                const publicUrl = resolvePublicUrl(d);
+                                const displayUrl =
+                                    d.publicUrl ||
+                                    (d.publicDomain ? `https://${d.publicDomain}` : null) ||
+                                    d.vercelUrl ||
+                                    null;
 
                                 return (
                                     <section aria-label="Latest deployment">
-                                        <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-500 mb-2">
+                                        <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-500 mb-2">
                                             Latest deployment
-                                        </h2>
+                                        </h3>
                                         <article className="rounded-2xl border border-neutral-200 bg-white shadow-sm p-5 flex flex-col gap-3">
                                             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                                                 <div className="min-w-0">
@@ -1150,7 +1019,7 @@ export default function DeploymentsPage(): JSX.Element {
                                                         </span>
                                                     </div>
                                                     <div className="mt-1 text-xs text-neutral-500 break-all">
-                                                        {publicUrl || d.vercelUrl || "URL pending"}
+                                                        {displayUrl || "URL pending"}
                                                     </div>
                                                 </div>
 
@@ -1158,13 +1027,11 @@ export default function DeploymentsPage(): JSX.Element {
                                                     className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs  ${stateStyles}`}
                                                 >
                                                     <span className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
-                                                    <span className="capitalize">
-                                                        {state}
-                                                    </span>
+                                                    <span className="capitalize">{state}</span>
                                                 </div>
                                             </div>
 
-                                            <div className="flex flex-wrap items-center gap-3 text-sm text-neutral-500">
+                                            <div className="flex flex-wrap items-center gap-3 text-xs text-neutral-500">
                                                 <div className="inline-flex items-center gap-1.5">
                                                     <Clock className="h-3 w-3" />
                                                     <span>
@@ -1205,7 +1072,7 @@ export default function DeploymentsPage(): JSX.Element {
                                                             type="button"
                                                             onClick={() => openEditorForDeployment(d)}
                                                             disabled={isEditorLoading}
-                                                            className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm  text-white"
+                                                            className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-semibold text-white"
                                                             style={{
                                                                 backgroundColor: ACCENT,
                                                                 boxShadow:
@@ -1219,25 +1086,11 @@ export default function DeploymentsPage(): JSX.Element {
                                                             )}
                                                             <span>Open in Preview Editor</span>
                                                         </button>
-{/* 
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setShowDeployHint(true)}
-                                                            disabled={isEditorLoading}
-                                                            className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm  text-neutral-800 hover:bg-neutral-50 disabled:opacity-60 disabled:cursor-not-allowed"
-                                                        >
-                                                            {isEditorLoading ? (
-                                                                <Loader2 className="h-3.5 w-3.5 animate-spin text-neutral-500" />
-                                                            ) : (
-                                                                <RefreshCw className="h-3.5 w-3.5 text-neutral-500" />
-                                                            )}
-                                                            <span>Deploy edited HTML</span>
-                                                        </button> */}
 
                                                         <a
-                                                            href={publicUrl || d.vercelUrl || "#"}
-                                                            target={publicUrl || d.vercelUrl ? "_blank" : undefined}
-                                                            rel={publicUrl || d.vercelUrl ? "noreferrer" : undefined}
+                                                            href={displayUrl || "#"}
+                                                            target={displayUrl ? "_blank" : undefined}
+                                                            rel={displayUrl ? "noreferrer" : undefined}
                                                             className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm  text-neutral-800 hover:bg-neutral-50"
                                                         >
                                                             <span>Open site</span>
@@ -1308,7 +1161,9 @@ export default function DeploymentsPage(): JSX.Element {
                                                     {isCustomLoading && (
                                                         <p className="mt-1 text-[10px] text-neutral-500 inline-flex items-center gap-1">
                                                             <Loader2 className="h-3 w-3 animate-spin" />
-                                                            <span>Pushing custom HTML to Vercel…</span>
+                                                            <span>
+                                                                Pushing custom HTML to Vercel…
+                                                            </span>
                                                         </p>
                                                     )}
                                                 </div>
@@ -1350,7 +1205,13 @@ export default function DeploymentsPage(): JSX.Element {
                                             const stateStyles = stateColor(state);
                                             const created = formatDate(d.createdAt);
                                             const lastEvt = d.lastEventType || "–";
-                                            const publicUrl = resolvePublicUrl(d);
+                                            const displayUrl =
+                                                d.publicUrl ||
+                                                (d.publicDomain
+                                                    ? `https://${d.publicDomain}`
+                                                    : null) ||
+                                                d.vercelUrl ||
+                                                null;
 
                                             return (
                                                 <div
@@ -1370,7 +1231,7 @@ export default function DeploymentsPage(): JSX.Element {
 
                                                     <div className="flex-1 min-w-0 pr-2">
                                                         <div className="truncate text-neutral-800">
-                                                            {publicUrl || d.vercelUrl || "URL pending"}
+                                                            {displayUrl || "URL pending"}
                                                         </div>
                                                         <div className="sm:hidden text-[10px] text-neutral-400">
                                                             {created || "–"} · {lastEvt}
@@ -1387,12 +1248,12 @@ export default function DeploymentsPage(): JSX.Element {
 
                                                     <div className="w-[90px] flex justify-end">
                                                         <a
-                                                            href={publicUrl || d.vercelUrl || "#"}
-                                                            target={publicUrl || d.vercelUrl ? "_blank" : undefined}
-                                                            rel={publicUrl || d.vercelUrl ? "noreferrer" : undefined}
-                                                            className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px]  ${publicUrl || d.vercelUrl
-                                                                    ? "border-neutral-200 text-neutral-800 hover:bg-neutral-50"
-                                                                    : "border-neutral-200 text-neutral-400 cursor-default"
+                                                            href={displayUrl || "#"}
+                                                            target={displayUrl ? "_blank" : undefined}
+                                                            rel={displayUrl ? "noreferrer" : undefined}
+                                                            className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px]  ${displayUrl
+                                                                ? "border-neutral-200 text-neutral-800 hover:bg-neutral-50"
+                                                                : "border-neutral-200 text-neutral-400 cursor-default"
                                                                 }`}
                                                         >
                                                             <span>Open</span>
@@ -1408,33 +1269,58 @@ export default function DeploymentsPage(): JSX.Element {
                         )}
                     </div>
                 )}
-
                 {editorOpen && activeDeployment && editorDraftId && (
                     <PreviewEditor
                         initialHtml={editorHtml}
                         sourceImage={editorRefImg}
+                        initialSeoMetaByPage={activeSeoMetaByPage || undefined}
                         onClose={() => {
                             setEditorOpen(false);
-                            setActiveDeployment(null);
-                            setEditorHtml("");
-                            setEditorDraftId(null);
-                            setEditorRefImg(undefined);
+                            setActiveRenderId(undefined);
+                            setActiveSeoMetaByPage(null);
                         }}
                         onExport={(html, name) =>
                             exportToVercel({
                                 html,
                                 name,
+                                renderId: activeRenderId,
                             })
                         }
-                        draftId={editorDraftId}
+                        draftId={activeRenderId}
                         saveDraft={handleSaveDraft}
                         onLiveHtml={(html) => {
-                            if (!editorDraftId) return;
-                            setHtmlDrafts((prev) => ({
-                                ...prev,
-                                [editorDraftId]: html,
-                            }));
-                            setEditorHtml(html);
+                            if (!activeRenderId) return;
+                            setRenders((prev) =>
+                                prev.map((r) =>
+                                    r.id === activeRenderId ? { ...r, html } : r,
+                                ),
+                            );
+                        }}
+                        onSaveMeta={async (pageId, meta, fullMap) => {
+                            if (!user || !activeRenderId) return;
+
+                            // 1) persist in Firestore
+                            const dref = doc(
+                                db,
+                                "kloner_users",
+                                user.uid,
+                                "kloner_renders",
+                                activeRenderId,
+                            );
+                            await updateDoc(dref, {
+                                seoMetaByPage: fullMap,
+                                updatedAt: serverTimestamp(),
+                            });
+
+                            // 2) keep local render list in sync
+                            setRenders((prev) =>
+                                prev.map((r) =>
+                                    r.id === activeRenderId ? { ...r, seoMetaByPage: fullMap } : r,
+                                ),
+                            );
+
+                            // 3) keep active map in sync (so Meta tab shows correct data)
+                            setActiveSeoMetaByPage(fullMap);
                         }}
                     />
                 )}
