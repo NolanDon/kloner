@@ -17,7 +17,7 @@ export function HashScrollHighlighter() {
             el.classList.add("anchor-highlight");
             window.setTimeout(() => {
                 el.classList.remove("anchor-highlight");
-            }, 1200);
+            }, 1800);
         };
 
         handleHash(); // on first load
