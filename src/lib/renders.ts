@@ -1,3 +1,6 @@
+import { getDownloadURL, getStorage, ref } from "firebase/storage";
+import React from "react";
+
 // src/lib/renders.ts
 export type RenderRecord = {
     url: any;
@@ -51,6 +54,43 @@ async function setRenderArchived(id: string, archived: boolean): Promise<void> {
             }`,
         );
     }
+}
+
+
+
+export async function resolveStorageUrl(
+    pathOrUrl: string
+): Promise<string> {
+    if (!pathOrUrl) return "";
+    if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+    try {
+        // Use client-side firebase/storage ref + getStorage to resolve a path to a download URL
+        return await getDownloadURL(ref(getStorage(), pathOrUrl));
+    } catch {
+        return "";
+    }
+}
+export function useResolvedImg(pathOrUrl: string) {
+    const [src, setSrc] = React.useState("");
+    const retriedRef = React.useRef(false);
+
+    const refresh = React.useCallback(async () => {
+        const u = await resolveStorageUrl(pathOrUrl);
+        if (u) setSrc(u);
+    }, [pathOrUrl]);
+
+    React.useEffect(() => {
+        refresh();
+    }, [refresh]);
+
+    const onError = React.useCallback(() => {
+        if (!retriedRef.current) {
+            retriedRef.current = true;
+            refresh();
+        }
+    }, [refresh]);
+
+    return { src, onError };
 }
 
 export async function archiveRender(id: string): Promise<void> {

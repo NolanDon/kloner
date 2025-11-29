@@ -2,8 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getUserRenders, RenderRecord, unarchiveRender } from "@/src/lib/renders";
-import { useResolvedImg } from "../view/page";
+import { getUserRenders, RenderRecord, unarchiveRender, useResolvedImg } from "@/src/lib/renders";
 
 type ArchiveCardProps = {
     r: RenderRecord;

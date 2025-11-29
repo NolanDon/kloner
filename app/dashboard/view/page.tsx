@@ -70,7 +70,7 @@ import { CREDIT_LIMITS, UserTier } from "@/src/lib/credits";
 import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 import { UrlDoc } from "../page";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
-import { archiveRender } from "@/src/lib/renders";
+import { archiveRender, resolveStorageUrl, useResolvedImg } from "@/src/lib/renders";
 
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
@@ -163,17 +163,6 @@ type ToastMsg = {
     tone?: "ok" | "warn" | "err";
 };
 
-async function resolveStorageUrl(
-    pathOrUrl: string
-): Promise<string> {
-    if (!pathOrUrl) return "";
-    if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
-    try {
-        return await getDownloadURL(sRef(storage, pathOrUrl));
-    } catch {
-        return "";
-    }
-}
 
 type RenderCardProps = {
     r: { id: string } & RenderDoc;
@@ -192,28 +181,7 @@ type RenderCardProps = {
     push: (message: string, level?: string) => void;
 };
 
-export function useResolvedImg(pathOrUrl: string) {
-    const [src, setSrc] = React.useState("");
-    const retriedRef = React.useRef(false);
 
-    const refresh = React.useCallback(async () => {
-        const u = await resolveStorageUrl(pathOrUrl);
-        if (u) setSrc(u);
-    }, [pathOrUrl]);
-
-    React.useEffect(() => {
-        refresh();
-    }, [refresh]);
-
-    const onError = React.useCallback(() => {
-        if (!retriedRef.current) {
-            retriedRef.current = true;
-            refresh();
-        }
-    }, [refresh]);
-
-    return { src, onError };
-}
 
 function RenderCardInner({
     r,
