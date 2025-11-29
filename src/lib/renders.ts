@@ -1,5 +1,6 @@
 // src/lib/renders.ts
 export type RenderRecord = {
+    url: any;
     id: string;
     status: string;
     html?: string | null;
