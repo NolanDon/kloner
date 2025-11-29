@@ -110,7 +110,7 @@ type Shot = {
     bytes?: number;
 };
 
-export const RenderCard = memo(
+const RenderCard = memo(
     RenderCardInner,
     (prev, next) => {
         const a = prev.r as any;
@@ -192,7 +192,7 @@ type RenderCardProps = {
     push: (message: string, level?: string) => void;
 };
 
-function useResolvedImg(pathOrUrl: string) {
+export function useResolvedImg(pathOrUrl: string) {
     const [src, setSrc] = React.useState("");
     const retriedRef = React.useRef(false);
 

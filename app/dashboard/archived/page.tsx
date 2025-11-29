@@ -1,9 +1,78 @@
 // app/dashboard/archived/page.tsx
 "use client";
 
-import { getUserRenders, RenderRecord, unarchiveRender } from "@/src/lib/renders";
 import { useEffect, useState } from "react";
-import { RenderCard } from "../view/page";
+import { getUserRenders, RenderRecord, unarchiveRender } from "@/src/lib/renders";
+import { useResolvedImg } from "../view/page";
+
+type ArchiveCardProps = {
+    r: RenderRecord;
+    onUnarchive: (id: string) => void;
+};
+
+function ArchiveCard({ r, onUnarchive }: ArchiveCardProps) {
+    const { src: refImgUrl, onError: refImgErr } = useResolvedImg(r.key || "");
+    const isDeployed = !!r.lastExportedAt;
+
+    const name =
+        r.nameHint ||
+        (r.url ? new URL(r.url).hostname : "") ||
+        "Untitled preview";
+
+    return (
+        <div className="relative flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
+            <div className="relative">
+                {refImgUrl ? (
+                    <img
+                        src={refImgUrl}
+                        alt={name}
+                        loading="lazy"
+                        onError={refImgErr}
+                        className="h-40 w-full object-cover opacity-70"
+                        draggable={false}
+                    />
+                ) : (
+                    <div className="grid h-40 w-full place-items-center text-xs text-neutral-500">
+                        No snapshot available
+                    </div>
+                )}
+
+                <span
+                    className="absolute left-2 top-2 rounded-md bg-amber-200/95 px-2 py-0.5 text-[10px] font-semibold text-amber-900 shadow"
+                    title="Archived previews are hidden from the main dashboard"
+                >
+                    Archived
+                </span>
+
+                <span className="absolute right-2 bottom-2 rounded-md bg-white/95 px-2 py-0.5 text-[10px] font-medium text-neutral-700 shadow">
+                    {isDeployed ? "Deployed" : "Not deployed"}
+                </span>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 border-t border-neutral-200 px-3 py-2.5">
+                <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-neutral-900">
+                        {name}
+                    </div>
+                    {r.url && (
+                        <div className="truncate text-xs text-neutral-500">
+                            {r.url}
+                        </div>
+                    )}
+                </div>
+
+                <button
+                    type="button"
+                    onClick={() => onUnarchive(r.id)}
+                    className="shrink-0 rounded-md border border-amber-500 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100"
+                    title="Move this preview back to your main dashboard"
+                >
+                    Unarchive
+                </button>
+            </div>
+        </div>
+    );
+}
 
 export default function ArchivedPage() {
     const [renders, setRenders] = useState<RenderRecord[]>([]);
@@ -33,7 +102,7 @@ export default function ArchivedPage() {
             <h1 className="text-xl font-semibold text-neutral-900">
                 Archived previews
             </h1>
-            <p className="mt-1 text-sm text-neutral-600 max-w-xl">
+            <p className="mt-1 max-w-xl text-sm text-neutral-600">
                 Archived previews are hidden from your main dashboard. They are
                 automatically deleted after 30 days. Unarchive a preview if you
                 want to resume editing or deploy it.
@@ -50,24 +119,11 @@ export default function ArchivedPage() {
                     {renders.map((r) => {
                         const normalized = { ...r, html: r.html ?? undefined };
                         return (
-                            <RenderCard
+                            <ArchiveCard
                                 key={r.id}
-                                r={normalized as any}
-                                isDeleting={false}
-                                isOpening={false}
-                                hardLocked={false}
-                                isDeploying={false}
-                                deployLocked={false}
-                                urlHash={null}
-                                continueRender={() => { }}
-                                discardRender={() => { }}
-                                startDeployWizard={() => { }}
-                                archiveRender={() => { }}
-                                unarchiveRender={handleUnarchive} setShowCreditsPaywall={function (mode: "deploy" | null): void {
-                                    throw new Error("Function not implemented.");
-                                }} push={function (message: string, level?: string): void {
-                                    throw new Error("Function not implemented.");
-                                }} />
+                                r={normalized}
+                                onUnarchive={handleUnarchive}
+                            />
                         );
                     })}
                 </div>
