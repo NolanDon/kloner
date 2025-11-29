@@ -12,15 +12,17 @@ import {
 } from "lucide-react";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
+import { HashScrollHighlighter } from "./HashScrollHighlighter";
 
 const ACCENT = "#f55f2a";
 
 export default function DocsPage() {
     return (
-        <div className="min-h-screen bg-neutral-50 text-neutral-900 py-[80px]">
+        <div className="min-h-screen bg-neutral-50 text-neutral-900 py-[120px]">
             <NavBar />
 
             <main className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 pt-8 pb-20">
+                <HashScrollHighlighter />
                 {/* Hero */}
                 <section className="mb-10">
                     <div className="inline-flex items-center gap-2 rounded-full bg-accent text-neutral-50 px-3 py-1 text-[11px] mb-4">
@@ -65,7 +67,7 @@ export default function DocsPage() {
                 </section>
 
                 {/* Features */}
-                <section id="features" className="mb-16">
+                <section id="features" className="mt-[100px] mb-[100px]">
                     <SectionHeader
                         eyebrow="Core workflow"
                         title="From someone else’s site to your own version"
@@ -121,7 +123,7 @@ export default function DocsPage() {
                 </section>
 
                 {/* Credits */}
-                <section id="credits" className="mb-16">
+                <section id="credits" className="mt-[100px] mb-[100px] scroll-mt-[150px]">
                     <SectionHeader
                         eyebrow="Usage limits"
                         title="How the credit system works"
@@ -239,7 +241,7 @@ export default function DocsPage() {
                 </section>
 
                 {/* Plans */}
-                <section id="plans" className="mb-16">
+                <section id="plans" className="mt-[100px] mb-[100px] scroll-mt-[150px]">
                     <SectionHeader
                         eyebrow="Monetization"
                         title="Plan overview"
@@ -296,7 +298,7 @@ export default function DocsPage() {
                 </section>
 
                 {/* Compare: cloning, hosting, rendering */}
-                <section id="compare" className="mb-16">
+                <section id="compare" className="mt-[100px] mb-[100px] scroll-mt-[150px]">
                     <SectionHeader
                         eyebrow="Compare"
                         title="How you ship and maintain your cloned projects"
@@ -401,7 +403,7 @@ export default function DocsPage() {
                 </section>
 
                 {/* Safety & fairness (non-technical) */}
-                <section id="safety" className="mb-16">
+                <section id="safety" className="mt-[100px] mb-[100px] scroll-mt-[150px]">
                     <SectionHeader
                         eyebrow="Trust & boundaries"
                         title="Safety, privacy, and fair use"
@@ -445,7 +447,7 @@ export default function DocsPage() {
                 </section>
 
                 {/* Library: export + routing, SEO, fonts, images, deploy */}
-                <section id="export-options" className="mb-16">
+                <section id="export-options" className="mt-[100px] mb-[100px] scroll-mt-[150px]">
                     <SectionHeader
                         eyebrow="Library"
                         title="Export options and practical guides"
@@ -517,7 +519,7 @@ export default function DocsPage() {
                 </section>
 
                 {/* Company: About + Contact for footer links */}
-                <section id="about" className="mb-16">
+                <section id="about" className="mt-[100px] mb-[100px] scroll-mt-[150px]">
                     <SectionHeader
                         eyebrow="Company"
                         title="About Kloner"
@@ -587,7 +589,7 @@ export default function DocsPage() {
                 </section>
 
                 {/* Partnerships: For Creators / Affiliates / For Business */}
-                <section id="partnerships" className="mb-16">
+                <section id="partnerships" className="mt-[100px] mb-[100px] scroll-mt-[150px]">
                     <SectionHeader
                         eyebrow="Partnerships"
                         title="Ways to work with Kloner long-term"
@@ -637,7 +639,7 @@ export default function DocsPage() {
                 </section>
 
                 {/* Connect: social placeholders for footer links */}
-                <section id="connect" className="mb-16">
+                <section id="connect" className="mt-[100px] mb-[100px] scroll-mt-[150px]">
                     <SectionHeader
                         eyebrow="Connect"
                         title="Stay up to date"

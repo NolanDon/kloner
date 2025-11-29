@@ -6,7 +6,7 @@ export const brand = {
     { label: "How it Works", href: "/#how" },
     // { label: "Reviews", href: "#stories" },
     { label: "FAQs", href: "/#faqs" },
-    // { label: "About", href: "/docs" },
+    { label: "About", href: "/docs#about" },
   ],
   cta: { label: "Try Kloner", href: "/dashboard" }
 } as const;
