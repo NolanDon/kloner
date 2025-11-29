@@ -2874,21 +2874,21 @@ export default function PreviewEditor({
                             <div className="flex justify-end gap-2 text-xs">
                                 <button
                                     type="button"
-                                    className="px-2.5 py-1.5 rounded border border-neutral-300 bg-white hover:bg-neutral-50 active:scale-[.98]"
+                                    className="px-2.5 py-1.5 rounded border border-neutral-300 bg-white hover:bg-neutral-50 active:scale-[.98] font-medium"
                                     onClick={() => setClosePrompt(false)}
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="button"
-                                    className="px-2.5 py-1.5 rounded border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 active:scale-[.98]"
+                                    className="px-2.5 py-1.5 rounded border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 active:scale-[.98] font-medium"
                                     onClick={() => performClose("discard")}
                                 >
                                     Discard
                                 </button>
                                 <button
                                     type="button"
-                                    className="px-2.5 py-1.5 rounded border border-transparent bg-neutral-900 text-white hover:brightness-110 active:scale-[.98]"
+                                    className="px-2.5 py-1.5 rounded border border-transparent bg-accent text-white hover:brightness-110 active:scale-[.98] font-medium"
                                     onClick={() => performClose("save")}
                                 >
                                     Save & close

@@ -683,10 +683,10 @@ export default function DocsPage() {
                             </p>
                         </article>
                     </div>
-                </section>
+                </section >
 
                 {/* Gentle “how to get value fast” section */}
-                <section id="quick-start" className="mb-10">
+                < section id="quick-start" className="mb-10" >
                     <SectionHeader
                         eyebrow="First session"
                         title="A simple way to get value in 10 minutes"
@@ -719,10 +719,10 @@ export default function DocsPage() {
                             ]}
                         />
                     </div>
-                </section>
-            </main>
+                </section >
+            </main >
             <Footer />
-        </div>
+        </div >
     );
 }
 
@@ -955,8 +955,8 @@ function TierRow({
     return (
         <div
             className={`flex items-center justify-between rounded-xl px-3 py-2 ${emphasis
-                    ? "bg-accent text-neutral-50"
-                    : "bg-neutral-50 text-neutral-800 border border-neutral-200"
+                ? "bg-accent text-neutral-50"
+                : "bg-neutral-50 text-neutral-800 border border-neutral-200"
                 }`}
         >
             <div className="flex items-center gap-2 text-[11px]">
@@ -991,8 +991,8 @@ function PlanCard(props: {
     return (
         <div
             className={`flex h-full flex-col rounded-2xl border bg-white p-5 shadow-sm ${props.highlight
-                    ? "border-neutral-900 shadow-md shadow-neutral-200"
-                    : "border-neutral-200"
+                ? "border-neutral-900 shadow-md shadow-neutral-200"
+                : "border-neutral-200"
                 }`}
         >
             <div className="mb-3 flex items-center justify-between gap-2">

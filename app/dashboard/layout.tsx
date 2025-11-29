@@ -20,6 +20,7 @@ import {
     LogOut,
     Eye,
 } from "lucide-react";
+import KlonerLoader from "@/components/KlonerLoader";
 
 const ACCENT = "#f55f2a";
 
@@ -147,9 +148,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
     if (!ready) {
         return (
-            <main className="bg-white min-h-screen">
-                <CenterLoader />
-            </main>
+            <KlonerLoader />
         );
     }
 

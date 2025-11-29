@@ -91,12 +91,12 @@ export default function Stories() {
             </span>
           </h2>
 
-          <a
+          {/* <a
             href="#all-reviews"
             className="hidden md:inline-flex items-center rounded-full border border-black/10 bg-white px-4 py-2 text-sm text-black/70 hover:text-black hover:shadow-sm"
           >
             See more stories
-          </a>
+          </a> */}
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4 md:gap-6 md:[overflow:visible]">
@@ -115,12 +115,12 @@ export default function Stories() {
         </div>
 
         <div className="mt-6 md:hidden">
-          <a
+          {/* <a
             href="#all-reviews"
             className="inline-flex items-center rounded-full border border-black/10 bg-white px-4 py-2 text-sm text-black/70 hover:text-black hover:shadow-sm"
           >
             See more stories
-          </a>
+          </a> */}
         </div>
       </div>
     </section>

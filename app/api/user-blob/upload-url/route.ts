@@ -33,7 +33,7 @@ function initAdminIfNeeded() {
     }
 }
 
-function getBucket(): Bucket {
+export function getBucket(): Bucket {
     if (cachedBucket) return cachedBucket;
     initAdminIfNeeded();
     cachedBucket = admin.storage().bucket(BUCKET_NAME);

@@ -36,13 +36,25 @@ function UrlInputModal() {
   );
 }
 
+const pages = [
+  { name: "Home" },
+  { name: "Services" },
+  { name: "About" },
+];
+
 function PreviewGridModal() {
   return (
     <div className="w-full h-40 md:h-56 rounded-2xl border border-black/10 bg-white shadow-md p-4 md:p-5 min-h-60 ">
       <div className="text-xs text-neutral-500 mb-3">Preview pages</div>
       <div className="grid grid-cols-3 gap-2">
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="rounded-xl border border-neutral-200 bg-neutral-50 p-2">
+        {pages.map((page) => (
+          <div
+            key={page.name}
+            className="rounded-xl border border-neutral-200 bg-neutral-50 p-2"
+          >
+            <div className="text-[10px] text-neutral-500 mb-1">
+              {page.name}
+            </div>
             <div className="h-4 w-5/6 rounded-md bg-neutral-200 mb-2" />
             <div className="grid grid-cols-2 gap-1">
               <div className="h-8 rounded-md bg-neutral-200" />
@@ -158,28 +170,28 @@ type ModalPlain = React.ComponentType;
 const items = [
   {
     title: 'Paste a URL',
-    text: 'Point us at any site. We\'ll fetch the page structure and begin creating a snapshot.',
+    text: 'Point us at any site. We\'ll fetch up to 10 pages of structure and begin creating a snapshot collection.',
     step: 1,
     Modal: UrlInputModal as ModalPlain,
     needsProgress: false,
   },
   {
     title: 'Preview',
-    text: 'Once complete, begin generating previews from the snapshot we capture.',
+    text: 'Once complete, begin generating previews from the collection we capture.',
     step: 2,
     Modal: PreviewGridModal as ModalPlain,
     needsProgress: false,
   },
   {
     title: 'Customize',
-    text: 'After choosing a final preview, open it in our editor to modify blocks, or add assets.',
+    text: 'After choosing a final preview, open it in our editor to modify images, metadata, blocks, or remove assets.',
     step: 3,
     Modal: EditBlocksModal as ModalPlain,
     needsProgress: false,
   },
   {
     title: 'Deploy',
-    text: 'Finally, deploy with just a few clicks to Vercel and view your live project within minutes.',
+    text: 'Finally, name and deploy your website with just a few clicks to Vercel and view your live project within minutes.',
     step: 4,
     Modal: DeployModal as ModalWithProgress,
     needsProgress: true,

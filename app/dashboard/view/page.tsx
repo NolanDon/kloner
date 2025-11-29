@@ -9,6 +9,8 @@ import React, {
     useRef,
     memo,
 } from "react";
+import { toast } from "react-hot-toast";
+
 import { useRouter, useSearchParams } from "next/navigation";
 import {
     onAuthStateChanged,
@@ -56,6 +58,7 @@ import {
     Clock10,
     MessageCircleWarning,
     Archive,
+    Share2,
 } from "lucide-react";
 import {
     isHttpUrl,
@@ -135,6 +138,7 @@ const RenderCard = memo(
     },
 );
 
+
 export type RenderDoc = {
     url?: string | null;
     urlHash?: string | null;
@@ -172,6 +176,7 @@ type RenderCardProps = {
     isDeploying: boolean;
     deployLocked: boolean;
     urlHash: string | null;
+    onShareWithCommunity?: (opts: { renderId: string; remixable: boolean }) => Promise<void>;
     archiveRender: (id: string) => void;
     unarchiveRender: (id: string) => void;
     continueRender: (id: string) => void;
@@ -196,6 +201,7 @@ function RenderCardInner({
     startDeployWizard,
     archiveRender,
     unarchiveRender,
+    onShareWithCommunity,
 }: RenderCardProps) {
     const router = useRouter();
 
@@ -216,6 +222,32 @@ function RenderCardInner({
 
     const controllerVersion =
         typeof r.controllerVersion === "string" ? r.controllerVersion : "";
+
+    const [shareOpen, setShareOpen] = useState(false);
+    const [shareRemixable, setShareRemixable] = useState(true);
+    const [shareBusy, setShareBusy] = useState(false);
+    const [alreadyShared, setAlreadyShared] = useState(false);
+    const [checkingShared, setCheckingShared] = useState(false);
+    const [shareError, setShareError] = useState<string | null>(null);
+    const [shareProjectName, setShareProjectName] = useState("");
+
+    function getInitialShareName() {
+        if (r.nameHint && r.nameHint.trim()) return r.nameHint.trim();
+
+        if (versionLabel && String(versionLabel).trim()) {
+            return `Kloner build ${String(versionLabel).trim()}`;
+        }
+
+        return "Untitled Kloner build";
+    }
+
+    useEffect(() => {
+        if (!shareOpen) return;
+        if (shareProjectName.trim()) return;
+
+        const fallback = getInitialShareName();
+        setShareProjectName(fallback);
+    }, [shareOpen, shareProjectName, r.nameHint, versionLabel]);
 
     const srcDoc = useMemo(() => {
         if (!r.html) return "";
@@ -264,29 +296,132 @@ function RenderCardInner({
 
     const handleArchiveClick = () => {
         if (isDeleting || isDeploying) return;
+
         if (isArchived) {
             unarchiveRender(r.id);
-        } else {
-            archiveRender(r.id);
+            return;
         }
+
+        const ok = window.confirm(
+            "Move this preview into your archive? It will be hidden from your main dashboard.",
+        );
+        if (!ok) return;
+
+        archiveRender(r.id);
     };
+
+    async function handleShareClick() {
+        if (!r.id || !r.html || !r.key) return;
+
+        const finalName = (shareProjectName || "").trim() || getInitialShareName();
+        if (!finalName.trim()) {
+            setShareError("Add a name for this build before sharing.");
+            return;
+        }
+
+        setShareBusy(true);
+        setShareError(null);
+
+        try {
+            const res = await fetch("/api/gallery/share", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    renderId: r.id,
+                    html: r.html,
+                    name: finalName,
+                    screenshotKey: r.key || null,
+                    remixable: shareRemixable,
+                }),
+            });
+
+            const data = await res.json().catch(() => ({} as any));
+            if (!res.ok || (data as any).error) {
+                throw new Error((data as any).error || "Failed to share");
+            }
+
+            if (data.alreadyShared) {
+                setAlreadyShared(true);
+                toast?.("This build is already in the community gallery.");
+            } else {
+                setAlreadyShared(true);
+                toast?.success?.("Thanks for sharing this build with the community!") ??
+                    toast?.("Thanks for sharing this build with the community.");
+            }
+
+            onShareWithCommunity?.(r.id as any);
+            setShareOpen(false);
+        } catch (err: any) {
+            console.error("Failed to share community build", err);
+            setShareError(err?.message || "Failed to share community build");
+
+            toast?.error?.("Failed to share this build. Please try again.") ??
+                toast?.("Failed to share this build. Please try again.");
+        } finally {
+            setShareBusy(false);
+        }
+    }
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function checkShared() {
+            if (!r?.id) {
+                setAlreadyShared(false);
+                setCheckingShared(false);
+                return;
+            }
+
+            setCheckingShared(true);
+
+            try {
+                const res = await fetch(
+                    `/api/gallery/check-shared?renderId=${encodeURIComponent(r.id)}`,
+                    {
+                        method: "GET",
+                        credentials: "include",
+                    },
+                );
+
+                if (!res.ok) {
+                    console.error("check-shared failed", res.status);
+                    if (!cancelled) {
+                        setAlreadyShared(false);
+                    }
+                    return;
+                }
+
+                const data = (await res.json()) as { alreadyShared?: boolean };
+                if (!cancelled) {
+                    setAlreadyShared(Boolean(data.alreadyShared));
+                }
+            } catch (err) {
+                console.error("check-shared error", err);
+                if (!cancelled) {
+                    setAlreadyShared(false);
+                }
+            } finally {
+                if (!cancelled) {
+                    setCheckingShared(false);
+                }
+            }
+        }
+
+        checkShared();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [r?.id]);
 
     return (
         <div
             className={`relative flex flex-col overflow-visible rounded-xl border bg-white shadow-sm ${isArchived ? "border-amber-300/70 bg-amber-50/50" : "border-neutral-200"
                 }`}
         >
-            {/* <span
-                className="absolute left-2 top-2 z-30 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow"
-                style={{ backgroundColor: "#1d4ed8" }}
-                title={`Version ${versionLabel}`}
-            >
-                {versionLabel}
-            </span> */}
-
             {controllerVersion && (
                 <span
-                    className="absolute right-2 top-2 z-30 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-neutral-900 shadow bg-amber-300"
+                    className="absolute right-2 top-2 z-30 rounded-md bg-amber-300 px-1.5 py-0.5 text-[10px] font-semibold text-neutral-900 shadow"
                     title={`Controller v${controllerVersion}`}
                 >
                     v{controllerVersion}
@@ -295,7 +430,7 @@ function RenderCardInner({
 
             {isArchived && (
                 <span
-                    className="absolute left-2 top-7 z-30 mt-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-amber-900 shadow bg-amber-200/90"
+                    className="absolute left-2 top-7 z-30 mt-1 rounded-md bg-amber-200/90 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900 shadow"
                     title="Archived previews are hidden from the main dashboard"
                 >
                     Archived
@@ -308,15 +443,15 @@ function RenderCardInner({
                     disabled={isDeleting}
                     aria-label="Discard preview"
                     title="Delete this editable preview"
-                    className="absolute top-0 right-0 z-40 grid h-5 w-5 place-items-center -translate-y-1/2 translate-x-1/2 rounded-full bg-red-600 text-white shadow-md ring-1 ring-white hover:bg-red-700 hover:ring-red-300 disabled:opacity-50"
+                    className="absolute right-0 top-0 z-40 grid h-5 w-5 -translate-y-1/2 translate-x-1/2 place-items-center rounded-full bg-red-600 text-white shadow-md ring-1 ring-white hover:bg-red-700 hover:ring-red-300 disabled:opacity-50"
                 >
-                    <span className="text-lg mb-0.5 leading-none">×</span>
+                    <span className="mb-0.5 text-lg leading-none">×</span>
                 </button>
             )}
 
             <div className="relative">
                 {!refImgUrl ? (
-                    <div className="aspect-[4/3] w-full grid place-items-center text-sm text-neutral-500">
+                    <div className="grid aspect-[4/3] w-full place-items-center text-sm text-neutral-500">
                         No snapshot available
                     </div>
                 ) : (
@@ -326,7 +461,7 @@ function RenderCardInner({
                             alt={r.nameHint || "preview"}
                             loading="lazy"
                             onError={refImgErr}
-                            className={`h-full w-full max-h-[260px] object-cover opacity-[0.25] select-none pointer-events-none ${isArchived ? "grayscale" : ""
+                            className={`pointer-events-none h-full max-h-[260px] w-full select-none object-cover opacity-[0.25] ${isArchived ? "grayscale" : ""
                                 }`}
                             draggable={false}
                         />
@@ -334,7 +469,7 @@ function RenderCardInner({
                 )}
 
                 <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
-                    <div className="pointer-events-auto flex flex-col items-center gap-2 rounded-xl bg-white/90 p-2 ring-1 ring-neutral-200 backdrop-blur md:flex-col">
+                    <div className="pointer-events-auto flex flex-col items-center gap-2 rounded-xl  p-2 backdrop-blur md:flex-col">
                         <button
                             onClick={
                                 isDeployed
@@ -350,9 +485,9 @@ function RenderCardInner({
                                 isQueued ||
                                 isDeploying
                             }
-                            className={`shrink-0 rounded-md px-2 py-1 text-sm border inline-flex items-center gap-1.5 ${isArchived
-                                ? "border-neutral-300 text-neutral-400 cursor-not-allowed bg-neutral-50"
-                                : "border-neutral-400 text-neutral-800 hover:bg-neutral-50 disabled:opacity-60"
+                            className={`inline-flex items-center gap-1.5 shrink-0 rounded-md border px-2 py-1 text-xs ${isArchived
+                                ? "cursor-not-allowed border-neutral-300 bg-neutral-50 text-neutral-400"
+                                : "border-neutral-400 text-neutral-800 hover:border-neutral-600 bg-white/50 disabled:opacity-60"
                                 }`}
                             title={
                                 isArchived
@@ -380,23 +515,6 @@ function RenderCardInner({
                                     <Rocket className="h-4 w-4" />
                                 </>
                             )}
-                        </button>
-
-                        <button
-                            onClick={handleArchiveClick}
-                            disabled={isDeleting || isDeploying}
-                            className={`inline-flex items-center gap-2 rounded-md border px-3 py-1 text-sm shadow-sm ${isArchived
-                                ? "border-amber-500 text-amber-900 bg-amber-50 hover:bg-amber-100"
-                                : "border-neutral-400 text-neutral-800 hover:bg-neutral-50"
-                                }`}
-                            title={
-                                isArchived
-                                    ? "Move back to active previews"
-                                    : "Move this preview into your archive"
-                            }
-                        >
-                            <span>{isArchived ? "Unarchive" : "Archive"}</span>
-                            <Archive className="h-4 w-4" />
                         </button>
 
                         {!isDeployed && (
@@ -434,10 +552,124 @@ function RenderCardInner({
                                 <Rocket className="h-4 w-4" />
                             </button>
                         )}
+
+                        {onShareWithCommunity && (
+                            <div className="mt-1 w-full">
+                                {!shareOpen && <div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShareOpen((prev) => !prev)}
+                                        disabled={
+                                            alreadyShared ||
+                                            !r.html?.trim() ||
+                                            isDeleting ||
+                                            isDeploying ||
+                                            isQueued ||
+                                            isFailed
+                                        }
+                                        className="inline-flex items-center gap-2 rounded-md border border-neutral-400 px-3 py-1 text-xs text-neutral-600 hover:border-neutral-400 hover:border-neutral-600 bg-white/50 disabled:opacity-50"
+                                        title={
+                                            alreadyShared
+                                                ? "This build is already shared to the community gallery"
+                                                : "Share this build to the Kloner community gallery"
+                                        }
+                                    >
+                                        <span>
+                                            {alreadyShared
+                                                ? "Shared"
+                                                : shareOpen
+                                                    ? "Cancel sharing"
+                                                    : "Share with community"}
+                                        </span>
+                                        <Share2 className="h-3.5 w-3.5" />
+                                    </button>
+
+                                    <button
+                                        onClick={handleArchiveClick}
+                                        disabled={isDeleting || isDeploying}
+                                        className={`inline-flex ml-1 items-center gap-2 rounded-md border px-3 py-1 text-xs shadow-sm ${isArchived
+                                            ? "border-amber-500 bg-amber-50 text-amber-900 hover:bg-amber-100"
+                                            : "border-neutral-400 text-neutral-800 hover:border-neutral-600 bg-white/50"
+                                            }`}
+                                        title={
+                                            isArchived
+                                                ? "Move back to active previews"
+                                                : "Move this preview into your archive"
+                                        }
+                                    >
+                                        <span>{isArchived ? "Unarchive" : "Archive"}</span>
+                                        <Archive className="h-4 w-4" />
+                                    </button>
+                                </div>
+                                }
+
+                                {shareOpen && !alreadyShared && (
+                                    <div className="mt-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-[10px] text-neutral-700">
+                                        <p className="mb-2">
+                                            Publishing to Kloner community. Name your
+                                            project and optionally allow other users to remix a copy
+                                            of your layout.
+                                        </p>
+
+                                        <div className="mb-2">
+                                            <label className="mb-1 block text-[10px] font-medium text-neutral-700">
+                                                Project name
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={shareProjectName}
+                                                onChange={(e) => {
+                                                    setShareProjectName(e.target.value);
+                                                    if (shareError) setShareError(null);
+                                                }}
+                                                placeholder="e.g. cookie gift landing, portfolio v2"
+                                                className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1 text-[10px] text-neutral-800 placeholder:text-neutral-400 focus:outline-none focus:ring-1 focus:ring-accent"
+                                            />
+                                        </div>
+
+                                        <label className="mb-2 inline-flex items-center gap-2 text-[10px] text-neutral-700">
+                                            <input
+                                                type="checkbox"
+                                                className="h-3 w-3 rounded border-neutral-300"
+                                                checked={shareRemixable}
+                                                onChange={(e) =>
+                                                    setShareRemixable(e.target.checked)
+                                                }
+                                            />
+                                            <span>Allow community to copy build</span>
+                                        </label>
+
+                                        <div className="mt-1 flex justify-end gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setShareOpen(false)}
+                                                className="rounded-md px-2 py-1 text-[10px] text-neutral-500 hover:bg-neutral-100"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={handleShareClick}
+                                                disabled={shareBusy}
+                                                className="inline-flex items-center gap-1 rounded-md bg-accent px-3 py-1 text-[10px] font-medium text-white hover:opacity-80 disabled:opacity-60"
+                                            >
+                                                {shareBusy ? "Sharing…" : "Share build with Kloner community"}
+                                            </button>
+                                        </div>
+
+                                        {shareError && (
+                                            <p className="mt-1 text-[10px] text-red-600">
+                                                {shareError}
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
 
-                <span
+                {/* <span
                     className="absolute bottom-2 left-2 z-20 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-neutral-600 ring-1 ring-neutral-200"
                     title="Preview status label"
                 >
@@ -448,14 +680,14 @@ function RenderCardInner({
                             : r.html?.trim()
                                 ? "Preview ready"
                                 : "Awaiting HTML"}
-                </span>
-                <span className="absolute bottom-2 right-2 z-20 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-neutral-600 ring-1 ring-neutral-200">
+                </span> */}
+                {/* <span className="absolute bottom-2 right-2 z-20 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-neutral-600 ring-1 ring-neutral-200">
                     {isDeploying
                         ? "Deploying…"
                         : isDeployed
                             ? "Deployed"
                             : r.status}
-                </span>
+                </span> */}
 
                 {isDeleting && <CenterSpinner />}
 
@@ -475,7 +707,7 @@ function RenderCardInner({
             <div className="relative h-0 overflow-hidden" aria-hidden>
                 <iframe
                     title={`r-${r.id}`}
-                    className="w-full h-0"
+                    className="h-0 w-full"
                     sandbox="allow-popups allow-popups-to-escape-sandbox allow-forms allow-pointer-lock"
                     referrerPolicy="no-referrer"
                     allow="clipboard-read; clipboard-write"
@@ -486,6 +718,7 @@ function RenderCardInner({
         </div>
     );
 }
+
 
 
 /* ───────── toasts ───────── */
@@ -756,6 +989,41 @@ export default function PreviewPage(): JSX.Element {
             setDeployWizardOpen(true);
         }
     }, [billing, wizard, step, render]);
+
+
+    async function handleShareWithCommunity(opts: { renderId: string; remixable: boolean }) {
+        const { renderId, remixable } = opts;
+        const render = renders.find((r) => r.id === renderId);
+        if (!render || !render.html || !user) return;
+
+        try {
+            // deterministic ID so a render can't be shared twice by same user
+            const communityId = `${user.uid}_${render.id}`;
+            const communityRef = doc(collection(db, "kloner_community"), communityId);
+
+            const existing = await getDoc(communityRef);
+            if (existing.exists()) {
+                push("You’ve already shared this build with the community.", "err");
+                return;
+            }
+
+            await setDoc(communityRef, {
+                html: render.html,
+                sourceRenderId: render.id,
+                name: render.nameHint ?? "Untitled build",
+                screenshotKey: render.key ?? null,
+                approved: false,
+                remixable,
+                author: user.uid,
+                createdAt: serverTimestamp(),
+            });
+
+            push("Thanks for sharing this build with the community.", "ok");
+        } catch (err) {
+            console.error("Failed to share community build", err);
+            push("Could not share this build. Please try again.", "err");
+        }
+    }
 
 
     const persistProjectNameHint = useCallback(
@@ -2867,7 +3135,6 @@ export default function PreviewPage(): JSX.Element {
                     <div className="h-px flex-1 bg-neutral-200/70" />
                     <div className="h-px flex-1 bg-neutral-200/70" />
                 </div>
-
                 {/* plan + credits banner */}
                 <div className="mb-6 rounded-2xl border border-neutral-200 bg-gradient-to-r from-neutral-50 to-white px-4 py-3 sm:px-5 sm:py-4 text-sm sm:text-sm text-neutral-700 shadow-sm">
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -2884,22 +3151,20 @@ export default function PreviewPage(): JSX.Element {
                                 </span>
                             </div>
                             <div className="flex flex-wrap gap-2">
-                                <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] sm:text-sm text-neutral-700">
+                                <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-xs text-neutral-700">
                                     Screenshots Remaining:&nbsp;
                                     <span className="font-semibold text-neutral-900">
-                                        {screenshotRemaining === null ||
-                                            !screenshotLimitDisplay
-                                            ? "unlimited"
+                                        {screenshotRemaining === null || !screenshotLimitDisplay
+                                            ? "-"
                                             : `${screenshotRemaining}/${screenshotLimitDisplay}`}
                                     </span>
                                 </span>
 
-                                <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] sm:text-sm text-neutral-700">
+                                <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-xs text-neutral-700">
                                     Previews Remaining:&nbsp;
                                     <span className="font-semibold text-neutral-900">
-                                        {previewRemaining === null ||
-                                            !previewLimitDisplay
-                                            ? "unlimited"
+                                        {previewRemaining === null || !previewLimitDisplay
+                                            ? "-"
                                             : `${previewRemaining}/${previewLimitDisplay}`}
                                     </span>
                                 </span>
@@ -2914,20 +3179,37 @@ export default function PreviewPage(): JSX.Element {
                             )}
                         </div>
 
-                        <button
-                            type="button"
-                            onClick={() => router.push("/price")}
-                            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-800 hover:bg-amber-100 hover:border-amber-300 transition-colors"
-                        >
-                            <Crown className="h-3.5 w-3.5" />
-                            <span>
-                                {userTier === "free"
-                                    ? "View upgrade options"
-                                    : "Manage plan"}
-                            </span>
-                        </button>
+                        {/* actions: upgrade + earn free credits */}
+                        <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
+                            <button
+                                type="button"
+                                onClick={() => router.push("/price")}
+                                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-800 hover:bg-amber-100 hover:border-amber-300 transition-colors"
+                            >
+                                <Crown className="h-3.5 w-3.5" />
+                                <span>
+                                    {userTier === "free"
+                                        ? "View upgrade options"
+                                        : "Manage plan"}
+                                </span>
+                            </button>
+
+                            {/* Earn free credits + tooltip */}
+                            <div className="relative group">
+                                <button
+                                    type="button"
+                                    className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-xs sm:text-sm font-medium text-neutral-800 hover:bg-neutral-50 hover:border-neutral-300 transition-colors"
+                                >
+                                    Earn free credits
+                                </button>
+                                <div className="pointer-events-none absolute right-0 z-20 mt-1 w-64 translate-y-1 rounded-md bg-neutral-900/95 px-3 py-2 text-[11px] text-neutral-100 opacity-0 shadow-lg ring-1 ring-black/10 transition group-hover:opacity-100 group-hover:translate-y-0">
+                                    Share your build with the community. If it&apos;s approved, you&apos;ll earn 100 free preview credits.
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
+
 
                 {/* Step 1: URL selection */}
                 <section className="mb-8 rounded-3xl border border-neutral-200 bg-white/70 px-4 py-4 sm:px-5 sm:py-5 shadow-sm">
@@ -3066,11 +3348,11 @@ export default function PreviewPage(): JSX.Element {
                                 <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent text-white text-[10px]">
                                     2
                                 </span>
-                                <span>Screenshot collections</span>
+                                <span>Collections</span>
                             </div>
 
                             <p className="my-1 text-sm text-neutral-500">
-                                These are the original screenshots captured directly from
+                                These are screenshot collections captured directly from
                                 your entered URL.
                             </p>
                         </div>
@@ -3316,7 +3598,7 @@ export default function PreviewPage(): JSX.Element {
                                 <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent text-white text-[10px]">
                                     3
                                 </span>
-                                <span>Website previews</span>
+                                <span>Websites</span>
                                 {/* {step3Done ? (
                                     <CheckCircle2 className="h-4.5 w-4.5 text-emerald-500" />
                                 ) :
@@ -3425,8 +3707,10 @@ export default function PreviewPage(): JSX.Element {
                                         push={push as any}
                                         archiveRender={handleArchiveRender}
                                         unarchiveRender={handleUnarchiveRender}
+                                        onShareWithCommunity={handleShareWithCommunity}
                                     />
                                 ))}
+
 
                             </div>
                         </>
@@ -3702,7 +3986,7 @@ export default function PreviewPage(): JSX.Element {
                                                             closeDeployWizard();
                                                             router.push("/dashboard/deployments");
                                                         }}
-                                                        className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white"
+                                                        className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white"
                                                         style={{ backgroundColor: ACCENT }}
                                                     >
                                                         View deployment

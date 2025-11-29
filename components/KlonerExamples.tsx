@@ -118,11 +118,12 @@ export default function DeckImageCarousel({
         });
     }, [data, activeIndex]);
 
-    return (
+       return (
         <section className="w-full py-10 sm:py-12">
             <div className="mx-auto flex w-full max-w-6xl flex-col items-center px-4 sm:px-6 lg:px-8">
-                <div className="mb-6 flex w-full items-center justify-between gap-4">
-                    <div className="min-w-0">
+                <div className="mb-6 flex w-full items-center gap-4">
+                    {/* Left: "Built With" + logo */}
+                    <div className="flex items-center gap-4">
                         <h2 className="mt-1 flex items-center justify-center text-lg text-neutral-600">
                             <span className="text-[16px] uppercase tracking-[0.1em] text-neutral-500">
                                 Built With
@@ -137,6 +138,8 @@ export default function DeckImageCarousel({
                             </span>
                         </h2>
                     </div>
+
+                    {/* Middle: desktop dots */}
                     <div className="hidden items-center gap-2 sm:flex">
                         {data.map((_, idx) => {
                             const isActive = idx === activeIndex;
@@ -156,6 +159,14 @@ export default function DeckImageCarousel({
                             );
                         })}
                     </div>
+
+                    {/* Right: community builds link */}
+                    <a
+                        href="/community-builds"
+                        className="ml-auto hidden md:inline-flex items-center rounded-full border border-black/10 bg-white px-4 py-2 text-sm text-black/70 hover:text-black hover:shadow-sm"
+                    >
+                        Explore all community builds
+                    </a>
                 </div>
 
                 <div className="relative flex w-full items-center justify-center">
@@ -180,9 +191,7 @@ export default function DeckImageCarousel({
                                     className={[
                                         "absolute inset-0 mx-auto flex h-full max-w-[96%] items-stretch justify-center",
                                         "rounded-[28px] border border-white/6 bg-gradient-to-br from-neutral-900 via-neutral-950 to-black",
-                                        // slightly lighter / tighter shadow to reduce GPU load
                                         "shadow-[0_24px_60px_rgba(0,0,0,0.5)]",
-                                        // only animate transform + opacity (keeps motion identical, avoids animating shadow/filter)
                                         "transition-[transform,opacity] duration-[1300ms]",
                                         "ease-[cubic-bezier(0.25,0.8,0.3,1)] will-change-transform",
                                         "overflow-hidden",
@@ -192,9 +201,6 @@ export default function DeckImageCarousel({
                                         transform: `translate3d(${state.translateX}px, ${state.translateY}px, 0) scale(${state.scale})`,
                                         opacity: state.opacity,
                                         zIndex: state.zIndex,
-                                        // drop runtime filter animation (major perf win), but keep deck motion identical
-                                        // if you really want the blur back, you can re-add:
-                                        // filter: state.blur ? `blur(${state.blur}px)` : "none",
                                         pointerEvents:
                                             state.opacity < 0.15 ? "none" : "auto",
                                     }}

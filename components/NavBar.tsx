@@ -97,7 +97,7 @@ export default function NavBar(): JSX.Element {
   const baseNav: NavItem[] = br?.nav ?? [];
 
   const extraNav: NavItem[] = [
-    { label: "Product", href: "/#how" },
+    { label: "Community", href: "/community-builds" },
     { label: "Docs", href: "/docs" },
     { label: "Pricing", href: "/price" },
   ];
@@ -545,7 +545,7 @@ function MegaPanel({ active }: { active: NavItem | null }): JSX.Element {
           <SimpleLink href="/terms" label="Terms & Conditions" />
           <SimpleLink href="/privacy" label="Privacy Policy" />
           <SimpleLink href="/docs#routing-guides" label="Routing Guides" />
-          <SimpleLink href="/docs#seo-templates" label="SEO Templates" />
+          <SimpleLink href="/community-builds" label="SEO Templates" />
           <SimpleLink href="/docs#deploy-checklists" label="Deploy Checklists" />
         </div>
       </div>

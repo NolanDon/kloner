@@ -1011,12 +1011,12 @@ export default function DeploymentsPage(): JSX.Element {
                                             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                                                 <div className="min-w-0">
                                                     <div className="flex items-center gap-2">
-                                                        <div className="text-base font-semibold text-neutral-900 truncate">
+                                                        <div className="text-lg font-semibold text-neutral-900 truncate mb-2">
                                                             {projectName}
                                                         </div>
-                                                        <span className="text-sm text-neutral-400 truncate">
+                                                        {/* <span className="text-sm text-neutral-400 truncate">
                                                             {d.vercelDeploymentId?.slice(0, 10)}…
-                                                        </span>
+                                                        </span> */}
                                                     </div>
                                                     <div className="mt-1 text-xs text-neutral-500 break-all">
                                                         {displayUrl || "URL pending"}

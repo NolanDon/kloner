@@ -5,6 +5,7 @@ import { Outfit } from "next/font/google";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
+import { ArrowRightSquare } from "lucide-react";
 
 const display = Outfit({
   subsets: ["latin"],
@@ -212,7 +213,7 @@ export default function Hero() {
               MozOsxFontSmoothing: "grayscale",
             }}
           >
-            Click, Clone, Customize & Deploy.
+            Clone, Customize & Deploy.
           </h1>
 
           <p className="block md:hidden mt-4 md:mt-5 text-white/80 text-base sm:text-lg px-2 pb-10 md:pb-20">
@@ -220,10 +221,29 @@ export default function Hero() {
             preview, customize, and deploy in minutes.
           </p>
 
+
           <p className="hidden md:block mt-4 md:mt-5 text-white/80 text-base sm:text-lg px-2 pb-10 md:pb-20">
             Paste a URL. We generate a ready-to-ship project you can <br />
             preview, customize, and deploy in minutes.
           </p>
+
+          {/* "How it works" link */}
+          <div className="mt-12 flex justify-center">
+            <a
+              href="#how-it-works"
+              className="group inline-flex items-center gap-2 text-white/80 text-xs sm:text-sm"
+            >
+              <span className="relative">
+                <span className="transition-colors group-hover:text-white">
+                  See how it works
+                </span>
+                <span className="absolute inset-x-0 -bottom-0.5 h-px origin-left scale-x-0 bg-white/70 transition-transform group-hover:scale-x-100" />
+              </span>
+              <ArrowRightSquare
+                className="h-4 w-4 transform transition-transform duration-200 group-hover:translate-x-1 mt-0.5"
+              />
+            </a>
+          </div>
 
 
           <form onSubmit={onSubmit} className="mt-6 md:mt-15 px-2" aria-label="Start by pasting a URL">

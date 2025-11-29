@@ -1,0 +1,52 @@
+// src/app/community-builds/page.tsx
+import type { Metadata } from "next";
+import CommunityBuildsClient from "./CommunityBuildsClient";
+import NavBar from "@/components/NavBar";
+import Image from 'next/image';
+import logo from "@/public/images/orange_logo.png";
+
+export const metadata: Metadata = {
+    title: "Community builds | Kloner",
+    description:
+        "Browse approved Kloner community builds, preview live layouts, and remix approved projects shared by other creators.",
+};
+
+export default function CommunityBuildsPage() {
+    return (
+        <main className="pt-20 min-h-screen bg-white text-black">
+            <NavBar />
+            <section className="bg-white text-black mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 pt-20">
+                <header className="mb-12 flex flex-col items-center text-center gap-3">
+                    {/* <p className="text-[11px] uppercase tracking-[0.25em] text-black/50">
+                        Kloner community
+                    </p> */}
+
+                    <div className="mt-2 flex items-center justify-center gap-4">
+                        <span className="text-[13px] uppercase tracking-[0.1em] text-neutral-500">
+                            See what the community has built with
+                        </span>
+                        <span className="relative inline-block h-[90px] w-[90px] sm:h-[120px] sm:w-[120px]">
+                            <Image
+                                src={logo}
+                                alt="Kloner logo"
+                                fill
+                                className="object-contain"
+                            />
+                        </span>
+                    </div>
+{/* 
+                    <p className="mt-4 max-w-2xl text-sm leading-relaxed text-black/65">
+                        Scroll through approved layouts other builders have shared, open an
+                        interactive preview, and remix builds that are enabled by their creators
+                        into your own Kloner workspace.
+                    </p> */}
+                </header>
+
+                <div className="container pt-16 pb-20">
+                    <CommunityBuildsClient />
+                </div>
+            </section>
+        </main>
+    );
+}
+
