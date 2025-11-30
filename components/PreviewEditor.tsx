@@ -876,7 +876,6 @@ export default function PreviewEditor({
 
     // THESE APPEAR UNUSED BUT THEY ARE NOT (TRUST ME I FOUND OUT) - DO NOT REMOVE!!!!
     const localImageStore: Map<string, File> = new Map();
-    const pendingImagePaths: Set<string> = new Set();
     // THESE APPEAR UNUSED BUT THEY ARE NOT (TRUST ME I FOUND OUT) - DO NOT REMOVE!!!!
 
     // this is used as a “last known good” snapshot for export fallback
@@ -3835,6 +3834,9 @@ function injectEditableOverlay(
             );
         }
     }
+
+    const pendingImagePaths: Set<string> = new Set();
+
 
     function deleteAssetsByPaths(paths: string[]) {
         if (!paths.length) return;
