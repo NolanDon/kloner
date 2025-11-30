@@ -19,8 +19,9 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         return NextResponse.json({ error: "Missing plan" }, { status: 400 });
     }
 
-    const isProd = process.env.NODE_ENV === "production";
-
+    // const isProd = process.env.NODE_ENV === "production";
+    const isProd = false;
+    
     const priceId =
         plan === "pro"
             ? isProd

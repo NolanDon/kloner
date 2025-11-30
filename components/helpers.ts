@@ -34,3 +34,9 @@ export function sanitizeName(raw: string): string {
 }
 
 
+
+export function sanitizeImageName(name: string) {
+    const base = name.toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
+    return base.slice(-64) || "image";
+}
+

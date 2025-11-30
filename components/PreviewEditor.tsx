@@ -24,7 +24,19 @@ export interface SeoMeta {
     jsonLd?: unknown;
 }
 
+// Fire-and-forget request to delete assets by their storage paths.
+// The dashboard host listens for "kloner:delete-assets" messages.
+function requestDeleteAssetsByPaths(paths: string[]) {
+    if (!paths.length) return;
 
+    window.postMessage(
+        {
+            type: "kloner:delete-assets",
+            paths,
+        },
+        "*"
+    );
+}
 
 type Props = {
     initialHtml: string;
@@ -419,6 +431,8 @@ import type { User as FirebaseUser } from "firebase/auth";
 import { RenderDoc } from "@/app/dashboard/view/page";
 import { useAuth } from "@/src/hooks/useAuth";
 import { Loader2 } from "lucide-react";
+import { compressImageForUpload } from "@/src/lib/clientImageCompression";
+import { sanitizeImageName } from "./helpers";
 
 
 // ───────── SEO helpers for export ─────────
@@ -869,14 +883,12 @@ export default function PreviewEditor({
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const [iframeKey, setIframeKey] = useState<number>(0);
-    const { user } = useAuth();                  // or your auth provider
+    const { user } = useAuth();
     const [activePageId, setActivePageId] = useState<string>("");
     const [derivedPages, setDerivedPages] = useState<EditorPage[]>([]);
     const [pageSwitchConfirm, setPageSwitchConfirm] = useState<{ targetId: string } | null>(null);
 
-    // THESE APPEAR UNUSED BUT THEY ARE NOT (TRUST ME I FOUND OUT) - DO NOT REMOVE!!!!
     const localImageStore: Map<string, File> = new Map();
-    // THESE APPEAR UNUSED BUT THEY ARE NOT (TRUST ME I FOUND OUT) - DO NOT REMOVE!!!!
 
     // this is used as a “last known good” snapshot for export fallback
     const [activeSeoMetaByPage, setActiveSeoMetaByPage] = useState<
@@ -1324,10 +1336,6 @@ export default function PreviewEditor({
     }
 
 
-
-
-
-
     // inject route-specific CSS into the monolithic HTML for iframe preview
     const renderHtml = useMemo(() => {
         const base = stripScripts(stripEditorArtifacts(previewHtml || ""));
@@ -1660,35 +1668,71 @@ export default function PreviewEditor({
         return base.slice(-64) || "image";
     }
 
-
     async function uploadFileToUserBlob(
         file: File,
         draftId: string
     ): Promise<UploadedAsset> {
         console.log("[uploadFileToUserBlob] start", {
             draftId,
-            name: file.name,
-            size: file.size,
-            type: file.type,
+            originalName: file.name,
+            originalBytes: file.size,
+            originalType: file.type,
         });
 
+        // 1) compress on the client first (if helpful)
+        let fileForUpload = file;
+        try {
+            const compressed = await compressImageForUpload(file);
+
+            if (compressed !== file) {
+                console.log("[uploadFileToUserBlob] compression applied", {
+                    originalName: file.name,
+                    originalBytes: file.size,
+                    compressedName: compressed.name,
+                    compressedBytes: compressed.size,
+                    bytesSaved: file.size - compressed.size,
+                    ratio: compressed.size / file.size,
+                    originalType: file.type,
+                    compressedType: compressed.type,
+                });
+                fileForUpload = compressed;
+            } else {
+                console.log("[uploadFileToUserBlob] compression skipped or not beneficial", {
+                    name: file.name,
+                    size: file.size,
+                    type: file.type,
+                });
+            }
+        } catch (e) {
+            console.warn(
+                "[uploadFileToUserBlob] compression failed, falling back to original",
+                e
+            );
+        }
+
         const csrf = await ensureSessionAndCsrf();
-        const safeName = sanitizeName(file.name || "upload.bin");
+        const safeName = sanitizeImageName(fileForUpload.name || "upload.bin");
 
         const url = `/api/user-blob/upload-url?filename=${encodeURIComponent(
             safeName
         )}&renderId=${encodeURIComponent(draftId)}`;
 
-        console.log("[uploadFileToUserBlob] POST", { url, hasCsrf: !!csrf });
+        console.log("[uploadFileToUserBlob] POST", {
+            url,
+            hasCsrf: !!csrf,
+            uploadName: fileForUpload.name,
+            uploadBytes: fileForUpload.size,
+            uploadType: fileForUpload.type,
+        });
 
         const res = await fetch(url, {
             method: "POST",
             headers: {
-                "content-type": file.type || "application/octet-stream",
+                "content-type": fileForUpload.type || "application/octet-stream",
                 ...(csrf ? { "x-csrf": csrf } : {}),
             },
             credentials: "include",
-            body: file,
+            body: fileForUpload,
         });
 
         const j = await res.json().catch(() => ({} as any));
@@ -1712,7 +1756,12 @@ export default function PreviewEditor({
             path: j.path as string,
         };
 
-        console.log("[uploadFileToUserBlob] success", asset);
+        console.log("[uploadFileToUserBlob] success", {
+            ...asset,
+            uploadedBytes: fileForUpload.size,
+            uploadedType: fileForUpload.type,
+        });
+
         return asset;
     }
 
@@ -1725,6 +1774,35 @@ export default function PreviewEditor({
 
         console.log("[flushPendingImagesBeforeSave] start", { draftId });
 
+        // 0) Backwards-compat: delete any stale data-kloner-old-path assets
+        const imgsWithOldPath = Array.from(
+            doc.querySelectorAll<HTMLImageElement>("img[data-kloner-old-path]")
+        );
+        const stalePaths: string[] = [];
+
+        for (const img of imgsWithOldPath) {
+            const p = img.getAttribute("data-kloner-old-path");
+            if (p) stalePaths.push(p);
+            img.removeAttribute("data-kloner-old-path");
+        }
+
+        if (stalePaths.length) {
+            console.log("[flushPendingImagesBeforeSave] deleting stale old paths", {
+                count: stalePaths.length,
+                stalePaths,
+            });
+            try {
+                // fire-and-forget; host listener will call the actual delete API
+                requestDeleteAssetsByPaths(stalePaths);
+            } catch (err) {
+                console.warn(
+                    "[flushPendingImagesBeforeSave] requestDeleteAssetsByPaths failed for stale paths",
+                    err
+                );
+            }
+        }
+
+        // 1) normal pending-local-image flow
         const imgs = Array.from(
             doc.querySelectorAll<HTMLImageElement>("img[data-local-image-id]")
         );
@@ -1814,39 +1892,6 @@ export default function PreviewEditor({
                 continue;
             }
         }
-
-        // handle old assets that should be deleted after a replace
-        const oldPathsToDelete: string[] = [];
-        doc.querySelectorAll<HTMLImageElement>("img[data-kloner-old-path]").forEach(
-            (img) => {
-                const p = img.getAttribute("data-kloner-old-path");
-                if (p) oldPathsToDelete.push(p);
-                img.removeAttribute("data-kloner-old-path");
-            }
-        );
-
-        if (oldPathsToDelete.length) {
-            console.log(
-                "[flushPendingImagesBeforeSave] deleting old asset paths",
-                oldPathsToDelete
-            );
-            try {
-                await fetch("/api/user-blob/delete", {
-                    method: "POST",
-                    headers: {
-                        "content-type": "application/json",
-                    },
-                    body: JSON.stringify({ paths: oldPathsToDelete }),
-                });
-            } catch (err) {
-                console.error(
-                    "[flushPendingImagesBeforeSave] delete old assets failed",
-                    err
-                );
-            }
-        }
-
-        console.log("[flushPendingImagesBeforeSave] complete");
     }
 
 
@@ -3559,15 +3604,23 @@ function injectEditableOverlay(
     const toolbar = doc.createElement("div");
     toolbar.className = "kloner-toolbar";
     toolbar.innerHTML = `
-    <button class="kbtn kbtn-close" data-act="close">Close</button>
-    <button class="kbtn kbtn-edit" data-act="dup">Duplicate</button>
-    <button class="kbtn kbtn-del"  data-act="del">Delete block</button>
-    <button class="kbtn kbtn-img"  data-act="img-insert">Insert image</button>
-    <button class="kbtn kbtn-img"  data-act="img-replace">Replace image</button>
-    <button class="kbtn kbtn-img"  data-act="img-del">Delete image</button>
-    <button class="kbtn kbtn-img"  data-act="img-alt">ALT text</button>
-    <button class="kbtn kbtn-img"  data-act="link">Link</button>
-  `;
+        <button class="kbtn kbtn-close" data-act="close">Close</button>
+        <button class="kbtn kbtn-edit" data-act="dup">Duplicate</button>
+        <button class="kbtn kbtn-del"  data-act="del">Delete block</button>
+
+        <button class="kbtn kbtn-img"  data-act="img-insert">Insert image</button>
+        <button class="kbtn kbtn-img"  data-act="img-replace">Replace image</button>
+        <button class="kbtn kbtn-img"  data-act="img-del">Delete image</button>
+        <button class="kbtn kbtn-img"  data-act="img-alt">ALT text</button>
+
+        <!-- new: layering + size controls -->
+        <button class="kbtn kbtn-img"  data-act="img-front">Bring forward</button>
+        <button class="kbtn kbtn-img"  data-act="img-back">Send backward</button>
+        <button class="kbtn kbtn-img"  data-act="img-grow">Increase size</button>
+        <button class="kbtn kbtn-img"  data-act="img-shrink">Reduce size</button>
+
+        <button class="kbtn kbtn-img"  data-act="link">Link</button>
+        `;
 
     doc.body.appendChild(toolbar);
 
@@ -3837,7 +3890,6 @@ function injectEditableOverlay(
 
     const pendingImagePaths: Set<string> = new Set();
 
-
     function deleteAssetsByPaths(paths: string[]) {
         if (!paths.length) return;
 
@@ -3866,10 +3918,36 @@ function injectEditableOverlay(
             return;
         }
 
+        // If this image is already backed by cloud storage, delete that asset now.
         const path = img.getAttribute("data-kloner-path");
         if (path) {
-            console.log("deleting asset for path:", path);
-            deleteAssetsByPaths([path]);
+            console.log("[deleteImageOnBlock] deleting asset for path:", path);
+            try {
+                deleteAssetsByPaths([path]); // typed as void, so just call it
+            } catch (err) {
+                console.warn(
+                    "[deleteImageOnBlock] deleteAssetsByPaths threw synchronously",
+                    { path },
+                    err
+                );
+            }
+        }
+
+        // Clean up any stale markers (old behavior).
+        if (img.hasAttribute("data-kloner-old-path")) {
+            img.removeAttribute("data-kloner-old-path");
+        }
+
+        // Remove local-only markers too (blob-only images).
+        if (img.dataset.localImageId) {
+            const tempUrl = img.src;
+            try {
+                URL.revokeObjectURL(tempUrl);
+            } catch {
+                // ignore
+            }
+            img.removeAttribute("data-local-image-id");
+            img.removeAttribute("data-local-filename");
         }
 
         img.remove();
@@ -3877,6 +3955,7 @@ function injectEditableOverlay(
         notify();
         showHint("Image deleted.", block);
     }
+
 
 
     async function insertImageIntoBlock(block: HTMLElement) {
@@ -3905,9 +3984,6 @@ function injectEditableOverlay(
         showHint("Image inserted (pending upload).", block);
     }
 
-    // Somewhere module-level
-    const localImageStore = new Map<string, File>();
-
     function pickLocalFile(): Promise<File | null> {
         return new Promise((resolve) => {
             const input = document.createElement("input");
@@ -3930,18 +4006,29 @@ function injectEditableOverlay(
         const box = cssBox(el);
         const oldPath = el.getAttribute("data-kloner-path") || undefined;
 
+        // If the existing image is backed by storage, delete that asset now.
+        if (oldPath) {
+            console.log("[replaceImage] deleting previous asset", { oldPath });
+            try {
+                await Promise
+                    .resolve(deleteAssetsByPaths([oldPath] as string[]));
+            } catch (err) {
+                console.warn(
+                    "[replaceImage] deleteAssetsByPaths failed",
+                    { oldPath },
+                    err
+                );
+            }
+            el.removeAttribute("data-kloner-path");
+            el.removeAttribute("data-kloner-old-path");
+        }
+
         const tempUrl = URL.createObjectURL(file);
         const localId = crypto.randomUUID();
 
         el.src = tempUrl;
         el.dataset.localImageId = localId;
         el.dataset.localFilename = file.name || "image";
-
-        // mark the previous asset for deletion once the new one is committed on save
-        if (oldPath) {
-            el.setAttribute("data-kloner-old-path", oldPath);
-            el.removeAttribute("data-kloner-path");
-        }
 
         if (!el.getAttribute("width") && !el.style.width) {
             el.setAttribute("width", `${Math.round(box.w)}`);
@@ -3954,6 +4041,7 @@ function injectEditableOverlay(
         notify();
         showHint("Image replaced (pending upload).", el);
     }
+
 
 
     function editLink(target: HTMLElement) {
@@ -3981,6 +4069,57 @@ function injectEditableOverlay(
         notify();
     }
 
+    function getImageFromSelection(sel: HTMLElement | null): HTMLImageElement | null {
+        if (!sel) return null;
+        if (sel.tagName === "IMG") return sel as HTMLImageElement;
+        return (sel.querySelector("img") as HTMLImageElement | null) ?? null;
+    }
+
+    function moveImageLayer(img: HTMLImageElement, direction: "forward" | "backward") {
+        const parent = img.parentElement;
+        if (!parent) return;
+
+        const siblings = Array.from(parent.children) as HTMLElement[];
+        const index = siblings.indexOf(img);
+        if (index === -1) return;
+
+        if (direction === "forward") {
+            if (index === siblings.length - 1) return; // already last
+            const next = siblings[index + 1];
+            next.after(img);
+        } else {
+            if (index === 0) return; // already first
+            const prev = siblings[index - 1];
+            parent.insertBefore(img, prev);
+        }
+    }
+
+    function resizeImage(img: HTMLImageElement, factor: number) {
+        const rect = img.getBoundingClientRect();
+        if (!rect.width) return;
+
+        // Prefer intrinsic ratio, fall back to current rendered ratio
+        const naturalW = img.naturalWidth;
+        const naturalH = img.naturalHeight;
+
+        let ratio: number;
+        if (naturalW > 0 && naturalH > 0) {
+            ratio = naturalH / naturalW;
+        } else if (rect.height > 0) {
+            ratio = rect.height / rect.width;
+        } else {
+            ratio = 1;
+        }
+
+        const newW = Math.max(8, rect.width * factor);
+        const newH = Math.max(8, newW * ratio);
+
+        img.style.width = `${Math.round(newW)}px`;
+        img.style.height = `${Math.round(newH)}px`;
+
+        img.setAttribute("width", String(Math.round(newW)));
+        img.setAttribute("height", String(Math.round(newH)));
+    }
 
     function handleAction(act: string | null, sourceEl: HTMLElement) {
         if (!act) return;
@@ -3992,7 +4131,7 @@ function injectEditableOverlay(
         if (!selected) return;
 
         if (act === "del") {
-            // NEW: delete any cloud assets referenced inside this block
+            // delete any cloud assets referenced inside this block
             deleteAssetsForElement(selected);
 
             const parent = selected.parentElement;
@@ -4013,16 +4152,14 @@ function injectEditableOverlay(
             notify();
             return;
         }
+
         if (act === "img-insert") {
             insertImageIntoBlock(selected).catch(() => { });
             return;
         }
+
         if (act === "img-replace") {
-            const img =
-                (selected.tagName === "IMG"
-                    ? (selected as HTMLImageElement)
-                    : (selected.querySelector("img") as HTMLImageElement | null)) ??
-                null;
+            const img = getImageFromSelection(selected);
             if (!img) {
                 showHint("No <img> here. Use Insert image.", selected);
                 return;
@@ -4030,16 +4167,14 @@ function injectEditableOverlay(
             replaceImage(img);
             return;
         }
+
         if (act === "img-del") {
             deleteImageOnBlock(selected);
             return;
         }
+
         if (act === "img-alt") {
-            const img =
-                (selected.tagName === "IMG"
-                    ? (selected as HTMLImageElement)
-                    : (selected.querySelector("img") as HTMLImageElement | null)) ??
-                null;
+            const img = getImageFromSelection(selected);
             if (!img) {
                 showHint("Select a block with an <img>.", selected);
                 return;
@@ -4053,6 +4188,55 @@ function injectEditableOverlay(
             }
             return;
         }
+
+        if (act === "img-front") {
+            const img = getImageFromSelection(selected);
+            if (!img) {
+                showHint("Select a block with an <img> to bring forward.", selected);
+                return;
+            }
+            moveImageLayer(img, "forward");
+            saveHistory();
+            notify();
+            return;
+        }
+
+        if (act === "img-back") {
+            const img = getImageFromSelection(selected);
+            if (!img) {
+                showHint("Select a block with an <img> to send backward.", selected);
+                return;
+            }
+            moveImageLayer(img, "backward");
+            saveHistory();
+            notify();
+            return;
+        }
+
+        if (act === "img-grow") {
+            const img = getImageFromSelection(selected);
+            if (!img) {
+                showHint("Select a block with an <img> to resize.", selected);
+                return;
+            }
+            resizeImage(img, 1.1);
+            saveHistory();
+            notify();
+            return;
+        }
+
+        if (act === "img-shrink") {
+            const img = getImageFromSelection(selected);
+            if (!img) {
+                showHint("Select a block with an <img> to resize.", selected);
+                return;
+            }
+            resizeImage(img, 0.9);
+            saveHistory();
+            notify();
+            return;
+        }
+
         if (act === "link") {
             editLink(selected);
             return;
