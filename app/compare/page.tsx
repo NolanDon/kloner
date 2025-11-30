@@ -66,7 +66,7 @@ export default function ComparePage(): JSX.Element {
                             additional libraries, frameworks, or hosting providers.
                         </p>
                         <a
-                            href="/docs#export-options"
+                            href="/dashboard/docs#export-options"
                             className="inline-flex mt-2 text-sm font-medium"
                             style={{ color: ACCENT }}
                         >

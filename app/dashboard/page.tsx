@@ -518,8 +518,8 @@ function UrlRow({ uid, r }: UrlRowProps) {
                             target={locked ? undefined : "_blank"}
                             rel={locked ? undefined : "noreferrer"}
                             className={`truncate max-w-full sm:max-w-[70%] text-sm ${locked
-                                    ? "text-neutral-400 pointer-events-none"
-                                    : "text-neutral-800 hover:underline"
+                                ? "text-neutral-400 pointer-events-none"
+                                : "text-neutral-800 hover:underline"
                                 }`}
                             aria-disabled={locked}
                             tabIndex={locked ? -1 : 0}
@@ -556,8 +556,8 @@ function UrlRow({ uid, r }: UrlRowProps) {
                                     : `/dashboard/view?u=${encodeURIComponent(r.url)}`
                             }
                             className={`rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs ${locked
-                                    ? "text-neutral-400 pointer-events-none"
-                                    : "text-neutral-700 hover:bg-neutral-50"
+                                ? "text-neutral-400 pointer-events-none"
+                                : "text-neutral-700 hover:bg-neutral-50"
                                 }`}
                             aria-disabled={locked}
                             tabIndex={locked ? -1 : 0}
@@ -700,69 +700,81 @@ export default function DashboardPage() {
     }, [search, user, router]);
 
     return (
-        <div className="px-4 sm:px-6 lg:px-10 py-6">
-            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-800">
-                Dashboard
-            </h1>
-            <p className="mt-1 text-sm text-neutral-600">
-                Add a URL to capture. We queue screenshots and keep them under your
-                account.
-            </p>
 
-            {billingMsg && (
-                <div
-                    className={`mt-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${billingMsg.type === "success"
-                        ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                        : "border-amber-200 bg-amber-50 text-amber-800"
-                        }`}
-                >
-                    {billingMsg.type === "success" ? (
-                        <CheckCircle2 className="h-4 w-4 mt-[2px]" />
-                    ) : (
-                        <AlertTriangle className="h-4 w-4 mt-[2px]" />
-                    )}
-                    <span>{billingMsg.text}</span>
-                </div>
-            )}
-
-            {bootstrapErr ? (
-                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                    {bootstrapErr}
-                </div>
-            ) : null}
-
-            <div className="mt-6">
-                {user ? <UrlForm uid={user.uid} onAdded={() => { }} /> : null}
-            </div>
-
-            <div className="mt-8">
-                <div className="flex items-center justify-between gap-2">
-                    <h2 className="text-sm font-semibold text-neutral-700">
-                        Tracked URLs
-                    </h2>
-                    {rows.length > 0 && (
-                        <span className="text-xs text-neutral-400">
-                            {rows.length} tracked
-                        </span>
-                    )}
+        <div className="min-h-screen bg-white pt-[15px] pb-[30px]">
+            <main className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-10 py-16">
+                {/* Hero */}
+                <div className="inline-flex items-center gap-2 rounded-full bg-accent text-neutral-50 px-3 py-1 text-[11px] mb-4">
+                    <span>Kloner · Your Dashboard</span>
                 </div>
 
-                <div className="mt-3 grid grid-cols-1 gap-4">
-                    {rowsLoading && rows.length === 0 ? (
-                        <>
-                            <UrlRowSkeleton />
-                            <UrlRowSkeleton />
-                            <UrlRowSkeleton />
-                        </>
-                    ) : rows.length === 0 ? (
-                        <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center text-neutral-500 text-sm">
-                            No URLs yet. Add one above to see capture status here.
+                <div className="rounded-3xl border border-neutral-200 bg-gradient-to-br from-white via-neutral-50 to-neutral-100 px-6 py-8 sm:px-8 sm:py-10 shadow-sm">
+                    <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-neutral-900">
+                        Dashboard
+                    </h1>
+                    <p className="mt-1 text-sm text-neutral-600">
+                        Add a URL to capture. We queue screenshots and keep them under your
+                        account.
+                    </p>
+
+
+
+                    {billingMsg && (
+                        <div
+                            className={`mt-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${billingMsg.type === "success"
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                                : "border-amber-200 bg-amber-50 text-amber-800"
+                                }`}
+                        >
+                            {billingMsg.type === "success" ? (
+                                <CheckCircle2 className="h-4 w-4 mt-[2px]" />
+                            ) : (
+                                <AlertTriangle className="h-4 w-4 mt-[2px]" />
+                            )}
+                            <span>{billingMsg.text}</span>
                         </div>
-                    ) : (
-                        rows.map((r) => <UrlRow key={r.id} uid={user!.uid} r={r} />)
                     )}
+
+                    {bootstrapErr ? (
+                        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                            {bootstrapErr}
+                        </div>
+                    ) : null}
+
+                    <div className="mt-6">
+                        {user ? <UrlForm uid={user.uid} onAdded={() => { }} /> : null}
+                    </div>
+
+                    <div className="mt-8">
+                        <div className="flex items-center justify-between gap-2">
+                            <h2 className="text-sm font-semibold text-neutral-700">
+                                Tracked URLs
+                            </h2>
+                            {rows.length > 0 && (
+                                <span className="text-xs text-neutral-400">
+                                    {rows.length} tracked
+                                </span>
+                            )}
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-1 gap-4">
+                            {rowsLoading && rows.length === 0 ? (
+                                <>
+                                    <UrlRowSkeleton />
+                                    <UrlRowSkeleton />
+                                    <UrlRowSkeleton />
+                                </>
+                            ) : rows.length === 0 ? (
+                                <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center text-neutral-500 text-sm">
+                                    No URLs yet. Add one above to see capture status here.
+                                </div>
+                            ) : (
+                                rows.map((r) => <UrlRow key={r.id} uid={user!.uid} r={r} />)
+                            )}
+                        </div>
+                    </div>
                 </div>
-            </div>
+            </main>
         </div>
     );
 }

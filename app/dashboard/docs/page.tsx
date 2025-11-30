@@ -1,4 +1,4 @@
-// app/docs/page.tsx
+// app/dashboard/docs/page.tsx
 import Link from "next/link";
 import {
     CheckCircle2,
@@ -18,10 +18,9 @@ const ACCENT = "#f55f2a";
 
 export default function DocsPage() {
     return (
-        <div className="min-h-screen bg-neutral-50 text-neutral-900 py-[120px]">
-            <NavBar />
+        <div className="min-h-screen bg-white pt-[15px] pb-[30px]">
 
-            <main className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 pt-8 pb-20">
+            <main className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-10 py-16">
                 <HashScrollHighlighter />
                 {/* Hero */}
                 <section className="mb-10">

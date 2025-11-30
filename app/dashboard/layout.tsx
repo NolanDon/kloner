@@ -1,14 +1,17 @@
-// app/dashboard/layout.tsx
+// app/(app-shell)/layout.tsx
 "use client";
 
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { onAuthStateChanged, type User as FirebaseUser, signOut } from "firebase/auth";
+import {
+    onAuthStateChanged,
+    type User as FirebaseUser,
+    signOut,
+} from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import Link from "next/link";
 import Image from "next/image";
 import logo from "@/public/images/orange_logo.png";
-import CenterLoader from "@/components/ui/CenterLoader";
 import { AnimatePresence, motion } from "framer-motion";
 import {
     MoreHorizontal,
@@ -19,19 +22,86 @@ import {
     Settings as SettingsIcon,
     LogOut,
     Eye,
+    Archive,
+    Rocket,
 } from "lucide-react";
 import KlonerLoader from "@/components/KlonerLoader";
 
 const ACCENT = "#f55f2a";
 
+type NavItemConfig = {
+    href: string;
+    label: string;
+    icon?: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+};
+
+type NavSectionConfig = {
+    label: string;
+    items: NavItemConfig[];
+};
+
+const NAV_SECTIONS: NavSectionConfig[] = [
+    {
+        label: "General",
+        items: [{ href: "/", label: "Home", icon: Home }],
+    },
+    {
+        label: "Preview",
+        items: [
+            { href: "/dashboard", label: "Dashboard", icon: LayoutTemplate },
+            { href: "/dashboard/view", label: "Preview Builder", icon: Eye },
+        ],
+    },
+    {
+        label: "Archive",
+        items: [
+            {
+                href: "/dashboard/archived",
+                label: "Archived previews",
+                icon: Archive,
+            },
+        ],
+    },
+    {
+        label: "Deployments",
+        items: [
+            {
+                href: "/dashboard/deployments",
+                label: "Deployments",
+                icon: Rocket,
+            },
+        ],
+    },
+    {
+        label: "Settings",
+        items: [
+            { href: "/dashboard/settings", label: "Settings", icon: SettingsIcon },
+        ],
+    },
+    {
+        label: "Quick Start",
+        items: [
+            { href: "/dashboard/docs", label: "Docs", icon: BookText },
+        ],
+    },
+];
+
+// STRICT match now – no startsWith for dashboard etc.
+function navItemIsActive(pathname: string, href: string): boolean {
+    if (href === "/") return pathname === "/";
+    return pathname === href;
+}
+
 function NavItem({
     href,
+    label,
+    icon: Icon,
     active,
-    children,
 }: {
     href: string;
+    label: string;
+    icon?: React.ComponentType<React.SVGProps<SVGSVGElement>>;
     active: boolean;
-    children: React.ReactNode;
 }) {
     const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
         if (active) {
@@ -45,12 +115,17 @@ function NavItem({
             href={href}
             onClick={handleClick}
             aria-disabled={active}
-            className={`block rounded-lg px-3 py-2 text-sm ${active
+            className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${active
                 ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
                 : "text-neutral-700 hover:bg-neutral-50"
                 }`}
         >
-            {children}
+            {Icon && (
+                <span className="grid h-7 w-7 place-items-center rounded-md border border-neutral-200 bg-white">
+                    <Icon className="h-3.5 w-3.5" />
+                </span>
+            )}
+            <span className="truncate">{label}</span>
         </Link>
     );
 }
@@ -86,11 +161,6 @@ function AccountBlock() {
         return (parts[0]![0]! + parts[1]![0]!).toUpperCase();
     }, [user]);
 
-    async function handleSignOut() {
-        await onSignOut();
-        router.replace("/login");
-    }
-
     const onSignOut = async (): Promise<void> => {
         try {
             await fetch("/api/auth/session", {
@@ -104,9 +174,8 @@ function AccountBlock() {
         }
     };
 
-
     return (
-        <div className="mt-auto p-4 border-top border-neutral-200">
+        <div className="mt-auto p-4 border-t border-neutral-200">
             <div className="flex items-center gap-3">
                 <div
                     className="h-10 w-10 rounded-full grid place-items-center font-semibold text-white"
@@ -122,7 +191,7 @@ function AccountBlock() {
                 </div>
             </div>
             <button
-                onClick={handleSignOut}
+                onClick={onSignOut}
                 className="mt-3 w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
             >
                 Sign out
@@ -131,7 +200,209 @@ function AccountBlock() {
     );
 }
 
-export default function DashboardLayout({ children }: { children: ReactNode }) {
+function SidebarShell() {
+    const pathname = usePathname();
+
+    return (
+        <div className="flex h-full flex-col w-full">
+            <div className="px-5 py-5 border-b border-neutral-200">
+                <Link
+                    href="/"
+                    className="flex items-center gap-2 font-black tracking-tight text-xl md:text-2xl shrink-0"
+                >
+                    <div className="relative h-[90px] w-[90px]">
+                        <Image
+                            src={logo}
+                            alt="kloner logo"
+                            fill
+                            priority
+                            className="object-contain"
+                        />
+                    </div>
+                </Link>
+            </div>
+
+            <nav className="flex-1 p-3 text-sm overflow-y-auto">
+                {NAV_SECTIONS.map((section) => (
+                    <div key={section.label} className="mb-1">
+                        <SectionLabel>{section.label}</SectionLabel>
+                        <div className="space-y-1">
+                            {section.items.map((item) => (
+                                <NavItem
+                                    key={item.href}
+                                    href={item.href}
+                                    label={item.label}
+                                    icon={item.icon}
+                                    active={navItemIsActive(pathname, item.href)}
+                                />
+                            ))}
+                        </div>
+                    </div>
+                ))}
+            </nav>
+
+            <AccountBlock />
+        </div>
+    );
+}
+
+function MobileHeader() {
+    const router = useRouter();
+    const pathname = usePathname();
+    const [open, setOpen] = useState(false);
+
+    useEffect(() => {
+        const el = document.documentElement;
+        const prev = el.style.overflow;
+        el.style.overflow = open ? "hidden" : prev || "";
+        return () => {
+            el.style.overflow = prev;
+        };
+    }, [open]);
+
+    const close = () => setOpen(false);
+
+    const flatItems: NavItemConfig[] = NAV_SECTIONS.flatMap((s) => s.items);
+
+    const onSignOut = async (): Promise<void> => {
+        try {
+            await fetch("/api/auth/session", {
+                method: "DELETE",
+                credentials: "include",
+            });
+            await signOut(auth);
+            close();
+            router.replace("/login");
+        } catch {
+            // ignore
+        }
+    };
+
+    return (
+        <div className="md:hidden sticky top-0 z-10 bg-white border-b border-neutral-200">
+            <div className="flex items-center justify-between px-4 py-3">
+                <Link
+                    href="/"
+                    className="flex items-center gap-2 font-black tracking-tight text-xl md:text-2xl shrink-0"
+                >
+                    <div className="relative h-[70px] w-[70px]">
+                        <Image
+                            src={logo}
+                            alt="kloner logo"
+                            fill
+                            priority
+                            className="object-contain"
+                        />
+                    </div>
+                </Link>
+
+                <button
+                    onClick={() => setOpen(true)}
+                    aria-label="Open quick menu"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-700"
+                >
+                    <MoreHorizontal className="h-4 w-4" />
+                </button>
+            </div>
+
+            <AnimatePresence>
+                {open && (
+                    <>
+                        <motion.div
+                            key="mbl-backdrop"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.18 }}
+                            className="fixed inset-0 z-[80]"
+                            onClick={close}
+                        />
+                        <motion.div
+                            key="mbl-sheet"
+                            initial={{ y: -12, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            exit={{ y: -10, opacity: 0 }}
+                            transition={{ duration: 0.2, ease: "easeOut" }}
+                            className="fixed inset-x-3 top-[max(12px,env(safe-area-inset-top))] z-[90] rounded-3xl border border-neutral-200 bg-white shadow-2xl"
+                            role="dialog"
+                            aria-modal="true"
+                        >
+                            <div className="flex items-center justify-between px-4 pt-3 pb-2">
+                                <div className="text-sm font-semibold text-neutral-800">
+                                    Quick Menu
+                                </div>
+                                <button
+                                    onClick={close}
+                                    aria-label="Close"
+                                    className="h-9 w-9 grid place-items-center rounded-full hover:bg-neutral-100"
+                                >
+                                    <X className="h-5 w-5" />
+                                </button>
+                            </div>
+                            <div className="h-px bg-neutral-200/80" />
+
+                            <ul className="px-2 py-2">
+                                {flatItems.map(({ href, label, icon: Icon }) => {
+                                    const active = navItemIsActive(pathname, href);
+
+                                    const handleClick = (
+                                        e: React.MouseEvent<HTMLAnchorElement>,
+                                    ) => {
+                                        if (active) {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            close();
+                                            return;
+                                        }
+                                        close();
+                                    };
+
+                                    return (
+                                        <li key={href}>
+                                            <a
+                                                href={href}
+                                                onClick={handleClick}
+                                                aria-disabled={active}
+                                                className={`flex items-center gap-3 rounded-xl px-3 py-3 text-[15px] ${active
+                                                    ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
+                                                    : "text-neutral-800 hover:bg-neutral-50"
+                                                    }`}
+                                            >
+                                                {Icon && (
+                                                    <span className="grid h-8 w-8 place-items-center rounded-lg border border-neutral-200 bg-white">
+                                                        <Icon className="h-4 w-4" />
+                                                    </span>
+                                                )}
+                                                {label}
+                                            </a>
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+
+                            <div className="h-px bg-neutral-200/80" />
+
+                            <div className="px-4 py-3">
+                                <button
+                                    onClick={onSignOut}
+                                    className="w-full inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold text-white"
+                                    style={{ background: ACCENT }}
+                                >
+                                    <LogOut className="h-4 w-4" />
+                                    Sign out
+                                </button>
+                            </div>
+
+                            <div className="pb-[max(8px,env(safe-area-inset-bottom))]" />
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
+        </div>
+    );
+}
+
+export default function AppShellLayout({ children }: { children: ReactNode }) {
     const router = useRouter();
     const [ready, setReady] = useState(false);
 
@@ -147,247 +418,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     }, [router]);
 
     if (!ready) {
-        return (
-            <KlonerLoader />
-        );
-    }
-
-    function SidebarShell() {
-        const pathname = usePathname();
-        const inDashboard = pathname === "/dashboard";
-        const inPreview = pathname.startsWith("/dashboard/view") || pathname === "/dashboard";
-        const inDeployments = pathname.startsWith("/dashboard/deployments");
-        const inArchived = pathname.startsWith("/dashboard/archived");
-
-        return (
-            <div className="flex h-full flex-col w-full">
-                {/* Brand */}
-                <div className="px-5 py-5 border-b border-neutral-200">
-                    <Link
-                        href="/"
-                        className="flex items-center gap-2 font-black tracking-tight text-xl md:text-2xl shrink-0"
-                    >
-                        <div className="relative h-[90px] w-[90px]">
-                            <Image
-                                src={logo}
-                                alt="kloner logo"
-                                fill
-                                priority
-                                className="object-contain"
-                            />
-                        </div>
-                    </Link>
-                </div>
-
-                {/* Nav */}
-                <nav className="flex-1 p-3 text-sm overflow-y-auto">
-                    <SectionLabel>General</SectionLabel>
-                    <div className="space-y-1">
-                        <NavItem href="/" active={false}>
-                            Home
-                        </NavItem>
-                    </div>
-
-                    <SectionLabel>Preview</SectionLabel>
-                    <div className="space-y-1">
-                        <NavItem href="/dashboard" active={inDashboard}>
-                            Dashboard
-                        </NavItem>
-                        <NavItem href="/dashboard/view" active={inPreview && !inDashboard}>
-                            Preview Builder
-                        </NavItem>
-                    </div>
-
-                    <SectionLabel>Archive</SectionLabel>
-                    <div className="space-y-1">
-                        <NavItem href="/dashboard/archived" active={inArchived}>
-                            Archived previews
-                        </NavItem>
-                    </div>
-
-                    <SectionLabel>Deploy</SectionLabel>
-                    <div className="space-y-1">
-                        <NavItem href="/dashboard/deployments" active={inDeployments}>
-                            Deployments
-                        </NavItem>
-                    </div>
-
-                    <SectionLabel>General</SectionLabel>
-                    <div className="space-y-1">
-                        <NavItem href="/settings" active={usePathname() === "/settings"}>
-                            Settings
-                        </NavItem>
-                        <NavItem href="/docs" active={usePathname() === "/docs"}>
-                            Docs
-                        </NavItem>
-                    </div>
-                </nav>
-
-                <AccountBlock />
-            </div>
-        );
-    }
-
-    function MobileHeader() {
-        const pathname = usePathname();
-        const [open, setOpen] = useState(false);
-
-        useEffect(() => {
-            const el = document.documentElement;
-            const prev = el.style.overflow;
-            el.style.overflow = open ? "hidden" : prev || "";
-            return () => {
-                el.style.overflow = prev;
-            };
-        }, [open]);
-
-        const close = () => setOpen(false);
-
-        const items = [
-            { href: "/", label: "Home", icon: Home },
-            { href: "/dashboard", label: "Dashboard", icon: LayoutTemplate },
-            { href: "/dashboard/view", label: "Preview Builder", icon: Eye },
-            { href: "/dashboard/deployments", label: "Deployments", icon: LayoutTemplate },
-            { href: "/docs", label: "Docs", icon: BookText },
-            { href: "/settings", label: "Settings", icon: SettingsIcon },
-        ];
-
-        const onSignOut = async (): Promise<void> => {
-            try {
-                await fetch("/api/auth/session", {
-                    method: "DELETE",
-                    credentials: "include",
-                });
-                await signOut(auth);
-                close();
-                router.replace("/login");
-            } catch {
-                // ignore
-            }
-        };
-
-        return (
-            <div className="md:hidden sticky top-0 z-10 bg-white border-b border-neutral-200">
-                <div className="flex items-center justify-between px-4 py-3">
-                    <Link
-                        href="/"
-                        className="flex items-center gap-2 font-black tracking-tight text-xl md:text-2xl shrink-0"
-                    >
-                        <div className="relative h-[70px] w-[70px]">
-                            <Image
-                                src={logo}
-                                alt="kloner logo"
-                                fill
-                                priority
-                                className="object-contain"
-                            />
-                        </div>
-                    </Link>
-
-                    <button
-                        onClick={() => setOpen(true)}
-                        aria-label="Open quick menu"
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-700"
-                    >
-                        <MoreHorizontal className="h-4 w-4" />
-                    </button>
-                </div>
-
-                <AnimatePresence>
-                    {open && (
-                        <>
-                            <motion.div
-                                key="mbl-backdrop"
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                transition={{ duration: 0.18 }}
-                                className="fixed inset-0 z-[80]"
-                                onClick={close}
-                            />
-                            <motion.div
-                                key="mbl-sheet"
-                                initial={{ y: -12, opacity: 0 }}
-                                animate={{ y: 0, opacity: 1 }}
-                                exit={{ y: -10, opacity: 0 }}
-                                transition={{ duration: 0.2, ease: "easeOut" }}
-                                className="fixed inset-x-3 top-[max(12px,env(safe-area-inset-top))] z[90] rounded-3xl border border-neutral-200 bg-white shadow-2xl"
-                                role="dialog"
-                                aria-modal="true"
-                            >
-                                <div className="flex items-center justify-between px-4 pt-3 pb-2">
-                                    <div className="text-sm font-semibold text-neutral-800">
-                                        Quick Menu
-                                    </div>
-                                    <button
-                                        onClick={close}
-                                        aria-label="Close"
-                                        className="h-9 w-9 grid place-items-center rounded-full hover:bg-neutral-100"
-                                    >
-                                        <X className="h-5 w-5" />
-                                    </button>
-                                </div>
-                                <div className="h-px bg-neutral-200/80" />
-
-                                <ul className="px-2 py-2">
-                                    {items.map(({ href, label, icon: Icon }) => {
-                                        const active =
-                                            pathname === href ||
-                                            (href !== "/" && pathname.startsWith(href));
-
-                                        const handleClick = (
-                                            e: React.MouseEvent<HTMLAnchorElement>,
-                                        ) => {
-                                            if (active) {
-                                                e.preventDefault();
-                                                e.stopPropagation();
-                                                close();
-                                                return;
-                                            }
-                                            close();
-                                        };
-
-                                        return (
-                                            <li key={href}>
-                                                <a
-                                                    href={href}
-                                                    onClick={handleClick}
-                                                    aria-disabled={active}
-                                                    className={`flex items-center gap-3 rounded-xl px-3 py-3 text-[15px] ${active
-                                                        ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
-                                                        : "text-neutral-800 hover:bg-neutral-50"
-                                                        }`}
-                                                >
-                                                    <span className="grid h-8 w-8 place-items-center rounded-lg border border-neutral-200 bg-white">
-                                                        <Icon className="h-4 w-4" />
-                                                    </span>
-                                                    {label}
-                                                </a>
-                                            </li>
-                                        );
-                                    })}
-                                </ul>
-
-                                <div className="h-px bg-neutral-200/80" />
-
-                                <div className="px-4 py-3">
-                                    <button
-                                        onClick={onSignOut}
-                                        className="w-full inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold text-white"
-                                        style={{ background: ACCENT }}
-                                    >
-                                        <LogOut className="h-4 w-4" />
-                                        Sign out
-                                    </button>
-                                </div>
-
-                                <div className="pb-[max(8px,env(safe-area-inset-bottom))]" />
-                            </motion.div>
-                        </>
-                    )}
-                </AnimatePresence>
-            </div>
-        );
+        return <KlonerLoader />;
     }
 
     return (

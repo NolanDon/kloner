@@ -3,7 +3,7 @@
 
 import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 import { useEffect, useMemo, useRef, useState, useCallback, ChangeEvent } from "react";
-import Image from "next/image";
+import { motion, AnimatePresence } from "framer-motion";
 
 type Device = "desktop" | "tablet" | "mobile";
 type ViewMode = "code" | "preview" | "screenshot";
@@ -15,20 +15,22 @@ type EditorPage = {
     screenshotUrl?: string;
 };
 
-export type SeoMeta = {
+export interface SeoMeta {
     title?: string;
     description?: string;
-    faviconUrl?: string;
-    byRoute?: SeoMetaMap; // NEW: per-route SEO
     ogImageUrl?: string;
-};
+    faviconUrl?: string;
+    // NEW: raw JSON-LD object for this page
+    jsonLd?: unknown;
+}
+
 
 
 type Props = {
     initialHtml: string;
     sourceImage?: string;
     onClose: () => Promise<void> | void;
-    onExport: (html: string, name?: string) => Promise<void>;
+    onExport: (html: string, name?: string, skipBuildFinalExport?: boolean) => Promise<void>;
     draftId?: string;
     saveDraft?: (payload: {
         draftId?: string;
@@ -172,19 +174,6 @@ const FONT_SIZE_PRESETS = [
     { id: "xl", label: "XL", px: 28 },
 ];
 
-// helper: convert editor-style map → export-style map
-function buildSeoMetaMapForExport(byPage: SeoMetaByPage): SeoMetaMap {
-    const out: SeoMetaMap = {};
-    for (const [key, value] of Object.entries(byPage)) {
-        out[key] = {
-            title: value.title ?? "",
-            description: value.description ?? "",
-            // you can thread JSON-LD into SeoMeta later if you want
-            jsonLd: (value as any).jsonLd ?? null,
-        };
-    }
-    return out;
-}
 
 // 1) strip all runtime <script> tags EXCEPT SEO JSON-LD
 export function stripScripts(html: string) {
@@ -423,12 +412,108 @@ export function sanitizeExportHtml(html: string, meta?: SeoMeta): string {
     return out;
 }
 
-export function buildFinalExport(
-    html: string,
-    rootMeta?: SeoMeta,
-    metaByRoute?: SeoMetaMap
-): string {
+// imports you need somewhere near the top of the file
+import { doc, getDocFromServer, serverTimestamp, updateDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase"; // or wherever your db is
+import type { User as FirebaseUser } from "firebase/auth";
+import { RenderDoc } from "@/app/dashboard/view/page";
+import { useAuth } from "@/src/hooks/useAuth";
+import { Loader2 } from "lucide-react";
+
+
+// ───────── SEO helpers for export ─────────
+
+function deriveRootMetaFromSeoMap(
+    seo: SeoMetaByPage | null | undefined
+): SeoMeta | undefined {
+    if (!seo) return undefined;
+    const keys = Object.keys(seo);
+    if (!keys.length) return undefined;
+
+    const preferredKey =
+        keys.find((k) => k === "single" || k === "/" || k === "home") ?? keys[0];
+
+    const base = seo[preferredKey];
+
+    const anyFavicon = Object.values(seo)
+        .map((m) => m.faviconUrl?.trim())
+        .find((v) => v && v.length > 0);
+
+    if (!anyFavicon || base.faviconUrl?.trim()) {
+        return base;
+    }
+
+    return {
+        ...base,
+        faviconUrl: anyFavicon,
+    };
+}
+
+export function buildSeoMetaMapForExport(
+    byPage: SeoMetaByPage | null | undefined
+): SeoMetaMap | undefined {
+    if (!byPage || !Object.keys(byPage).length) return undefined;
+
+    const out: SeoMetaMap = {};
+    for (const [key, value] of Object.entries(byPage)) {
+        out[key] = {
+            title: value.title ?? "",
+            description: value.description ?? "",
+            jsonLd: (value as any).jsonLd ?? null,
+        };
+    }
+    return out;
+}
+
+// ───────── NEW: buildFinalExport that fetches meta from Firestore ─────────
+
+// same as before, just showing signature and call style
+
+export async function buildFinalExport(opts: {
+    html: string;
+    user: FirebaseUser | null;
+    draftId?: string | null;
+    fallbackSeoMetaByPage?: SeoMetaByPage | null;
+}): Promise<string> {
+    const { html, user, draftId, fallbackSeoMetaByPage } = opts;
+
     if (!html) return html;
+
+    let seoFromDb: SeoMetaByPage | null = null;
+
+    if (user && draftId) {
+        try {
+            const ref = doc(db, "kloner_users", user.uid, "kloner_renders", draftId);
+            const snap = await getDocFromServer(ref);
+
+            if (snap.exists()) {
+                const data = snap.data() as RenderDoc;
+                const fromDb = data.seoMetaByPage as SeoMetaByPage | undefined;
+                if (fromDb && Object.keys(fromDb).length > 0) {
+                    seoFromDb = fromDb;
+                }
+            }
+        } catch (e) {
+            console.error(
+                "buildFinalExport: failed to load seoMetaByPage from Firestore",
+                { draftId, error: e }
+            );
+        }
+    }
+
+    const mergedSeo: SeoMetaByPage | null =
+        seoFromDb && Object.keys(seoFromDb).length > 0
+            ? seoFromDb
+            : fallbackSeoMetaByPage && Object.keys(fallbackSeoMetaByPage).length > 0
+                ? fallbackSeoMetaByPage
+                : null;
+
+    const rootMeta = deriveRootMetaFromSeoMap(mergedSeo);
+
+    // Only build this if we actually have a map
+    const metaByRoute: SeoMetaMap | undefined = mergedSeo
+        ? buildSeoMetaMapForExport(mergedSeo)
+        : undefined;
 
     // 1) scrub + apply base SEO (home/global meta + favicon)
     let out = sanitizeExportHtml(html, rootMeta);
@@ -572,7 +657,7 @@ function injectClientRouter(html: string): string {
     return out;
 }
 
-type SeoMetaMap = Record<
+export type SeoMetaMap = Record<
     string,
     {
         title: string;
@@ -612,8 +697,6 @@ function labelFromRoute(route: string): string {
         .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
         .join(" ");
 }
-
-
 
 
 // derive pages from a monolithic HTML with <main class="page-root" data-route="...">
@@ -786,9 +869,20 @@ export default function PreviewEditor({
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const [iframeKey, setIframeKey] = useState<number>(0);
-    const [derivedPages, setDerivedPages] = useState<EditorPage[]>([]);
+    const { user } = useAuth();                  // or your auth provider
     const [activePageId, setActivePageId] = useState<string>("");
+    const [derivedPages, setDerivedPages] = useState<EditorPage[]>([]);
+    const [pageSwitchConfirm, setPageSwitchConfirm] = useState<{ targetId: string } | null>(null);
 
+    // THESE APPEAR UNUSED BUT THEY ARE NOT (TRUST ME I FOUND OUT) - DO NOT REMOVE!!!!
+    const localImageStore: Map<string, File> = new Map();
+    const pendingImagePaths: Set<string> = new Set();
+    // THESE APPEAR UNUSED BUT THEY ARE NOT (TRUST ME I FOUND OUT) - DO NOT REMOVE!!!!
+
+    // this is used as a “last known good” snapshot for export fallback
+    const [activeSeoMetaByPage, setActiveSeoMetaByPage] = useState<
+        Record<string, SeoMeta> | null
+    >(null);
 
     const allPages = useMemo<EditorPage[] | null>(
         () =>
@@ -807,9 +901,18 @@ export default function PreviewEditor({
     );
 
 
+    function postToEditor(data: any) {
+        const iframe = iframeRef.current;
+        if (!iframe) return;
+        iframe.contentWindow?.postMessage(data, "*");
+    }
+
+
     const devicePx =
         device === "desktop" ? 1440 : device === "tablet" ? 768 : 390;
 
+
+    // inside PreviewEditor component
 
     const emptyMeta: SeoMeta = {
         title: "",
@@ -817,8 +920,7 @@ export default function PreviewEditor({
         ogImageUrl: "",
         faviconUrl: "",
     };
-
-
+    // main SEO map stored for this render
     const [seoMetaByPage, setSeoMetaByPage] = useState<SeoMetaByPage>(() => {
         if (initialSeoMetaByPage && Object.keys(initialSeoMetaByPage).length > 0) {
             return { ...initialSeoMetaByPage };
@@ -832,7 +934,6 @@ export default function PreviewEditor({
             [baseKey]: initialSeoMeta ?? emptyMeta,
         };
     });
-
 
     const currentPageKey = useMemo(() => {
         if (!allPages || !activePageId || activePageId === "single") {
@@ -860,45 +961,82 @@ export default function PreviewEditor({
         };
     }, [seoMetaByPage, currentPageKey]);
 
+    // pick a single renderId to use for Firestore writes / reads
+    const resolvedRenderId = draftId ?? null;
+
+
+    // this now does BOTH: updates local state AND writes to Firestore
     const handleSaveMetaForCurrentPage = useCallback(
         async (meta: SeoMeta) => {
-            setSeoMetaByPage((prev) => {
-                const prevMap: SeoMetaByPage = prev || {};
+            const pageKey =
+                currentPageKey && currentPageKey !== "single"
+                    ? currentPageKey
+                    : SINGLE_PAGE_KEY;
 
-                const pageKey =
-                    currentPageKey && currentPageKey !== "single"
-                        ? currentPageKey
-                        : SINGLE_PAGE_KEY;
+            const faviconUrl = meta.faviconUrl?.trim() || "";
 
-                const faviconUrl = meta.faviconUrl?.trim() || "";
+            // build next map from current state
+            let next: SeoMetaByPage = {
+                ...(seoMetaByPage || {}),
+                [pageKey]: meta,
+            };
 
-                let next: SeoMetaByPage = {
-                    ...prevMap,
-                    [pageKey]: meta,
-                };
+            // favicon is global: propagate across pages if set
+            if (faviconUrl) {
+                next = Object.fromEntries(
+                    Object.entries(next).map(([key, val]) => [
+                        key,
+                        key === pageKey ? val : { ...val, faviconUrl },
+                    ]),
+                ) as SeoMetaByPage;
+            }
 
-                // favicon is global: propagate across pages if set
-                if (faviconUrl) {
-                    next = Object.fromEntries(
-                        Object.entries(next).map(([key, val]) => [
-                            key,
-                            key === pageKey ? val : { ...val, faviconUrl },
-                        ]),
-                    ) as SeoMetaByPage;
-                }
+            // update local state so the editor reflects the latest SEO immediately
+            setSeoMetaByPage(next);
+            setActiveSeoMetaByPage(next);
 
-                if (onSaveMeta) {
-                    void onSaveMeta(
-                        pageKey === SINGLE_PAGE_KEY ? null : pageKey,
-                        meta,
-                        next,
+
+            // write to Firestore so exports and other clients see the latest meta
+            if (user && resolvedRenderId) {
+                try {
+                    const dref = doc(
+                        db,
+                        "kloner_users",
+                        user.uid,
+                        "kloner_renders",
+                        resolvedRenderId,
+                    );
+
+                    await updateDoc(dref, {
+                        seoMetaByPage: next,
+                        updatedAt: serverTimestamp(),
+                        // CRITICAL: persist JSON-LD as an object
+                        jsonLd: meta.jsonLd ?? null,
+                    });
+                } catch (err) {
+                    console.error(
+                        "[handleSaveMetaForCurrentPage] Failed to persist SEO meta to Firestore",
+                        { err, resolvedRenderId },
                     );
                 }
+            }
 
-                return next;
-            });
+            // optional: still propagate up to any parent hook if you had one
+            if (onSaveMeta) {
+                void onSaveMeta(
+                    pageKey === SINGLE_PAGE_KEY ? null : pageKey,
+                    meta,
+                    next,
+                );
+            }
         },
-        [currentPageKey, onSaveMeta],
+        [
+            currentPageKey,
+            seoMetaByPage,
+            user,
+            resolvedRenderId,
+            onSaveMeta,
+        ],
     );
 
 
@@ -907,58 +1045,94 @@ export default function PreviewEditor({
         [initialHtml],
     );
 
+    type MetaWithJsonLd = SeoMeta & {
+        jsonLd?: unknown;
+    };
+
+    type MetaSettingsProps = {
+        draftId?: string;
+        meta: MetaWithJsonLd;
+        uploadFileToUserBlob: (file: File, draftId: string) => Promise<UploadedAsset>;
+        onSaveMeta?: (meta: MetaWithJsonLd) => Promise<void> | void;
+    };
+
     function MetaSettings({
         draftId,
         meta,
         uploadFileToUserBlob,
         onSaveMeta,
-    }: {
-        draftId?: string;
-        meta: SeoMeta;
-        uploadFileToUserBlob: (file: File, draftId: string) => Promise<UploadedAsset>;
-        onSaveMeta?: (meta: SeoMeta) => Promise<void> | void;
-    }) {
+    }: MetaSettingsProps) {
         const [uploading, setUploading] = useState(false);
 
-        // local UX state
+        // save state + hard debounce guard
         const [saving, setSaving] = useState(false);
+        const savingRef = useRef(false);
         const [justSaved, setJustSaved] = useState(false);
 
-        // local form copy so typing doesn’t fight parent state
-        const [draftMeta, setDraftMeta] = useState<SeoMeta>(meta);
+        // local meta copy
+        const [draftMeta, setDraftMeta] = useState<MetaWithJsonLd>(meta);
 
-        // when page / meta changes, re-seed the form
+        // JSON-LD text version for editing
+        const [jsonText, setJsonText] = useState<string>(() =>
+            meta.jsonLd ? JSON.stringify(meta.jsonLd, null, 2) : ""
+        );
+
+        // when page / meta changes, re-seed form + JSON editor
         useEffect(() => {
             setDraftMeta(meta);
+            setJsonText(meta.jsonLd ? JSON.stringify(meta.jsonLd, null, 2) : "");
         }, [meta]);
 
-        const handleMetaChange = (key: keyof SeoMeta, value: string) => {
+        const handleMetaChange = (key: keyof MetaWithJsonLd, value: string) => {
             setDraftMeta((prev) => ({ ...prev, [key]: value }));
         };
 
-        const handleMetaSaveClick = async () => {
-            if (!onSaveMeta) {
-                console.warn("[MetaSettings] onSaveMeta is undefined – no persistence wired");
-                return;
-            }
 
+
+        const handleMetaSaveClick = async () => {
+            if (!onSaveMeta) return;
+            if (savingRef.current) return;
+
+            savingRef.current = true;
             setSaving(true);
             setJustSaved(false);
+
             try {
-                await onSaveMeta(draftMeta);
+                let parsedJsonLd: unknown | undefined = draftMeta.jsonLd;
+
+                const trimmed = jsonText.trim();
+                if (trimmed.length > 0) {
+                    try {
+                        parsedJsonLd = JSON.parse(trimmed);
+                    } catch (err) {
+                        alert("JSON-LD is not valid JSON. Fix it or clear the field.");
+                        savingRef.current = false;
+                        setSaving(false);
+                        return;
+                    }
+                } else {
+                    parsedJsonLd = undefined;
+                }
+
+                const metaToSave: SeoMeta = {
+                    ...draftMeta,
+                    jsonLd: parsedJsonLd,
+                };
+
+                await onSaveMeta(metaToSave);
                 setJustSaved(true);
                 setTimeout(() => setJustSaved(false), 1500);
-            } catch (err) {
-                console.error("Failed to save SEO meta", err);
-                alert("Failed to save metadata. See console for details.");
             } finally {
+                savingRef.current = false;
                 setSaving(false);
             }
         };
 
+
         const uploadFavicon = async (e: ChangeEvent<HTMLInputElement>) => {
             const file = e.target.files?.[0];
-            e.target.value = ""; // Clear input for next upload
+            e.target.value = "";
+
             if (!file || !draftId) return;
             if (!file.type.startsWith("image/")) {
                 alert("Please upload a valid image file for the favicon.");
@@ -969,7 +1143,7 @@ export default function PreviewEditor({
             try {
                 const { url } = await uploadFileToUserBlob(file, draftId);
                 setDraftMeta((prev) => ({ ...prev, faviconUrl: url }));
-                alert("Favicon uploaded successfully!");
+                alert("Favicon uploaded successfully.");
             } catch (error) {
                 console.error("Favicon upload failed:", error);
                 alert("Favicon upload failed. See console for details.");
@@ -980,21 +1154,9 @@ export default function PreviewEditor({
 
         return (
             <div className="space-y-4">
-                <h3 className="text-lg font-bold">SEO & Site Metadata 📊</h3>
+                <h3 className="text-lg font-bold">SEO &amp; Site Metadata</h3>
 
-
-                {/* <UiBtn
-                    variant="outline-quiet"
-                    onClick={() => {
-                        if (dirty) setClosePrompt(true);
-                        else performClose("discard");
-                    }}
-                    disabled={closing}
-                    ariaBusy={closing}
-                >
-                    ❌ Close
-                </UiBtn> */}
-
+                {/* Page title */}
                 <div>
                     <label
                         htmlFor="meta-title"
@@ -1006,18 +1168,19 @@ export default function PreviewEditor({
                         id="meta-title"
                         name="meta-title"
                         type="text"
-                        value={draftMeta.title}
+                        value={draftMeta.title ?? ""}
                         onChange={(e) => handleMetaChange("title", e.target.value)}
-                        placeholder="E.g. My Amazing Website"
+                        placeholder="E.g. Cookie Gifts & Holiday Boxes"
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-accent focus:ring-accent sm:text-sm p-2 border"
                         maxLength={60}
                         autoComplete="off"
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                        Used in browser tabs and search results. (Max 60 characters)
+                        Used in browser tabs and search results. Max 60 characters.
                     </p>
                 </div>
 
+                {/* Meta description */}
                 <div>
                     <label
                         htmlFor="meta-description"
@@ -1028,19 +1191,22 @@ export default function PreviewEditor({
                     <textarea
                         id="meta-description"
                         name="meta-description"
-                        value={draftMeta.description}
-                        onChange={(e) => handleMetaChange("description", e.target.value)}
-                        placeholder="A short, catchy summary of this page..."
-                        rows={2}
+                        value={draftMeta.description ?? ""}
+                        onChange={(e) =>
+                            handleMetaChange("description", e.target.value)
+                        }
+                        placeholder="A short, search-friendly summary of this page..."
+                        rows={3}
                         className="mt-1 min-h-[100px] block w-full rounded-md border-gray-300 shadow-sm focus:border-accent focus:ring-accent sm:text-sm p-2 border"
                         maxLength={160}
                         autoComplete="off"
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                        Used for search snippet. (Max 160 characters)
+                        Used for search snippets. Max 160 characters.
                     </p>
                 </div>
 
+                {/* OG image URL */}
                 <div>
                     <label
                         htmlFor="meta-og-image"
@@ -1052,7 +1218,7 @@ export default function PreviewEditor({
                         id="meta-og-image"
                         name="meta-og-image"
                         type="url"
-                        value={draftMeta.ogImageUrl}
+                        value={draftMeta.ogImageUrl ?? ""}
                         onChange={(e) =>
                             handleMetaChange("ogImageUrl", e.target.value)
                         }
@@ -1061,10 +1227,11 @@ export default function PreviewEditor({
                         autoComplete="off"
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                        URL for the image displayed when sharing on platforms like Twitter/Facebook.
+                        Image shown when this page is shared on social platforms.
                     </p>
                 </div>
 
+                {/* Favicon upload */}
                 <div>
                     <label
                         htmlFor="meta-favicon"
@@ -1106,44 +1273,60 @@ export default function PreviewEditor({
                     </div>
                 </div>
 
-                <UiBtn
-                    variant="outline"
-                    onClick={() => doSave()}
-                    disabled={closing || savingDraft}
-                    ariaBusy={savingDraft}
-                >
-                    {savingDraft ? "💾 Saving…" : "💾 Save draft"}
-                </UiBtn>
-                {/* <UiBtn
-                    variant="filled"
-                    onClick={() => setExportPrompt(true)}
-                    disabled={closing || exporting}
-                    ariaBusy={exporting}
-                >
-                    {exporting ? "🚀 Exporting…" : "🚀 Export to Vercel"}
-                </UiBtn> */}
-                {/* <div className="pt-2"> */}
-                {/* <button
-                        type="button"
-                        onClick={handleMetaSaveClick}
-                        disabled={saving}
-                        className={`inline-flex items-center rounded-md px-3 py-2 text-sm font-medium transition ${saving
-                            ? "bg-emerald-50 text-emerald-700 cursor-not-allowed"
-                            : justSaved
-                                ? "bg-emerald-50 text-emerald-700 border border-emerald-300"
-                                : "bg-emerald-600 text-white hover:brightness-95"
-                            }`}
+                {/* JSON-LD editor */}
+                <div>
+                    <label
+                        htmlFor="meta-jsonld"
+                        className="block text-sm font-medium text-gray-700"
                     >
-                        {saving
-                            ? "Saving..."
-                            : justSaved
-                                ? "Saved Changes!"
-                                : "Save Changes"}
-                    </button> */}
-                {/* </div> */}
+                        JSON-LD (advanced)
+                    </label>
+                    <textarea
+                        id="meta-jsonld"
+                        name="meta-jsonld"
+                        value={jsonText}
+                        onChange={(e) => setJsonText(e.target.value)}
+                        placeholder='{
+                            "@context": "https://schema.org",
+                            "@type": "WebPage",
+                            "name": "The Basic Website — Sample Brand",
+                            "url": "https://example.com/"
+                            }'
+                        rows={10}
+                        className="mt-1 block w-full rounded-md border-gray-300 font-mono text-xs leading-5 shadow-sm focus:border-accent focus:ring-accent p-2 border"
+                        spellCheck={false}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                        Must be valid JSON. This content will be rendered inside a{" "}
+                        {`<script type="application/ld+json">`} tag for this page.
+                    </p>
+                </div>
+
+                {/* Save meta button with debounce */}
+                <button
+                    type="button"
+                    onClick={handleMetaSaveClick}
+                    disabled={saving}
+                    className={`inline-flex items-center rounded-md px-3 py-2 text-sm font-medium transition ${saving
+                        ? "bg-accent/50 text-white cursor-not-allowed"
+                        : justSaved
+                            ? "bg-accent/50 text-white"
+                            : "bg-accent text-white hover:brightness-95"
+                        }`}
+                >
+                    {saving
+                        ? "Saving..."
+                        : justSaved
+                            ? "Saved Changes"
+                            : "Save Changes"}
+                </button>
             </div>
         );
     }
+
+
+
+
 
 
     // inject route-specific CSS into the monolithic HTML for iframe preview
@@ -1309,19 +1492,44 @@ export default function PreviewEditor({
     );
 
     function applyDraftToPreview() {
+        // hard debounce – ignore if an apply is already in flight
+        if (applyingPreview) return;
+
         setApplyingPreview(true);
-        const nextHtml = snapshotFromIframeOrDraft();
-        setHtmlDraft(nextHtml);
-        setPreviewHtml(nextHtml);
-        emitLive(nextHtml);
+
+        // Use the current draft as the single source of truth
+        // Do NOT re-read from the iframe or original HTML here.
+        const nextHtml = htmlDraft;
+
+        setPreviewHtml(nextHtml); // what you use for srcDoc / export
+        emitLive(nextHtml);       // whatever live sync / broadcast you do
         setDirty(false);
-        window.setTimeout(() => setApplyingPreview(false), 450);
+
+        window.setTimeout(() => {
+            setApplyingPreview(false);
+        }, 450);
     }
+
 
     async function doSave(options?: { applyToPreview?: boolean }) {
         if (savingDraft) return;
+
+        // must have a draftId to associate uploads with
+        if (!draftId) {
+            console.error("doSave called without draftId");
+            return;
+        }
+
         setSavingDraft(true);
         try {
+            const doc = iframeRef.current?.contentDocument ?? document;
+
+            // 1) upload any local-only images and rewrite DOM src/src-path
+            await flushPendingImagesBeforeSave({
+                doc,
+                draftId,
+            });
+            // 2) now capture HTML with final URLs, not blob: URLs
             const nextHtml = snapshotFromIframeOrDraft();
             setHtmlDraft(nextHtml);
 
@@ -1365,15 +1573,57 @@ export default function PreviewEditor({
         }
     }
 
+    const handlePageSwitch = async (nextId: string) => {
+        if (!nextId || nextId === activePageId) return;
+
+        const doc = iframeRef.current?.contentDocument;
+        const hasPendingImages = !!doc?.querySelector("img[data-local-image-id]");
+
+        if (hasPendingImages) {
+            // open nice confirmation box instead of window.confirm
+            setPageSwitchConfirm({ targetId: nextId });
+            return;
+        }
+
+        setActivePageId(nextId);
+    };
+
+    const confirmPageSwitch = async () => {
+        if (!pageSwitchConfirm) return;
+        const nextId = pageSwitchConfirm.targetId;
+
+        try {
+            const doc = iframeRef.current?.contentDocument;
+            const hasPendingImages = !!doc?.querySelector("img[data-local-image-id]");
+
+            if (hasPendingImages) {
+                await doSave({ applyToPreview: true });
+            }
+        } catch (err) {
+            console.error("[confirmPageSwitch] save failed before page switch", err);
+            // still continue to switch, to avoid trapping the user
+        } finally {
+            setActivePageId(nextId);
+            setPageSwitchConfirm(null);
+        }
+    };
+
+    const cancelPageSwitch = () => {
+        setPageSwitchConfirm(null);
+    };
+
+
+
+    // inside your editor component
     async function doExport() {
         if (exporting) return;
         setExportNote("");
         setExporting(true);
 
         try {
-            if (dirty) {
-                await doSave({ applyToPreview: true });
-            }
+            // if (dirty) {
+            await doSave({ applyToPreview: true });
+            // }
 
             const baseHtmlRaw = snapshotFromIframeOrDraft();
             const baseHtml = (baseHtmlRaw || previewHtml || "").trim();
@@ -1381,18 +1631,13 @@ export default function PreviewEditor({
                 throw new Error("No HTML available to export");
             }
 
-            // root/home/global meta (includes favicon fallback logic)
-            const rootMeta = currentSeoMeta || initialSeoMeta || undefined;
-
-            // if we actually have any per-page records, use them
-            const hasPerPage =
-                seoMetaByPage && Object.keys(seoMetaByPage).length > 0;
-            const metaByRoute = hasPerPage
-                ? buildSeoMetaMapForExport(seoMetaByPage)
-                : undefined;
-
-            // scrub, apply SEO, then inject SPA router if multipage
-            const finalHtml = buildFinalExport(baseHtml, rootMeta, metaByRoute);
+            // scrub, apply SEO from Firestore, then inject SPA router if multipage
+            const finalHtml = await buildFinalExport({
+                html: baseHtml,
+                user,                              // Firebase user (for path)
+                draftId,                          // render doc id in kloner_renders
+                fallbackSeoMetaByPage: seoMetaByPage || null, // editor state fallback
+            });
 
             await onExport(finalHtml, nameHint || undefined);
         } catch (e: any) {
@@ -1411,45 +1656,200 @@ export default function PreviewEditor({
     }
 
 
-
     function sanitizeName(name: string) {
         const base = name.toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
         return base.slice(-64) || "image";
     }
 
+
     async function uploadFileToUserBlob(
         file: File,
         draftId: string
     ): Promise<UploadedAsset> {
+        console.log("[uploadFileToUserBlob] start", {
+            draftId,
+            name: file.name,
+            size: file.size,
+            type: file.type,
+        });
+
         const csrf = await ensureSessionAndCsrf();
         const safeName = sanitizeName(file.name || "upload.bin");
 
-        const res = await fetch(
-            `/api/user-blob/upload-url?filename=${encodeURIComponent(
-                safeName
-            )}&renderId=${encodeURIComponent(draftId)}`,
-            {
-                method: "POST",
-                headers: {
-                    "content-type": file.type || "application/octet-stream",
-                    ...(csrf ? { "x-csrf": csrf } : {}),
-                },
-                credentials: "include",
-                body: file,
-            }
-        );
+        const url = `/api/user-blob/upload-url?filename=${encodeURIComponent(
+            safeName
+        )}&renderId=${encodeURIComponent(draftId)}`;
+
+        console.log("[uploadFileToUserBlob] POST", { url, hasCsrf: !!csrf });
+
+        const res = await fetch(url, {
+            method: "POST",
+            headers: {
+                "content-type": file.type || "application/octet-stream",
+                ...(csrf ? { "x-csrf": csrf } : {}),
+            },
+            credentials: "include",
+            body: file,
+        });
 
         const j = await res.json().catch(() => ({} as any));
 
+        console.log("[uploadFileToUserBlob] response", {
+            ok: res.ok,
+            status: res.status,
+            bodyKeys: Object.keys(j || {}),
+        });
+
         if (!res.ok || !j?.url || !j?.path) {
+            console.error("[uploadFileToUserBlob] error", {
+                status: res.status,
+                body: j,
+            });
             throw new Error(j?.error || "storage_upload_failed");
         }
 
-        return {
+        const asset: UploadedAsset = {
             url: j.url as string,
             path: j.path as string,
         };
+
+        console.log("[uploadFileToUserBlob] success", asset);
+        return asset;
     }
+
+
+    async function flushPendingImagesBeforeSave(args: {
+        doc: Document;
+        draftId: string;
+    }) {
+        const { doc, draftId } = args;
+
+        console.log("[flushPendingImagesBeforeSave] start", { draftId });
+
+        const imgs = Array.from(
+            doc.querySelectorAll<HTMLImageElement>("img[data-local-image-id]")
+        );
+
+        console.log("[flushPendingImagesBeforeSave] found img elements", {
+            count: imgs.length,
+        });
+
+        for (const img of imgs) {
+            const localId = img.dataset.localImageId;
+            const tempUrl = img.src;
+            const localFilename = img.dataset.localFilename || "upload.bin";
+
+            if (!localId || !tempUrl) {
+                console.warn(
+                    "[flushPendingImagesBeforeSave] img missing local id or src",
+                    { localId, tempUrl }
+                );
+                continue;
+            }
+
+            try {
+                console.log("[flushPendingImagesBeforeSave] fetching blob URL", {
+                    localId,
+                    tempUrl,
+                });
+
+                const res = await fetch(tempUrl);
+                if (!res.ok) {
+                    console.error(
+                        "[flushPendingImagesBeforeSave] fetch failed for blob URL",
+                        { localId, tempUrl, status: res.status }
+                    );
+                    continue;
+                }
+
+                const blob = await res.blob();
+                const file = new File([blob], sanitizeName(localFilename), {
+                    type: blob.type || "application/octet-stream",
+                });
+
+                console.log("[flushPendingImagesBeforeSave] uploading image", {
+                    localId,
+                    fileName: file.name,
+                    fileSize: file.size,
+                    type: file.type,
+                });
+
+                const asset = await uploadFileToUserBlob(file, draftId);
+
+                const oldTempUrl = img.src;
+
+                img.src = asset.url;
+                img.removeAttribute("data-local-image-id");
+                img.removeAttribute("data-local-filename");
+
+                if (asset.path) {
+                    img.setAttribute("data-kloner-path", asset.path);
+                }
+
+                console.log("[flushPendingImagesBeforeSave] img updated", {
+                    localId,
+                    oldTempUrl,
+                    newUrl: asset.url,
+                    path: asset.path,
+                });
+
+                try {
+                    URL.revokeObjectURL(oldTempUrl);
+                    console.log(
+                        "[flushPendingImagesBeforeSave] revoked temp URL",
+                        { localId }
+                    );
+                } catch (e) {
+                    console.warn(
+                        "[flushPendingImagesBeforeSave] revokeObjectURL failed",
+                        { localId, oldTempUrl },
+                        e
+                    );
+                }
+            } catch (err) {
+                console.error(
+                    "[flushPendingImagesBeforeSave] upload failed",
+                    { localId, tempUrl },
+                    err
+                );
+                continue;
+            }
+        }
+
+        // handle old assets that should be deleted after a replace
+        const oldPathsToDelete: string[] = [];
+        doc.querySelectorAll<HTMLImageElement>("img[data-kloner-old-path]").forEach(
+            (img) => {
+                const p = img.getAttribute("data-kloner-old-path");
+                if (p) oldPathsToDelete.push(p);
+                img.removeAttribute("data-kloner-old-path");
+            }
+        );
+
+        if (oldPathsToDelete.length) {
+            console.log(
+                "[flushPendingImagesBeforeSave] deleting old asset paths",
+                oldPathsToDelete
+            );
+            try {
+                await fetch("/api/user-blob/delete", {
+                    method: "POST",
+                    headers: {
+                        "content-type": "application/json",
+                    },
+                    body: JSON.stringify({ paths: oldPathsToDelete }),
+                });
+            } catch (err) {
+                console.error(
+                    "[flushPendingImagesBeforeSave] delete old assets failed",
+                    err
+                );
+            }
+        }
+
+        console.log("[flushPendingImagesBeforeSave] complete");
+    }
+
 
     // iframe messages: uploads + selection meta + delete-assets
     useEffect(() => {
@@ -1553,9 +1953,15 @@ export default function PreviewEditor({
             tryClearIframeSelection();
             try {
                 if (closeMode === "save") {
+                    // commit uploads that are now in saved HTML
+                    postToEditor({ type: "kloner:commit-assets" });
                     setClosePrompt(false);
                     await doSave();
+                } else {
+                    // discard: nuke any pending uploads for this session
+                    postToEditor({ type: "kloner:discard-assets" });
                 }
+
                 await onClose?.();
             } finally {
                 setClosing(false);
@@ -1563,6 +1969,7 @@ export default function PreviewEditor({
         },
         [closing, doSave, onClose, tryClearIframeSelection]
     );
+
 
     const handleModeClick = useCallback(
         (next: ViewMode) => {
@@ -1578,6 +1985,7 @@ export default function PreviewEditor({
             (allPages && activePage && activePage.screenshotUrl) || sourceImage,
         [allPages, activePage, sourceImage]
     );
+
 
     return (
         <div
@@ -1721,24 +2129,7 @@ export default function PreviewEditor({
                                             👁️ Screenshot
                                         </button>
 
-                                        {/* <UiBtn
-                                            pressed={mode === "preview"}
-                                            onClick={() =>
-                                                handleModeClick("preview")
-                                            }
-                                            disabled={closing}
-                                        >
-                                            Editable preview
-                                        </UiBtn>
-                                        <UiBtn
-                                            pressed={mode === "screenshot"}
-                                            onClick={() =>
-                                                handleModeClick("screenshot")
-                                            }
-                                            disabled={closing}
-                                        >
-                                            Screenshot
-                                        </UiBtn> */}
+
                                     </div>
                                 </div>
 
@@ -1746,38 +2137,13 @@ export default function PreviewEditor({
                                     <div className="text-xs font-semibold text-neutral-500 mb-1">
                                         Device
                                     </div>
-                                    {/* <div className="flex flex-wrap gap-1">
-                                        <UiBtn
-                                            pressed={device === "desktop"}
-                                            onClick={() =>
-                                                setDevice("desktop")
-                                            }
-                                            disabled={closing}
-                                        >
-                                            Desktop
-                                        </UiBtn>
-                                        <UiBtn
-                                            pressed={device === "tablet"}
-                                            onClick={() =>
-                                                setDevice("tablet")
-                                            }
-                                            disabled={closing}
-                                        >
-                                            Tablet
-                                        </UiBtn>
-                                        <UiBtn
-                                            pressed={device === "mobile"}
-                                            onClick={() =>
-                                                setDevice("mobile")
-                                            }
-                                            disabled={closing}
-                                        >
-                                            Mobile
-                                        </UiBtn>
-                                    </div> */}
+
                                     <div className="inline-flex rounded-md shadow-sm">
-                                        <button
+                                        <motion.button
+                                            type="button"
                                             onClick={() => handleDeviceChange("desktop")}
+                                            whileHover={{ scale: 1.05 }}
+                                            whileTap={{ scale: 0.97 }}
                                             className={`p-2 text-lg rounded-l-md transition-colors ${device === "desktop"
                                                 ? "bg-blue-600 text-white"
                                                 : "bg-gray-100 text-gray-700 hover:bg-gray-200"
@@ -1785,9 +2151,12 @@ export default function PreviewEditor({
                                             title="Desktop"
                                         >
                                             💻
-                                        </button>
-                                        <button
+                                        </motion.button>
+                                        <motion.button
+                                            type="button"
                                             onClick={() => handleDeviceChange("tablet")}
+                                            whileHover={{ scale: 1.05 }}
+                                            whileTap={{ scale: 0.97 }}
                                             className={`p-2 text-lg transition-colors ${device === "tablet"
                                                 ? "bg-blue-600 text-white"
                                                 : "bg-gray-100 text-gray-700 hover:bg-gray-200"
@@ -1795,9 +2164,12 @@ export default function PreviewEditor({
                                             title="Tablet"
                                         >
                                             📱
-                                        </button>
-                                        <button
+                                        </motion.button>
+                                        <motion.button
+                                            type="button"
                                             onClick={() => handleDeviceChange("mobile")}
+                                            whileHover={{ scale: 1.05 }}
+                                            whileTap={{ scale: 0.97 }}
                                             className={`p-2 text-lg rounded-r-md transition-colors ${device === "mobile"
                                                 ? "bg-blue-600 text-white"
                                                 : "bg-gray-100 text-gray-700 hover:bg-gray-200"
@@ -1805,8 +2177,9 @@ export default function PreviewEditor({
                                             title="Mobile"
                                         >
                                             🤳
-                                        </button>
+                                        </motion.button>
                                     </div>
+
                                 </div>
 
                                 <div className="mb-3">
@@ -1891,7 +2264,7 @@ export default function PreviewEditor({
 
                                 {/* Selection styling sidebar */}
                                 {mode === "preview" && (
-                                    <div className="mb-3 border-t pt-3 mt-2">
+                                    <div className="mb-3 border-t pt-20 mt-2">
                                         <div className="flex items-center justify-between mb-1">
                                             <div className="text-sm font-semibold text-neutral-500">
                                                 Selection style
@@ -2635,8 +3008,8 @@ export default function PreviewEditor({
 
                                         {/* Apply to preview (TOP) */}
                                         <button
-                                            onClick={applyDraftToPreview}
-                                            disabled={closing || !dirty}
+                                            onClick={() => doSave()}
+                                            disabled={closing || savingDraft || !dirty}
                                             aria-busy={applyingPreview}
                                             className={`w-full rounded-md px-3 py-3 text-lg font-medium transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${dirty
                                                 ? "bg-emerald-600 text-white hover:brightness-95"
@@ -2700,41 +3073,34 @@ export default function PreviewEditor({
                     >
 
                         {allPages && allPages.length > 1 && (
-                            <div className="flex items-center gap-2 ml-2 mt-2">
-                                <label className="text-xs font-medium text-gray-700">Page:</label>
-                                <select
-                                    value={activePageId}
-                                    onChange={(e) => setActivePageId(e.target.value)}
-                                    className="px-2 py-1 text-sm rounded-md border border-gray-300"
-                                >
-                                    {allPages.map((p) => (
-                                        <option key={p.id} value={p.id}>{p.label}</option>
-                                    ))}
-                                </select>
-                            </div>
-                        )}
-                        {/* Page selector
-                        <span className="m-2 text-[10px] font-medium text-neutral-500 lg:hidden">
-                            Pages
-                        </span>
-                        {allPages && allPages.length > 0 && (
-                            <div className="mb-3">
-                                <div className="flex flex-wrap gap-1">
-                                    {allPages.map((p) => (
-                                        <UiBtn
-                                            key={p.id}
-                                            pressed={p.id === activePageId}
-                                            onClick={() =>
-                                                setActivePageId(p.id)
-                                            }
-                                            disabled={closing}
-                                        >
-                                            {p.label || p.id}
-                                        </UiBtn>
-                                    ))}
+                            <div className="mt-3 flex justify-center">
+                                <div className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white/80 px-2 py-1 shadow-sm">
+                                    {allPages.map((p) => {
+                                        const isActive = p.id === activePageId;
+                                        return (
+                                            <motion.button
+                                                key={p.id}
+                                                type="button"
+                                                onClick={() => handlePageSwitch(p.id)}
+                                                whileHover={{ scale: 1.03, y: -1 }}
+                                                whileTap={{ scale: 0.97 }}
+                                                className={[
+                                                    "px-3 py-1.5 rounded-full text-xs font-medium transition-colors",
+                                                    isActive
+                                                        ? "bg-accent text-white"
+                                                        : "bg-transparent text-neutral-700 hover:bg-neutral-100"
+                                                ].join(" ")}
+                                            >
+                                                {p.label}
+                                            </motion.button>
+                                        );
+                                    })}
                                 </div>
                             </div>
-                        )} */}
+                        )}
+
+
+
                         {activeSourceImage && mode !== "screenshot" && (
                             <img
                                 src={activeSourceImage}
@@ -2745,51 +3111,45 @@ export default function PreviewEditor({
 
                         {(mode === "preview" || mode === "code") && (
                             <div className="flex-1 overflow-auto p-3 sm:p-6">
-                                <div
-                                    className="mx-auto bg-white border rounded-lg shadow-sm"
-                                    style={{
-                                        width: devicePx,
-                                        minWidth: 320,
-                                        maxWidth: "100%",
-                                    }}
-                                >
-                                    <iframe
-                                        key={iframeKey}
-                                        ref={iframeRef}
-                                        className="w-full h-[70vh] sm:h-[80vh] border-0 rounded"
-                                        title="KlonerPreview"
-                                        sandbox="allow-same-origin"
-                                        srcDoc={
-                                            renderHtml ||
-                                            "<!doctype html><html><head><meta charset='utf-8'></head><body></body></html>"
-                                        }
-                                        onLoad={() => {
-                                            const doc =
-                                                iframeRef.current
-                                                    ?.contentDocument;
-                                            if (!doc) return;
-                                            doc
-                                                .querySelectorAll(
-                                                    ".kloner-toolbar"
-                                                )
-                                                .forEach((n) => n.remove());
-                                            doc
-                                                .querySelectorAll(
-                                                    ".kloner-style-panel"
-                                                )
-                                                .forEach((n) => n.remove());
-                                            if (mode === "preview") {
-                                                injectEditableOverlay(
-                                                    doc,
-                                                    (updated) => {
-                                                        setHtmlDraft(updated);
-                                                    }
-                                                );
-                                                iframeRef.current?.contentWindow?.focus();
-                                            }
+                                <AnimatePresence mode="wait">
+                                    <motion.div
+                                        key={activePageId}
+                                        className="mx-auto bg-white border rounded-lg shadow-sm"
+                                        style={{
+                                            width: devicePx,
+                                            minWidth: 320,
+                                            maxWidth: "100%",
                                         }}
-                                    />
-                                </div>
+                                        initial={{ opacity: 0, y: 6 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: -6 }}
+                                        transition={{ duration: 0.22 }}
+                                    >
+                                        <iframe
+                                            key={iframeKey}
+                                            ref={iframeRef}
+                                            className="w-full h-[70vh] sm:h-[80vh] border-0 rounded"
+                                            title="KlonerPreview"
+                                            sandbox="allow-same-origin"
+                                            srcDoc={
+                                                renderHtml ||
+                                                "<!doctype html><html><head><meta charset='utf-8'></head><body></body></html>"
+                                            }
+                                            onLoad={() => {
+                                                const doc = iframeRef.current?.contentDocument;
+                                                if (!doc) return;
+                                                doc.querySelectorAll(".kloner-toolbar").forEach((n) => n.remove());
+                                                doc.querySelectorAll(".kloner-style-panel").forEach((n) => n.remove());
+                                                if (mode === "preview") {
+                                                    injectEditableOverlay(doc, (updated) => {
+                                                        setHtmlDraft(updated);
+                                                    });
+                                                    iframeRef.current?.contentWindow?.focus();
+                                                }
+                                            }}
+                                        />
+                                    </motion.div>
+                                </AnimatePresence>
                             </div>
                         )}
 
@@ -2827,8 +3187,8 @@ export default function PreviewEditor({
 
                             {/* Main Action Button: HUGE size and full width */}
                             <button
-                                onClick={applyDraftToPreview}
-                                disabled={closing || !dirty}
+                                onClick={() => doSave()}
+                                disabled={closing || savingDraft || !dirty}
                                 aria-busy={applyingPreview}
                                 // Increased padding (px-4 py-4) and font size (text-xl/text-2xl) to make it HUGE
                                 className={`rounded px-4 py-4 text-xl w-full transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${dirty
@@ -2837,10 +3197,10 @@ export default function PreviewEditor({
                                     }`}
                                 title="Apply current draft to the live preview"
                             >
-                                {applyingPreview
-                                    ? "🔄 Updating preview…"
+                                {applyingPreview || savingDraft
+                                    ? <a className="flex items-center justify-center flex-inline gap-2"><Loader2 className="h-10 w-10 animate-spin" />Updating preview…</a>
                                     : dirty
-                                        ? "🔥 Apply changes to preview" // Changed text and added emoji for urgency
+                                        ? "🔥 Apply changes" // Changed text and added emoji for urgency
                                         : "✅ Preview is up to date"}
                             </button>
                             <button
@@ -2859,6 +3219,51 @@ export default function PreviewEditor({
                         </div>
                     </section>
                 </div>
+
+                {/* page switch confirmation for pending local images */}
+                <AnimatePresence>
+                    {pageSwitchConfirm && (
+                        <motion.div
+                            className="fixed inset-0 z-[10005] flex items-center justify-center bg-black/40"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                        >
+                            <motion.div
+                                initial={{ scale: 0.9, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0.9, opacity: 0 }}
+                                transition={{ type: "keyframes", stiffness: 260, damping: 22 }}
+                                className="bg-white rounded-lg shadow-xl p-4 w-full max-w-sm border border-neutral-200"
+                            >
+                                <div className="text-xs font-semibold text-neutral-900 mb-2">
+                                    Save images before switching pages?
+                                </div>
+                                <p className="text-xs text-neutral-600 mb-3">
+                                    This page has images that haven’t been uploaded yet. Save them
+                                    before switching, or continue without saving.
+                                </p>
+                                <div className="flex justify-end gap-2 text-xs">
+                                    <button
+                                        type="button"
+                                        className="px-2.5 py-1.5 rounded border border-neutral-300 bg-white hover:bg-neutral-50 active:scale-[.98] font-medium"
+                                        onClick={cancelPageSwitch}
+                                    >
+                                        Stay on this page
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="px-2.5 py-1.5 rounded border border-transparent bg-neutral-900 text-white hover:brightness-110 active:scale-[.98] font-medium"
+                                        onClick={confirmPageSwitch}
+                                    >
+                                        Save & switch
+                                    </button>
+                                </div>
+                            </motion.div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
 
                 {/* close/save/discard prompt */}
                 {closePrompt && (
@@ -3229,6 +3634,7 @@ function injectEditableOverlay(
         );
     }
 
+
     function placeToolbar(target: HTMLElement) {
         const r = target.getBoundingClientRect();
         toolbar.style.display = "flex";
@@ -3404,12 +3810,54 @@ function injectEditableOverlay(
         });
     }
 
+    function deleteAssetsForElement(root: HTMLElement) {
+        const paths = new Set<string>();
+
+        // If the root itself is an <img>
+        if (root.tagName === "IMG") {
+            const p = (root as HTMLImageElement).getAttribute("data-kloner-path");
+            if (p) paths.add(p);
+        }
+
+        // Any nested <img> elements with data-kloner-path
+        root.querySelectorAll("img[data-kloner-path]").forEach((img) => {
+            const p = img.getAttribute("data-kloner-path");
+            if (p) paths.add(p);
+        });
+
+        if (paths.size > 0) {
+            doc.defaultView?.parent?.postMessage(
+                {
+                    type: "kloner:delete-assets",
+                    paths: Array.from(paths),
+                },
+                "*"
+            );
+        }
+    }
+
+    function deleteAssetsByPaths(paths: string[]) {
+        if (!paths.length) return;
+
+        // remove from pending set
+        for (const p of paths) {
+            pendingImagePaths.delete(p);
+        }
+
+        doc.defaultView?.parent?.postMessage(
+            {
+                type: "kloner:delete-assets",
+                paths,
+            },
+            "*"
+        );
+    }
+
     function deleteImageOnBlock(block: HTMLElement) {
         const img =
             (block.tagName === "IMG"
                 ? (block as HTMLImageElement)
-                : (block.querySelector("img") as HTMLImageElement | null)) ??
-            null;
+                : (block.querySelector("img") as HTMLImageElement | null)) ?? null;
 
         if (!img) {
             showHint("Select a block with an <img> to delete.", block);
@@ -3418,13 +3866,8 @@ function injectEditableOverlay(
 
         const path = img.getAttribute("data-kloner-path");
         if (path) {
-            doc.defaultView?.parent?.postMessage(
-                {
-                    type: "kloner:delete-assets",
-                    paths: [path],
-                },
-                "*"
-            );
+            console.log("deleting asset for path:", path);
+            deleteAssetsByPaths([path]);
         }
 
         img.remove();
@@ -3433,14 +3876,20 @@ function injectEditableOverlay(
         showHint("Image deleted.", block);
     }
 
-    async function insertImageIntoBlock(block: HTMLElement) {
-        const { url, path } = await pickFileAndUpload(block);
 
+    async function insertImageIntoBlock(block: HTMLElement) {
+        const file = await pickLocalFile();
+        if (!file) return;
+
+        const tempUrl = URL.createObjectURL(file);
         const img = doc.createElement("img");
-        img.src = url;
+        const localId = crypto.randomUUID();
+
+        img.src = tempUrl;
         img.alt = "";
         img.style.display = "block";
-        if (path) img.setAttribute("data-kloner-path", path);
+        img.dataset.localImageId = localId;
+        img.dataset.localFilename = file.name || "image";
 
         const box = cssBox(block);
         if (box.w > 4) img.setAttribute("width", String(Math.round(box.w)));
@@ -3448,39 +3897,62 @@ function injectEditableOverlay(
 
         if (block.firstChild) block.insertBefore(img, block.firstChild);
         else block.appendChild(img);
+
         saveHistory();
         notify();
-        showHint("Image inserted.", block);
+        showHint("Image inserted (pending upload).", block);
+    }
+
+    // Somewhere module-level
+    const localImageStore = new Map<string, File>();
+
+    function pickLocalFile(): Promise<File | null> {
+        return new Promise((resolve) => {
+            const input = document.createElement("input");
+            input.type = "file";
+            input.accept = "image/*";
+
+            input.onchange = () => {
+                const file = input.files?.[0] || null;
+                resolve(file);
+            };
+
+            input.click();
+        });
     }
 
     async function replaceImage(el: HTMLImageElement) {
+        const file = await pickLocalFile();
+        if (!file) return;
+
         const box = cssBox(el);
         const oldPath = el.getAttribute("data-kloner-path") || undefined;
-        const { url, path } = await pickFileAndUpload(el);
 
-        if (!el.getAttribute("width") && !el.style.width)
-            el.setAttribute("width", `${Math.round(box.w)}`);
-        if (!el.getAttribute("height") && !el.style.height)
-            el.setAttribute("height", `${Math.round(box.h)}`);
+        const tempUrl = URL.createObjectURL(file);
+        const localId = crypto.randomUUID();
 
-        // delete old asset if we had one
+        el.src = tempUrl;
+        el.dataset.localImageId = localId;
+        el.dataset.localFilename = file.name || "image";
+
+        // mark the previous asset for deletion once the new one is committed on save
         if (oldPath) {
-            doc.defaultView?.parent?.postMessage(
-                {
-                    type: "kloner:delete-assets",
-                    paths: [oldPath],
-                },
-                "*"
-            );
+            el.setAttribute("data-kloner-old-path", oldPath);
+            el.removeAttribute("data-kloner-path");
         }
 
-        el.src = url;
-        if (path) el.setAttribute("data-kloner-path", path);
+        if (!el.getAttribute("width") && !el.style.width) {
+            el.setAttribute("width", `${Math.round(box.w)}`);
+        }
+        if (!el.getAttribute("height") && !el.style.height) {
+            el.setAttribute("height", `${Math.round(box.h)}`);
+        }
 
         saveHistory();
         notify();
-        showHint("Image replaced.", el);
+        showHint("Image replaced (pending upload).", el);
     }
+
 
     function editLink(target: HTMLElement) {
         let linkEl: HTMLAnchorElement | null = null;
@@ -3507,6 +3979,7 @@ function injectEditableOverlay(
         notify();
     }
 
+
     function handleAction(act: string | null, sourceEl: HTMLElement) {
         if (!act) return;
 
@@ -3517,6 +3990,9 @@ function injectEditableOverlay(
         if (!selected) return;
 
         if (act === "del") {
+            // NEW: delete any cloud assets referenced inside this block
+            deleteAssetsForElement(selected);
+
             const parent = selected.parentElement;
             selected.remove();
             select(null);
@@ -3525,6 +4001,7 @@ function injectEditableOverlay(
             notify();
             return;
         }
+
         if (act === "dup") {
             const clone = selected.cloneNode(true) as HTMLElement;
             selected.insertAdjacentElement("afterend", clone);

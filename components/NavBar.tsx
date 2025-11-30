@@ -98,7 +98,7 @@ export default function NavBar(): JSX.Element {
 
   const extraNav: NavItem[] = [
     { label: "Community", href: "/community-builds" },
-    { label: "Docs", href: "/docs" },
+    { label: "Docs", href: "/dashboard/docs" },
     { label: "Pricing", href: "/price" },
   ];
 
@@ -238,7 +238,7 @@ export default function NavBar(): JSX.Element {
                         <div className="h-px bg-neutral-200/70" />
                         <div className="py-1 text-sm">
                           <MenuLink href="/dashboard" label="Dashboard" />
-                          <MenuLink href="/settings" label="Settings" />
+                          <MenuLink href="dashboard/settings" label="Settings" />
                           <button
                             onClick={() => void onSignOut()}
                             className="w-full text-left px-4 py-2 text-sm text-neutral-800 hover:bg-neutral-100 transition"
@@ -354,7 +354,7 @@ export default function NavBar(): JSX.Element {
                     onNavigate={() => setMOpen(false)}
                   />
                   <QuickAction
-                    href="/docs"
+                    href="/dashboard/docs"
                     icon={Wand2}
                     label="Docs"
                     onNavigate={() => setMOpen(false)}
@@ -366,7 +366,7 @@ export default function NavBar(): JSX.Element {
                     onNavigate={() => setMOpen(false)}
                   />
                   <QuickAction
-                    href="/settings"
+                    href="/dashboard/settings"
                     icon={Settings2}
                     label="Settings"
                     onNavigate={() => setMOpen(false)}
@@ -526,17 +526,17 @@ function MegaPanel({ active }: { active: NavItem | null }): JSX.Element {
           <div className="text-sm text-neutral-500 tracking-wider">PRODUCT</div>
           <SimpleLink href="/#how" label="How it Works" />
           <SimpleLink href="/price" label="Pricing" />
-          <SimpleLink href="/docs" label="Docs overview" />
-          <SimpleLink href="/docs#features" label="Capture → Preview flow" />
-          <SimpleLink href="/docs#quick-start" label="10-minute Quickstart" />
+          <SimpleLink href="/dashboard/docs" label="Docs overview" />
+          <SimpleLink href="/dashboard/docs#features" label="Capture → Preview flow" />
+          <SimpleLink href="/dashboard/docs#quick-start" label="10-minute Quickstart" />
         </div>
 
         <div className="space-y-4">
           <div className="text-sm text-neutral-500 tracking-wider">LEARN</div>
-          <SimpleLink href="/docs#credits" label="Credit system" />
-          <SimpleLink href="/docs#plans" label="Plan overview" />
-          <SimpleLink href="/docs#safety" label="Safety & fairness" />
-          <SimpleLink href="/docs#export-options" label="Export & library" />
+          <SimpleLink href="/dashboard/docs#credits" label="Credit system" />
+          <SimpleLink href="/dashboard/docs#plans" label="Plan overview" />
+          <SimpleLink href="/dashboard/docs#safety" label="Safety & fairness" />
+          <SimpleLink href="/dashboard/docs#export-options" label="Export & library" />
           <SimpleLink href="/#faq" label="FAQs" />
         </div>
 
@@ -544,9 +544,9 @@ function MegaPanel({ active }: { active: NavItem | null }): JSX.Element {
           <div className="text-sm text-neutral-500 tracking-wider">OTHER</div>
           <SimpleLink href="/terms" label="Terms & Conditions" />
           <SimpleLink href="/privacy" label="Privacy Policy" />
-          <SimpleLink href="/docs#routing-guides" label="Routing Guides" />
+          <SimpleLink href="/dashboard/docs#routing-guides" label="Routing Guides" />
           <SimpleLink href="/community-builds" label="SEO Templates" />
-          <SimpleLink href="/docs#deploy-checklists" label="Deploy Checklists" />
+          <SimpleLink href="/dashboard/docs#deploy-checklists" label="Deploy Checklists" />
         </div>
       </div>
     </div>

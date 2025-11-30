@@ -696,7 +696,7 @@ export default function DeploymentsPage(): JSX.Element {
     }
 
 
-    async function exportToVercel(args: {
+    async function exportToVercel(opts: {
         html: string;
         name?: string;
         renderId?: string;
@@ -705,7 +705,7 @@ export default function DeploymentsPage(): JSX.Element {
 
         const key = activeDeployment.vercelDeploymentId || activeDeployment.id;
         const projectName =
-            args.name ||
+            opts.name ||
             activeDeployment.vercelProjectName ||
             activeDeployment.vercelProjectId ||
             "kloner-site";
@@ -722,7 +722,7 @@ export default function DeploymentsPage(): JSX.Element {
                     ...(csrf ? { "x-csrf": csrf } : {}),
                 },
                 body: JSON.stringify({
-                    html: args.html,
+                    html: opts.html,
                     projectName,
                     renderId: editorDraftId ?? null,
                     vercelProjectId: activeDeployment.vercelProjectId ?? null,

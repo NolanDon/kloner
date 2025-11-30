@@ -97,36 +97,43 @@ export default function ArchivedPage() {
     }
 
     return (
-        <div className="px-4 pb-10 pt-6">
-            <h1 className="text-xl font-semibold text-neutral-900">
-                Archived previews
-            </h1>
-            <p className="mt-1 max-w-xl text-sm text-neutral-600">
-                Archived previews are hidden from your main dashboard. They are
-                automatically deleted after 30 days. Unarchive a preview if you
-                want to resume editing or deploy it.
-            </p>
+        <div className="min-h-screen bg-white pt-[15px] pb-[30px]">
+            <main className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-10 py-16">
+                {/* Hero */}
+                <div className="inline-flex items-center gap-2 rounded-full bg-accent text-neutral-50 px-3 py-1 text-[11px] mb-4">
+                    <span>Kloner · Your Archives</span>
+                </div>
 
-            {loading ? (
-                <div className="mt-6 text-sm text-neutral-500">Loading…</div>
-            ) : renders.length === 0 ? (
-                <div className="mt-6 text-sm text-neutral-500">
-                    No archived previews yet.
+                <div className="rounded-3xl border border-neutral-200 bg-gradient-to-br from-white via-neutral-50 to-neutral-100 px-6 py-8 sm:px-8 sm:py-10 shadow-sm">
+                    <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-neutral-900">
+                        Archives
+                    </h1>
+                    <p className="mt-3 max-w-2xl text-sm sm:text-base text-neutral-600">
+                        Archived previews are hidden from your dashboard and retained for 30 days before permanent deletion. Unarchive anytime to resume editing or deploy.
+                    </p>
+
+                    {loading ? (
+                        <div className="mt-6 text-sm text-neutral-500">Loading…</div>
+                    ) : renders.length === 0 ? (
+                        <div className="mt-6 text-sm text-neutral-500">
+                            No archived previews yet.
+                        </div>
+                    ) : (
+                        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                            {renders.map((r) => {
+                                const normalized = { ...r, html: r.html ?? undefined };
+                                return (
+                                    <ArchiveCard
+                                        key={r.id}
+                                        r={normalized}
+                                        onUnarchive={handleUnarchive}
+                                    />
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
-            ) : (
-                <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    {renders.map((r) => {
-                        const normalized = { ...r, html: r.html ?? undefined };
-                        return (
-                            <ArchiveCard
-                                key={r.id}
-                                r={normalized}
-                                onUnarchive={handleUnarchive}
-                            />
-                        );
-                    })}
-                </div>
-            )}
+            </main>
         </div>
     );
 }

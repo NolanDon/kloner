@@ -258,12 +258,12 @@ export default function MembershipHero() {
                             <div className="text-neutral-600 text-sm md:text-base">
                                 /month · cancel anytime
                             </div>
-                            <span className="ml-0 md:ml-2 inline-flex items-center rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-xs font-medium text-neutral-800">
+                            {/* <span className="ml-0 md:ml-2 inline-flex items-center rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-xs font-medium text-neutral-800">
                                 400 preview credits / month (Pro)
-                            </span>
-                            <span className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-xs font-medium text-neutral-700">
+                            </span> */}
+                            {/* <span className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-xs font-medium text-neutral-700">
                                 Free tier available with lighter limits
-                            </span>
+                            </span> */}
                         </div>
 
                         {/* Payment options */}

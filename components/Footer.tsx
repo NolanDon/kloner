@@ -6,43 +6,43 @@ import { useEffect, useId, useState } from 'react';
 const FOOTER_LINKS: Record<string, string> = {
   // Product
   'How it Works': '/#how',
-  "What’s Included": '/docs#features',
+  "What’s Included": '/dashboard/docs#features',
   'Live Preview': '/dashboard/view',
 
   // Company
-  About: '/docs#about',
-  Contact: '/docs#contact',
+  About: '/dashboard/docs#about',
+  Contact: '/dashboard/docs#contact',
   FAQs: '/#faq',
 
   // Compare
-  'Cloning vs Rebuild': '/docs#cloning-vs-rebuild',
-  'Vercel vs Netlify': '/docs#vercel-vs-netlify',
-  'Static vs SSR': '/docs#static-vs-ssr',
-  'Export Options': '/docs#export-options-card',
+  'Cloning vs Rebuild': '/dashboard/docs#cloning-vs-rebuild',
+  'Vercel vs Netlify': '/dashboard/docs#vercel-vs-netlify',
+  'Static vs SSR': '/dashboard/docs#static-vs-ssr',
+  'Export Options': '/dashboard/docs#export-options-card',
   Pricing: '/price',
 
   // Library (already present in docs)
-  'Routing Guides': '/docs#routing-guides',
-  'SEO Templates': '/docs#seo-templates',
-  'Font Subsetting': '/docs#font-subsetting',
-  'Image Optimization': '/docs#image-optimization',
-  'Deploy Checklists': '/docs#deploy-checklists',
+  'Routing Guides': '/dashboard/docs#routing-guides',
+  'SEO Templates': '/dashboard/docs#seo-templates',
+  'Font Subsetting': '/dashboard/docs#font-subsetting',
+  'Image Optimization': '/dashboard/docs#image-optimization',
+  'Deploy Checklists': '/dashboard/docs#deploy-checklists',
 
   // Partnerships
-  'For Creators': '/docs#for-creators',
-  Affiliates: '/docs#affiliates',
-  'For Business': '/docs#for-business',
+  'For Creators': '/dashboard/docs#for-creators',
+  Affiliates: '/dashboard/docs#affiliates',
+  'For Business': '/dashboard/docs#for-business',
 
   // Connect – stub sections in docs
-  'X/Twitter': '/docs#x-twitter',
-  Instagram: '/docs#instagram',
-  LinkedIn: '/docs#linkedin',
+  'X/Twitter': '/dashboard/docs#x-twitter',
+  Instagram: '/dashboard/docs#instagram',
+  LinkedIn: '/dashboard/docs#linkedin',
 };
 
 function getFooterHref(label: string): string {
   return (
     FOOTER_LINKS[label] ??
-    `/docs#${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
+    `/dashboard/docs#${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
   );
 }
 

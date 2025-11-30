@@ -46,7 +46,7 @@ import {
     type StorageReference,
 } from "firebase/storage";
 import { auth, db, storage } from "@/lib/firebase";
-import PreviewEditor, { SeoMeta } from "@/components/PreviewEditor";
+import PreviewEditor, { buildFinalExport, buildSeoMetaMapForExport, SeoMeta, SeoMetaMap } from "@/components/PreviewEditor";
 import {
     Rocket,
     Plus,
@@ -59,6 +59,7 @@ import {
     MessageCircleWarning,
     Archive,
     Share2,
+    ScanFace,
 } from "lucide-react";
 import {
     isHttpUrl,
@@ -74,6 +75,8 @@ import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 import { UrlDoc } from "../page";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 import { archiveRender, resolveStorageUrl, useResolvedImg } from "@/src/lib/renders";
+import { AnimatePresence, motion } from "framer-motion";
+import { sanitizeName } from "@/components/helpers";
 
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
@@ -232,14 +235,17 @@ function RenderCardInner({
     const [shareProjectName, setShareProjectName] = useState("");
 
     function getInitialShareName() {
-        if (r.nameHint && r.nameHint.trim()) return r.nameHint.trim();
+        if (r.nameHint && r.nameHint.trim()) {
+            return sanitizeName(r.nameHint.trim());
+        }
 
         if (versionLabel && String(versionLabel).trim()) {
-            return `Kloner build ${String(versionLabel).trim()}`;
+            return sanitizeName(`Kloner build ${String(versionLabel).trim()}`);
         }
 
         return "Untitled Kloner build";
     }
+
 
     useEffect(() => {
         if (!shareOpen) return;
@@ -469,146 +475,158 @@ function RenderCardInner({
                 )}
 
                 <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
-                    <div className="pointer-events-auto flex flex-col items-center gap-2 rounded-xl  p-2 backdrop-blur md:flex-col">
-                        <button
-                            onClick={
-                                isDeployed
-                                    ? () => {
-                                        router.push("/dashboard/deployments");
-                                    }
-                                    : deployThis
-                            }
-                            disabled={
-                                isArchived ||
-                                (!r.html && !isDeployed) ||
-                                isDeleting ||
-                                isQueued ||
-                                isDeploying
-                            }
-                            className={`inline-flex items-center gap-1.5 shrink-0 rounded-md border px-2 py-1 text-xs ${isArchived
-                                ? "cursor-not-allowed border-neutral-300 bg-neutral-50 text-neutral-400"
-                                : "border-neutral-400 text-neutral-800 hover:border-neutral-600 bg-white/50 disabled:opacity-60"
-                                }`}
-                            title={
-                                isArchived
-                                    ? "Unarchive this preview to deploy it"
-                                    : deployLocked
-                                        ? "Upgrade to publish live sites"
-                                        : isDeployed
-                                            ? "View and modify this deployment"
-                                            : "Deploy current HTML to Vercel"
-                            }
-                        >
-                            {isDeploying ? (
-                                <>
-                                    <span>Deploying…</span>
-                                    <Rocket className="h-4 w-4 animate-pulse" />
-                                </>
-                            ) : isDeployed ? (
-                                <>
-                                    <span>View deployment</span>
-                                    <Rocket className="h-4 w-4" />
-                                </>
-                            ) : (
-                                <>
-                                    <span>Deploy</span>
-                                    <Rocket className="h-4 w-4" />
-                                </>
-                            )}
-                        </button>
-
-                        {!isDeployed && (
+                    <div className="pointer-events-auto flex min-w-[260px] max-w-xs flex-col items-stretch gap-2 rounded-xl border border-neutral-200 bg-white/80 p-3 shadow-lg backdrop-blur-sm md:max-w-sm text-xs">
+                        {/* PRIMARY ACTIONS ROW */}
+                        <div className="flex w-full flex-col gap-2 sm:flex-row">
                             <button
-                                onClick={() => continueRender(r.id)}
-                                disabled={disableOpen || isDeleting}
-                                className="inline-flex items-center gap-2 rounded-md border border-neutral-400 px-3 py-1 text-sm text-neutral-800 shadow-sm"
+                                onClick={
+                                    isDeployed
+                                        ? () => {
+                                            router.push("/dashboard/deployments");
+                                        }
+                                        : deployThis
+                                }
+                                disabled={
+                                    isArchived ||
+                                    (!r.html && !isDeployed) ||
+                                    isDeleting ||
+                                    isQueued ||
+                                    isDeploying
+                                }
+                                className={`group flex-1 inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-xs ${isArchived
+                                    ? "cursor-not-allowed border border-neutral-300 bg-neutral-50 text-neutral-400"
+                                    : "border border-neutral-300 bg-accent text-white shadow-sm hover:bg-accent/90 disabled:opacity-60"
+                                    }`}
                                 title={
                                     isArchived
-                                        ? "Unarchive to customize this preview"
-                                        : isQueued
-                                            ? "Still building preview"
-                                            : isFailed
-                                                ? "Open editor to fix"
-                                                : "Open editor to customize"
+                                        ? "Unarchive this preview to deploy it"
+                                        : deployLocked
+                                            ? "Upgrade to publish live sites"
+                                            : isDeployed
+                                                ? "View and modify this deployment"
+                                                : "Deploy current HTML to Vercel"
                                 }
                             >
-                                {isQueued
-                                    ? "Queued"
-                                    : isFailed
-                                        ? "Customize (fix)"
-                                        : "Customize"}
-                                <BrushIcon className="h-4 w-4" />
+                                {isDeploying ? (
+                                    <>
+                                        <span>Deploying…</span>
+                                        <Rocket className="h-4 w-4 animate-pulse" />
+                                    </>
+                                ) : isDeployed ? (
+                                    <>
+                                        <span>View deployment</span>
+                                        <Rocket className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
+                                    </>
+                                ) : (
+                                    <>
+                                        <span>Deploy</span>
+                                        <Rocket className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
+                                    </>
+                                )}
                             </button>
-                        )}
 
-                        {r.siteConfigId && (
-                            <button
-                                onClick={() => router.push(`/site/${r.siteConfigId}`)}
-                                disabled={isDeleting}
-                                className="inline-flex items-center gap-2 rounded-md border border-neutral-400 px-3 py-1 text-sm text-neutral-800 shadow-sm"
-                                title="Open generated layout site"
-                            >
-                                <span>Open site</span>
-                                <Rocket className="h-4 w-4" />
-                            </button>
-                        )}
+
+                            {!isDeployed && (
+                                <button
+                                    onClick={() => continueRender(r.id)}
+                                    disabled={disableOpen || isDeleting}
+                                    className="group flex-1 inline-flex items-center justify-center gap-2 rounded-md border border-neutral-800 px-3 py-1.5 font-medium text-neutral-800 shadow-sm disabled:opacity-60"
+                                    title={
+                                        isArchived
+                                            ? "Unarchive to customize this preview"
+                                            : isQueued
+                                                ? "Still building preview"
+                                                : isFailed
+                                                    ? "Open editor to fix"
+                                                    : "Open editor to customize"
+                                    }
+                                >
+                                    {isQueued
+                                        ? "Queued"
+                                        : isFailed
+                                            ? "Customize (fix)"
+                                            : "Customize"}
+                                    <BrushIcon className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
+                                </button>
+
+                            )}
+                        </div>
+
+                        {/* SECONDARY ACTIONS ROW */}
+                        <div className="flex w-full flex-wrap items-center justify-between gap-1">
+                            {r.siteConfigId && (
+                                <button
+                                    onClick={() => router.push(`/site/${r.siteConfigId}`)}
+                                    disabled={isDeleting}
+                                    className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white/70 px-2.5 py-1 text-[11px] text-neutral-800 shadow-sm hover:border-neutral-400 disabled:opacity-60"
+                                    title="Open generated layout site"
+                                >
+                                    <span>Open site</span>
+                                    <Rocket className="h-3.5 w-3.5" />
+                                </button>
+                            )}
+
+                            {onShareWithCommunity && (
+                                <div className="ml-auto flex items-center gap-1">
+                                    {!shareOpen && (
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={() => setShareOpen((prev) => !prev)}
+                                                disabled={
+                                                    alreadyShared ||
+                                                    !r.html?.trim() ||
+                                                    isDeleting ||
+                                                    isDeploying ||
+                                                    isQueued ||
+                                                    isFailed
+                                                }
+                                                className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white/60 px-2.5 py-1 text-[11px] text-neutral-600 hover:border-neutral-400 disabled:opacity-50"
+                                                title={
+                                                    alreadyShared
+                                                        ? "This build is already shared to the community gallery"
+                                                        : "Share this build to the Kloner community gallery"
+                                                }
+                                            >
+                                                <span>
+                                                    {alreadyShared
+                                                        ? "Shared"
+                                                        : shareOpen
+                                                            ? "Cancel sharing"
+                                                            : "Share"}
+                                                </span>
+                                                <Share2 className="h-3.5 w-3.5" />
+                                            </button>
+
+                                            <button
+                                                onClick={handleArchiveClick}
+                                                disabled={isDeleting || isDeploying}
+                                                className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] shadow-sm ${isArchived
+                                                    ? "border-amber-500 bg-amber-50 text-amber-900 hover:bg-amber-100"
+                                                    : "border-neutral-300 bg-white/60 text-neutral-700 hover:border-neutral-400"
+                                                    }`}
+                                                title={
+                                                    isArchived
+                                                        ? "Move back to active previews"
+                                                        : "Move this preview into your archive"
+                                                }
+                                            >
+                                                <span>{isArchived ? "Unarchive" : "Archive"}</span>
+                                                <Archive className="h-3.5 w-3.5" />
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+                            )}
+                        </div>
 
                         {onShareWithCommunity && (
                             <div className="mt-1 w-full">
-                                {!shareOpen && <div>
-                                    <button
-                                        type="button"
-                                        onClick={() => setShareOpen((prev) => !prev)}
-                                        disabled={
-                                            alreadyShared ||
-                                            !r.html?.trim() ||
-                                            isDeleting ||
-                                            isDeploying ||
-                                            isQueued ||
-                                            isFailed
-                                        }
-                                        className="inline-flex items-center gap-2 rounded-md border border-neutral-400 px-3 py-1 text-xs text-neutral-600 hover:border-neutral-400 hover:border-neutral-600 bg-white/50 disabled:opacity-50"
-                                        title={
-                                            alreadyShared
-                                                ? "This build is already shared to the community gallery"
-                                                : "Share this build to the Kloner community gallery"
-                                        }
-                                    >
-                                        <span>
-                                            {alreadyShared
-                                                ? "Shared"
-                                                : shareOpen
-                                                    ? "Cancel sharing"
-                                                    : "Share with community"}
-                                        </span>
-                                        <Share2 className="h-3.5 w-3.5" />
-                                    </button>
-
-                                    <button
-                                        onClick={handleArchiveClick}
-                                        disabled={isDeleting || isDeploying}
-                                        className={`inline-flex ml-1 items-center gap-2 rounded-md border px-3 py-1 text-xs shadow-sm ${isArchived
-                                            ? "border-amber-500 bg-amber-50 text-amber-900 hover:bg-amber-100"
-                                            : "border-neutral-400 text-neutral-800 hover:border-neutral-600 bg-white/50"
-                                            }`}
-                                        title={
-                                            isArchived
-                                                ? "Move back to active previews"
-                                                : "Move this preview into your archive"
-                                        }
-                                    >
-                                        <span>{isArchived ? "Unarchive" : "Archive"}</span>
-                                        <Archive className="h-4 w-4" />
-                                    </button>
-                                </div>
-                                }
-
                                 {shareOpen && !alreadyShared && (
-                                    <div className="mt-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-[10px] text-neutral-700">
+                                    <div className="mt-1 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-[10px] text-neutral-700">
                                         <p className="mb-2">
-                                            Publishing to Kloner community. Name your
-                                            project and optionally allow other users to remix a copy
-                                            of your layout.
+                                            Publishing to Kloner community. Name your project and
+                                            optionally allow other users to remix a copy of your layout.
                                         </p>
 
                                         <div className="mb-2">
@@ -632,9 +650,7 @@ function RenderCardInner({
                                                 type="checkbox"
                                                 className="h-3 w-3 rounded border-neutral-300"
                                                 checked={shareRemixable}
-                                                onChange={(e) =>
-                                                    setShareRemixable(e.target.checked)
-                                                }
+                                                onChange={(e) => setShareRemixable(e.target.checked)}
                                             />
                                             <span>Allow community to copy build</span>
                                         </label>
@@ -653,14 +669,12 @@ function RenderCardInner({
                                                 disabled={shareBusy}
                                                 className="inline-flex items-center gap-1 rounded-md bg-accent px-3 py-1 text-[10px] font-medium text-white hover:opacity-80 disabled:opacity-60"
                                             >
-                                                {shareBusy ? "Sharing…" : "Share build with Kloner community"}
+                                                {shareBusy ? "Sharing…" : "Share build"}
                                             </button>
                                         </div>
 
                                         {shareError && (
-                                            <p className="mt-1 text-[10px] text-red-600">
-                                                {shareError}
-                                            </p>
+                                            <p className="mt-1 text-[10px] text-red-600">{shareError}</p>
                                         )}
                                     </div>
                                 )}
@@ -668,6 +682,7 @@ function RenderCardInner({
                         )}
                     </div>
                 </div>
+
 
                 {/* <span
                     className="absolute bottom-2 left-2 z-20 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-neutral-600 ring-1 ring-neutral-200"
@@ -769,7 +784,7 @@ function Toasts({ toasts }: { toasts: ToastMsg[] }) {
 const CenterSpinner = memo(function CenterSpinner({
     label = "Loading…",
     dim = true,
-    size = 28,
+    size = 20,
 }: {
     label?: string;
     dim?: boolean;
@@ -781,7 +796,7 @@ const CenterSpinner = memo(function CenterSpinner({
                 }`}
         >
             <div
-                className="flex items-center gap-2 rounded border px-3 py-1.5 text-sm text-neutral-800 bg-white"
+                className="flex items-center gap-2 rounded border px-3 py-1.5 text-xs text-neutral-800 bg-white"
                 role="status"
                 aria-live="polite"
             >
@@ -1977,12 +1992,9 @@ export default function PreviewPage(): JSX.Element {
                 return;
             }
 
-            if (
-                !window.confirm(
-                    "Generate an editable preview for 15 credits?"
-                )
-            )
+            if (!window.confirm("Generate an editable preview for 15 credits?")) {
                 return;
+            }
 
             const optimisticId = `local_${hash64(
                 `${user.uid}|${primaryKey}|${Date.now()}`
@@ -1990,15 +2002,13 @@ export default function PreviewPage(): JSX.Element {
 
             const optimistic: { id: string } & RenderDoc = {
                 id: optimisticId,
-                key: primaryKey,          // still store a primary key
+                key: primaryKey, // still store a primary key
                 referenceImage: null,
                 html: "",
                 status: "queued",
                 url: targetUrl || null,
                 urlHash: targetUrl ? hash64(targetUrl) : null,
-                nameHint: targetUrl
-                    ? new URL(targetUrl).hostname
-                    : null,
+                nameHint: targetUrl ? new URL(targetUrl).hostname : null,
                 model: null,
                 archived: false,
                 version: 1,
@@ -2042,22 +2052,26 @@ export default function PreviewPage(): JSX.Element {
 
                 if (r.status === 202) {
                     push("Server accepted collection preview job", "ok");
-
                     await refreshRenders();
                     return;
                 }
 
-                if (!r.ok || !j?.ok)
-                    throw new Error(j?.error || "Render failed");
-
+                if (!r.ok || !j?.ok) {
+                    const msg = j?.error || "Render failed";
+                    setDeployWizardError(msg);
+                    throw new Error(msg);
+                }
 
                 await refreshRenders();
             } catch (e: any) {
+                const msg = e?.message || "Failed to start collection preview.";
+
+                // ensure wizard error is always populated
+                setDeployWizardError(msg);
+
                 setRenders((prev) =>
                     prev.map((r) =>
-                        r.id === optimisticId
-                            ? { ...r, status: "failed" }
-                            : r
+                        r.id === optimisticId ? { ...r, status: "failed" } : r
                     )
                 );
                 setOptimisticByKey((m) => {
@@ -2068,7 +2082,7 @@ export default function PreviewPage(): JSX.Element {
                         [primaryKey]: { ...v, status: "failed" },
                     };
                 });
-                setErr(e?.message || "Failed to start collection preview.");
+                setErr(msg);
                 push("Collection preview failed to start", "err");
             }
         },
@@ -2081,9 +2095,12 @@ export default function PreviewPage(): JSX.Element {
             startHardLock,
             pendingByKey,
             canUsePreviewCredit,
-
+            setErr,
+            setInfo,
+            setDeployWizardError,
         ]
     );
+
 
     const continueRender = useCallback(
         async (renderId: string) => {
@@ -2321,7 +2338,7 @@ export default function PreviewPage(): JSX.Element {
             return;
         }
 
-
+        // free tier: show upgrade step instead of actually deploying
         if (userTier === "free") {
             if (deployWizardStep !== 5) {
                 setDeployWizardBusy(false);
@@ -2344,6 +2361,18 @@ export default function PreviewPage(): JSX.Element {
             return; // hard stop
         }
 
+        // paid tier: actually deploy and show status in wizard step 3
+
+        if (resolvedRenderId) {
+            setDeployWizardRenderId(resolvedRenderId);
+        } else {
+            setDeployWizardRenderId(null);
+        }
+        setDeployWizardProjectName(trimmedName);
+        setDeployWizardError(null);
+        setDeployWizardStep(3);
+        setDeployWizardOpen(true);
+        setDeployWizardBusy(true);
 
         // visual feedback: mark this render as deploying
         if (resolvedRenderId) {
@@ -2352,6 +2381,14 @@ export default function PreviewPage(): JSX.Element {
         push("Starting deployment…", "ok");
 
         const csrf = await ensureSessionAndCsrf();
+
+        // NEW: build HTML with latest SEO from Firestore (or state)
+        const finalHtml = await buildFinalExport({
+            html,
+            user,
+            draftId: resolvedRenderId,
+            fallbackSeoMetaByPage: activeSeoMetaByPage as SeoMetaByPage | null,
+        });
 
         try {
             const r = await fetch("/api/user-deploy", {
@@ -2362,7 +2399,7 @@ export default function PreviewPage(): JSX.Element {
                 },
                 credentials: "include",
                 body: JSON.stringify({
-                    html,
+                    html: finalHtml,
                     projectName: trimmedName,
                     renderId: resolvedRenderId,
                 }),
@@ -2370,12 +2407,15 @@ export default function PreviewPage(): JSX.Element {
 
             const j = (await r.json().catch(() => ({}))) as any;
 
-
-
             if (!r.ok || !j?.url) {
-                push(j?.error || "Vercel deploy failed", "err");
-                throw new Error(j?.error || "Vercel deploy failed");
+                const msg = j?.error || "Vercel deploy failed";
+                setDeployWizardError(msg);          // <- feed wizard error
+                push(msg, "err");
+                console.error("Deploy failed", msg);
+                return;                             // don't throw, let UI show error
             }
+
+            autoDeployTriggeredRef.current = true;
 
             if (user && resolvedRenderId) {
                 await updateDoc(
@@ -2402,10 +2442,19 @@ export default function PreviewPage(): JSX.Element {
             push("Deployed. URL copied.", "ok");
 
             await refreshRenders();
+        } catch (err: any) {
+            const msg = err?.message || "Vercel deploy failed";
+            setDeployWizardError(msg);              // <- ensure wizard sees exception too
+            push(msg, "err");
+            console.error("Deploy failed", err);
         } finally {
             setDeployingRenderId(null);
+            setDeployWizardBusy(false);
         }
     }
+
+
+
 
     const saveDraft = useCallback(
         async (payload: {
@@ -2830,7 +2879,7 @@ export default function PreviewPage(): JSX.Element {
             } catch (e) {
                 console.error("Deploy failed", e);
                 setDeployWizardError(
-                    "We couldn’t finish the deploy. Check your Vercel connection and try again.",
+                    "We couldn’t finish the deploy. Please check the error notification, and try again.",
                 );
             } finally {
                 setDeployWizardBusy(false);
@@ -3184,7 +3233,7 @@ export default function PreviewPage(): JSX.Element {
                             <button
                                 type="button"
                                 onClick={() => router.push("/price")}
-                                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-800 hover:bg-amber-100 hover:border-amber-300 transition-colors"
+                                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 hover:border-amber-300 transition-colors"
                             >
                                 <Crown className="h-3.5 w-3.5" />
                                 <span>
@@ -3198,7 +3247,7 @@ export default function PreviewPage(): JSX.Element {
                             <div className="relative group">
                                 <button
                                     type="button"
-                                    className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-xs sm:text-sm font-medium text-neutral-800 hover:bg-neutral-50 hover:border-neutral-300 transition-colors"
+                                    className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-50 hover:border-neutral-300 transition-colors"
                                 >
                                     Earn free credits
                                 </button>
@@ -3215,8 +3264,8 @@ export default function PreviewPage(): JSX.Element {
                 <section className="mb-8 rounded-3xl border border-neutral-200 bg-white/70 px-4 py-4 sm:px-5 sm:py-5 shadow-sm">
                     <div className="flex items-center justify-between gap-3 flex-wrap">
                         <div className="space-y-2">
-                            <div className="inline-flex items-center gap-2 rounded-full bg-neutral-100 pl-1 pr-3 py-1 text-[20px] mb-4 font-medium text-neutral-600">
-                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent text-white text-[10px]">
+                            <div className="inline-flex items-center gap-2 rounded-full bg-neutral-100 pl-1 pr-3 py-1 text-[17px] mb-4 font-medium text-neutral-600">
+                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent text-white text-[12px]">
                                     1
                                 </span>
                                 <span>URLs</span>
@@ -3339,13 +3388,13 @@ export default function PreviewPage(): JSX.Element {
                 <section className="mt-6 rounded-3xl border border-neutral-200 bg-white/70 px-4 py-5 sm:px-5 sm:py-6 shadow-sm">
                     <div className="mb-3 flex items-center justify-between gap-2">
                         <div className="space-y-1">
-                            <div className="inline-flex items-center gap-2 rounded-full bg-neutral-100 pl-1 pr-3 py-1 text-[20px] mb-4 font-medium text-neutral-600">
+                            <div className="inline-flex items-center gap-2 rounded-full bg-neutral-100 pl-1 pr-3 py-1 text-[17px] mb-4 font-medium text-neutral-600">
                                 {/* {step2Done ? (
                                     <CheckCircle2 className="h-4.5 w-4.5 text-emerald-500" />
                                 ) : (
                                     <Clock10 className="h-4 w-4 text-amber-500" />
                                 )} */}
-                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent text-white text-[10px]">
+                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent text-white text-[12px]">
                                     2
                                 </span>
                                 <span>Collections</span>
@@ -3430,7 +3479,7 @@ export default function PreviewPage(): JSX.Element {
                                 {renders.length === 0 && (
                                     <span className="inline-flex ml-1 mt-2 text-sm items-center text-neutral-700">
                                         Click{" "}
-                                        <span className="mx-2 shrink-0 rounded-md px-2 py-1 text-[0.75rem] bg-accent font-semibold text-white inline-flex items-center gap-1.5">
+                                        <span className="mx-2 shrink-0 rounded-md px-4 py-2 text-[0.75rem] bg-accent font-semibold text-white inline-flex items-center gap-1.5">
                                             Generate preview <Hammer className="h-4 w-4" />
                                         </span>
                                         to create your first website preview.
@@ -3528,7 +3577,7 @@ export default function PreviewPage(): JSX.Element {
                                                     }}
                                                     disabled={locked}
                                                     aria-busy={locked}
-                                                    className="inline-flex items-center rounded-md px-2 py-2 text-[13px] bg-accent text-white font-semibold disabled:opacity-50"
+                                                    className="inline-flex items-center rounded-md px-4 py-2 text-[13px] bg-accent text-white font-semibold disabled:opacity-50"
                                                     title="Create editable preview from this snapshot collection"
                                                 >
                                                     <span>
@@ -3594,8 +3643,8 @@ export default function PreviewPage(): JSX.Element {
                 <section className="mt-10 rounded-3xl border border-neutral-200 bg-white/70 px-4 py-5 sm:px-5 sm:py-6 shadow-sm">
                     <div className="mb-3 flex items-center justify-between">
                         <div className="space-y-1">
-                            <div className="inline-flex items-center gap-2 rounded-full bg-neutral-100 pl-1 pr-3 py-1 text-[20px] mb-4 font-medium text-neutral-600">
-                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent text-white text-[10px]">
+                            <div className="inline-flex items-center gap-2 rounded-full bg-neutral-100 pl-1 pr-3 py-1 text-[17px] mb-4 font-medium text-neutral-600">
+                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent text-white text-[12px]">
                                     3
                                 </span>
                                 <span>Websites</span>
@@ -3669,7 +3718,7 @@ export default function PreviewPage(): JSX.Element {
 
                                         <button
                                             type="button"
-                                            className="inline-flex items-center rounded-md border border-neutral-400 bg-white px-3 py-1.5 text-sm font-semibold text-neutral-800 shadow-sm"
+                                            className="ml-1 inline-flex items-center rounded-md border border-neutral-400 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm"
                                             disabled
                                         >
                                             Deploy
@@ -3783,337 +3832,413 @@ export default function PreviewPage(): JSX.Element {
 
 
                 {/* deploy wizard */}
-                {deployWizardOpen && (
-                    <div className="fixed inset-0 z-[11500]">
-                        <div
-                            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-                            onClick={closeDeployWizard}
-                        />
-                        <div className="absolute inset-0 flex items-center justify-center px-4 sm:px-6">
-                            <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-xl">
-                                <button
-                                    type="button"
-                                    onClick={closeDeployWizard}
-                                    className="absolute right-3 top-3 z-10 h-7 w-7 rounded-full border border-neutral-200 bg-white text-sm text-neutral-500 hover:bg-neutral-50"
+                <AnimatePresence>
+                    {deployWizardOpen && (
+                        <motion.div
+                            key="deploy-wizard"
+                            className="fixed inset-0 z-[11500]"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                        >
+                            <motion.div
+                                className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+                                onClick={closeDeployWizard}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 0.18 }}
+                            />
+
+                            <div className="absolute inset-0 flex items-center justify-center px-4 sm:px-6">
+                                <motion.div
+                                    className="relative w-full max-w-md overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-xl"
+                                    initial={{ opacity: 0, y: 24, scale: 0.96 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    exit={{ opacity: 0, y: 16, scale: 0.96 }}
+                                    transition={{ duration: 0.22, ease: [0.23, 0.82, 0.25, 1] }}
                                 >
-                                    ✕
-                                </button>
+                                    <button
+                                        type="button"
+                                        onClick={closeDeployWizard}
+                                        className="absolute right-3 top-3 z-10 h-7 w-7 rounded-full border border-neutral-200 bg-white text-sm text-neutral-500 hover:bg-neutral-50"
+                                    >
+                                        ✕
+                                    </button>
 
-                                <div className="relative p-5 pt-6">
-                                    <div className="mb-3 flex items-center justify-between gap-3">
-                                        <div className="flex items-center gap-2">
-                                            <div
-                                                className="flex h-8 w-8 items-center justify-center rounded-2xl"
-                                                style={{ background: ACCENT }}
-                                            >
-                                                <Rocket className="h-4 w-4 text-white" />
-                                            </div>
-                                            <div>
-                                                <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-400">
-                                                    First deploy wizard
-                                                </p>
-                                                <p className="text-sm font-semibold text-neutral-900">
-                                                    Get this preview ready to go live
-                                                </p>
-                                            </div>
-                                        </div>
-                                        <span className="mt-6 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-[11px] font-medium text-neutral-600">
-                                            Step {deployWizardStep == 5 ? "2" : deployWizardStep} of 3
-                                        </span>
-                                    </div>
-
-                                    {deployWizardStep === 1 && (
-                                        <div className="space-y-4">
-                                            <p className="text-sm text-neutral-600">
-                                                Name your Vercel project. This becomes the
-                                                base for your live URL and deployment.
-                                            </p>
-                                            <div className="space-y-1">
-                                                <label className="text-[11px] font-medium text-neutral-700">
-                                                    Project name
-                                                </label>
-                                                <div className="flex items-center gap-2">
-                                                    <input
-                                                        autoFocus
-                                                        value={deployWizardProjectName}
-                                                        onChange={(e) => {
-                                                            const value = e.target.value;
-                                                            setDeployWizardProjectName(value);
-
-                                                            if (deployWizardRenderId) {
-                                                                persistProjectNameHint(deployWizardRenderId, value);
-                                                            }
-                                                        }}
-                                                        placeholder="e.g. kloner-landing, client-site-01"
-                                                        className="mt-0.5 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-[rgba(245,95,42,0.6)] focus:border-transparent"
-                                                    />
-                                                    <span className="text-[11px] text-neutral-600">
-                                                        .vercel.app
-                                                    </span>
-                                                </div>
-                                            </div>
-
-                                            <div className="mt-4 flex items-center justify-between gap-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={closeDeployWizard}
-                                                    className="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-semibold text-neutral-600 hover:bg-neutral-50"
+                                    <div className="relative p-5 pt-6">
+                                        <div className="mb-3 flex items-center justify-between gap-3">
+                                            <div className="flex items-center gap-2">
+                                                <div
+                                                    className="flex h-8 w-8 items-center justify-center rounded-2xl"
+                                                    style={{ background: ACCENT }}
                                                 >
-                                                    Cancel
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        setDeployWizardStep(2)
-                                                    }
-                                                    disabled={
-                                                        !deployWizardProjectName.trim()
-                                                    }
-                                                    className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60"
-                                                    style={{ backgroundColor: ACCENT }}
-                                                >
-                                                    Continue
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {deployWizardStep === 2 && (
-                                        <div className="space-y-4">
-                                            {vercelStatus === "connected" ? (
-                                                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800 flex items-center gap-2">
-                                                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white border border-emerald-200">
-                                                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                                                    </div>
-                                                    <div>
-                                                        <p className="font-medium text-neutral-900">
-                                                            Vercel connected
-                                                        </p>
-                                                        <p className="text-[11px] text-emerald-700">
-                                                            You&apos;ll be moved to deploy in a moment…
-                                                        </p>
-                                                    </div>
+                                                    <Rocket className="h-4 w-4 text-white" />
                                                 </div>
-                                            ) : (
-                                                <>
-                                                    <p className="text-sm text-neutral-600">
-                                                        Kloner deploys using your saved Vercel integration. Connect once, then future deploys are one click.
+                                                <div>
+                                                    <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-400">
+                                                        First deploy wizard
                                                     </p>
+                                                    <p className="text-sm font-semibold text-neutral-900">
+                                                        Get this preview ready to go live
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <span className="mt-6 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-[11px] font-medium text-neutral-600">
+                                                Step {deployWizardStep === 5 ? "2" : deployWizardStep} of 3
+                                            </span>
+                                        </div>
 
-                                                    {/* <button
-                                                        type="button"
-                                                        onClick={handleConnectVercelFromWizard}
-                                                        className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white"
-                                                        style={{ backgroundColor: ACCENT }}
-                                                    >
-                                                        Connect Vercel
-                                                    </button> */}
-                                                </>
+                                        <AnimatePresence mode="wait" initial={false}>
+                                            {deployWizardStep === 1 && (
+                                                <motion.div
+                                                    key="step-1"
+                                                    initial={{ opacity: 0, x: 20 }}
+                                                    animate={{ opacity: 1, x: 0 }}
+                                                    exit={{ opacity: 0, x: -20 }}
+                                                    transition={{ duration: 0.18, ease: "easeOut" }}
+                                                    className="space-y-4"
+                                                >
+                                                    <p className="text-sm text-neutral-600">
+                                                        Name your Vercel project. This becomes the
+                                                        base for your live URL and deployment.
+                                                    </p>
+                                                    <div className="space-y-1">
+                                                        <label className="text-[11px] font-medium text-neutral-700">
+                                                            Project name
+                                                        </label>
+                                                        <div className="flex items-center gap-2">
+                                                            <input
+                                                                autoFocus
+                                                                value={deployWizardProjectName}
+                                                                onChange={(e) => {
+                                                                    const value = e.target.value;
+                                                                    setDeployWizardProjectName(value);
+
+                                                                    if (deployWizardRenderId) {
+                                                                        persistProjectNameHint(
+                                                                            deployWizardRenderId,
+                                                                            value
+                                                                        );
+                                                                    }
+                                                                }}
+                                                                placeholder="e.g. kloner-landing, client-site-01"
+                                                                className="mt-0.5 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-[rgba(245,95,42,0.6)] focus:border-transparent"
+                                                            />
+                                                            <span className="text-[11px] text-neutral-600">
+                                                                .vercel.app
+                                                            </span>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="mt-4 flex items-center justify-between gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={closeDeployWizard}
+                                                            className="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-semibold text-neutral-600 hover:bg-neutral-50"
+                                                        >
+                                                            Cancel
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setDeployWizardStep(2)}
+                                                            disabled={!deployWizardProjectName.trim()}
+                                                            className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60"
+                                                            style={{ backgroundColor: ACCENT }}
+                                                        >
+                                                            Continue
+                                                        </button>
+                                                    </div>
+                                                </motion.div>
                                             )}
 
-                                            <div className="mt-4 flex items-center justify-between gap-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setDeployWizardStep(1)}
-                                                    className="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-semibold text-neutral-600 hover:bg-neutral-50"
+                                            {deployWizardStep === 2 && (
+                                                <motion.div
+                                                    key="step-2"
+                                                    initial={{ opacity: 0, x: 20 }}
+                                                    animate={{ opacity: 1, x: 0 }}
+                                                    exit={{ opacity: 0, x: -20 }}
+                                                    transition={{ duration: 0.18, ease: "easeOut" }}
+                                                    className="space-y-4"
                                                 >
-                                                    Back
-                                                </button>
-                                                {vercelStatus !== "connected" && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleConnectVercelFromWizard}
-                                                        className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white"
-                                                        style={{ backgroundColor: ACCENT }}
-                                                    >
-                                                        Connect Vercel
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {deployWizardStep === 3 && (
-                                        <div className="space-y-4">
-                                            <p className="text-sm text-neutral-600">
-                                                We&apos;re sending this preview to Vercel as a new deployment.
-                                            </p>
-
-                                            <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-sm text-neutral-700 flex items-center gap-3">
-                                                <div className="flex items-center justify-center">
-                                                    {deployWizardBusy ? (
-                                                        <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                                                    ) : deployWizardError ? (
-                                                        <span className="text-sm text-red-500">!</span>
+                                                    {vercelStatus === "connected" ? (
+                                                        <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800">
+                                                            <div className="flex h-7 w-7 items-center justify-center rounded-full border border-emerald-200 bg-white">
+                                                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                                                            </div>
+                                                            <div>
+                                                                <p className="font-medium text-neutral-900">
+                                                                    Vercel successfully connected
+                                                                </p>
+                                                                <p className="text-[11px] text-emerald-700">
+                                                                    You&apos;ll be moved to deploy in a moment…
+                                                                </p>
+                                                            </div>
+                                                        </div>
                                                     ) : (
-                                                        <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                                                        <>
+                                                            <p className="text-sm text-neutral-600">
+                                                                Kloner deploys using your saved Vercel integration. Connect once, then future deploys are one click.
+                                                            </p>
+                                                        </>
                                                     )}
-                                                </div>
-                                                <div>
-                                                    <p className="font-medium text-neutral-900">
-                                                        {deployWizardBusy
-                                                            ? "Deploying to Vercel…"
-                                                            : deployWizardError
-                                                                ? "Deploy failed"
-                                                                : autoDeployTriggeredRef.current
-                                                                    ? "Deployment created"
-                                                                    : "Ready to deploy"}
-                                                    </p>
-                                                    <p className="text-[11px] text-neutral-600">
-                                                        {deployWizardBusy &&
-                                                            "This can take up to a minute depending on your project."}
-                                                        {!deployWizardBusy &&
-                                                            !deployWizardError &&
-                                                            autoDeployTriggeredRef.current &&
-                                                            "Open the Deployments tab to see build status and your live URL."}
-                                                        {deployWizardError && deployWizardError}
-                                                    </p>
-                                                </div>
-                                            </div>
 
-                                            <div className="mt-4 flex items-center justify-between gap-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={closeDeployWizard}
-                                                    className="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-semibold text-neutral-600 hover:bg-neutral-50"
-                                                >
-                                                    Close
-                                                </button>
-                                                {!deployWizardBusy && !deployWizardError && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            closeDeployWizard();
-                                                            router.push("/dashboard/deployments");
-                                                        }}
-                                                        className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white"
-                                                        style={{ backgroundColor: ACCENT }}
-                                                    >
-                                                        View deployment
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {deployWizardStep === 5 && (
-                                        <div className="space-y-5">
-                                            <div className="space-y-1.5">
-                                                <p className="text-sm font-semibold text-neutral-900">
-                                                    Upgrade required to publish this site
-                                                </p>
-                                                <p className="text-[11px] text-neutral-600 leading-relaxed">
-                                                    Deploying previews to Vercel is a paid feature. Upgrading unlocks instant
-                                                    publishing, higher limits, and full multi-site workflows.
-                                                </p>
-                                            </div>
-
-                                            <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-700 space-y-3">
-                                                <div className="flex items-start gap-3">
-                                                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-neutral-900">
-                                                        <MessageCircleWarning className="text-white h-3.5 w-3.5" />
+                                                    <div className="mt-4 flex items-center justify-between gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setDeployWizardStep(1)}
+                                                            className="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-semibold text-neutral-600 hover:bg-neutral-50"
+                                                        >
+                                                            Back
+                                                        </button>
+                                                        {vercelStatus !== "connected" && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleConnectVercelFromWizard}
+                                                                className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white"
+                                                                style={{ backgroundColor: ACCENT }}
+                                                            >
+                                                                Connect Vercel
+                                                            </button>
+                                                        )}
                                                     </div>
-                                                    <div className="space-y-1">
-                                                        <p className="font-medium text-neutral-900">What you get on Pro</p>
-                                                        <ul className="space-y-1.5 text-[11px] text-neutral-600">
-                                                            <li className="flex items-start gap-1.5">
-                                                                <span className="mt-[3px] h-1.5 w-1.5 rounded-full" style={{ backgroundColor: ACCENT }} />
-                                                                <span>Deploy this site live in seconds from Kloner</span>
-                                                            </li>
-                                                            <li className="flex items-start gap-1.5">
-                                                                <span className="mt-[3px] h-1.5 w-1.5 rounded-full" style={{ backgroundColor: ACCENT }} />
-                                                                <span>Higher preview and screenshot limits for real work</span>
-                                                            </li>
-                                                            <li className="flex items-start gap-1.5">
-                                                                <span className="mt-[3px] h-1.5 w-1.5 rounded-full" style={{ backgroundColor: ACCENT }} />
-                                                                <span>Multiple live projects / client sites under one account</span>
-                                                            </li>
-                                                            <li className="flex items-start gap-1.5">
-                                                                <span className="mt-[3px] h-1.5 w-1.5 rounded-full" style={{ backgroundColor: ACCENT }} />
-                                                                <span>Full visual customization unlocked for more sections</span>
-                                                            </li>
-                                                            <li className="flex items-start gap-1.5">
-                                                                <span className="mt-[3px] h-1.5 w-1.5 rounded-full" style={{ backgroundColor: ACCENT }} />
-                                                                <span>Priority rendering queue for faster preview generation</span>
-                                                            </li>
-                                                            <li className="flex items-start gap-1.5">
-                                                                <span className="mt-[3px] h-1.5 w-1.5 rounded-full" style={{ backgroundColor: ACCENT }} />
-                                                                <span>One-click Vercel deployment from inside Kloner</span>
-                                                            </li>
-                                                        </ul>
-                                                    </div>
-                                                </div>
-                                            </div>
+                                                </motion.div>
+                                            )}
 
-                                            <button
-                                                type="button"
-                                                onClick={() => void startProCheckout()}
-                                                disabled={checkoutBusy}
-                                                className="flex w-full items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-[0_18px_40px_rgba(0,0,0,0.6)] transition transform hover:-translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-white/20 disabled:opacity-70 disabled:cursor-wait"
-                                                style={{ backgroundColor: ACCENT }}
-                                            >
-                                                {checkoutBusy ? "Redirecting to Stripe…" : "Upgrade to Pro and deploy"}
-                                            </button>
-
-                                            <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-sm text-neutral-700 flex items-center gap-3">
-                                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-900">
-                                                    {deployWizardBusy ? (
-                                                        <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                                                    ) : deployWizardError ? (
-                                                        <span className="text-sm text-red-500">!</span>
-                                                    ) : (
-                                                        <MessageCircleWarning className="h-4 w-4 text-white" />
-                                                    )}
-                                                </div>
-                                                <div>
-                                                    <p className="font-medium text-neutral-900">
-                                                        {deployWizardBusy
-                                                            ? "Checking your plan…"
-                                                            : deployWizardError
-                                                                ? "Upgrade check failed"
-                                                                : "Upgrade required"}
-                                                    </p>
-                                                    <p className="text-[11px] text-neutral-600">
-                                                        {deployWizardBusy &&
-                                                            "This can take a moment while we verify your current plan."}
-                                                        {!deployWizardBusy &&
-                                                            !deployWizardError &&
-                                                            "Publishing and exporting previews requires a paid plan."}
-                                                        {deployWizardError && deployWizardError}
-                                                    </p>
-                                                </div>
-                                            </div>
-
-                                            <div className="mt-4 flex items-center justify-between gap-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={closeDeployWizard}
-                                                    className="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-semibold text-neutral-600 hover:bg-neutral-50"
+                                            {deployWizardStep === 3 && (
+                                                <motion.div
+                                                    key="step-3"
+                                                    initial={{ opacity: 0, x: 20 }}
+                                                    animate={{ opacity: 1, x: 0 }}
+                                                    exit={{ opacity: 0, x: -20 }}
+                                                    transition={{ duration: 0.18, ease: "easeOut" }}
+                                                    className="space-y-4"
                                                 >
-                                                    Close
-                                                </button>
-                                                {/* {!deployWizardBusy && !deployWizardError && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            closeDeployWizard();
-                                                            router.push("/dashboard/deployments");
-                                                        }}
-                                                        className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white"
-                                                        style={{ backgroundColor: ACCENT }}
-                                                    >
-                                                        View deployments
-                                                    </button>
-                                                )} */}
-                                            </div>
-                                        </div>
-                                    )}
+                                                    <p className="text-sm text-neutral-600">
+                                                        We&apos;re sending this preview to Vercel as a new deployment.
+                                                    </p>
 
-                                </div>
+                                                    <div className="flex items-center gap-3 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-sm text-neutral-700">
+                                                        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-white border border-neutral-300">
+                                                            {deployWizardError ? (
+                                                                <span className="text-sm text-red-500 font-semibold">!</span>
+                                                            ) : deployWizardBusy ? (
+                                                                <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-300 border-t-[rgba(245,95,42,0.95)]" />
+                                                            ) : (
+                                                                <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                                                            )}
+                                                        </div>
+                                                        <div>
+                                                            <p className="font-medium text-neutral-900">
+                                                                {deployWizardError
+                                                                    ? "Deploy failed"
+                                                                    : deployWizardBusy
+                                                                        ? "Deploying to Vercel…"
+                                                                        : autoDeployTriggeredRef.current
+                                                                            ? "Deployment created"
+                                                                            : "Ready to deploy"}
+                                                            </p>
+                                                            <p className="text-[11px] text-neutral-600">
+                                                                {deployWizardError && deployWizardError}
+                                                                {!deployWizardError &&
+                                                                    deployWizardBusy &&
+                                                                    "This can take up to a minute depending on your project."}
+                                                                {!deployWizardError &&
+                                                                    !deployWizardBusy &&
+                                                                    autoDeployTriggeredRef.current &&
+                                                                    "Open the Deployments tab to see build status and your live URL."}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="mt-4 flex items-center justify-between gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={closeDeployWizard}
+                                                            className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-600 hover:bg-neutral-50"
+                                                        >
+                                                            Close
+                                                        </button>
+                                                        {!deployWizardBusy && !deployWizardError && (
+                                                            <div
+                                                                className="group flex flex-inline items-center gap-1 rounded-lg px-3 py-1.5 text-white text-xs"
+                                                                style={{ backgroundColor: ACCENT }}
+                                                            >
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        closeDeployWizard();
+                                                                        router.push("/dashboard/deployments");
+                                                                    }}
+                                                                    className="font-semibold"
+                                                                >
+                                                                    View deployment
+                                                                </button>
+                                                                <Rocket className="h-4 w-4 transform transition-transform duration-150 group-hover:translate-x-0.5" />
+                                                            </div>
+                                                        )}
+
+                                                    </div>
+                                                </motion.div>
+                                            )}
+
+
+                                            {deployWizardStep === 5 && (
+                                                <motion.div
+                                                    key="step-5"
+                                                    initial={{ opacity: 0, x: 20 }}
+                                                    animate={{ opacity: 1, x: 0 }}
+                                                    exit={{ opacity: 0, x: -20 }}
+                                                    transition={{ duration: 0.18, ease: "easeOut" }}
+                                                    className="space-y-5"
+                                                >
+                                                    <div className="space-y-1.5">
+                                                        <p className="text-sm font-semibold text-neutral-900">
+                                                            Upgrade required to publish this site
+                                                        </p>
+                                                        <p className="text-[11px] text-neutral-600 leading-relaxed">
+                                                            Deploying previews to Vercel is a paid feature. Upgrading unlocks instant
+                                                            publishing, higher limits, and full multi-site workflows.
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-700 space-y-3">
+                                                        <div className="flex items-start gap-3">
+                                                            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-neutral-900">
+                                                                <MessageCircleWarning className="text-white h-3.5 w-3.5" />
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <p className="mb-4 text-md font-medium text-neutral-900">
+                                                                    What you get on Pro
+                                                                </p>
+                                                                <ul className="space-y-1.5 text-[14px] text-neutral-600">
+                                                                    <li className="flex items-center gap-1.5">
+                                                                        <span
+                                                                            className="h-1.5 w-1.5 rounded-full"
+                                                                            style={{ backgroundColor: ACCENT }}
+                                                                        />
+                                                                        <span>Deploy unlimited iterations in seconds</span>
+                                                                    </li>
+                                                                    <li className="flex items-center gap-1.5">
+                                                                        <span
+                                                                            className="h-1.5 w-1.5 rounded-full"
+                                                                            style={{ backgroundColor: ACCENT }}
+                                                                        />
+                                                                        <span>Higher preview and screenshot limits</span>
+                                                                    </li>
+                                                                    <li className="flex items-center gap-1.5">
+                                                                        <span
+                                                                            className="h-1.5 w-1.5 rounded-full"
+                                                                            style={{ backgroundColor: ACCENT }}
+                                                                        />
+                                                                        <span>Priority access to more powerful engines</span>
+                                                                    </li>
+                                                                    <li className="flex items-center gap-1.5">
+                                                                        <span
+                                                                            className="h-1.5 w-1.5 rounded-full"
+                                                                            style={{ backgroundColor: ACCENT }}
+                                                                        />
+                                                                        <span>Multiple live projects under same account</span>
+                                                                    </li>
+                                                                    <li className="flex items-center gap-1.5">
+                                                                        <span
+                                                                            className="h-1.5 w-1.5 rounded-full"
+                                                                            style={{ backgroundColor: ACCENT }}
+                                                                        />
+                                                                        <span>Full visual customization options</span>
+                                                                    </li>
+                                                                    <li className="flex items-center gap-1.5">
+                                                                        <span
+                                                                            className="h-1.5 w-1.5 rounded-full"
+                                                                            style={{ backgroundColor: ACCENT }}
+                                                                        />
+                                                                        <span>Priority queue for faster preview generation</span>
+                                                                    </li>
+                                                                    <li className="flex items-center gap-1.5">
+                                                                        <span
+                                                                            className="h-1.5 w-1.5 rounded-full"
+                                                                            style={{ backgroundColor: ACCENT }}
+                                                                        />
+                                                                        <span>One-click Vercel deployment</span>
+                                                                    </li>
+                                                                </ul>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <motion.button
+                                                        type="button"
+                                                        onClick={() => void startProCheckout()}
+                                                        disabled={checkoutBusy}
+                                                        className="group flex w-full items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-[0_18px_40px_rgba(0,0,0,0.6)] focus:outline-none focus:ring-2 focus:ring-white/20 disabled:opacity-70 disabled:cursor-wait"
+                                                        style={{ backgroundColor: ACCENT }}
+                                                        whileHover={{ scale: 1.02 }}
+                                                        whileTap={{ scale: 0.99 }}
+                                                        transition={{ duration: 0.16, ease: "easeOut" }}
+                                                    >
+                                                        <span className="flex items-center gap-1.5">
+                                                            <span>
+                                                                {checkoutBusy
+                                                                    ? "Redirecting to Stripe…"
+                                                                    : "Go Pro and deploy your site"}
+                                                            </span>
+                                                            <span
+                                                                className="inline-flex items-center justify-center overflow-hidden text-base opacity-0 translate-x-[-4px] transition-all duration-150 group-hover:opacity-100 group-hover:translate-x-0"
+                                                                aria-hidden="true"
+                                                            >
+                                                                →
+                                                            </span>
+                                                        </span>
+                                                    </motion.button>
+
+                                                    <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-sm text-neutral-700 flex items-center gap-3">
+                                                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-900">
+                                                            {deployWizardBusy ? (
+                                                                <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                                                            ) : deployWizardError ? (
+                                                                <span className="text-sm text-red-500">!</span>
+                                                            ) : (
+                                                                <ScanFace className="h-4 w-4 text-white" />
+                                                            )}
+                                                        </div>
+                                                        <div>
+                                                            <p className="font-medium text-neutral-900">
+                                                                {deployWizardBusy
+                                                                    ? "Checking your plan…"
+                                                                    : deployWizardError
+                                                                        ? "Upgrade check failed"
+                                                                        : "Join 5000+ designers and developers using Kloner."}
+                                                            </p>
+                                                            <p className="text-[11px] text-neutral-600">
+                                                                {deployWizardBusy &&
+                                                                    "This can take a moment while we verify your current plan."}
+                                                                {!deployWizardBusy &&
+                                                                    !deployWizardError &&
+                                                                    "After upgrading, we'll return you here to finish deployment."}
+                                                                {deployWizardError && deployWizardError}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="mt-4 flex items-center justify-between gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={closeDeployWizard}
+                                                            className="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-semibold text-neutral-600 hover:bg-neutral-50"
+                                                        >
+                                                            Close
+                                                        </button>
+                                                    </div>
+                                                </motion.div>
+                                            )}
+                                        </AnimatePresence>
+                                    </div>
+                                </motion.div>
                             </div>
-                        </div>
-                    </div>
-                )}
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
 
                 <Toasts toasts={toasts} />
 
