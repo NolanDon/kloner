@@ -2494,7 +2494,7 @@ export default function PreviewEditor({
                                                     : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                                                 }`}
                                         >
-                                            {exporting ? "🚀 Exporting…" : "🚀 Export to Vercel"}
+                                            {exporting ? "🚀 Exporting…" : "🚀 Deploy Website"}
                                         </button>
 
                                         <button
