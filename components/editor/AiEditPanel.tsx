@@ -256,7 +256,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
     return (
         <>
             {/* centered input bar above canvas */}
-            <div className="mb-4 flex justify-center mt-10">
+            <div className="mb-4 flex justify-center mt-2">
                 <div className="w-full max-w-[820px]">
                     <div className="mb-1 flex items-center justify-between px-1">
                         <span className="ml-2 text-[13px] font-semibold uppercase tracking-wide text-neutral-700">
@@ -327,7 +327,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
             </div>
 
             {/* history rail / dropdown on the right */}
-            <aside className="pointer-events-none fixed top-10 right-8 hidden w-72 lg:flex">
+            <aside className="pointer-events-none fixed top-10 ml-4 hidden w-72 lg:flex">
                 {collapsed ? (
                     // collapsed: small dropdown-style pill
                     <button

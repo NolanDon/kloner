@@ -3375,7 +3375,7 @@ export default function PreviewEditor({
 
                         {/* AI edit panel – lives in the right sidebar */}
                         {mode === "preview" && draftId && (
-                            <div className="mb-3 border-t pt-3 mt-2 max-h-72 overflow-auto">
+                            <div className="border-t max-h-72 overflow-auto">
                                 <AiEditPanel
                                     renderId={draftId}
                                     getSelectedBlockHtml={getSelectedBlockHtml}
