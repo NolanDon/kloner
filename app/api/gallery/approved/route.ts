@@ -24,7 +24,6 @@ export async function GET(req: NextRequest) {
                 id: doc.id,
                 name: data.name ?? "Untitled",
                 html: data.html ?? "",
-                author: data.author ?? null,
                 createdAt: data.createdAt?.toMillis
                     ? data.createdAt.toMillis()
                     : null,

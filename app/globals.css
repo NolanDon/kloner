@@ -62,3 +62,72 @@ body {
         }
     }
 }
+
+/* While AI is editing a block */
+[data-kloner-ai-editing],
+.kloner-ai-editing {
+    position: relative;
+    box-shadow: 0 0 0 0 rgba(245, 95, 42, 0.25);
+    animation: kloner-ai-editing-glow 1.2s ease-out infinite;
+}
+
+[data-kloner-ai-editing]::after,
+.kloner-ai-editing::after {
+    content: "✦";
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    font-size: 11px;
+    color: #f97316;
+    text-shadow:
+        0 0 8px rgba(251, 191, 36, 0.8),
+        0 0 16px rgba(251, 191, 36, 0.7);
+    animation: kloner-ai-stars 1.4s ease-in-out infinite;
+}
+
+@keyframes kloner-ai-editing-glow {
+    0% {
+        box-shadow: 0 0 0 0 rgba(245, 95, 42, 0.35);
+        transform: translateZ(0);
+    }
+
+    60% {
+        box-shadow: 0 0 0 8px rgba(245, 95, 42, 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(245, 95, 42, 0);
+    }
+}
+
+@keyframes kloner-ai-stars {
+    0% {
+        opacity: 0.3;
+        transform: translate(0, 0) scale(0.9);
+    }
+
+    50% {
+        opacity: 1;
+        transform: translate(-2px, -3px) scale(1.1);
+    }
+
+    100% {
+        opacity: 0.3;
+        transform: translate(0, 0) scale(0.9);
+    }
+}
+
+/* After the new HTML lands */
+.kloner-ai-updated {
+    animation: kloner-ai-updated-flash 0.75s ease-out;
+}
+
+@keyframes kloner-ai-updated-flash {
+    0% {
+        background-color: rgba(245, 95, 42, 0.12);
+    }
+
+    100% {
+        background-color: transparent;
+    }
+}

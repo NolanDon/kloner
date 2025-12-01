@@ -82,27 +82,27 @@ export async function compressImageForUpload(
     const opts = { ...DEFAULT_OPTS, ...partialOpts };
 
     if (!isImage(inputFile)) {
-        console.log("[compressImageForUpload] skip: not an image", {
-            name: inputFile.name,
-            type: inputFile.type,
-        });
+        // console.log("[compressImageForUpload] skip: not an image", {
+        //     name: inputFile.name,
+        //     type: inputFile.type,
+        // });
         return inputFile;
     }
 
     // skip tiny files
     if (inputFile.size < 40 * 1024) {
-        console.log("[compressImageForUpload] skip: file too small to bother", {
-            name: inputFile.name,
-            size: inputFile.size,
-        });
+        // console.log("[compressImageForUpload] skip: file too small to bother", {
+        //     name: inputFile.name,
+        //     size: inputFile.size,
+        // });
         return inputFile;
     }
 
-    console.log("[compressImageForUpload] start", {
-        name: inputFile.name,
-        originalBytes: inputFile.size,
-        type: inputFile.type,
-    });
+    // console.log("[compressImageForUpload] start", {
+    //     name: inputFile.name,
+    //     originalBytes: inputFile.size,
+    //     type: inputFile.type,
+    // });
 
     let blobForProcessing: Blob = inputFile;
     let mime = inputFile.type || "image/jpeg";
@@ -113,10 +113,10 @@ export async function compressImageForUpload(
         opts.convertLargePngToJpeg &&
         inputFile.size >= opts.pngToJpegThresholdBytes
     ) {
-        console.log("[compressImageForUpload] converting PNG to JPEG for better compression", {
-            originalType: mime,
-            newType: "image/jpeg",
-        });
+        // console.log("[compressImageForUpload] converting PNG to JPEG for better compression", {
+        //     originalType: mime,
+        //     newType: "image/jpeg",
+        // });
         mime = "image/jpeg";
     }
 
@@ -130,10 +130,10 @@ export async function compressImageForUpload(
 
     const { width, height } = img;
     if (!width || !height) {
-        console.warn("[compressImageForUpload] invalid dimensions; skipping", {
-            width,
-            height,
-        });
+        // console.warn("[compressImageForUpload] invalid dimensions; skipping", {
+        //     width,
+        //     height,
+        // });
         return inputFile;
     }
 
@@ -148,14 +148,14 @@ export async function compressImageForUpload(
         ? getTargetSize(width, height, opts.maxWidth, opts.maxHeight)
         : { targetW: width, targetH: height };
 
-    console.log("[compressImageForUpload] dimensions", {
-        originalWidth: width,
-        originalHeight: height,
-        targetWidth: targetW,
-        targetHeight: targetH,
-        needsScale,
-        targetMime: mime,
-    });
+    // console.log("[compressImageForUpload] dimensions", {
+    //     originalWidth: width,
+    //     originalHeight: height,
+    //     targetWidth: targetW,
+    //     targetHeight: targetH,
+    //     needsScale,
+    //     targetMime: mime,
+    // });
 
     // Always go through canvas if we got here, so we can compress even if not scaling.
     const canvas = document.createElement("canvas");
@@ -191,18 +191,18 @@ export async function compressImageForUpload(
     const compressedBytes = compressedBlob.size;
     const ratio = compressedBytes / originalBytes;
 
-    console.log("[compressImageForUpload] result bytes", {
-        originalBytes,
-        compressedBytes,
-        ratio,
-        bytesSaved: originalBytes - compressedBytes,
-    });
+    // console.log("[compressImageForUpload] result bytes", {
+    //     originalBytes,
+    //     compressedBytes,
+    //     ratio,
+    //     bytesSaved: originalBytes - compressedBytes,
+    // });
 
     // If we didn't meaningfully reduce size, keep original
     if (compressedBytes >= originalBytes - opts.minBytesSaved) {
-        console.log("[compressImageForUpload] skip replacement: savings not big enough", {
-            minBytesSaved: opts.minBytesSaved,
-        });
+        // console.log("[compressImageForUpload] skip replacement: savings not big enough", {
+        //     minBytesSaved: opts.minBytesSaved,
+        // });
         return inputFile;
     }
 

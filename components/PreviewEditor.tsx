@@ -24,6 +24,42 @@ export interface SeoMeta {
     jsonLd?: unknown;
 }
 
+
+async function deleteAssetsOnServer(paths: string[]) {
+    if (!paths.length) return;
+
+    try {
+        const csrf = await ensureSessionAndCsrf?.();
+        const res = await fetch("/api/user-blob/delete", {
+            method: "POST",
+            headers: {
+                "content-type": "application/json",
+                ...(csrf ? { "x-csrf": csrf } : {}),
+            },
+            credentials: "include",
+            body: JSON.stringify({ paths }),
+        });
+
+        const body = await res.json().catch(() => ({} as any));
+
+        console.log("[deleteAssetsOnServer] response", {
+            ok: res.ok,
+            status: res.status,
+            body,
+        });
+
+        if (!res.ok) {
+            console.error("[deleteAssetsOnServer] failed", {
+                status: res.status,
+                body,
+            });
+        }
+    } catch (err) {
+        console.error("[deleteAssetsOnServer] error", err);
+    }
+}
+
+
 // Fire-and-forget request to delete assets by their storage paths.
 // The dashboard host listens for "kloner:delete-assets" messages.
 function requestDeleteAssetsByPaths(paths: string[]) {
@@ -81,6 +117,7 @@ const STORAGE_KEY = (id?: string) => `kloner:draft:${id || "default"}`;
 type SelectionMeta = {
     has: boolean;
     tagName?: string;
+    path?: string | null;
 };
 
 const FONT_OPTIONS = [
@@ -433,6 +470,7 @@ import { useAuth } from "@/src/hooks/useAuth";
 import { Loader2 } from "lucide-react";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { sanitizeImageName } from "./helpers";
+import AiEditPanel from "./editor/AiEditPanel";
 
 
 // ───────── SEO helpers for export ─────────
@@ -877,7 +915,6 @@ export default function PreviewEditor({
     const [exportPrompt, setExportPrompt] = useState(false);
     const [controlsCollapsed, setControlsCollapsed] = useState<boolean>(false);
     const [sidePanelMode, setSidePanelMode] = useState<SidePanelMode>("style");
-    const [selectionMeta, setSelectionMeta] = useState<SelectionMeta>({ has: false });
     const [htmlDraft, setHtmlDraft] = useState<string>("");
     const [previewHtml, setPreviewHtml] = useState<string>("");
     const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -887,6 +924,12 @@ export default function PreviewEditor({
     const [activePageId, setActivePageId] = useState<string>("");
     const [derivedPages, setDerivedPages] = useState<EditorPage[]>([]);
     const [pageSwitchConfirm, setPageSwitchConfirm] = useState<{ targetId: string } | null>(null);
+    // inside PreviewEditor component
+    const [aiPreviewHtml, setAiPreviewHtml] = useState<string | null>(null);
+
+
+    const [selectionMeta, setSelectionMeta] = useState<SelectionMeta>({ has: false });
+    const [lastSelectedPath, setLastSelectedPath] = useState<string | null>(null);
 
     const localImageStore: Map<string, File> = new Map();
 
@@ -918,10 +961,98 @@ export default function PreviewEditor({
         iframe.contentWindow?.postMessage(data, "*");
     }
 
+    function getSelectedBlockHtml(): string | null {
+        const iframe = iframeRef.current;
+        if (!iframe) return null;
 
+        const doc = iframe.contentDocument;
+        if (!doc) return null;
+
+        // prefer live selection path; fall back to lastSelectedPath
+        const path =
+            (selectionMeta && selectionMeta.path) ||
+            lastSelectedPath ||
+            null;
+
+        if (path) {
+            const elByPath = doc.querySelector(
+                `[data-kloner-path="${path}"]`
+            ) as HTMLElement | null;
+            if (elByPath) return elByPath.outerHTML;
+        }
+
+        // final fallback: any hard selection markers you still use
+        const el =
+            (doc.querySelector("[data-kloner-sel='1']") as HTMLElement | null) ||
+            (doc.querySelector("[data-kloner-selected='true']") as HTMLElement | null);
+
+        if (!el) return null;
+        return el.outerHTML;
+    }
+
+    /**
+     * Apply updated block HTML to the currently selected element in the iframe
+     * and optionally serialize the full document back to a string.
+     *
+     * If mutateIframeOnly = true:
+     *   - mutate the iframe DOM for visual preview, but do not rely on it as source of truth
+     *   - still returns the serialized full HTML so you can feed it into your preview mechanism
+     *
+     * If mutateIframeOnly = false:
+     *   - mutate iframe DOM and use the serialized HTML as new draft + preview
+     */
+    function applyBlockHtmlToIframeAndSerialize(
+        updatedBlockHtml: string,
+        mutateIframeOnly: boolean
+    ): string | null {
+        const iframe = iframeRef.current;
+        if (!iframe) return null;
+
+        const doc = iframe.contentDocument;
+        if (!doc) return null;
+
+        // Prefer path-based targeting (same as getSelectedBlockHtml)
+        const path =
+            (selectionMeta && selectionMeta.path) ||
+            lastSelectedPath ||
+            null;
+
+        let targetEl: Element | null = null;
+
+        if (path) {
+            targetEl = doc.querySelector(
+                `[data-kloner-path="${path}"]`
+            );
+        }
+
+        if (!targetEl) {
+            targetEl =
+                doc.querySelector("[data-kloner-selected='true']") ||
+                doc.querySelector("[data-kloner-sel='1']");
+        }
+
+        if (!targetEl) {
+            console.warn("[ai-edit] no selected block found in iframe for replacement");
+            return null;
+        }
+
+        const range = doc.createRange();
+        const fragment = range.createContextualFragment(updatedBlockHtml);
+        targetEl.replaceWith(fragment);
+
+        // Serialize full document for preview / commit
+        const fullHtml = "<!doctype html>\n" + doc.documentElement.outerHTML;
+
+        // `mutateIframeOnly` is kept for compatibility, but we always
+        // return the full HTML so caller can decide what to do with it.
+        return fullHtml;
+    }
+
+
+
+    // make mobile a bit wider
     const devicePx =
-        device === "desktop" ? 1440 : device === "tablet" ? 768 : 390;
-
+        device === "desktop" ? 1440 : device === "tablet" ? 1024 : 600;
 
     // inside PreviewEditor component
 
@@ -1088,6 +1219,44 @@ export default function PreviewEditor({
             meta.jsonLd ? JSON.stringify(meta.jsonLd, null, 2) : ""
         );
 
+        useEffect(() => {
+            function handleMessage(event: MessageEvent) {
+                const data = event.data;
+                if (!data || typeof data !== "object") return;
+
+                if (data.type === "kloner:selection-changed") {
+                    const nextMeta: SelectionMeta = {
+                        has: !!data.has,
+                        path: data.path ?? data.meta?.path ?? null,
+                        // keep any other fields you use:
+                        // isTextLike: !!data.isTextLike,
+                        // isImage: !!data.isImage,
+                    };
+
+                    setSelectionMeta(nextMeta);
+
+                    // only update lastSelectedPath when we have an active selection
+                    if (nextMeta.has && nextMeta.path) {
+                        setLastSelectedPath(nextMeta.path);
+                    }
+                }
+
+                if (data.type === "kloner:clear-selection") {
+                    // allow the highlight to clear, but keep lastSelectedPath
+                    setSelectionMeta((prev) => ({
+                        ...prev,
+                        has: false,
+                        // DO NOT blank path here
+                    }));
+                }
+            }
+
+            window.addEventListener("message", handleMessage);
+            return () => window.removeEventListener("message", handleMessage);
+        }, []);
+
+
+
         // when page / meta changes, re-seed form + JSON editor
         useEffect(() => {
             setDraftMeta(meta);
@@ -1098,6 +1267,21 @@ export default function PreviewEditor({
             setDraftMeta((prev) => ({ ...prev, [key]: value }));
         };
 
+        useEffect(() => {
+            function handleMessage(event: MessageEvent) {
+                const data = event.data;
+                if (!data || typeof data !== "object") return;
+
+                if (data.type === "kloner:delete-assets") {
+                    const paths = Array.isArray(data.paths) ? data.paths : [];
+                    console.log("[PreviewEditor] kloner:delete-assets", { paths });
+                    deleteAssetsOnServer(paths);
+                }
+            }
+
+            window.addEventListener("message", handleMessage);
+            return () => window.removeEventListener("message", handleMessage);
+        }, []);
 
 
         const handleMetaSaveClick = async () => {
@@ -1460,6 +1644,7 @@ export default function PreviewEditor({
         window.addEventListener("keydown", onKey);
         return () => window.removeEventListener("keydown", onKey);
     }, []);
+
 
     const tryClearIframeSelection = useCallback(() => {
         const win = iframeRef.current?.contentWindow as any;
@@ -2030,6 +2215,34 @@ export default function PreviewEditor({
         [allPages, activePage, sourceImage]
     );
 
+    // inside your component render, before the return:
+    const iframeNode = (
+        <iframe
+            key={iframeKey}
+            ref={iframeRef}
+            className="w-full h-[70vh] sm:h-[80vh] border-0"
+            title="KlonerPreview"
+            sandbox="allow-same-origin"
+            srcDoc={
+                aiPreviewHtml ||
+                renderHtml ||
+                "<!doctype html><html><head><meta charset='utf-8'></head><body></body></html>"
+            }
+            onLoad={() => {
+                const doc = iframeRef.current?.contentDocument;
+                if (!doc) return;
+                doc.querySelectorAll(".kloner-toolbar").forEach((n) => n.remove());
+                doc.querySelectorAll(".kloner-style-panel").forEach((n) => n.remove());
+                if (mode === "preview") {
+                    injectEditableOverlay(doc, (updated) => {
+                        setHtmlDraft(updated);
+                    });
+                    iframeRef.current?.contentWindow?.focus();
+                }
+            }}
+        />
+    );
+
 
     return (
         <div
@@ -2306,9 +2519,10 @@ export default function PreviewEditor({
                                 </div>
 
 
+
                                 {/* Selection styling sidebar */}
                                 {mode === "preview" && (
-                                    <div className="mb-3 border-t pt-20 mt-2">
+                                    <div className="mb-3 border-t pt-5 mt-2">
                                         <div className="flex items-center justify-between mb-1">
                                             <div className="text-sm font-semibold text-neutral-500">
                                                 Selection style
@@ -3110,11 +3324,42 @@ export default function PreviewEditor({
                     {/* Right / canvas */}
                     <section
                         className="relative bg-slate-50 rounded-lg border overflow-hidden flex flex-col max-lg:order-1"
-                        onPointerDown={(e) => {
-                            if (!(e.target as HTMLElement).closest("iframe"))
-                                tryClearIframeSelection();
-                        }}
+                    // this was unselecting the block when clicking edit panel
+                    // onPointerDown={(e) => {
+                    //     if (!(e.target as HTMLElement).closest("iframe"))
+                    //         tryClearIframeSelection();
+                    // }}
                     >
+
+                        {/* AI edit panel – lives in the right sidebar */}
+                        {mode === "preview" && draftId && (
+                            <div className="mb-3 border-t pt-3 mt-2 max-h-72 overflow-auto">
+                                <AiEditPanel
+                                    renderId={draftId}
+                                    getSelectedBlockHtml={getSelectedBlockHtml}
+                                    selectionMeta={selectionMeta}
+                                    onApplyBlockHtml={(afterBlockHtml: string) => {
+                                        const fullHtml = applyBlockHtmlToIframeAndSerialize(
+                                            afterBlockHtml,
+                                            true // still mutate iframe directly
+                                        );
+
+                                        if (!fullHtml) {
+                                            console.warn(
+                                                "[PreviewEditor] applyBlockHtmlToIframeAndSerialize returned null"
+                                            );
+                                            return;
+                                        }
+
+                                        // Mark editor dirty and sync draft/preview so Save works
+                                        setDirty(true);
+                                        setHtmlDraft(fullHtml);
+                                        setPreviewHtml(fullHtml);
+                                        if (onLiveHtml) onLiveHtml(fullHtml);
+                                    }}
+                                />
+                            </div>
+                        )}
 
                         {allPages && allPages.length > 1 && (
                             <div className="mt-3 flex justify-center">
@@ -3143,22 +3388,20 @@ export default function PreviewEditor({
                             </div>
                         )}
 
-
-
-                        {activeSourceImage && mode !== "screenshot" && (
+                        {/* {activeSourceImage && mode !== "screenshot" && (
                             <img
                                 src={activeSourceImage}
                                 alt="reference"
                                 className="absolute right-3 top-3 h-28 w-auto rounded border shadow pointer-events-none max-sm:hidden"
                             />
-                        )}
+                        )} */}
 
                         {(mode === "preview" || mode === "code") && (
                             <div className="flex-1 overflow-auto p-3 sm:p-6">
                                 <AnimatePresence mode="wait">
                                     <motion.div
                                         key={activePageId}
-                                        className="mx-auto bg-white border rounded-lg shadow-sm"
+                                        className="mx-auto"
                                         style={{
                                             width: devicePx,
                                             minWidth: 320,
@@ -3169,33 +3412,46 @@ export default function PreviewEditor({
                                         exit={{ opacity: 0, y: -6 }}
                                         transition={{ duration: 0.22 }}
                                     >
-                                        <iframe
-                                            key={iframeKey}
-                                            ref={iframeRef}
-                                            className="w-full h-[70vh] sm:h-[80vh] border-0 rounded"
-                                            title="KlonerPreview"
-                                            sandbox="allow-same-origin"
-                                            srcDoc={
-                                                renderHtml ||
-                                                "<!doctype html><html><head><meta charset='utf-8'></head><body></body></html>"
-                                            }
-                                            onLoad={() => {
-                                                const doc = iframeRef.current?.contentDocument;
-                                                if (!doc) return;
-                                                doc.querySelectorAll(".kloner-toolbar").forEach((n) => n.remove());
-                                                doc.querySelectorAll(".kloner-style-panel").forEach((n) => n.remove());
-                                                if (mode === "preview") {
-                                                    injectEditableOverlay(doc, (updated) => {
-                                                        setHtmlDraft(updated);
-                                                    });
-                                                    iframeRef.current?.contentWindow?.focus();
-                                                }
-                                            }}
-                                        />
+                                        {device === "desktop" && (
+                                            <div className="rounded-xl border border-neutral-800 bg-neutral-950/90 shadow-xl overflow-hidden">
+                                                <div className="flex items-center gap-2 px-4 py-2 border-b border-neutral-800 bg-neutral-900/90">
+                                                    <div className="flex gap-1.5">
+                                                        <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
+                                                        <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
+                                                        <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                                                    </div>
+                                                    <div className="mx-auto h-6 max-w-xs flex-1 rounded-full bg-neutral-800/90 text-[10px] text-neutral-400 px-3 flex items-center">
+                                                        preview.kloner
+                                                    </div>
+                                                    <div className="w-10" />
+                                                </div>
+                                                <div className="bg-white">{iframeNode}</div>
+                                            </div>
+                                        )}
+
+                                        {device === "tablet" && (
+                                            <div className="mx-auto rounded-[28px] border border-neutral-700 bg-neutral-950/90 px-4 pt-4 pb-6 shadow-xl">
+                                                <div className="mx-auto mb-2 h-1.5 w-20 rounded-full bg-neutral-700" />
+                                                <div className="overflow-hidden rounded-[20px] border border-neutral-200 bg-white">
+                                                    {iframeNode}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {device === "mobile" && (
+                                            <div className="mx-auto rounded-[36px] border border-neutral-800 bg-neutral-950/90 px-3 pt-4 pb-5 shadow-xl max-w-xs sm:max-w-sm">
+                                                <div className="mx-auto mb-3 h-2 w-24 rounded-full bg-neutral-700" />
+                                                <div className="overflow-hidden rounded-[28px] border border-neutral-200 bg-white">
+                                                    {iframeNode}
+                                                </div>
+                                                <div className="mx-auto mt-3 h-7 w-24 rounded-full border border-neutral-700" />
+                                            </div>
+                                        )}
                                     </motion.div>
                                 </AnimatePresence>
                             </div>
                         )}
+
 
                         {mode === "screenshot" && (
                             <div className="flex-1 overflow-auto p-6">
@@ -3893,7 +4149,6 @@ function injectEditableOverlay(
     function deleteAssetsByPaths(paths: string[]) {
         if (!paths.length) return;
 
-        // remove from pending set
         for (const p of paths) {
             pendingImagePaths.delete(p);
         }
@@ -3906,6 +4161,7 @@ function injectEditableOverlay(
             "*"
         );
     }
+
 
     function deleteImageOnBlock(block: HTMLElement) {
         const img =
@@ -3969,12 +4225,21 @@ function injectEditableOverlay(
         img.src = tempUrl;
         img.alt = "";
         img.style.display = "block";
+
+        // critical for responsiveness
+        img.style.maxWidth = "100%";
+        img.style.height = "auto";
+        img.removeAttribute("height");
+
         img.dataset.localImageId = localId;
         img.dataset.localFilename = file.name || "image";
 
         const box = cssBox(block);
-        if (box.w > 4) img.setAttribute("width", String(Math.round(box.w)));
-        if (box.h > 4) img.setAttribute("height", String(Math.round(box.h)));
+        if (box.w > 4) {
+            // control layout via width only
+            img.style.width = `${Math.round(box.w)}px`;
+            img.setAttribute("width", String(Math.round(box.w)));
+        }
 
         if (block.firstChild) block.insertBefore(img, block.firstChild);
         else block.appendChild(img);
@@ -3983,6 +4248,7 @@ function injectEditableOverlay(
         notify();
         showHint("Image inserted (pending upload).", block);
     }
+
 
     function pickLocalFile(): Promise<File | null> {
         return new Promise((resolve) => {
@@ -4006,23 +4272,6 @@ function injectEditableOverlay(
         const box = cssBox(el);
         const oldPath = el.getAttribute("data-kloner-path") || undefined;
 
-        // If the existing image is backed by storage, delete that asset now.
-        if (oldPath) {
-            console.log("[replaceImage] deleting previous asset", { oldPath });
-            try {
-                await Promise
-                    .resolve(deleteAssetsByPaths([oldPath] as string[]));
-            } catch (err) {
-                console.warn(
-                    "[replaceImage] deleteAssetsByPaths failed",
-                    { oldPath },
-                    err
-                );
-            }
-            el.removeAttribute("data-kloner-path");
-            el.removeAttribute("data-kloner-old-path");
-        }
-
         const tempUrl = URL.createObjectURL(file);
         const localId = crypto.randomUUID();
 
@@ -4030,18 +4279,26 @@ function injectEditableOverlay(
         el.dataset.localImageId = localId;
         el.dataset.localFilename = file.name || "image";
 
-        if (!el.getAttribute("width") && !el.style.width) {
-            el.setAttribute("width", `${Math.round(box.w)}`);
+        // clear old storage ref; mark for deletion on save
+        if (oldPath) {
+            el.setAttribute("data-kloner-old-path", oldPath);
+            el.removeAttribute("data-kloner-path");
         }
-        if (!el.getAttribute("height") && !el.style.height) {
-            el.setAttribute("height", `${Math.round(box.h)}`);
+
+        // width only, keep height auto for responsiveness
+        if (!el.style.width && !el.getAttribute("width") && box.w > 4) {
+            el.style.width = `${Math.round(box.w)}px`;
+            el.setAttribute("width", String(Math.round(box.w)));
         }
+
+        el.style.maxWidth = "100%";
+        el.style.height = "auto";
+        el.removeAttribute("height");
 
         saveHistory();
         notify();
         showHint("Image replaced (pending upload).", el);
     }
-
 
 
     function editLink(target: HTMLElement) {
@@ -4094,32 +4351,70 @@ function injectEditableOverlay(
         }
     }
 
-    function resizeImage(img: HTMLImageElement, factor: number) {
-        const rect = img.getBoundingClientRect();
-        if (!rect.width) return;
+    function resizeImage(target: HTMLElement, factor: number) {
+        const img =
+            (target.tagName === "IMG"
+                ? (target as HTMLImageElement)
+                : (target.querySelector("img") as HTMLImageElement | null)) ?? null;
 
-        // Prefer intrinsic ratio, fall back to current rendered ratio
-        const naturalW = img.naturalWidth;
-        const naturalH = img.naturalHeight;
-
-        let ratio: number;
-        if (naturalW > 0 && naturalH > 0) {
-            ratio = naturalH / naturalW;
-        } else if (rect.height > 0) {
-            ratio = rect.height / rect.width;
-        } else {
-            ratio = 1;
+        if (!img) {
+            showHint("Select a block with an <img> to resize.", target);
+            return;
         }
 
-        const newW = Math.max(8, rect.width * factor);
-        const newH = Math.max(8, newW * ratio);
+        const naturalW =
+            Number(img.dataset.klonerBaseWidth) ||
+            img.naturalWidth ||
+            parseInt(img.getAttribute("width") || "0", 10) ||
+            0;
+        const naturalH =
+            Number(img.dataset.klonerBaseHeight) ||
+            img.naturalHeight ||
+            parseInt(img.getAttribute("height") || "0", 10) ||
+            0;
 
-        img.style.width = `${Math.round(newW)}px`;
-        img.style.height = `${Math.round(newH)}px`;
+        if (!naturalW || !naturalH) {
+            showHint("Can't determine image size.", img);
+            return;
+        }
 
-        img.setAttribute("width", String(Math.round(newW)));
-        img.setAttribute("height", String(Math.round(newH)));
+        // cache base dims once
+        if (!img.dataset.klonerBaseWidth) {
+            img.dataset.klonerBaseWidth = String(naturalW);
+            img.dataset.klonerBaseHeight = String(naturalH);
+        }
+
+        const aspect = naturalH / naturalW;
+
+        // current width (fallback to natural)
+        const currentW =
+            parseInt(
+                (img.style.width && img.style.width.endsWith("px")
+                    ? img.style.width.slice(0, -2)
+                    : img.getAttribute("width") || "") || "0",
+                10
+            ) || naturalW;
+
+        let nextW = Math.round(currentW * factor);
+        const minW = Math.max(80, Math.round(naturalW * 0.25));
+        const maxW = Math.round(naturalW * 2.5);
+
+        if (nextW < minW) nextW = minW;
+        if (nextW > maxW) nextW = maxW;
+
+        // apply width only; let height follow aspect via CSS
+        img.style.width = `${nextW}px`;
+        img.setAttribute("width", String(nextW));
+        img.style.maxWidth = "100%";
+        img.style.height = "auto";
+        img.removeAttribute("height");
+
+        saveHistory();
+        notify();
+        showHint("Image resized.", img);
     }
+
+
 
     function handleAction(act: string | null, sourceEl: HTMLElement) {
         if (!act) return;

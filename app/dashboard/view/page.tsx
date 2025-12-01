@@ -3409,18 +3409,16 @@ export default function PreviewPage(): JSX.Element {
 
                     {!targetUrl ? (
                         <>
-                            <div className="mt-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-2 text-sm text-neutral-700 flex flex-wrap items-center gap-2 my-4">
+                            <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-2 text-sm text-neutral-700 my-2 flex items-center gap-2">
                                 <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1">
                                     {step2Done ? (
                                         <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                                     ) : (
                                         <Clock10 className="h-4 w-4 text-amber-500" />
                                     )}
-                                    <span>Step 2</span>
-                                </strong>
-                                <span className="text-sm">
-                                    — Below will host your base images.
-                                </span>
+                                    Step 1
+                                </strong>{" "}
+                                — Below will host your base images.
                             </div>
 
                             <div className="mt-3 rounded-xl border border-neutral-200 bg-neutral-50 p-6 text-sm text-neutral-700">
@@ -3466,8 +3464,8 @@ export default function PreviewPage(): JSX.Element {
                         </>
                     ) : (
                         <>
-                            <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-2 text-sm text-neutral-700 my-4">
-                                <strong className="text flex items-center text-neutral-800 font-semibold inline-flex gap-1">
+                            <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-2 text-sm text-neutral-700 my-2 flex items-center gap-2">
+                                <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1">
                                     {step2Done ? (
                                         <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                                     ) : (
@@ -3476,15 +3474,6 @@ export default function PreviewPage(): JSX.Element {
                                     Step 2
                                 </strong>{" "}
                                 — Base collection captured.{" "}
-                                {renders.length === 0 && (
-                                    <span className="inline-flex ml-1 mt-2 text-sm items-center text-neutral-700">
-                                        Click{" "}
-                                        <span className="mx-2 shrink-0 rounded-md px-4 py-2 text-[0.75rem] bg-accent font-semibold text-white inline-flex items-center gap-1.5">
-                                            Generate preview <Hammer className="h-4 w-4" />
-                                        </span>
-                                        to create your first website preview.
-                                    </span>
-                                )}
                             </div>
 
                             <div className="space-y-3">
