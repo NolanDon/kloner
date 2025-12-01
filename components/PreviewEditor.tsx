@@ -3834,6 +3834,7 @@ function UiBtn({
 }
 
 /* ------------------------ in-iframe edit layer ------------------------ */
+/* ------------------------ in-iframe edit layer ------------------------ */
 function injectEditableOverlay(
     doc: Document,
     onChange: (updatedHtml: string) => void
@@ -4141,30 +4142,6 @@ function injectEditableOverlay(
         );
     }
 
-    function updateToolbarGroupsForSelection(sel: HTMLElement | null) {
-        const imgGroup = toolbar.querySelector<HTMLElement>("[data-group='img']");
-        const linkGroup = toolbar.querySelector<HTMLElement>("[data-group='link']");
-
-        if (!sel) {
-            if (imgGroup) imgGroup.style.display = "none";
-            if (linkGroup) linkGroup.style.display = "none";
-            return;
-        }
-
-        const tag = sel.tagName.toLowerCase();
-        const hasImg = tag === "img" || !!sel.querySelector("img");
-        const hasLink = tag === "a" || !!sel.querySelector("a");
-
-        if (imgGroup) {
-            imgGroup.style.display = hasImg ? "inline-flex" : "none";
-        }
-        if (linkGroup) {
-            linkGroup.style.display = hasLink ? "inline-flex" : "none";
-        }
-    }
-
-    updateToolbarGroupsForSelection(null);
-
     function placeToolbar(target: HTMLElement) {
         const r = target.getBoundingClientRect();
         toolbar.style.display = "flex";
@@ -4202,11 +4179,9 @@ function injectEditableOverlay(
         selected = el;
         if (selected) {
             selected.setAttribute("data-kloner-sel", "1");
-            updateToolbarGroupsForSelection(selected);
             placeToolbar(selected);
         } else {
             toolbar.style.display = "none";
-            updateToolbarGroupsForSelection(null);
         }
         publishSelection();
     }
