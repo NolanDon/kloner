@@ -425,14 +425,14 @@ function RenderCardInner({
             className={`relative flex flex-col overflow-visible rounded-xl border bg-white shadow-sm ${isArchived ? "border-amber-300/70 bg-amber-50/50" : "border-neutral-200"
                 }`}
         >
-            {controllerVersion && (
+            {/* {controllerVersion && (
                 <span
                     className="absolute right-2 top-2 z-30 rounded-md bg-amber-300 px-1.5 py-0.5 text-[10px] font-semibold text-neutral-900 shadow"
                     title={`Controller v${controllerVersion}`}
                 >
                     v{controllerVersion}
                 </span>
-            )}
+            )} */}
 
             {isArchived && (
                 <span
@@ -567,7 +567,7 @@ function RenderCardInner({
                             )}
 
                             {onShareWithCommunity && (
-                                <div className="ml-auto flex items-center gap-1">
+                                <div className="flex w-full items-center justify-center gap-1 mt-4">
                                     {!shareOpen && (
                                         <>
                                             <button

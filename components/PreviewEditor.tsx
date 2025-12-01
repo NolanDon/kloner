@@ -3500,7 +3500,7 @@ export default function PreviewEditor({
                                 {applyingPreview || savingDraft
                                     ? <a className="flex items-center justify-center flex-inline gap-2"><Loader2 className="h-10 w-10 animate-spin" />Updating preview…</a>
                                     : dirty
-                                        ? "🔥 Apply changes" // Changed text and added emoji for urgency
+                                        ? "Apply changes" // Changed text and added emoji for urgency
                                         : "✅ Preview is up to date"}
                             </button>
                             <button
@@ -3514,7 +3514,7 @@ export default function PreviewEditor({
                                     : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                                     }`}
                             >
-                                ❌ Close Editor
+                                 Close Editor
                             </button>
                         </div>
                     </section>

@@ -49,7 +49,7 @@ const NAV_SECTIONS: NavSectionConfig[] = [
         label: "Preview",
         items: [
             { href: "/dashboard", label: "Dashboard", icon: LayoutTemplate },
-            { href: "/dashboard/view", label: "Preview Builder", icon: Eye },
+            { href: "/dashboard/view", label: "Builder", icon: Eye },
         ],
     },
     {
@@ -57,7 +57,7 @@ const NAV_SECTIONS: NavSectionConfig[] = [
         items: [
             {
                 href: "/dashboard/archived",
-                label: "Archived previews",
+                label: "Archive",
                 icon: Archive,
             },
         ],

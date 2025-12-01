@@ -705,7 +705,7 @@ export default function DashboardPage() {
             <main className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-10 py-16">
                 {/* Hero */}
                 <div className="inline-flex items-center gap-2 rounded-full bg-accent text-neutral-50 px-3 py-1 text-[11px] mb-4">
-                    <span>Kloner · Your Dashboard</span>
+                    <span>Kloner · Dashboard</span>
                 </div>
 
                 <div className="rounded-3xl border border-neutral-200 bg-gradient-to-br from-white via-neutral-50 to-neutral-100 px-6 py-8 sm:px-8 sm:py-10 shadow-sm">
