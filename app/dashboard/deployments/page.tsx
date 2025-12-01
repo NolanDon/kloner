@@ -1079,11 +1079,7 @@ export default function DeploymentsPage(): JSX.Element {
                                                                     "0 5px 15px rgba(245,95,42,0.40)",
                                                             }}
                                                         >
-                                                            {isEditorLoading ? (
-                                                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                                            ) : (
-                                                                <Code2 className="h-4 w-4" />
-                                                            )}
+                                                            <Code2 className="h-4 w-4" />
                                                             <span>Open in Preview Editor</span>
                                                         </button>
 

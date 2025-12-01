@@ -1,6 +1,4 @@
-// src/lib/credits.ts
-
-export type CreditKind = "screenshot" | "preview";
+export type CreditKind = "screenshot" | "preview" | "edit";
 
 export type UserTier = "free" | "pro" | "agency" | "enterprise" | "unknown";
 
@@ -11,37 +9,40 @@ export type UserTier = "free" | "pro" | "agency" | "enterprise" | "unknown";
  *  - pro:     serious individual / small team usage, but not “abuse”
  *  - agency:  high-volume teams, still bounded
  *  - enterprise: 0 = unlimited / contract, handled outside this file
+ *
+ * `editMonthly` is the max number of *credits* for AI edits.
+ * Each AI edit consumes 5 credits, so "400" here = 80 edits/month.
  */
 export const CREDIT_LIMITS: Record<
     UserTier,
-    { screenshotMonthly: number; previewMonthly: number }
+    { screenshotMonthly: number; previewMonthly: number; editMonthly: number }
 > = {
     free: {
-        // Enough to see the flow, not enough to run real workloads.
         screenshotMonthly: 100,
         previewMonthly: 100,
+        editMonthly: 100, // 10 edits @ 5 credits each
     },
     pro: {
-        // Tightened from 1200 → 400 to keep infra and OpenAI spend sane.
-        // This is still a lot of value at $29/mo.
         screenshotMonthly: 100,
         previewMonthly: 400,
+        editMonthly: 400, // 80 edits @ 5 credits each
     },
     agency: {
-        // Agencies get headroom, but not unbounded. Easy to upsell
-        // higher tiers or per-seat / overage later.
         screenshotMonthly: 400,
         previewMonthly: 1500,
+        editMonthly: 1500, // 300 edits @ 5 credits each
     },
     // 0 = unlimited / contract; enforce via Stripe + custom terms.
     enterprise: {
         screenshotMonthly: 0,
         previewMonthly: 0,
+        editMonthly: 0, // unlimited
     },
     // Unknown should NOT be unlimited. Treat as free-tier safety net.
     unknown: {
         screenshotMonthly: 5,
         previewMonthly: 10,
+        editMonthly: 10, // 2 edits @ 5 credits each
     },
 };
 
@@ -63,6 +64,8 @@ export function tierFromClaims(claims: Claims): UserTier {
 /**
  * Single source of truth for monthly limits.
  * 0 => unlimited for that tier+kind.
+ *
+ * `kind === "edit"` is in *credits*, not events.
  */
 export function monthlyLimitFor(
     tier: UserTier,
@@ -71,15 +74,15 @@ export function monthlyLimitFor(
     const t = tier || "free";
     const limits = CREDIT_LIMITS[t] ?? CREDIT_LIMITS.free;
 
-    return kind === "screenshot"
-        ? limits.screenshotMonthly
-        : limits.previewMonthly;
+    if (kind === "screenshot") return limits.screenshotMonthly;
+    if (kind === "preview") return limits.previewMonthly;
+    return limits.editMonthly;
 }
 
 /**
  * Monthly credit check using the shared table.
  *
- * `usedThisMonth` must be the count of successful events for the current
+ * `usedThisMonth` must be the count of *credits* used for the current
  * billing period (calendar month or rolling window) for this user + kind.
  *
  *  - 0 limit => unlimited for that tier / kind (enterprise only).

@@ -1,8 +1,12 @@
-// app/api/ai-edit/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../_lib/route-guard";
 import OpenAI from "openai";
+import {
+    canConsumeCredit,
+    monthlyLimitFor,
+    type UserTier,
+} from "@/src/lib/credits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -183,6 +187,7 @@ ${trimmedHtml}
     }
 }
 
+
 async function handlePost(req: NextRequest) {
     return requireSessionAndMaybeCsrf(req, async ({ uid, req }) => {
         let db: any = null;
@@ -208,12 +213,36 @@ async function handlePost(req: NextRequest) {
 
         const now = new Date();
 
-        // bootstrap render doc under kloner_users/{uid}/kloner_renders/{renderId}
         let aiEditsRef: any | null = null;
+        let tier: UserTier = "free";
+        let creditsLimit: number | null = null;
+        let creditsUsedBefore = 0;
 
         if (db) {
             try {
                 const userRef = db.collection("kloner_users").doc(uid);
+
+                // derive tier from user doc
+                try {
+                    const userSnap = await userRef.get();
+                    if (userSnap.exists) {
+                        const raw = (userSnap.data()?.userTier as string | undefined)?.toLowerCase();
+                        if (
+                            raw === "pro" ||
+                            raw === "agency" ||
+                            raw === "enterprise" ||
+                            raw === "free"
+                        ) {
+                            tier = raw as UserTier;
+                        } else {
+                            tier = "free";
+                        }
+                    }
+                } catch (e) {
+                    console.error("[ai-edit] failed to read userTier; defaulting to free", e);
+                    tier = "free";
+                }
+
                 const renderRef = userRef.collection("kloner_renders").doc(renderId);
                 const renderSnap = await renderRef.get();
 
@@ -230,6 +259,49 @@ async function handlePost(req: NextRequest) {
                 }
 
                 aiEditsRef = renderRef.collection("ai_edits");
+
+                // ── CREDIT CHECK: each AI edit consumes 5 "edit" credits ──
+                try {
+                    const startOfMonth = new Date(
+                        now.getFullYear(),
+                        now.getMonth(),
+                        1
+                    );
+
+                    const monthSnap = await aiEditsRef
+                        .where("createdAt", ">=", startOfMonth)
+                        .get();
+
+                    const editCountThisMonth = monthSnap.size ?? 0;
+                    creditsUsedBefore = editCountThisMonth * 5; // 5 credits per edit
+
+                    const allowed = canConsumeCredit(
+                        tier,
+                        "edit",
+                        creditsUsedBefore
+                    );
+
+                    const limit = monthlyLimitFor(tier, "edit");
+                    creditsLimit = limit || 0;
+
+                    if (!allowed) {
+                        return NextResponse.json(
+                            {
+                                error:
+                                    "You’ve used all AI edit credits for this month. Upgrade your plan or wait until next month for more.",
+                                meta: {
+                                    tier,
+                                    creditsRemaining: 0,
+                                    creditsLimit,
+                                },
+                            },
+                            { status: 402 }
+                        );
+                    }
+                } catch (err) {
+                    console.error("[ai-edit] credit check failed, allowing request", err);
+                    // fail-open: allow the request if credit check itself blows up
+                }
             } catch (err) {
                 console.error(
                     "[ai-edit] Firestore read/write failed, skipping history bootstrap",
@@ -265,11 +337,18 @@ async function handlePost(req: NextRequest) {
                             uid,
                         },
                     ],
+                    meta: {
+                        tier,
+                        creditsRemaining: null,
+                        creditsLimit: null,
+                    },
                 },
                 { status: 200 }
             );
         }
 
+        // At this point the request has passed the credit check and the AI call succeeded.
+        // Writing this doc is what we treat as “consuming” 5 edit credits.
         const docRef = aiEditsRef.doc();
 
         await docRef.set({
@@ -308,7 +387,33 @@ async function handlePost(req: NextRequest) {
             ...(d.data() as any),
         }));
 
-        return NextResponse.json({ suggestions }, { status: 200 });
+        // recompute credits after this successful edit
+        let creditsRemaining: number | null = null;
+        try {
+            const limit = monthlyLimitFor(tier, "edit");
+            creditsLimit = limit || 0;
+
+            if (limit) {
+                const usedAfter = creditsUsedBefore + 5; // we just spent 5 credits
+                creditsRemaining = Math.max(limit - usedAfter, 0);
+            } else {
+                creditsRemaining = null; // unlimited
+            }
+        } catch (err) {
+            console.error("[ai-edit] failed computing remaining credits", err);
+        }
+
+        return NextResponse.json(
+            {
+                suggestions,
+                meta: {
+                    tier,
+                    creditsRemaining,
+                    creditsLimit,
+                },
+            },
+            { status: 200 }
+        );
     });
 }
 
@@ -333,16 +438,58 @@ async function handleGet(req: NextRequest) {
         }
 
         if (!db) {
-            return NextResponse.json({ suggestions: [] }, { status: 200 });
+            return NextResponse.json(
+                {
+                    suggestions: [],
+                    meta: {
+                        tier: "free",
+                        creditsRemaining: null,
+                        creditsLimit: null,
+                    },
+                },
+                { status: 200 }
+            );
         }
 
         try {
             const userRef = db.collection("kloner_users").doc(uid);
+
+            let tier: UserTier = "free";
+            try {
+                const userSnap = await userRef.get();
+                if (userSnap.exists) {
+                    const raw = (userSnap.data()?.userTier as string | undefined)?.toLowerCase();
+                    if (
+                        raw === "pro" ||
+                        raw === "agency" ||
+                        raw === "enterprise" ||
+                        raw === "free"
+                    ) {
+                        tier = raw as UserTier;
+                    } else {
+                        tier = "free";
+                    }
+                }
+            } catch (e) {
+                console.error("[ai-edit][GET] failed to read userTier; defaulting to free", e);
+                tier = "free";
+            }
+
             const renderRef = userRef.collection("kloner_renders").doc(renderId);
             const renderSnap = await renderRef.get();
 
             if (!renderSnap.exists) {
-                return NextResponse.json({ suggestions: [] }, { status: 200 });
+                return NextResponse.json(
+                    {
+                        suggestions: [],
+                        meta: {
+                            tier,
+                            creditsRemaining: null,
+                            creditsLimit: monthlyLimitFor(tier, "edit") || 0,
+                        },
+                    },
+                    { status: 200 }
+                );
             }
 
             const aiEditsRef = renderRef.collection("ai_edits");
@@ -356,10 +503,60 @@ async function handleGet(req: NextRequest) {
                 ...(d.data() as any),
             }));
 
-            return NextResponse.json({ suggestions }, { status: 200 });
+            // compute remaining edit credits
+            let creditsRemaining: number | null = null;
+            let creditsLimit = 0;
+            try {
+                const now = new Date();
+                const startOfMonth = new Date(
+                    now.getFullYear(),
+                    now.getMonth(),
+                    1
+                );
+
+                const monthSnap = await aiEditsRef
+                    .where("createdAt", ">=", startOfMonth)
+                    .get();
+
+                const editCountThisMonth = monthSnap.size ?? 0;
+                const usedCredits = editCountThisMonth * 5; // 5 per edit
+
+                const limit = monthlyLimitFor(tier, "edit");
+                creditsLimit = limit || 0;
+
+                if (limit) {
+                    creditsRemaining = Math.max(limit - usedCredits, 0);
+                } else {
+                    creditsRemaining = null; // unlimited
+                }
+            } catch (err) {
+                console.error("[ai-edit][GET] failed computing remaining credits", err);
+            }
+
+            return NextResponse.json(
+                {
+                    suggestions,
+                    meta: {
+                        tier,
+                        creditsRemaining,
+                        creditsLimit,
+                    },
+                },
+                { status: 200 }
+            );
         } catch (err) {
             console.error("[ai-edit] Firestore GET failed", err);
-            return NextResponse.json({ suggestions: [] }, { status: 200 });
+            return NextResponse.json(
+                {
+                    suggestions: [],
+                    meta: {
+                        tier: "free",
+                        creditsRemaining: null,
+                        creditsLimit: null,
+                    },
+                },
+                { status: 200 }
+            );
         }
     });
 }

@@ -18,8 +18,8 @@ describe("tierFromClaims", () => {
 
 describe("CREDIT_LIMITS", () => {
     it("defines limits for each tier", () => {
-        expect(CREDIT_LIMITS.free.screenshotDaily).toBeGreaterThan(0);
-        expect(CREDIT_LIMITS.pro.previewDaily).toBeGreaterThan(CREDIT_LIMITS.free.previewDaily);
+        expect(CREDIT_LIMITS.free.screenshotMonthly).toBeGreaterThan(0);
+        expect(CREDIT_LIMITS.pro.previewMonthly).toBeGreaterThan(CREDIT_LIMITS.free.previewMonthly);
     });
 });
 
@@ -29,7 +29,7 @@ describe("canConsumeCredit", () => {
     });
 
     it("blocks consumption at limit", () => {
-        const limit = CREDIT_LIMITS.free.screenshotDaily;
+        const limit = CREDIT_LIMITS.free.screenshotMonthly;
         expect(canConsumeCredit("free", "screenshot", limit)).toBe(false);
     });
 

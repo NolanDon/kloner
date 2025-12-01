@@ -215,14 +215,22 @@ const BG_COLOR_SWATCHES = [
     "#f3e8ff",
 ];
 
+// update your presets
 const FONT_SIZE_PRESETS = [
+    // body / small text
     { id: "xs", label: "XS", px: 12 },
-    { id: "sm", label: "S", px: 14 },
-    { id: "md", label: "M", px: 16 },
-    { id: "lg", label: "L", px: 20 },
-    { id: "xl", label: "XL", px: 28 },
-];
+    { id: "sm", label: "Body S", px: 14 },
+    { id: "md", label: "Body", px: 16 },
+    { id: "lg", label: "Body L", px: 18 },
 
+    // heading-style presets
+    { id: "h6", label: "H6", px: 20 },
+    { id: "h5", label: "H5", px: 24 },
+    { id: "h4", label: "H4", px: 28 },
+    { id: "h3", label: "H3", px: 32 },
+    { id: "h2", label: "H2", px: 40 },
+    { id: "h1", label: "H1", px: 48 },
+];
 
 // 1) strip all runtime <script> tags EXCEPT SEO JSON-LD
 export function stripScripts(html: string) {
@@ -467,7 +475,7 @@ import { db } from "@/lib/firebase"; // or wherever your db is
 import type { User as FirebaseUser } from "firebase/auth";
 import { RenderDoc } from "@/app/dashboard/view/page";
 import { useAuth } from "@/src/hooks/useAuth";
-import { Loader2 } from "lucide-react";
+import { Loader2, Rocket } from "lucide-react";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { sanitizeImageName } from "./helpers";
 import AiEditPanel from "./editor/AiEditPanel";
@@ -924,10 +932,8 @@ export default function PreviewEditor({
     const [activePageId, setActivePageId] = useState<string>("");
     const [derivedPages, setDerivedPages] = useState<EditorPage[]>([]);
     const [pageSwitchConfirm, setPageSwitchConfirm] = useState<{ targetId: string } | null>(null);
-    // inside PreviewEditor component
     const [aiPreviewHtml, setAiPreviewHtml] = useState<string | null>(null);
-
-
+    const [archivedPageIds, setArchivedPageIds] = useState<string[]>([]);
     const [selectionMeta, setSelectionMeta] = useState<SelectionMeta>({ has: false });
     const [lastSelectedPath, setLastSelectedPath] = useState<string | null>(null);
 
@@ -953,6 +959,24 @@ export default function PreviewEditor({
             allPages ? allPages.find((p) => p.id === activePageId) ?? null : null,
         [allPages, activePageId]
     );
+
+    function archivePage(id: string) {
+        setArchivedPageIds((prev) =>
+            prev.includes(id) ? prev : [...prev, id]
+        );
+
+        // if the active page gets archived, switch to the first non-archived page
+        if (id === activePageId && allPages) {
+            const next = allPages.find((p) => !archivedPageIds.includes(p.id) && p.id !== id);
+            if (next) {
+                handlePageSwitch(next.id);
+            }
+        }
+    }
+
+    function restorePage(id: string) {
+        setArchivedPageIds((prev) => prev.filter((x) => x !== id));
+    }
 
 
     function postToEditor(data: any) {
@@ -2250,7 +2274,7 @@ export default function PreviewEditor({
             tabIndex={-1}
             className="fixed inset-0 z-[9999] bg-black/50"
         >
-            <div className="absolute inset-4 overflow-auto">
+            <div className="absolute inset-4 overflow-hidden">
                 <div
                     className="bg-white rounded-xl shadow-xl grid grid-cols-[minmax(320px,360px),1fr] gap-4 p-4 max-lg:grid-cols-1"
                     style={{
@@ -2266,21 +2290,21 @@ export default function PreviewEditor({
                         <div className="inline-flex rounded-md shadow-sm mb-4">
                             <button
                                 onClick={() => setSidePanelMode("style")}
-                                className={`px-3 py-1 text-sm font-medium rounded-l-md transition-colors ${sidePanelMode === "style"
+                                className={`px-3 py-1 text-lg font-medium rounded-l-md transition-colors ${sidePanelMode === "style"
                                     ? "bg-accent text-white"
                                     : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                                     }`}
                             >
-                                ✨ Styles
+                                ✨ Edit Styles
                             </button>
                             <button
                                 onClick={() => setSidePanelMode("meta")}
-                                className={`px-3 py-1 text-sm font-medium rounded-r-md transition-colors ${sidePanelMode === "meta"
+                                className={`px-3 py-1 text-md font-medium rounded-r-md transition-colors ${sidePanelMode === "meta"
                                     ? "bg-accent text-white"
                                     : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                                     }`}
                             >
-                                📝 Meta
+                                📝 Edit Meta
                             </button>
 
                             {/* <button
@@ -2366,7 +2390,7 @@ export default function PreviewEditor({
                                                 handleModeClick("preview")
                                             }
                                             disabled={closing}
-                                            className={`px-3 py-1 text-sm font-medium rounded-l-md transition-colors ${mode === "preview"
+                                            className={`px-3 py-1 text-md font-medium rounded-l-md transition-colors ${mode === "preview"
                                                 ? "bg-accent text-white"
                                                 : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                                                 }`}
@@ -2378,7 +2402,7 @@ export default function PreviewEditor({
                                                 handleModeClick("screenshot")
                                             }
                                             disabled={closing}
-                                            className={`px-3 py-1 text-sm font-medium rounded-r-md transition-colors ${mode === "screenshot"
+                                            className={`px-3 py-1 text-md font-medium rounded-r-md transition-colors ${mode === "screenshot"
                                                 ? "bg-accent text-white"
                                                 : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                                                 }`}
@@ -2451,20 +2475,20 @@ export default function PreviewEditor({
                                         <button
                                             onClick={() => doSave()}
                                             disabled={closing || savingDraft}
-                                            className={`px-3 py-1 text-sm font-medium rounded-md transition-colors
+                                            className={`px-3 py-1 text-md font-medium rounded-md transition-colors
                 ${savingDraft
                                                     ? "bg-accent text-white opacity-80 cursor-not-allowed"
                                                     : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                                                 }`}
                                         >
-                                            {savingDraft ? "💾 Saving…" : "💾 Save draft"}
+                                            {savingDraft ? "💾 Saving…" : "💾 Save changes"}
                                         </button>
 
                                         {/* Export to Vercel */}
                                         <button
                                             onClick={() => setExportPrompt(true)}
                                             disabled={closing || exporting}
-                                            className={`px-3 py-1 text-sm font-medium rounded-md transition-colors
+                                            className={`px-3 py-1 text-md font-medium rounded-md transition-colors
                 ${exporting
                                                     ? "bg-accent text-white opacity-80 cursor-not-allowed"
                                                     : "bg-gray-100 text-gray-700 hover:bg-gray-200"
@@ -2473,42 +2497,62 @@ export default function PreviewEditor({
                                             {exporting ? "🚀 Exporting…" : "🚀 Export to Vercel"}
                                         </button>
 
+                                        <button
+                                            onClick={() => {
+                                                if (dirty) setClosePrompt(true);
+                                                else performClose("discard");
+                                            }}
+                                            disabled={closing}
+                                            className={`px-3 w-full py-3 mt-2 text-md font-medium rounded-md transition-colors ${closing
+                                                ? "bg-accent text-white opacity-80 cursor-not-allowed"
+                                                : "bg-accent text-white"
+                                                }`}
+                                        >
+                                            Close Editor
+                                        </button>
 
 
-                                        {/* Spacer */}
-                                        <span className="ml-auto text-xs text-slate-500 self-center">
-                                            v{version}
-                                        </span>
 
 
+                                        <div className="mt-3 flex items-center justify-end text-sm text-slate-500">
+                                            {/* Version – move elsewhere later if needed */}
+                                            {/*
+    <span className="mr-3 text-xs text-slate-500 self-center">
+        v{version}
+    </span>
+    */}
 
-                                        <div className="flex items-center gap-1 text-sm text-slate-500 mt-3">
-                                            <div className="text-xs font-semibold text-neutral-500 mb-1">
-                                                UI Scale
+                                            <div className="flex flex-col items-start gap-1">
+                                                <span className="text-xs font-semibold mb-1 text-neutral-500">
+                                                    UI Scale
+                                                </span>
+
+                                                <div className="flex items-center gap-1 text-xs text-slate-600">
+                                                    <button
+                                                        className="px-2 py-1 rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+                                                        onClick={() =>
+                                                            setUiScale((s) => Math.max(0.5, +(s - 0.05).toFixed(2)))
+                                                        }
+                                                        disabled={closing}
+                                                    >
+                                                        -
+                                                    </button>
+                                                    <span className="w-10 text-center">
+                                                        {Math.round(uiScale * 100)}%
+                                                    </span>
+                                                    <button
+                                                        className="px-2 py-1 rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+                                                        onClick={() =>
+                                                            setUiScale((s) => Math.min(1.25, +(s + 0.05).toFixed(2)))
+                                                        }
+                                                        disabled={closing}
+                                                    >
+                                                        +
+                                                    </button>
+                                                </div>
                                             </div>
-
-                                            <button
-                                                className="px-2 py-1 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 disabled:opacity-50"
-                                                onClick={() =>
-                                                    setUiScale((s) => Math.max(0.5, +(s - 0.05).toFixed(2)))
-                                                }
-                                                disabled={closing}
-                                            >
-                                                -
-                                            </button>
-                                            <span className="w-10 text-center">
-                                                {Math.round(uiScale * 100)}%
-                                            </span>
-                                            <button
-                                                className="px-2 py-1 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 disabled:opacity-50"
-                                                onClick={() =>
-                                                    setUiScale((s) => Math.min(1.25, +(s + 0.05).toFixed(2)))
-                                                }
-                                                disabled={closing}
-                                            >
-                                                +
-                                            </button>
                                         </div>
+
                                     </div>
 
                                     {exportNote && (
@@ -2543,232 +2587,6 @@ export default function PreviewEditor({
                                         </div>
 
                                         <div className="space-y-2 text-sm max-h-64 lg:max-h-none overflow-y-auto pr-1">
-                                            {/* Font family */}
-                                            <div>
-                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
-                                                    Font
-                                                </div>
-                                                <select
-                                                    className="w-full border rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-50"
-                                                    disabled={closing}
-                                                    onChange={(e) => {
-                                                        const opt =
-                                                            FONT_OPTIONS.find(
-                                                                (f) =>
-                                                                    f.id ===
-                                                                    e.target
-                                                                        .value
-                                                            );
-                                                        if (!opt) return;
-                                                        sendStyleCommand({
-                                                            kind: "fontFamily",
-                                                            value: opt.css,
-                                                        });
-                                                    }}
-                                                    defaultValue=""
-                                                >
-                                                    <option value="" disabled>
-                                                        Choose font
-                                                    </option>
-                                                    {FONT_OPTIONS.map((f) => (
-                                                        <option
-                                                            key={f.id}
-                                                            value={f.id}
-                                                        >
-                                                            {f.label}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            </div>
-
-                                            {/* Font size */}
-                                            <div>
-                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
-                                                    Size
-                                                </div>
-                                                <div className="flex flex-wrap gap-1">
-                                                    {FONT_SIZE_PRESETS.map(
-                                                        (s) => (
-                                                            <button
-                                                                key={s.id}
-                                                                type="button"
-                                                                className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                                disabled={
-                                                                    closing
-                                                                }
-                                                                onClick={() =>
-                                                                    sendStyleCommand(
-                                                                        {
-                                                                            kind: "fontSizePx",
-                                                                            value: s.px,
-                                                                        }
-                                                                    )
-                                                                }
-                                                            >
-                                                                {s.label}
-                                                            </button>
-                                                        )
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            {/* Align */}
-                                            <div>
-                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
-                                                    Text align
-                                                </div>
-                                                <div className="flex gap-1">
-                                                    {[
-                                                        {
-                                                            id: "left",
-                                                            label: "Left",
-                                                        },
-                                                        {
-                                                            id: "center",
-                                                            label: "Center",
-                                                        },
-                                                        {
-                                                            id: "right",
-                                                            label: "Right",
-                                                        },
-                                                    ].map((a) => (
-                                                        <button
-                                                            key={a.id}
-                                                            type="button"
-                                                            className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                            disabled={closing}
-                                                            onClick={() =>
-                                                                sendStyleCommand(
-                                                                    {
-                                                                        kind: "align",
-                                                                        value: a.id as
-                                                                            | "left"
-                                                                            | "center"
-                                                                            | "right",
-                                                                    }
-                                                                )
-                                                            }
-                                                        >
-                                                            {a.label}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-
-                                            <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
-                                                Font weight & transform
-                                            </div>
-                                            {/* Weight / transform */}
-                                            <div className="flex flex-wrap gap-1">
-                                                {/* font-weight */}
-                                                <button
-                                                    type="button"
-                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                    disabled={closing}
-                                                    onClick={() =>
-                                                        sendStyleCommand({
-                                                            kind: "weight",
-                                                            value: "300",
-                                                        })
-                                                    }
-                                                >
-                                                    Light
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                    disabled={closing}
-                                                    onClick={() =>
-                                                        sendStyleCommand({
-                                                            kind: "weight",
-                                                            value: "400",
-                                                        })
-                                                    }
-                                                >
-                                                    Regular
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                    disabled={closing}
-                                                    onClick={() =>
-                                                        sendStyleCommand({
-                                                            kind: "weight",
-                                                            value: "500",
-                                                        })
-                                                    }
-                                                >
-                                                    Medium
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                    disabled={closing}
-                                                    onClick={() =>
-                                                        sendStyleCommand({
-                                                            kind: "weight",
-                                                            value: "600",
-                                                        })
-                                                    }
-                                                >
-                                                    Semi-bold
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                    disabled={closing}
-                                                    onClick={() =>
-                                                        sendStyleCommand({
-                                                            kind: "weight",
-                                                            value: "700",
-                                                        })
-                                                    }
-                                                >
-                                                    Bold
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                    disabled={closing}
-                                                    onClick={() =>
-                                                        sendStyleCommand({
-                                                            kind: "weight",
-                                                            value: "800",
-                                                        })
-                                                    }
-                                                >
-                                                    Extra-bold
-                                                </button>
-
-                                                {/* text-transform */}
-                                                <button
-                                                    type="button"
-                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                    disabled={closing}
-                                                    onClick={() =>
-                                                        sendStyleCommand({
-                                                            kind: "transform",
-                                                            value: "uppercase",
-                                                        })
-                                                    }
-                                                >
-                                                    UPPERCASE
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                    disabled={closing}
-                                                    onClick={() =>
-                                                        sendStyleCommand({
-                                                            kind: "transform",
-                                                            value: "none",
-                                                        })
-                                                    }
-                                                >
-                                                    Aa
-                                                </button>
-                                            </div>
-
 
                                             {/* Theme from page */}
                                             {(theme.textColors.length ||
@@ -2831,7 +2649,7 @@ export default function PreviewEditor({
                                                             </div>
                                                         )}
 
-                                                        {/* Theme font families */}
+                                                        {/* Theme font families
                                                         {theme.fontFamilies.length > 0 && (
                                                             <div>
                                                                 <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
@@ -2857,11 +2675,235 @@ export default function PreviewEditor({
                                                                     ))}
                                                                 </div>
                                                             </div>
-                                                        )}
+                                                        )} */}
                                                     </div>
                                                 )}
 
-                                            {/* Image size */}
+
+                                            {/* Font family */}
+                                            <div>
+                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
+                                                    Font
+                                                </div>
+                                                <select
+                                                    className="w-full border rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-50"
+                                                    disabled={closing}
+                                                    onChange={(e) => {
+                                                        const opt =
+                                                            FONT_OPTIONS.find(
+                                                                (f) =>
+                                                                    f.id ===
+                                                                    e.target
+                                                                        .value
+                                                            );
+                                                        if (!opt) return;
+                                                        sendStyleCommand({
+                                                            kind: "fontFamily",
+                                                            value: opt.css,
+                                                        });
+                                                    }}
+                                                    defaultValue=""
+                                                >
+                                                    <option value="" disabled>
+                                                        Choose font
+                                                    </option>
+                                                    {FONT_OPTIONS.map((f) => (
+                                                        <option
+                                                            key={f.id}
+                                                            value={f.id}
+                                                        >
+                                                            {f.label}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+
+                                            {/* Font size */}
+                                            <div>
+                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
+                                                    Size & headings
+                                                </div>
+                                                <div className="flex flex-wrap gap-1">
+                                                    {FONT_SIZE_PRESETS.map((s) => (
+                                                        <button
+                                                            key={s.id}
+                                                            type="button"
+                                                            className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] leading-tight hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            disabled={closing}
+                                                            style={{ fontSize: s.px / 1.5 }}
+                                                            onClick={() =>
+                                                                sendStyleCommand({
+                                                                    kind: "fontSizePx",
+                                                                    value: s.px,
+                                                                })
+                                                            }
+                                                        >
+                                                            {s.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+
+                                            {/* Align */}
+                                            <div>
+                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
+                                                    Text align
+                                                </div>
+                                                <div className="flex gap-1">
+                                                    {[
+                                                        {
+                                                            id: "left",
+                                                            label: "Left",
+                                                        },
+                                                        {
+                                                            id: "center",
+                                                            label: "Center",
+                                                        },
+                                                        {
+                                                            id: "right",
+                                                            label: "Right",
+                                                        },
+                                                    ].map((a) => (
+                                                        <button
+                                                            key={a.id}
+                                                            type="button"
+                                                            className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            disabled={closing}
+                                                            onClick={() =>
+                                                                sendStyleCommand(
+                                                                    {
+                                                                        kind: "align",
+                                                                        value: a.id as
+                                                                            | "left"
+                                                                            | "center"
+                                                                            | "right",
+                                                                    }
+                                                                )
+                                                            }
+                                                        >
+                                                            {a.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
+                                                Font weight & transform
+                                            </div>
+
+                                            {/* Weight / transform */}
+                                            <div className="flex flex-wrap gap-1">
+                                                {/* font-weight */}
+                                                <button
+                                                    type="button"
+                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] font-light hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                    disabled={closing}
+                                                    onClick={() =>
+                                                        sendStyleCommand({
+                                                            kind: "weight",
+                                                            value: "300",
+                                                        })
+                                                    }
+                                                >
+                                                    Light
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] font-normal hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                    disabled={closing}
+                                                    onClick={() =>
+                                                        sendStyleCommand({
+                                                            kind: "weight",
+                                                            value: "400",
+                                                        })
+                                                    }
+                                                >
+                                                    Regular
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] font-medium hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                    disabled={closing}
+                                                    onClick={() =>
+                                                        sendStyleCommand({
+                                                            kind: "weight",
+                                                            value: "500",
+                                                        })
+                                                    }
+                                                >
+                                                    Medium
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] font-semibold hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                    disabled={closing}
+                                                    onClick={() =>
+                                                        sendStyleCommand({
+                                                            kind: "weight",
+                                                            value: "600",
+                                                        })
+                                                    }
+                                                >
+                                                    Semi-bold
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] font-bold hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                    disabled={closing}
+                                                    onClick={() =>
+                                                        sendStyleCommand({
+                                                            kind: "weight",
+                                                            value: "700",
+                                                        })
+                                                    }
+                                                >
+                                                    Bold
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] font-extrabold hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                    disabled={closing}
+                                                    onClick={() =>
+                                                        sendStyleCommand({
+                                                            kind: "weight",
+                                                            value: "800",
+                                                        })
+                                                    }
+                                                >
+                                                    Extra-bold
+                                                </button>
+
+                                                {/* text-transform */}
+                                                <button
+                                                    type="button"
+                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] uppercase tracking-wide hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                    disabled={closing}
+                                                    onClick={() =>
+                                                        sendStyleCommand({
+                                                            kind: "transform",
+                                                            value: "uppercase",
+                                                        })
+                                                    }
+                                                >
+                                                    UPPERCASE
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] normal-case hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                    disabled={closing}
+                                                    onClick={() =>
+                                                        sendStyleCommand({
+                                                            kind: "transform",
+                                                            value: "none",
+                                                        })
+                                                    }
+                                                >
+                                                    Aa
+                                                </button>
+                                            </div>
+
+                                            {/* Image size
                                             <div>
                                                 <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
                                                     Image size
@@ -2920,7 +2962,7 @@ export default function PreviewEditor({
                                                         Full
                                                     </button>
                                                 </div>
-                                            </div>
+                                            </div> */}
 
 
                                             {/* Text color */}
@@ -3209,7 +3251,7 @@ export default function PreviewEditor({
                                                 </div>
                                             </div>
 
-                                            {/* Text wrapping */}
+                                            {/* Text wrapping
                                             <div>
                                                 <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
                                                     Text wrapping
@@ -3255,7 +3297,7 @@ export default function PreviewEditor({
                                                         Balanced
                                                     </button>
                                                 </div>
-                                            </div>
+                                            </div> */}
                                         </div>
                                     </div>
                                 )}
@@ -3313,8 +3355,8 @@ export default function PreviewEditor({
 
                                 {mode === "screenshot" && (
                                     <div className="text-xs text-slate-600">
-                                        Edit in Preview or Code, apply with “Apply
-                                        changes to preview”, then save or export.
+                                        Edit in Preview, apply with “Apply
+                                        changes".
                                     </div>
                                 )}
                             </>
@@ -3362,29 +3404,94 @@ export default function PreviewEditor({
                         )}
 
                         {allPages && allPages.length > 1 && (
-                            <div className="mt-3 flex justify-center">
-                                <div className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white/80 px-2 py-1 shadow-sm">
-                                    {allPages.map((p) => {
-                                        const isActive = p.id === activePageId;
-                                        return (
-                                            <motion.button
-                                                key={p.id}
-                                                type="button"
-                                                onClick={() => handlePageSwitch(p.id)}
-                                                whileHover={{ scale: 1.03, y: -1 }}
-                                                whileTap={{ scale: 0.97 }}
-                                                className={[
-                                                    "px-3 py-1.5 rounded-full text-xs font-medium transition-colors",
-                                                    isActive
-                                                        ? "bg-accent text-white"
-                                                        : "bg-transparent text-neutral-700 hover:bg-neutral-100"
-                                                ].join(" ")}
-                                            >
-                                                {p.label}
-                                            </motion.button>
-                                        );
-                                    })}
+                            <div className="mt-3 space-y-2">
+                                {/* active (non-archived) pages */}
+                                <div className="flex justify-center">
+                                    <div className="inline-flex items-center gap-3 rounded-full border border-neutral-200 bg-white/80 px-1 py-1 shadow-sm">
+                                        {allPages
+                                            .filter((p) => !archivedPageIds.includes(p.id))
+                                            .map((p) => {
+                                                const isActive = p.id === activePageId;
+                                                return (
+                                                    <motion.div
+                                                        key={p.id}
+                                                        layout
+                                                        initial={{ opacity: 0, scale: 0.9, y: 2 }}
+                                                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                                                        exit={{ opacity: 0, scale: 0.9, y: 2 }}
+                                                        className="inline-flex items-center"
+                                                    >
+                                                        <motion.button
+                                                            type="button"
+                                                            onClick={() => handlePageSwitch(p.id)}
+                                                            whileHover={{ scale: 1.03, y: -1 }}
+                                                            whileTap={{ scale: 0.97 }}
+                                                            className={[
+                                                                "px-3 py-4 rounded-full text-md font-medium transition-colors flex items-center gap-2",
+                                                                isActive
+                                                                    ? "bg-accent text-white"
+                                                                    : "bg-white text-neutral-700 hover:bg-neutral-100 border border-neutral-200"
+                                                            ].join(" ")}
+                                                        >
+                                                            <span>{p.label}</span>
+
+                                                            {/* archive icon chip */}
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    archivePage(p.id);
+                                                                }}
+                                                                title="Archive page"
+                                                                className={[
+                                                                    "flex h-5 w-5 items-center justify-center rounded-full transition",
+                                                                    isActive
+                                                                        ? "bg-white/20 text-white hover:bg-white/30"
+                                                                        : "bg-neutral-200 text-neutral-700 hover:bg-neutral-300"
+                                                                ].join(" ")}
+                                                            >
+                                                                <svg
+                                                                    xmlns="http://www.w3.org/2000/svg"
+                                                                    viewBox="0 0 20 20"
+                                                                    fill="currentColor"
+                                                                    className="h-3.5 w-3.5"
+                                                                >
+                                                                    <path d="M5 3a2 2 0 00-2 2v4h2V5h10v4h2V5a2 2 0 00-2-2H5z" />
+                                                                    <path d="M3 11v4a2 2 0 002 2h10a2 2 0 002-2v-4h-3a3 3 0 01-6 0H3z" />
+                                                                </svg>
+                                                            </button>
+                                                        </motion.button>
+                                                    </motion.div>
+                                                );
+                                            })}
+                                    </div>
                                 </div>
+
+                                {/* archived pages row */}
+                                {archivedPageIds.length > 0 && (
+                                    <div className="flex justify-center">
+                                        <div className="inline-flex items-center gap-1 rounded-full border border-dashed border-neutral-300 bg-neutral-50/80 px-2 py-1">
+                                            <span className="px-2 text-[12px] font-semibold uppercase tracking-wide text-neutral-500">
+                                                Archived
+                                            </span>
+                                            {allPages
+                                                .filter((p) => archivedPageIds.includes(p.id))
+                                                .map((p) => (
+                                                    <button
+                                                        key={p.id}
+                                                        type="button"
+                                                        onClick={() => restorePage(p.id)}
+                                                        className="px-2 py-1 rounded-full text-md font-medium text-neutral-600 bg-white hover:bg-neutral-100 border border-neutral-200"
+                                                    >
+                                                        {p.label} ·
+                                                        <span className="ml-1 text-md hover:underline text-emerald-600">
+                                                            Restore
+                                                        </span>
+                                                    </button>
+                                                ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -3501,20 +3608,7 @@ export default function PreviewEditor({
                                     ? <a className="flex items-center justify-center flex-inline gap-2"><Loader2 className="h-10 w-10 animate-spin" />Updating preview…</a>
                                     : dirty
                                         ? "Apply changes" // Changed text and added emoji for urgency
-                                        : "✅ Preview is up to date"}
-                            </button>
-                            <button
-                                onClick={() => {
-                                    if (dirty) setClosePrompt(true);
-                                    else performClose("discard");
-                                }}
-                                disabled={closing}
-                                className={`w-full px-3 py-3 text-lg mt-2 font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${closing
-                                    ? "bg-accent text-white opacity-80 cursor-not-allowed"
-                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                                    }`}
-                            >
-                                 Close Editor
+                                        : "Preview is up to date"}
                             </button>
                         </div>
                     </section>
@@ -3607,7 +3701,7 @@ export default function PreviewEditor({
                 {exportPrompt && (
                     <div className="fixed inset-0 z-[10010] flex items-center justify-center bg-black/40">
                         <div className="bg-white rounded-lg shadow-xl p-4 w-full max-w-sm border border-neutral-200">
-                            <div className="text-xs font-semibold text-neutral-900 mb-2">
+                            <div className="text-md font-semibold text-neutral-900 mb-2">
                                 Deploy to Vercel?
                             </div>
                             <p className="text-xs text-neutral-600 mb-2">
@@ -3628,16 +3722,18 @@ export default function PreviewEditor({
                                     Cancel
                                 </button>
                                 <button
-                                    type="button"
-                                    className="px-2.5 py-1.5 rounded border border-transparent bg-neutral-900 text-white hover:brightness-110 active:scale-[.98] disabled:opacity-60 flex items-center gap-2"
                                     onClick={async () => {
                                         setExportPrompt(false);
                                         await doExport();
                                     }}
                                     disabled={exporting}
+                                    className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 text-xs text-white shadow-sm hover:border-neutral-400 disabled:opacity-60"
+                                    title="Open generated layout site"
                                 >
-                                    {exporting && <Spinner size={14} />} Deploy now
+                                    <span>Deploy now</span>
+                                    <Rocket className="h-3.5 w-3.5" />
                                 </button>
+
                             </div>
                         </div>
                     </div>
@@ -3748,21 +3844,55 @@ function injectEditableOverlay(
     const style = doc.createElement("style");
     style.textContent = `
     :root { --amber-50:#FFFBEB; --amber-200:#FDE68A; --amber-700:#B45309; --rose-50:#FFF1F2; --rose-200:#FECDD3; --rose-700:#BE123C; --slate-700:#334155; --slate-300:#cbd5e1; }
+
     [data-kloner-sel]{ outline:2px dashed #10b981 !important; outline-offset:2px !important; }
+
     .kloner-toolbar{
       position:fixed;
       z-index:2147483647;
       display:none;
       flex-wrap:wrap;
+      align-items:center;
       gap:6px;
       padding:6px 8px;
       background:#020617;
       color:#e5e7eb;
-      border-radius:10px;
+      border-radius:999px;
       font:11px/1.2 system-ui,-apple-system,Segoe UI,Roboto;
       box-shadow:0 10px 30px rgba(0,0,0,.25);
       max-width:calc(100vw - 16px);
+      border:1px solid rgba(148,163,184,0.45);
+      backdrop-filter:blur(14px);
     }
+
+    .kgroup{
+      display:inline-flex;
+      align-items:center;
+      gap:4px;
+      padding-right:8px;
+      margin-right:4px;
+      border-right:1px solid rgba(148,163,184,0.4);
+    }
+    .kgroup:last-child{
+      border-right:none;
+      margin-right:0;
+      padding-right:0;
+    }
+
+    .kgroup-label{
+      padding:2px 6px;
+      border-radius:999px;
+      font-size:10px;
+      font-weight:600;
+      text-transform:uppercase;
+      letter-spacing:0.04em;
+      background:rgba(15,23,42,0.95);
+      color:rgba(148,163,184,1);
+      border:1px solid rgba(51,65,85,1);
+      margin-right:2px;
+      white-space:nowrap;
+    }
+
     .kbtn{
       display:inline-flex;
       align-items:center;
@@ -3776,11 +3906,38 @@ function injectEditableOverlay(
       background:#111827;
       color:#e5e7eb;
       white-space:nowrap;
+      line-height:1.15;
+      transition:
+        background-color 120ms ease-out,
+        color 120ms ease-out,
+        border-color 120ms ease-out,
+        transform 80ms ease-out;
     }
+    .kbtn:hover{
+      transform:translateY(-0.5px);
+    }
+    .kbtn:active{
+      transform:translateY(0.5px) scale(.98);
+    }
+
+    .kbtn-icon{
+      font-size:15px;
+      line-height:1;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      min-width:16px;
+    }
+    .kbtn-text{
+      font-size:10px;
+    }
+
     .kbtn-close{ background:#0f172a; color:#fff; border-color:#0f172a; }
     .kbtn-edit{ background:var(--amber-50); color:var(--amber-700); border-color:var(--amber-200); }
     .kbtn-del{  background:var(--rose-50);  color:var(--rose-700);  border-color:var(--rose-200); }
     .kbtn-img { background:#ecfeff; color:#155e75; border-color:#a5f3fc; }
+    .kbtn-link { background:#eef2ff; color:#3730a3; border-color:#c7d2fe; }
+
     .khint {
       position:fixed;
       z-index:2147483646;
@@ -3860,24 +4017,66 @@ function injectEditableOverlay(
     const toolbar = doc.createElement("div");
     toolbar.className = "kloner-toolbar";
     toolbar.innerHTML = `
-        <button class="kbtn kbtn-close" data-act="close">Close</button>
-        <button class="kbtn kbtn-edit" data-act="dup">Duplicate</button>
-        <button class="kbtn kbtn-del"  data-act="del">Delete block</button>
+      <div class="kgroup kgroup-core" data-group="core">
+        <span class="kgroup-label">Block</span>
+        <button class="kbtn kbtn-close" data-act="close" title="Clear selection">
+          <span class="kbtn-icon">✕</span>
+          <span class="kbtn-text">Clear</span>
+        </button>
+        <button class="kbtn kbtn-edit" data-act="dup" title="Duplicate block">
+          <span class="kbtn-icon">⧉</span>
+          <span class="kbtn-text">Duplicate</span>
+        </button>
+        <button class="kbtn kbtn-del"  data-act="del" title="Delete block">
+          <span class="kbtn-icon">🗑</span>
+          <span class="kbtn-text">Delete</span>
+        </button>
+      </div>
 
-        <button class="kbtn kbtn-img"  data-act="img-insert">Insert image</button>
-        <button class="kbtn kbtn-img"  data-act="img-replace">Replace image</button>
-        <button class="kbtn kbtn-img"  data-act="img-del">Delete image</button>
-        <button class="kbtn kbtn-img"  data-act="img-alt">ALT text</button>
+      <div class="kgroup kgroup-img" data-group="img">
+        <span class="kgroup-label">Image</span>
+        <button class="kbtn kbtn-img"  data-act="img-insert" title="Insert image into this block">
+          <span class="kbtn-icon">🖼+</span>
+          <span class="kbtn-text">Insert</span>
+        </button>
+        <button class="kbtn kbtn-img"  data-act="img-replace" title="Replace selected image">
+          <span class="kbtn-icon">🖼⟳</span>
+          <span class="kbtn-text">Replace</span>
+        </button>
+        <button class="kbtn kbtn-img"  data-act="img-del" title="Delete image">
+          <span class="kbtn-icon">🗑</span>
+          <span class="kbtn-text">Remove</span>
+        </button>
+        <button class="kbtn kbtn-img"  data-act="img-alt" title="Edit ALT text for accessibility">
+          <span class="kbtn-icon">ALT</span>
+          <span class="kbtn-text">Text</span>
+        </button>
+        <button class="kbtn kbtn-img"  data-act="img-front" title="Bring image forward">
+          <span class="kbtn-icon">⬆</span>
+          <span class="kbtn-text">Front</span>
+        </button>
+        <button class="kbtn kbtn-img"  data-act="img-back" title="Send image backward">
+          <span class="kbtn-icon">⬇</span>
+          <span class="kbtn-text">Back</span>
+        </button>
+        <button class="kbtn kbtn-img"  data-act="img-grow" title="Increase image size">
+          <span class="kbtn-icon">＋</span>
+          <span class="kbtn-text">Bigger</span>
+        </button>
+        <button class="kbtn kbtn-img"  data-act="img-shrink" title="Decrease image size">
+          <span class="kbtn-icon">－</span>
+          <span class="kbtn-text">Smaller</span>
+        </button>
+      </div>
 
-        <!-- new: layering + size controls -->
-        <button class="kbtn kbtn-img"  data-act="img-front">Bring forward</button>
-        <button class="kbtn kbtn-img"  data-act="img-back">Send backward</button>
-        <button class="kbtn kbtn-img"  data-act="img-grow">Increase size</button>
-        <button class="kbtn kbtn-img"  data-act="img-shrink">Reduce size</button>
-
-        <button class="kbtn kbtn-img"  data-act="link">Link</button>
-        `;
-
+      <div class="kgroup kgroup-link" data-group="link">
+        <span class="kgroup-label">Link</span>
+        <button class="kbtn kbtn-link"  data-act="link" title="Edit link URL">
+          <span class="kbtn-icon">🔗</span>
+          <span class="kbtn-text">URL</span>
+        </button>
+      </div>
+    `;
     doc.body.appendChild(toolbar);
 
     let selected: HTMLElement | null = null;
@@ -3942,6 +4141,29 @@ function injectEditableOverlay(
         );
     }
 
+    function updateToolbarGroupsForSelection(sel: HTMLElement | null) {
+        const imgGroup = toolbar.querySelector<HTMLElement>("[data-group='img']");
+        const linkGroup = toolbar.querySelector<HTMLElement>("[data-group='link']");
+
+        if (!sel) {
+            if (imgGroup) imgGroup.style.display = "none";
+            if (linkGroup) linkGroup.style.display = "none";
+            return;
+        }
+
+        const tag = sel.tagName.toLowerCase();
+        const hasImg = tag === "img" || !!sel.querySelector("img");
+        const hasLink = tag === "a" || !!sel.querySelector("a");
+
+        if (imgGroup) {
+            imgGroup.style.display = hasImg ? "inline-flex" : "none";
+        }
+        if (linkGroup) {
+            linkGroup.style.display = hasLink ? "inline-flex" : "none";
+        }
+    }
+
+    updateToolbarGroupsForSelection(null);
 
     function placeToolbar(target: HTMLElement) {
         const r = target.getBoundingClientRect();
@@ -3980,9 +4202,11 @@ function injectEditableOverlay(
         selected = el;
         if (selected) {
             selected.setAttribute("data-kloner-sel", "1");
+            updateToolbarGroupsForSelection(selected);
             placeToolbar(selected);
         } else {
             toolbar.style.display = "none";
+            updateToolbarGroupsForSelection(null);
         }
         publishSelection();
     }
@@ -4121,13 +4345,11 @@ function injectEditableOverlay(
     function deleteAssetsForElement(root: HTMLElement) {
         const paths = new Set<string>();
 
-        // If the root itself is an <img>
         if (root.tagName === "IMG") {
             const p = (root as HTMLImageElement).getAttribute("data-kloner-path");
             if (p) paths.add(p);
         }
 
-        // Any nested <img> elements with data-kloner-path
         root.querySelectorAll("img[data-kloner-path]").forEach((img) => {
             const p = img.getAttribute("data-kloner-path");
             if (p) paths.add(p);
@@ -4162,7 +4384,6 @@ function injectEditableOverlay(
         );
     }
 
-
     function deleteImageOnBlock(block: HTMLElement) {
         const img =
             (block.tagName === "IMG"
@@ -4174,12 +4395,10 @@ function injectEditableOverlay(
             return;
         }
 
-        // If this image is already backed by cloud storage, delete that asset now.
         const path = img.getAttribute("data-kloner-path");
         if (path) {
-            console.log("[deleteImageOnBlock] deleting asset for path:", path);
             try {
-                deleteAssetsByPaths([path]); // typed as void, so just call it
+                deleteAssetsByPaths([path]);
             } catch (err) {
                 console.warn(
                     "[deleteImageOnBlock] deleteAssetsByPaths threw synchronously",
@@ -4189,12 +4408,10 @@ function injectEditableOverlay(
             }
         }
 
-        // Clean up any stale markers (old behavior).
         if (img.hasAttribute("data-kloner-old-path")) {
             img.removeAttribute("data-kloner-old-path");
         }
 
-        // Remove local-only markers too (blob-only images).
         if (img.dataset.localImageId) {
             const tempUrl = img.src;
             try {
@@ -4212,8 +4429,6 @@ function injectEditableOverlay(
         showHint("Image deleted.", block);
     }
 
-
-
     async function insertImageIntoBlock(block: HTMLElement) {
         const file = await pickLocalFile();
         if (!file) return;
@@ -4226,7 +4441,6 @@ function injectEditableOverlay(
         img.alt = "";
         img.style.display = "block";
 
-        // critical for responsiveness
         img.style.maxWidth = "100%";
         img.style.height = "auto";
         img.removeAttribute("height");
@@ -4236,7 +4450,6 @@ function injectEditableOverlay(
 
         const box = cssBox(block);
         if (box.w > 4) {
-            // control layout via width only
             img.style.width = `${Math.round(box.w)}px`;
             img.setAttribute("width", String(Math.round(box.w)));
         }
@@ -4248,7 +4461,6 @@ function injectEditableOverlay(
         notify();
         showHint("Image inserted (pending upload).", block);
     }
-
 
     function pickLocalFile(): Promise<File | null> {
         return new Promise((resolve) => {
@@ -4279,13 +4491,11 @@ function injectEditableOverlay(
         el.dataset.localImageId = localId;
         el.dataset.localFilename = file.name || "image";
 
-        // clear old storage ref; mark for deletion on save
         if (oldPath) {
             el.setAttribute("data-kloner-old-path", oldPath);
             el.removeAttribute("data-kloner-path");
         }
 
-        // width only, keep height auto for responsiveness
         if (!el.style.width && !el.getAttribute("width") && box.w > 4) {
             el.style.width = `${Math.round(box.w)}px`;
             el.setAttribute("width", String(Math.round(box.w)));
@@ -4299,7 +4509,6 @@ function injectEditableOverlay(
         notify();
         showHint("Image replaced (pending upload).", el);
     }
-
 
     function editLink(target: HTMLElement) {
         let linkEl: HTMLAnchorElement | null = null;
@@ -4341,11 +4550,11 @@ function injectEditableOverlay(
         if (index === -1) return;
 
         if (direction === "forward") {
-            if (index === siblings.length - 1) return; // already last
+            if (index === siblings.length - 1) return;
             const next = siblings[index + 1];
             next.after(img);
         } else {
-            if (index === 0) return; // already first
+            if (index === 0) return;
             const prev = siblings[index - 1];
             parent.insertBefore(img, prev);
         }
@@ -4378,15 +4587,11 @@ function injectEditableOverlay(
             return;
         }
 
-        // cache base dims once
         if (!img.dataset.klonerBaseWidth) {
             img.dataset.klonerBaseWidth = String(naturalW);
             img.dataset.klonerBaseHeight = String(naturalH);
         }
 
-        const aspect = naturalH / naturalW;
-
-        // current width (fallback to natural)
         const currentW =
             parseInt(
                 (img.style.width && img.style.width.endsWith("px")
@@ -4402,7 +4607,6 @@ function injectEditableOverlay(
         if (nextW < minW) nextW = minW;
         if (nextW > maxW) nextW = maxW;
 
-        // apply width only; let height follow aspect via CSS
         img.style.width = `${nextW}px`;
         img.setAttribute("width", String(nextW));
         img.style.maxWidth = "100%";
@@ -4414,8 +4618,6 @@ function injectEditableOverlay(
         showHint("Image resized.", img);
     }
 
-
-
     function handleAction(act: string | null, sourceEl: HTMLElement) {
         if (!act) return;
 
@@ -4426,7 +4628,6 @@ function injectEditableOverlay(
         if (!selected) return;
 
         if (act === "del") {
-            // delete any cloud assets referenced inside this block
             deleteAssetsForElement(selected);
 
             const parent = selected.parentElement;

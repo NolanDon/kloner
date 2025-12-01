@@ -1,4 +1,4 @@
-// app/dashboard/page.tsx (full component with stale retry wired in)
+// app/dashboard/page.tsx (full component with pending-row lock on UrlForm)
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -62,6 +62,7 @@ export interface UrlDoc {
 interface UrlFormProps {
     uid: string;
     onAdded?: () => void;
+    disabled?: boolean;
 }
 interface UrlRowProps {
     uid: string;
@@ -241,13 +242,17 @@ async function addAndStart(uid: string, rawUrl: string) {
 }
 
 /* form */
-function UrlForm({ uid, onAdded }: UrlFormProps) {
+function UrlForm({ uid, onAdded, disabled }: UrlFormProps) {
     const [url, setUrl] = useState<string>("");
     const [err, setErr] = useState<string>("");
     const [busy, setBusy] = useState<boolean>(false);
 
+    const effectiveDisabled = busy || !!disabled;
+
     async function handleAdd(e: React.FormEvent) {
         e.preventDefault();
+        if (effectiveDisabled) return;
+
         setErr("");
         try {
             setBusy(true);
@@ -274,7 +279,8 @@ function UrlForm({ uid, onAdded }: UrlFormProps) {
                     placeholder="https://example.com"
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
-                    className="flex-1 rounded-xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:ring-4"
+                    disabled={effectiveDisabled}
+                    className="flex-1 rounded-xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:ring-4 disabled:bg-neutral-100 disabled:text-neutral-400"
                     style={{
                         boxShadow: "0 0 0 0 rgba(0,0,0,0)",
                         caretColor: ACCENT,
@@ -283,11 +289,11 @@ function UrlForm({ uid, onAdded }: UrlFormProps) {
                 />
                 <button
                     type="submit"
-                    disabled={busy}
+                    disabled={effectiveDisabled}
                     className="inline-flex items-center justify-center rounded-xl px-5 py-3 text-sm font-medium text-white shadow-sm disabled:opacity-60"
                     style={{ backgroundColor: ACCENT }}
                 >
-                    {busy ? "Saving…" : "Add URL"}
+                    {busy ? "Saving…" : disabled ? "Processing…" : "Add URL"}
                 </button>
             </div>
             {err ? <p className="mt-2 text-sm text-red-600">{err}</p> : null}
@@ -518,8 +524,8 @@ function UrlRow({ uid, r }: UrlRowProps) {
                             target={locked ? undefined : "_blank"}
                             rel={locked ? undefined : "noreferrer"}
                             className={`truncate max-w-full sm:max-w-[70%] text-sm ${locked
-                                ? "text-neutral-400 pointer-events-none"
-                                : "text-neutral-800 hover:underline"
+                                    ? "text-neutral-400 pointer-events-none"
+                                    : "text-neutral-800 hover:underline"
                                 }`}
                             aria-disabled={locked}
                             tabIndex={locked ? -1 : 0}
@@ -556,8 +562,8 @@ function UrlRow({ uid, r }: UrlRowProps) {
                                     : `/dashboard/view?u=${encodeURIComponent(r.url)}`
                             }
                             className={`rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs ${locked
-                                ? "text-neutral-400 pointer-events-none"
-                                : "text-neutral-700 hover:bg-neutral-50"
+                                    ? "text-neutral-400 pointer-events-none"
+                                    : "text-neutral-700 hover:bg-neutral-50"
                                 }`}
                             aria-disabled={locked}
                             tabIndex={locked ? -1 : 0}
@@ -645,6 +651,19 @@ export default function DashboardPage() {
         };
     }, [router]);
 
+    // derived: is any row pending (queued or processing)?
+    const hasPending = useMemo(() => {
+        if (!rows || rows.length === 0) return false;
+        return rows.some((r) => {
+            const ui = normalizeUrlStatus(
+                r.status as UrlStatusRaw | UrlStatusUi | undefined,
+                r.screenshotPaths?.length,
+                r.updatedAt
+            );
+            return ui === "queued" || ui === "processing";
+        });
+    }, [rows]);
+
     // Handle billing=success / billing=cancelled notifications
     useEffect(() => {
         const status = search.get("billing");
@@ -700,7 +719,6 @@ export default function DashboardPage() {
     }, [search, user, router]);
 
     return (
-
         <div className="min-h-screen bg-white pt-[15px] pb-[30px]">
             <main className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-10 py-16">
                 {/* Hero */}
@@ -717,13 +735,11 @@ export default function DashboardPage() {
                         account.
                     </p>
 
-
-
                     {billingMsg && (
                         <div
                             className={`mt-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${billingMsg.type === "success"
-                                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                                : "border-amber-200 bg-amber-50 text-amber-800"
+                                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                                    : "border-amber-200 bg-amber-50 text-amber-800"
                                 }`}
                         >
                             {billingMsg.type === "success" ? (
@@ -742,7 +758,13 @@ export default function DashboardPage() {
                     ) : null}
 
                     <div className="mt-6">
-                        {user ? <UrlForm uid={user.uid} onAdded={() => { }} /> : null}
+                        {user ? (
+                            <UrlForm
+                                uid={user.uid}
+                                onAdded={() => { }}
+                                disabled={hasPending}
+                            />
+                        ) : null}
                     </div>
 
                     <div className="mt-8">
