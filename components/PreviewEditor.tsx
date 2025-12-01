@@ -3832,17 +3832,17 @@ function UiBtn({
         </button>
     );
 }
-
-/* ------------------------ in-iframe edit layer ------------------------ */
 /* ------------------------ in-iframe edit layer ------------------------ */
 function injectEditableOverlay(
     doc: Document,
     onChange: (updatedHtml: string) => void
 ) {
+    // Hard reset of any existing overlays in this doc
     doc.querySelectorAll(".kloner-toolbar").forEach((n) => n.remove());
     doc.querySelectorAll(".kloner-style-panel").forEach((n) => n.remove());
 
     const style = doc.createElement("style");
+    style.setAttribute("data-kloner-style", "1");
     style.textContent = `
     :root { --amber-50:#FFFBEB; --amber-200:#FDE68A; --amber-700:#B45309; --rose-50:#FFF1F2; --rose-200:#FECDD3; --rose-700:#BE123C; --slate-700:#334155; --slate-300:#cbd5e1; }
 
@@ -3956,11 +3956,13 @@ function injectEditableOverlay(
     fileInput.type = "file";
     fileInput.accept = "image/*";
     fileInput.style.display = "none";
+    fileInput.setAttribute("data-kloner-upload-input", "1");
     doc.body.appendChild(fileInput);
 
     const hint = doc.createElement("div");
     hint.className = "khint";
     hint.style.display = "none";
+    hint.setAttribute("data-kloner-hint", "1");
     doc.body.appendChild(hint);
 
     function showHint(text: string, near: HTMLElement) {
@@ -4017,6 +4019,7 @@ function injectEditableOverlay(
 
     const toolbar = doc.createElement("div");
     toolbar.className = "kloner-toolbar";
+    toolbar.setAttribute("data-kloner-toolbar", "1");
     toolbar.innerHTML = `
       <div class="kgroup kgroup-core" data-group="core">
         <span class="kgroup-label">Block</span>
@@ -4084,20 +4087,46 @@ function injectEditableOverlay(
 
     function serializeClean(): string {
         const docClone = doc.documentElement.cloneNode(true) as HTMLElement;
-        const body = (docClone as HTMLHtmlElement).querySelector("body")!;
-        body.querySelectorAll(".kloner-toolbar").forEach((n) => n.remove());
-        body.querySelectorAll(".kloner-style-panel").forEach((n) => n.remove());
+        const htmlEl = docClone as HTMLHtmlElement;
+        const head = htmlEl.querySelector("head");
+        const body = htmlEl.querySelector("body")!;
+
+        // Remove overlay UI and helpers from body
+        body
+            .querySelectorAll(
+                ".kloner-toolbar, .kloner-style-panel, .khint, [data-kloner-upload-input]"
+            )
+            .forEach((n) => n.remove());
+
+        // Strip selection + edit attributes
         body.querySelectorAll("[data-kloner-sel]").forEach((n) =>
             (n as HTMLElement).removeAttribute("data-kloner-sel")
         );
         body.querySelectorAll("[contenteditable]").forEach((n) =>
             (n as HTMLElement).removeAttribute("contenteditable")
         );
+
+        // Remove injected style block(s) for the editor from head
+        if (head) {
+            head.querySelectorAll("[data-kloner-style]").forEach((n) => n.remove());
+
+            // Safety net: if any generic <style> contains .kloner-toolbar, remove it
+            head.querySelectorAll("style").forEach((s) => {
+                if (s.textContent && s.textContent.includes(".kloner-toolbar")) {
+                    s.remove();
+                }
+            });
+        }
+
         return "<!doctype html>\n" + (docClone as any).outerHTML;
     }
 
     let hist: string[] = [];
     let idx = -1;
+    function updateUndoRedoState() {
+        // reserved for future undo/redo UI
+    }
+
     function saveHistory() {
         const snap = serializeClean();
         if (idx >= 0 && hist[idx] === snap) return;
@@ -4111,8 +4140,16 @@ function injectEditableOverlay(
         idx = nextIndex;
         const parser = new DOMParser();
         const doc2 = parser.parseFromString(hist[idx], "text/html");
-        doc.body.replaceWith(doc.importNode(doc2.body, true));
+
+        // Replace body with clean snapshot
+        const newBody = doc2.body;
+        doc.body.replaceWith(doc.importNode(newBody, true));
+
+        // Re-attach toolbar + hint + file input to live doc
         doc.body.appendChild(toolbar);
+        doc.body.appendChild(hint);
+        doc.body.appendChild(fileInput);
+
         markEditable(doc.body);
         select(null);
         updateUndoRedoState();
@@ -4124,9 +4161,22 @@ function injectEditableOverlay(
     function redo() {
         restoreHistory(idx + 1);
     }
-    function updateUndoRedoState() {
-        // reserved for future undo/redo UI
-    }
+
+    const notify = (() => {
+        let t = 0 as unknown as number;
+        let raf = 0 as unknown as number;
+        return () => {
+            clearTimeout(t as any);
+            if (raf) cancelAnimationFrame(raf as any);
+            t = window.setTimeout(() => {
+                raf = requestAnimationFrame(() => {
+                    saveHistory();
+                    onChange(serializeClean());
+                });
+            }, 250);
+        };
+    })();
+
     saveHistory();
 
     function publishSelection() {
@@ -4404,6 +4454,21 @@ function injectEditableOverlay(
         showHint("Image deleted.", block);
     }
 
+    function pickLocalFile(): Promise<File | null> {
+        return new Promise((resolve) => {
+            const input = doc.createElement("input");
+            input.type = "file";
+            input.accept = "image/*";
+
+            input.onchange = () => {
+                const file = input.files?.[0] || null;
+                resolve(file);
+            };
+
+            input.click();
+        });
+    }
+
     async function insertImageIntoBlock(block: HTMLElement) {
         const file = await pickLocalFile();
         if (!file) return;
@@ -4435,21 +4500,6 @@ function injectEditableOverlay(
         saveHistory();
         notify();
         showHint("Image inserted (pending upload).", block);
-    }
-
-    function pickLocalFile(): Promise<File | null> {
-        return new Promise((resolve) => {
-            const input = document.createElement("input");
-            input.type = "file";
-            input.accept = "image/*";
-
-            input.onchange = () => {
-                const file = input.files?.[0] || null;
-                resolve(file);
-            };
-
-            input.click();
-        });
     }
 
     async function replaceImage(el: HTMLImageElement) {
@@ -4725,21 +4775,6 @@ function injectEditableOverlay(
     };
 
     toolbar.addEventListener("click", actionListener);
-
-    const notify = (() => {
-        let t = 0 as unknown as number;
-        let raf = 0 as unknown as number;
-        return () => {
-            clearTimeout(t as any);
-            if (raf) cancelAnimationFrame(raf as any);
-            t = window.setTimeout(() => {
-                raf = requestAnimationFrame(() => {
-                    saveHistory();
-                    onChange(serializeClean());
-                });
-            }, 250);
-        };
-    })();
 
     const mo = new MutationObserver(() => notify());
     mo.observe(doc.body, {
