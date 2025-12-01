@@ -4320,7 +4320,7 @@ export default function PreviewPage(): JSX.Element {
                                         Higher monthly limits for screenshots and previews
                                     </li>
                                     <li>
-                                        Unlock deploy to Vercel and live URLs
+                                        Unlock deployments and live URLs
                                     </li>
                                     <li>Priority rendering and faster queues</li>
                                 </ul>

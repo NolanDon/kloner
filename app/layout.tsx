@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://kloner.app"),
   title: "Kloner | Clone any website in minutes",
   description:
-    "Paste a URL to generate a clean preview, inspect pages, and deploy to Vercel or Netlify in one click.",
+    "Paste a URL to generate a clean preview, inspect pages, and deploy live in one click.",
   applicationName: "Kloner",
   keywords: [
     "website cloner",
@@ -34,7 +34,7 @@ export const metadata: Metadata = {
     siteName: "Kloner",
     title: "Kloner — Clone any website in minutes",
     description:
-      "Paste a URL, get a live preview, then deploy to Vercel or Netlify with one click.",
+      "Paste a URL, get a customizable website with an AI assistant, then deploy it with one click.",
     images: [
       {
         url: "/og.jpg",
@@ -48,7 +48,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Kloner — Clone any website in minutes",
     description:
-      "Paste a URL, get a live preview, then deploy to Vercel or Netlify with one click.",
+      "Paste a URL, get a customizable website with an AI assistant, then deploy it with one click.",
     images: ["/og.jpg"],
   },
   icons: {

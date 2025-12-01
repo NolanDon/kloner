@@ -3702,7 +3702,7 @@ export default function PreviewEditor({
                     <div className="fixed inset-0 z-[10010] flex items-center justify-center bg-black/40">
                         <div className="bg-white rounded-lg shadow-xl p-4 w-full max-w-sm border border-neutral-200">
                             <div className="text-md font-semibold text-neutral-900 mb-2">
-                                Deploy to Vercel?
+                                Deploy your Website?
                             </div>
                             <p className="text-xs text-neutral-600 mb-2">
                                 This will export your current preview and trigger a
