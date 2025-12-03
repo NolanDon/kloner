@@ -10,7 +10,10 @@ export async function GET(req: NextRequest) {
 
     const isProd = process.env.NODE_ENV === "production";
 
-    const base = isProd ? (process.env.OAUTH_REDIRECT_BASE_PROD || "https://kloner.app") : process.env.OAUTH_REDIRECT_BASE_DEV
+    // const base = isProd ? (process.env.OAUTH_REDIRECT_BASE_PROD || "https://kloner.app") : process.env.OAUTH_REDIRECT_BASE_DEV
+
+    // delete-me
+    const base = process.env.OAUTH_REDIRECT_BASE_PROD || "https://kloner.app";
 
     const redirectWithStatus = (
         status: "success" | "error",
