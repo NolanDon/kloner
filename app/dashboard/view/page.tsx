@@ -293,7 +293,6 @@ function RenderCardInner({
     const isDeployedFlag = isDeployed;
     const isArchivedFlag = isArchived;
 
-    // control whether the iframe strip shows at all
     const showIframe = !!r.html?.trim();
 
     const deployThis = () => {
@@ -445,25 +444,26 @@ function RenderCardInner({
                     disabled={isDeleting}
                     aria-label="Discard preview"
                     title="Delete this editable preview"
-                    className="absolute right-2 top-2 z-40 inline-flex h-7 w-7 items-center justify-center border border-red-200 bg-white/95 text-[18px] font-bold leading-none text-red-600 shadow-sm hover:bg-red-600 hover:text-white hover:border-red-500 disabled:opacity-60"
+                    className="absolute rounded-full right-1 top-1 pb-1 z-40 inline-flex h-7 w-7 items-center justify-center border border-red-200 bg-white/95 text-[18px] font-bold leading-none text-red-600 shadow-sm hover:bg-red-600 hover:text-white hover:border-red-500 disabled:opacity-60"
                 >
                     ×
                 </button>
             )}
 
-            <div className="relative">
+            {/* main visual area – fixed aspect so no extra deadspace */}
+            <div className="relative aspect-[4/3] w-full overflow-hidden">
                 {!refImgUrl ? (
-                    <div className="grid aspect-[4/3] w-full place-items-center text-sm text-neutral-500">
+                    <div className="grid h-full w-full place-items-center text-sm text-neutral-500">
                         No snapshot available
                     </div>
                 ) : (
-                    <a className="block" title="Open the base screenshot">
+                    <a className="block h-full w-full" title="Open the base screenshot">
                         <img
                             src={refImgUrl}
                             alt={r.nameHint || "preview"}
                             loading="lazy"
                             onError={refImgErr}
-                            className={`pointer-events-none h-full max-h-[260px] w-full select-none object-cover opacity-[0.25] ${isArchivedFlag ? "grayscale" : ""
+                            className={`pointer-events-none h-full w-full select-none object-cover opacity-[0.25] ${isArchivedFlag ? "grayscale" : ""
                                 }`}
                             draggable={false}
                         />
@@ -639,20 +639,25 @@ function RenderCardInner({
                                                 onChange={(e) => {
                                                     const v = e.target.value;
 
-                                                    // forbidden patterns
                                                     const forbidden =
-                                                        /\.(com|ca|org|net|io|co|app|dev)\b/i.test(v) ||
+                                                        /\.(com|ca|org|net|io|co|app|dev)\b/i.test(
+                                                            v,
+                                                        ) ||
                                                         /\bwww\./i.test(v) ||
                                                         /\bhttps?:\/\//i.test(v) ||
-                                                        /\.\w{2,}$/i.test(v); // any dot-TLD
+                                                        /\.\w{2,}$/i.test(v);
 
-                                                    // allowed chars only
-                                                    const allowed = /^[a-zA-Z0-9\- ]*$/.test(v);
+                                                    const allowed =
+                                                        /^[a-zA-Z0-9\- ]*$/.test(v);
 
                                                     if (forbidden) {
-                                                        setShareError("Remove .com/.ca/www and any dots or URLs.");
+                                                        setShareError(
+                                                            "Remove .com/.ca/www and any dots or URLs.",
+                                                        );
                                                     } else if (!allowed) {
-                                                        setShareError("Use only letters, numbers, spaces, and dashes.");
+                                                        setShareError(
+                                                            "Use only letters, numbers, spaces, and dashes.",
+                                                        );
                                                     } else {
                                                         setShareError(null);
                                                     }
@@ -660,20 +665,20 @@ function RenderCardInner({
                                                     setShareProjectName(v);
                                                 }}
                                                 placeholder="e.g. cookie gift landing, portfolio v2"
-                                                className={`w-full rounded-md border px-2 py-1 text-[10px] bg-white text-neutral-800 placeholder:text-neutral-400
-                                                    focus:outline-none focus:ring-1
-                                                    ${shareError ? "border-red-500 focus:ring-red-500" : "border-neutral-300 focus:ring-accent"}
-                                                    `}
+                                                className={`w-full rounded-md border px-2 py-1 text-[10px] bg-white text-neutral-800 placeholder:text-neutral-400 focus:outline-none focus:ring-1 ${shareError
+                                                    ? "border-red-500 focus:ring-red-500"
+                                                    : "border-neutral-300 focus:ring-accent"
+                                                    }`}
                                             />
 
-                                            {/* fixed-height error slot to avoid layout shift */}
                                             <div className="min-h-[14px] mt-0.5">
                                                 {shareError && (
-                                                    <p className="text-[10px] text-red-600">{shareError}</p>
+                                                    <p className="text-[10px] text-red-600">
+                                                        {shareError}
+                                                    </p>
                                                 )}
                                             </div>
                                         </div>
-
 
                                         <label className="mb-2 inline-flex items-center gap-2 text-[10px] text-neutral-700">
                                             <input
@@ -732,20 +737,23 @@ function RenderCardInner({
                 )}
             </div>
 
-            <div className="relative h-0 overflow-hidden" aria-hidden>
-                <iframe
-                    title={`r-${r.id}`}
-                    className="h-0 w-full"
-                    sandbox="allow-popups allow-popups-to-escape-sandbox allow-forms allow-pointer-lock"
-                    referrerPolicy="no-referrer"
-                    allow="clipboard-read; clipboard-write"
-                    key={`frame-${r.id}`}
-                    srcDoc={srcDoc}
-                />
-            </div>
+            {showIframe && (
+                <div className="relative h-0 overflow-hidden" aria-hidden>
+                    <iframe
+                        title={`r-${r.id}`}
+                        className="h-0 w-full"
+                        sandbox="allow-popups allow-popups-to-escape-sandbox allow-forms allow-pointer-lock"
+                        referrerPolicy="no-referrer"
+                        allow="clipboard-read; clipboard-write"
+                        key={`frame-${r.id}`}
+                        srcDoc={srcDoc}
+                    />
+                </div>
+            )}
         </div>
     );
 }
+
 
 
 
@@ -851,8 +859,8 @@ export const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
 
     const title = effectiveLocked ? "Generating preview…" : "Generate preview";
     const subtitle = effectiveLocked
-        ? "Building an editable preview from this url."
-        : "Create an editable preview from this url.";
+        ? "Building an editable website."
+        : "Create an editable website.";
 
     // medium-compact sizing
     const sizeMinH = compact ? "min-h-[200px]" : "min-h-[260px]";
@@ -3994,8 +4002,8 @@ export default function PreviewPage(): JSX.Element {
                                                                 }}
                                                                 placeholder="e.g. kloner-landing, client-site-01"
                                                                 className={`mt-0.5 w-full rounded-lg border px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 ${deployWizardError
-                                                                        ? "border-red-500 focus:ring-red-500"
-                                                                        : "border-neutral-300 focus:ring-[rgba(245,95,42,0.6)] focus:border-transparent"
+                                                                    ? "border-red-500 focus:ring-red-500"
+                                                                    : "border-neutral-300 focus:ring-[rgba(245,95,42,0.6)] focus:border-transparent"
                                                                     }`}
                                                             />
                                                             <span className="text-[11px] text-neutral-600">
@@ -4069,15 +4077,15 @@ export default function PreviewPage(): JSX.Element {
                                                         </>
                                                     )}
 
-                                                    <div className="mt-4 flex items-center justify-between gap-2">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setDeployWizardStep(1)}
-                                                            className="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-semibold text-neutral-600 hover:bg-neutral-50"
-                                                        >
-                                                            Back
-                                                        </button>
-                                                        {vercelStatus !== "connected" && (
+                                                    {vercelStatus !== "connected" && (
+                                                        <div className="mt-4 flex items-center justify-between gap-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setDeployWizardStep(1)}
+                                                                className="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-semibold text-neutral-600 hover:bg-neutral-50"
+                                                            >
+                                                                Back
+                                                            </button>
                                                             <button
                                                                 type="button"
                                                                 onClick={handleConnectVercelFromWizard}
@@ -4086,8 +4094,8 @@ export default function PreviewPage(): JSX.Element {
                                                             >
                                                                 Connect Vercel
                                                             </button>
-                                                        )}
-                                                    </div>
+                                                        </div>
+                                                    )}
                                                 </motion.div>
                                             )}
 

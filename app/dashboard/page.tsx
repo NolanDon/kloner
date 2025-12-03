@@ -1,4 +1,4 @@
-// app/dashboard/page.tsx (full component with pending-row lock on UrlForm)
+// app/dashboard/page.tsx (status badge moved to bottom-right of each card)
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -340,7 +340,6 @@ function UrlRow({ uid, r }: UrlRowProps) {
 
     const locked = uiStatus === "processing";
     const isStale = uiStatus === "stale";
-    const isReady = uiStatus === "ready";
 
     const [thumbUrl, setThumbUrl] = useState<string | null>(null);
     useEffect(() => {
@@ -498,7 +497,18 @@ function UrlRow({ uid, r }: UrlRowProps) {
             aria-busy={locked}
             aria-disabled={locked}
         >
-            <div className="flex flex-col sm:flex-row gap-4 sm:gap-5">
+            {/* red X delete button top-right */}
+            <button
+                onClick={() => void remove()}
+                disabled={busy || locked}
+                aria-label="Delete tracked URL"
+                title="Delete this tracked URL"
+                className="absolute rounded-full left-1 top-1 pb-1 z-40 inline-flex h-7 w-7 items-center justify-center border border-red-200 bg-white/95 text-[18px] font-bold leading-none text-red-600 shadow-sm hover:bg-red-600 hover:text-white hover:border-red-500 disabled:opacity-60"
+            >
+                ×
+            </button>
+
+            <div className="pl-5 flex flex-col sm:flex-row gap-4 sm:gap-5">
                 {thumbUrl ? (
                     <div className="h-12 w-12 rounded-lg overflow-hidden border border-neutral-200 bg-neutral-100 shrink-0">
                         <img
@@ -518,14 +528,15 @@ function UrlRow({ uid, r }: UrlRowProps) {
                 )}
 
                 <div className="min-w-0 flex-1 flex flex-col gap-2">
+                    {/* top row: URL only */}
                     <div className="flex flex-wrap items-center gap-2 justify-between">
                         <a
                             href={locked ? undefined : r.url}
                             target={locked ? undefined : "_blank"}
                             rel={locked ? undefined : "noreferrer"}
                             className={`truncate max-w-full sm:max-w-[70%] text-sm ${locked
-                                    ? "text-neutral-400 pointer-events-none"
-                                    : "text-neutral-800 hover:underline"
+                                ? "text-neutral-400 pointer-events-none"
+                                : "text-neutral-800 hover:underline"
                                 }`}
                             aria-disabled={locked}
                             tabIndex={locked ? -1 : 0}
@@ -562,30 +573,22 @@ function UrlRow({ uid, r }: UrlRowProps) {
                                     : `/dashboard/view?u=${encodeURIComponent(r.url)}`
                             }
                             className={`rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs ${locked
-                                    ? "text-neutral-400 pointer-events-none"
-                                    : "text-neutral-700 hover:bg-neutral-50"
+                                ? "text-neutral-400 pointer-events-none"
+                                : "text-neutral-700 hover:bg-neutral-50"
                                 }`}
                             aria-disabled={locked}
                             tabIndex={locked ? -1 : 0}
                         >
                             Open Builder
                         </a>
-
-                        <button
-                            onClick={() => void remove()}
-                            disabled={busy || locked}
-                            className="rounded-lg px-3 py-1.5 text-xs text-white disabled:opacity-50"
-                            style={{ backgroundColor: ACCENT }}
-                        >
-                            Delete
-                        </button>
                     </div>
 
                     {locked && (
                         <div className="mt-2 flex items-center gap-2 text-[11px] text-neutral-500">
                             <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
                             <span>
-                                Processing up to 10 pages for this URL. This can take a few minutes.
+                                Processing up to 10 pages for this URL. This can take a few
+                                minutes.
                             </span>
                         </div>
                     )}
@@ -651,7 +654,6 @@ export default function DashboardPage() {
         };
     }, [router]);
 
-    // derived: is any row pending (queued or processing)?
     const hasPending = useMemo(() => {
         if (!rows || rows.length === 0) return false;
         return rows.some((r) => {
@@ -664,7 +666,6 @@ export default function DashboardPage() {
         });
     }, [rows]);
 
-    // Handle billing=success / billing=cancelled notifications
     useEffect(() => {
         const status = search.get("billing");
         if (!status) return;
@@ -721,7 +722,6 @@ export default function DashboardPage() {
     return (
         <div className="min-h-screen bg-white pt-[15px] pb-[30px]">
             <main className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-10 py-16">
-                {/* Hero */}
                 <div className="inline-flex items-center gap-2 rounded-full bg-accent text-neutral-50 px-3 py-1 text-[11px] mb-4">
                     <span>Kloner · Dashboard</span>
                 </div>
@@ -738,8 +738,8 @@ export default function DashboardPage() {
                     {billingMsg && (
                         <div
                             className={`mt-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${billingMsg.type === "success"
-                                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                                    : "border-amber-200 bg-amber-50 text-amber-800"
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                                : "border-amber-200 bg-amber-50 text-amber-800"
                                 }`}
                         >
                             {billingMsg.type === "success" ? (
