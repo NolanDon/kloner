@@ -535,8 +535,8 @@ function UrlRow({ uid, r }: UrlRowProps) {
                             target={locked ? undefined : "_blank"}
                             rel={locked ? undefined : "noreferrer"}
                             className={`truncate max-w-full sm:max-w-[70%] text-sm ${locked
-                                    ? "text-neutral-400 pointer-events-none"
-                                    : "text-neutral-800 hover:underline"
+                                ? "text-neutral-400 pointer-events-none"
+                                : "text-neutral-800 hover:underline"
                                 }`}
                             aria-disabled={locked}
                             tabIndex={locked ? -1 : 0}
@@ -572,8 +572,8 @@ function UrlRow({ uid, r }: UrlRowProps) {
                                     : `/dashboard/view?u=${encodeURIComponent(r.url)}`
                             }
                             className={`rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs ${locked
-                                    ? "text-neutral-400 pointer-events-none"
-                                    : "text-neutral-700 hover:bg-neutral-50"
+                                ? "text-neutral-400 pointer-events-none"
+                                : "text-neutral-700 hover:bg-neutral-50"
                                 }`}
                             aria-disabled={locked}
                             tabIndex={locked ? -1 : 0}
@@ -742,8 +742,8 @@ export default function DashboardPage() {
                     {billingMsg && (
                         <div
                             className={`mt-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${billingMsg.type === "success"
-                                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                                    : "border-amber-200 bg-amber-50 text-amber-800"
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                                : "border-amber-200 bg-amber-50 text-amber-800"
                                 }`}
                         >
                             {billingMsg.type === "success" ? (

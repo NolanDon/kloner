@@ -2383,7 +2383,7 @@ export default function PreviewEditor({
                                     : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                                     }`}
                             >
-                                 Edit Styles
+                                Edit Styles
                             </button>
                             <button
                                 onClick={() => setSidePanelMode("meta")}
@@ -2392,7 +2392,7 @@ export default function PreviewEditor({
                                     : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                                     }`}
                             >
-                                 Edit Meta
+                                Edit Meta
                             </button>
                         </div>
 
@@ -2443,7 +2443,7 @@ export default function PreviewEditor({
                                                 : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                                                 }`}
                                         >
-                                             Preview
+                                            Preview
                                         </button>
                                         <button
                                             onClick={() =>
@@ -2455,7 +2455,7 @@ export default function PreviewEditor({
                                                 : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                                                 }`}
                                         >
-                                             Screenshot
+                                            Screenshot
                                         </button>
                                     </div>
                                 </div>

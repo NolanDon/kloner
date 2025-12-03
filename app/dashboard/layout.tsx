@@ -21,7 +21,7 @@ import {
     BookText,
     Settings as SettingsIcon,
     LogOut,
-    Eye,
+    Hammer,
     Archive,
     Rocket,
 } from "lucide-react";
@@ -49,7 +49,7 @@ const NAV_SECTIONS: NavSectionConfig[] = [
         label: "Preview",
         items: [
             { href: "/dashboard", label: "Dashboard", icon: LayoutTemplate },
-            { href: "/dashboard/view", label: "Builder", icon: Eye },
+            { href: "/dashboard/view", label: "Builder", icon: Hammer },
         ],
     },
     {

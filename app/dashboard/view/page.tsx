@@ -836,7 +836,7 @@ const CenterSpinner = memo(function CenterSpinner({
         </div>
     );
 });
-export const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
+const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     locked,
     onClick,
     compact = false,
