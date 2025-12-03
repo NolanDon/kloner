@@ -404,8 +404,8 @@ export default function LoginPage(): JSX.Element {
                                 setErr("");
                             }}
                             className={`px-3 py-1.5 rounded-full font-medium transition ${mode === "signin"
-                                    ? "bg-accent text-white"
-                                    : "text-neutral-600 hover:text-black"
+                                ? "bg-accent text-white"
+                                : "text-neutral-600 hover:text-black"
                                 }`}
                         >
                             Sign in
@@ -417,8 +417,8 @@ export default function LoginPage(): JSX.Element {
                                 setErr("");
                             }}
                             className={`px-3 py-1.5 rounded-full font-medium transition ${mode === "signup"
-                                    ? "bg-accent text-white"
-                                    : "text-neutral-600 hover:text-black"
+                                ? "bg-accent text-white"
+                                : "text-neutral-600 hover:text-black"
                                 }`}
                         >
                             Create account
@@ -438,7 +438,7 @@ export default function LoginPage(): JSX.Element {
                 </div>
 
                 {pendingUrl ? (
-                    <div className="mb-4 flex items-start justify-between gap-2 rounded-lg bg-amber-50 text-amber-700 ring-1 ring-amber-200 px-3 py-2 text-xs">
+                    <div className="mb-4 flex items-start justify-between gap-2 rounded-lg bg-emerald-50 px-3 py-2.5 text-xs text-emerald-800 ring-1 ring-emerald-200">
                         <div>
                             We will add this URL after you{" "}
                             {mode === "signin" ? "sign in" : "sign up"}:{" "}
@@ -447,12 +447,13 @@ export default function LoginPage(): JSX.Element {
                         <button
                             type="button"
                             onClick={clearPendingUrl}
-                            className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full border border-amber-300 text-[10px] leading-none hover:bg-amber-100"
+                            className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full border border-emerald-500 text-[11px] leading-none text-emerald-700 hover:bg-emerald-600 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                             aria-label="Do not auto-add this URL"
                         >
                             ×
                         </button>
                     </div>
+
                 ) : null}
 
                 <form onSubmit={submitEmail} className="space-y-3">
