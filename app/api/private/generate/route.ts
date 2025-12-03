@@ -96,12 +96,54 @@ export async function POST(req: NextRequest) {
                     },
                 });
 
-                // Backend failed → no credit burn
-                if (!r.upstream.ok) {
+                // Normalize payload
+                const payload =
+                    r.json && Object.keys(r.json).length
+                        ? r.json
+                        : {
+                            ok: true,
+                            queued: r.status === 202 || r.status === 204,
+                        };
+
+                // Decide if this run actually "succeeded" in a way that should burn a credit.
+                //
+                // Conditions for success:
+                //  - HTTP status is 2xx (r.upstream.ok === true)
+                //  - payload.error is falsy
+                //  - payload.ok is not explicitly false
+                //  - if payload.totalPlanned exists, it must be > 0 (we actually captured something)
+                const hasErrorFlag = Boolean((payload as any).error);
+                const okField = (payload as any).ok;
+                const totalPlanned =
+                    typeof (payload as any).totalPlanned === "number"
+                        ? (payload as any).totalPlanned
+                        : null;
+
+                const logicalOk =
+                    r.upstream.ok &&
+                    !hasErrorFlag &&
+                    okField !== false &&
+                    (totalPlanned === null || totalPlanned > 0);
+
+                // Backend failed or produced no captures → no credit burn
+                if (!logicalOk) {
+                    const status =
+                        r.status && r.status >= 400
+                            ? r.status
+                            : 502;
+
                     return NextResponse.json(
-                        { error: r.json?.error || "Backend error" },
                         {
-                            status: r.status,
+                            error:
+                                (payload as any).error ||
+                                (payload as any).message ||
+                                "Backend error (no captures or failed run).",
+                            ...(totalPlanned === 0
+                                ? { reason: "no_captures" }
+                                : {}),
+                        },
+                        {
+                            status,
                             headers: {
                                 "x-request-id": r.reqId,
                                 "cache-control": "no-store",
@@ -110,20 +152,14 @@ export async function POST(req: NextRequest) {
                     );
                 }
 
-                // Heavy work succeeded → burn one preview credit
+                // Heavy work succeeded → burn one credit
                 try {
+                    // NOTE: currently charging "snapshot" credits for this endpoint.
+                    // If you want it to use "preview", change the third arg accordingly.
                     await consumeUserCredit(decoded.uid, tier, "snapshot");
                 } catch {
-                    // If this fails you effectively gave a free run; fine for now.
+                    // If this fails you effectively gave a free run; acceptable.
                 }
-
-                const payload =
-                    r.json && Object.keys(r.json).length
-                        ? r.json
-                        : {
-                            ok: true,
-                            queued: r.status === 202 || r.status === 204,
-                        };
 
                 return NextResponse.json(payload, {
                     status: 200,

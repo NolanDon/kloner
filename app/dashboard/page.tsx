@@ -298,7 +298,7 @@ function UrlForm({ uid, onAdded, disabled }: UrlFormProps) {
             </div>
             {err ? <p className="mt-2 text-sm text-red-600">{err}</p> : null}
             <p className="mt-2 text-xs text-neutral-500">
-                We queue a capture and store screenshots under your account.
+                We queue a capture and store a base layout under your account.
             </p>
         </form>
     );
@@ -735,8 +735,7 @@ export default function DashboardPage() {
                         Dashboard
                     </h1>
                     <p className="mt-1 text-sm text-neutral-600">
-                        Add a URL to capture. We queue screenshots and keep them under your
-                        account.
+                        Add a URL to capture. We queue a base layout you can then create a website from.
                     </p>
 
                     {billingMsg && (
