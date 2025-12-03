@@ -258,13 +258,13 @@ export default function AiEditPanel(props: AiEditPanelProps) {
             {/* centered input bar above canvas */}
             <div className="mb-4 flex justify-center mt-2 pt-8">
                 <div className="w-full max-w-[820px]">
-                    <div className="mb-1 flex items-center justify-between px-1">
+                    {/* <div className="mb-1 flex items-center justify-between px-1">
                         {loading && (
                             <span className="text-[11px] text-neutral-500">
                                 Thinking…
                             </span>
                         )}
-                    </div>
+                    </div> */}
 
                     {error && (
                         <p className="mt-1 px-1 text-[11px] text-red-600">
@@ -333,100 +333,101 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                 </div>
             </div>
 
-            {/* history rail / dropdown on the right */}
-            <aside className="pointer-events-none fixed top-10 ml-4 hidden w-72 lg:flex">
-                {collapsed ? (
-                    // collapsed: small dropdown-style pill
-                    <button
-                        type="button"
-                        onClick={() => setCollapsed(false)}
-                        className="pointer-events-auto inline-flex items-center justify-center gap-1 rounded-full border border-neutral-300 bg-white/95 px-3 py-1.5 text-[12px] font-medium text-neutral-700 shadow-md"
-                    >
-                        <span className="leading-none">Show AI history</span>
-                        <span className="text-[11px] text-neutral-500 leading-none translate-y-[0.5px]">
-                            ▼
-                        </span>
-                    </button>
-
-                ) : (
-                    // expanded: full aside panel
-                    <div className="pointer-events-auto flex max-h-64 w-full flex-col rounded-xl border border-neutral-200 bg-white/95 px-3 py-3 text-[16px] shadow-md">
-                        <div className="mb-2 flex items-center justify-between">
-                            <div className="flex flex-col">
-                                <span className="font-semibold text-neutral-800">
-                                    Recent AI suggestions
-                                </span>
-                                <span className="text-[12px] text-neutral-500">
-                                    Last 5
-                                </span>
-                            </div>
+            {suggestions.length > 0 && (
+                <>
+                    {/* history rail / dropdown on the right */}
+                    <aside className="pointer-events-none fixed top-10 ml-4 hidden w-72 lg:flex">
+                        {collapsed ? (
+                            // collapsed: small dropdown-style pill
                             <button
                                 type="button"
-                                onClick={() => setCollapsed(true)}
-                                className="ml-4 rounded-full bg-accent px-2 py-0.5 text-[12px] text-white"
+                                onClick={() => setCollapsed(false)}
+                                className="pointer-events-auto inline-flex items-center justify-center gap-1 rounded-full border border-neutral-300 bg-white/95 px-3 py-1.5 text-[12px] font-medium text-neutral-700 shadow-md"
                             >
-                                Hide
+                                <span className="leading-none">Show AI history</span>
+                                <span className="text-[11px] text-neutral-500 leading-none translate-y-[0.5px]">
+                                    ▼
+                                </span>
                             </button>
-                        </div>
 
-                        <p className="mb-2 text-[11px] text-neutral-500">
-                            History is for reference only. Use the main editor
-                            controls to save or discard changes.
-                        </p>
+                        ) : (
+                            // expanded: full aside panel
+                            <div className="pointer-events-auto flex max-h-64 w-full flex-col rounded-xl border border-neutral-200 bg-white/95 px-3 py-3 text-[16px] shadow-md">
+                                <div className="mb-2 flex items-center justify-between">
+                                    <div className="flex flex-col">
+                                        <span className="font-semibold text-neutral-800">
+                                            Recent AI Changes (5)
+                                        </span>
 
-                        <div className="flex-1 space-y-2 overflow-y-auto">
-                            {suggestions.length === 0 && (
-                                <div className="rounded-md border border-dashed border-neutral-300 bg-neutral-50 px-2 py-2 text-[11px] text-neutral-400">
-                                    No suggestions yet. Ask for a change above.
-                                </div>
-                            )}
-
-                            {suggestions.slice(0, 5).map((s) => {
-                                const active = activePreviewId === s.id;
-                                const createdLabel = formatCreatedAt(s.createdAt);
-
-                                return (
-                                    <div
-                                        key={s.id}
-                                        className={`flex flex-col gap-1 rounded-md border bg-white px-2 py-1.5 text-[11px] transition ${active
-                                            ? "border-[rgba(245,95,42,0.8)] bg-[rgba(245,95,42,0.02)]"
-                                            : "border-neutral-200 hover:border-neutral-300"
-                                            }`}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setCollapsed(true)}
+                                        className="ml-4 rounded-full bg-accent px-2 py-0.5 text-[12px] text-white"
                                     >
-                                        <div className="flex items-start justify-between gap-2">
-                                            <div className="min-w-0 flex-1">
-                                                <div className="truncate font-medium text-neutral-900">
-                                                    {s.summary || "Minimal edit"}
+                                        Hide
+                                    </button>
+                                </div>
+
+                                <p className="mb-2 text-[11px] text-neutral-500">
+                                    History is for reference only.
+                                </p>
+
+                                <div className="flex-1 space-y-2 overflow-y-auto">
+                                    {suggestions.length === 0 && (
+                                        <div className="rounded-md border border-dashed border-neutral-300 bg-neutral-50 px-2 py-2 text-[11px] text-neutral-400">
+                                            No suggestions yet.
+                                        </div>
+                                    )}
+
+                                    {suggestions.slice(0, 5).map((s) => {
+                                        const active = activePreviewId === s.id;
+                                        const createdLabel = formatCreatedAt(s.createdAt);
+
+                                        return (
+                                            <div
+                                                key={s.id}
+                                                className={`flex flex-col gap-1 rounded-md border bg-white px-2 py-1.5 text-[11px] transition ${active
+                                                    ? "border-[rgba(245,95,42,0.8)] bg-[rgba(245,95,42,0.02)]"
+                                                    : "border-neutral-200 hover:border-neutral-300"
+                                                    }`}
+                                            >
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="truncate font-medium text-neutral-900">
+                                                            {s.summary || "Minimal edit"}
+                                                        </div>
+                                                        <div className="line-clamp-2 text-[11px] text-neutral-500">
+                                                            {s.prompt}
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <div className="line-clamp-2 text-[11px] text-neutral-500">
-                                                    {s.prompt}
+
+                                                <div className="mt-1 flex items-center justify-between">
+                                                    {createdLabel ? (
+                                                        <span className="text-[11px] text-neutral-400">
+                                                            {createdLabel}
+                                                        </span>
+                                                    ) : (
+                                                        <span />
+                                                    )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDismiss(s.id)}
+                                                        className="rounded-full bg-accent px-2 py-0.5 text-[11px] font-medium text-white"
+                                                    >
+                                                        Dismiss
+                                                    </button>
                                                 </div>
                                             </div>
-                                        </div>
-
-                                        <div className="mt-1 flex items-center justify-between">
-                                            {createdLabel ? (
-                                                <span className="text-[11px] text-neutral-400">
-                                                    {createdLabel}
-                                                </span>
-                                            ) : (
-                                                <span />
-                                            )}
-                                            <button
-                                                type="button"
-                                                onClick={() => handleDismiss(s.id)}
-                                                className="rounded-full bg-accent px-2 py-0.5 text-[11px] font-medium text-white"
-                                            >
-                                                Dismiss
-                                            </button>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
-            </aside>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+                    </aside>
+                </>
+            )}
         </>
     );
 }

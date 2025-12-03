@@ -293,6 +293,9 @@ function RenderCardInner({
     const isDeployedFlag = isDeployed;
     const isArchivedFlag = isArchived;
 
+    // control whether the iframe strip shows at all
+    const showIframe = !!r.html?.trim();
+
     const deployThis = () => {
         if (!r.html?.trim()) return;
         if (isDeployedFlag) return;
@@ -629,17 +632,48 @@ function RenderCardInner({
                                             <label className="mb-1 block text-[10px] font-medium text-neutral-700">
                                                 Project name
                                             </label>
+
                                             <input
                                                 type="text"
                                                 value={shareProjectName}
                                                 onChange={(e) => {
-                                                    setShareProjectName(e.target.value);
-                                                    if (shareError) setShareError(null);
+                                                    const v = e.target.value;
+
+                                                    // forbidden patterns
+                                                    const forbidden =
+                                                        /\.(com|ca|org|net|io|co|app|dev)\b/i.test(v) ||
+                                                        /\bwww\./i.test(v) ||
+                                                        /\bhttps?:\/\//i.test(v) ||
+                                                        /\.\w{2,}$/i.test(v); // any dot-TLD
+
+                                                    // allowed chars only
+                                                    const allowed = /^[a-zA-Z0-9\- ]*$/.test(v);
+
+                                                    if (forbidden) {
+                                                        setShareError("Remove .com/.ca/www and any dots or URLs.");
+                                                    } else if (!allowed) {
+                                                        setShareError("Use only letters, numbers, spaces, and dashes.");
+                                                    } else {
+                                                        setShareError(null);
+                                                    }
+
+                                                    setShareProjectName(v);
                                                 }}
                                                 placeholder="e.g. cookie gift landing, portfolio v2"
-                                                className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1 text-[10px] text-neutral-800 placeholder:text-neutral-400 focus:outline-none focus:ring-1 focus:ring-accent"
+                                                className={`w-full rounded-md border px-2 py-1 text-[10px] bg-white text-neutral-800 placeholder:text-neutral-400
+                                                    focus:outline-none focus:ring-1
+                                                    ${shareError ? "border-red-500 focus:ring-red-500" : "border-neutral-300 focus:ring-accent"}
+                                                    `}
                                             />
+
+                                            {/* fixed-height error slot to avoid layout shift */}
+                                            <div className="min-h-[14px] mt-0.5">
+                                                {shareError && (
+                                                    <p className="text-[10px] text-red-600">{shareError}</p>
+                                                )}
+                                            </div>
                                         </div>
+
 
                                         <label className="mb-2 inline-flex items-center gap-2 text-[10px] text-neutral-700">
                                             <input
@@ -2027,7 +2061,6 @@ export default function PreviewPage(): JSX.Element {
                 [primaryKey]: true,
             }));
             setErr("");
-            setInfo("Preview queued.");
 
             try {
                 const body: any = { keys: storageKeys.slice(0, 25) }; // respect cap in route
@@ -2437,7 +2470,7 @@ export default function PreviewPage(): JSX.Element {
             }
 
             setShowDeployNextSteps(true);
-            push("Deployed. URL copied.", "ok");
+            push("Deployed", "ok");
 
             await refreshRenders();
         } catch (err: any) {
@@ -2771,7 +2804,7 @@ export default function PreviewPage(): JSX.Element {
     const startDeployWizard = useCallback(
         (render: { id: string; nameHint?: string | null }) => {
             setDeployWizardRenderId(render.id);
-            setDeployWizardProjectName(render.nameHint || "");
+            setDeployWizardProjectName("");
             setDeployWizardStep(1);
             setDeployWizardError(null);
             setDeployWizardOpen(true);
@@ -2871,7 +2904,7 @@ export default function PreviewPage(): JSX.Element {
             try {
                 await exportToVercel({
                     html: target.html,
-                    name: deployWizardProjectName || target.nameHint || "",
+                    name: deployWizardProjectName || "Untitled",
                     renderId: target.id,
                 });
             } catch (e) {

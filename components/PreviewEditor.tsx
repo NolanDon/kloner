@@ -2335,8 +2335,8 @@ export default function PreviewEditor({
                     }}
                     disabled={closing}
                     className={`absolute top-5 right-5 z-[100] inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs sm:text-sm font-semibold shadow-lg  ${closing
-                        ? "bg-accent text-white cursor-not-allowed opacity-90"
-                        : "bg-accent text-white hover:bg-accent/50"
+                        ? "bg-accent text-white cursor-not-allowed"
+                        : "bg-accent text-white"
                         }`}
                 >
                     <span>Close editor</span>
@@ -2383,7 +2383,7 @@ export default function PreviewEditor({
                                     : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                                     }`}
                             >
-                                ✨ Edit Styles
+                                 Edit Styles
                             </button>
                             <button
                                 onClick={() => setSidePanelMode("meta")}
@@ -2392,7 +2392,7 @@ export default function PreviewEditor({
                                     : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                                     }`}
                             >
-                                📝 Edit Meta
+                                 Edit Meta
                             </button>
                         </div>
 
@@ -2443,7 +2443,7 @@ export default function PreviewEditor({
                                                 : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                                                 }`}
                                         >
-                                            ✍️ Preview
+                                             Preview
                                         </button>
                                         <button
                                             onClick={() =>
@@ -2455,7 +2455,7 @@ export default function PreviewEditor({
                                                 : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                                                 }`}
                                         >
-                                            👁️ Screenshot
+                                             Screenshot
                                         </button>
                                     </div>
                                 </div>
@@ -3421,7 +3421,6 @@ export default function PreviewEditor({
                     // }}
                     >
 
-                        {/* AI edit panel – lives in the right sidebar */}
                         {mode === "preview" && draftId && (
                             <div className="border-t max-h-72 overflow-auto">
                                 <AiEditPanel
@@ -3431,25 +3430,36 @@ export default function PreviewEditor({
                                     onApplyBlockHtml={(afterBlockHtml: string) => {
                                         const fullHtml = applyBlockHtmlToIframeAndSerialize(
                                             afterBlockHtml,
-                                            true // still mutate iframe directly
+                                            true, // still mutate iframe directly
                                         );
 
                                         if (!fullHtml) {
                                             console.warn(
-                                                "[PreviewEditor] applyBlockHtmlToIframeAndSerialize returned null"
+                                                "[PreviewEditor] applyBlockHtmlToIframeAndSerialize returned null",
                                             );
                                             return;
                                         }
 
+                                        // NEW: run the saved HTML through the same cleaner used on snapshot
+                                        let cleanedHtml = fullHtml;
+                                        try {
+                                            const parser = new DOMParser();
+                                            const doc = parser.parseFromString(fullHtml, "text/html");
+                                            cleanedHtml = snapshotCleanFromDocument(doc);
+                                        } catch (err) {
+                                            console.warn("[PreviewEditor] failed to clean AI-edited HTML", err);
+                                        }
+
                                         // Mark editor dirty and sync draft/preview so Save works
                                         setDirty(true);
-                                        setHtmlDraft(fullHtml);
-                                        setPreviewHtml(fullHtml);
-                                        if (onLiveHtml) onLiveHtml(fullHtml);
+                                        setHtmlDraft(cleanedHtml);
+                                        setPreviewHtml(cleanedHtml);
+                                        if (onLiveHtml) onLiveHtml(cleanedHtml);
                                     }}
                                 />
                             </div>
                         )}
+
 
                         {allPages && allPages.length > 1 && (
                             <div className="mt-3 space-y-2">
@@ -4081,7 +4091,7 @@ function injectEditableOverlay(
         </button>
         <button class="kbtn kbtn-del"  data-act="del" title="Delete block">
           <span class="kbtn-icon">🗑</span>
-          <span class="kbtn-text">Delete</span>
+          <span class="kbtn-text">Delete Block</span>
         </button>
       </div>
 
@@ -4097,7 +4107,7 @@ function injectEditableOverlay(
         </button>
         <button class="kbtn kbtn-img"  data-act="img-del" title="Delete image">
           <span class="kbtn-icon">🗑</span>
-          <span class="kbtn-text">Remove</span>
+          <span class="kbtn-text">Remove Image</span>
         </button>
         <button class="kbtn kbtn-img"  data-act="img-alt" title="Edit ALT text for accessibility">
           <span class="kbtn-icon">ALT</span>
