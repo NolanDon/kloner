@@ -234,7 +234,6 @@ function RenderCardInner({
     // Community share name (separate)
     const [shareProjectName, setShareProjectName] = useState("");
 
-
     const hasEditedShareNameRef = useRef(false);
 
     const srcDoc = useMemo(() => {
@@ -833,16 +832,11 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     onClick: () => void;
     compact?: boolean;
 }) {
-    const [localLocked, setLocalLocked] = useState(false);
-    const effectiveLocked = locked || localLocked;
+    const effectiveLocked = locked;
 
     const handleClick = () => {
         if (effectiveLocked) return;
-        setLocalLocked(true);
         onClick();
-        window.setTimeout(() => {
-            setLocalLocked(false);
-        }, 30_000);
     };
 
     const title = effectiveLocked ? "Generating preview…" : "Generate preview";
@@ -850,10 +844,9 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
         ? "Building an editable website."
         : "Create an editable website.";
 
-    // medium-compact sizing
     const sizeMinH = "min-h-[260px]";
     const sizeMaxW = "max-w-[350px]";
-    const sizeMinW = "min-w-[220px] sm:min-w-[260px]"; // ✅ mobile-friendly min width
+    const sizeMinW = "min-w-[220px] sm:min-w-[260px]";
     const iconWrapperSize = "h-14 w-14";
     const titleSize = "text-sm";
     const subtitleSize = "text-sm";
@@ -921,6 +914,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
         </>
     );
 });
+
 
 
 // ---------------------------------------------------------------------
@@ -1022,66 +1016,78 @@ export default function PreviewPage(): JSX.Element {
     >({});
     const [viewerOpen, setViewerOpen] = useState(false);
     const [viewerIdx, setViewerIdx] = useState(0);
+    const didStripeRestoreRef = useRef(false);
 
-    const billing = search.get("billing");
-    const wizard = search.get("wizard");
-    const step = Number(search.get("step"));
-    const render = search.get("render");
-    const didStripeAutoDeployRef = useRef(false);
 
     useEffect(() => {
-        if (billing === "success" && wizard === "1") {
-            // reopen the wizard at the correct step
-            if (render) setDeployWizardRenderId(render);
-            if (step) setDeployWizardStep(step as any);
+        const billingParam = search.get("billing");
+        const wizardParam = search.get("wizard");
+        const stepParam = search.get("step");
+        const renderId = search.get("render");
+
+        if (billingParam !== "success" || wizardParam !== "1") return;
+        if (!renderId) return;
+        if (!user) return;
+        if (didStripeRestoreRef.current) return;
+        didStripeRestoreRef.current = true;
+
+        void (async () => {
+            // pull latest nameHint from Firestore
+            let nameFromDb = "";
+            try {
+                const renderRef = doc(
+                    db,
+                    "kloner_users",
+                    user.uid,
+                    "kloner_renders",
+                    renderId,
+                );
+                const snap = await getDoc(renderRef);
+                if (snap.exists()) {
+                    const data = snap.data() as any;
+                    if (typeof data?.nameHint === "string") {
+                        nameFromDb = data.nameHint.trim();
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to restore nameHint after Stripe", e);
+            }
+
+            // seed wizard state
+            setDeployWizardRenderId(renderId);
+            setDeployWizardProjectName(
+                nameFromDb || deployWizardProjectName || "",
+            );
+            setDeployWizardError(null);
+            setDeployWizardBusy(false);
             setDeployWizardOpen(true);
 
-            // only auto-deploy once after Stripe returns
-            if (didStripeAutoDeployRef.current) return;
-            didStripeAutoDeployRef.current = true;
+            const nextStep =
+                stepParam === "3"
+                    ? 3
+                    : stepParam === "2"
+                        ? 2
+                        : 2;
+            setDeployWizardStep(nextStep);
 
-            const targetRenderId = render || deployWizardRenderId;
-            if (!targetRenderId) return;
-
-            const r = renders.find((rr) => rr.id === targetRenderId);
-            if (!r || !r.html) return;
-
-            // mark as triggered so UI doesn’t show “Ready to deploy”
-            autoDeployTriggeredRef.current = true;
-
-            // fall back to nameHint if the wizard name is empty
-            const name =
-                (deployWizardProjectName && deployWizardProjectName.trim()) ||
-                r.nameHint ||
-                "";
-
-            void exportToVercel({
-                html: r.html,
-                name,
-                renderId: r.id,
-            });
-
-            // optional: clean the billing params from the URL
+            // clear billing params via router so useSearchParams updates
             try {
                 const url = new URL(window.location.href);
-                url.searchParams.delete("billing");
-                url.searchParams.delete("wizard");
-                url.searchParams.delete("step");
-                url.searchParams.delete("render");
-                window.history.replaceState({}, "", url.toString());
-            } catch {
-                // ignore
+                const params = url.searchParams;
+
+                params.delete("billing");
+                params.delete("wizard");
+                params.delete("step");
+                params.delete("render");
+
+                const qs = params.toString();
+                const next = qs ? `${url.pathname}?${qs}` : url.pathname;
+                router.replace(next, { scroll: false });
+            } catch (e) {
+                console.error("Failed to clear Stripe query params", e);
             }
-        }
-    }, [
-        billing,
-        wizard,
-        step,
-        render,
-        renders,
-        deployWizardProjectName,
-        deployWizardRenderId,
-    ]);
+        })();
+    }, [search, user, router, deployWizardProjectName]);
 
 
 
@@ -1168,124 +1174,24 @@ export default function PreviewPage(): JSX.Element {
         [userTier]
     );
 
-    // at top of component
-    const [deletingCollectionById, setDeletingCollectionById] = useState<
-        Record<string, boolean>
-    >({});
 
-    // somewhere near other callbacks
-    const discardCollection = useCallback(
-        async (group: {
-            snapshotId: string | null | undefined;
-            items: { path: string | null | undefined }[];
-        }) => {
-            if (!user || !docSnap) return;
-
-            // Narrow paths to string[]
-            const paths: string[] = group.items
-                .map((s) => s.path)
-                .filter((p): p is string => typeof p === "string" && p.length > 0);
-
-            if (!paths.length) return;
-
-            const ok = window.confirm(
-                `Delete this snapshot collection (${paths.length} screenshot${paths.length > 1 ? "s" : ""
-                }) and all its previews?`
-            );
-            if (!ok) return;
-
-            setErr("");
-
-            const snapshotId = group.snapshotId ?? "";
-            if (!snapshotId) return;
-
-            setDeletingCollectionById((m) => ({
-                ...m,
-                [snapshotId]: true,
-            }));
+    const saveRenderNameHintNow = useCallback(
+        async (renderId: string, slug: string) => {
+            if (!user) return;
+            const trimmed = slug.trim();
+            if (!trimmed) return;
 
             try {
-                // delete storage objects
-                await Promise.all(
-                    paths.map((p) =>
-                        deleteObject(sRef(storage, p)).catch(() => { })
-                    )
+                await updateDoc(
+                    doc(db, "kloner_users", user.uid, "kloner_renders", renderId),
+                    { nameHint: trimmed },
                 );
-
-                // delete renders that reference any of these keys (chunked "in" queries)
-                const rCol = collection(
-                    db,
-                    "kloner_users",
-                    user.uid,
-                    "kloner_renders"
-                );
-
-                const chunks: string[][] = [];
-                for (let i = 0; i < paths.length; i += 10) {
-                    chunks.push(paths.slice(i, i + 10));
-                }
-
-                for (const chunk of chunks) {
-                    const rSnap = await getDocs(
-                        query(rCol, where("key", "in", chunk))
-                    );
-                    if (!rSnap.empty) {
-                        await Promise.all(
-                            rSnap.docs.map((d) => deleteDoc(d.ref))
-                        );
-                    }
-                }
-
-                // remove paths from the snapshot doc
-                try {
-                    await updateDoc(docSnap.ref, {
-                        screenshotPaths: arrayRemove(...paths),
-                        updatedAt: serverTimestamp(),
-                    } as any);
-                } catch {
-                    // ignore
-                }
-
-                // local state cleanup
-                setShots((prev) => prev.filter((s) => !paths.includes(s.path)));
-
-                setRenders((prev) =>
-                    prev.filter((r) => !(typeof r.key === "string" && paths.includes(r.key)))
-                );
-
-                setPendingByKey((prev) => {
-                    const next = { ...prev };
-                    paths.forEach((p) => {
-                        delete next[p];
-                    });
-                    return next;
-                });
-
-                setOptimisticByKey((prev) => {
-                    const next = { ...prev };
-                    paths.forEach((p) => {
-                        delete next[p];
-                    });
-                    return next;
-                });
-
-                push("Snapshot collection deleted", "ok");
-            } catch (e: any) {
-                setErr(
-                    e?.message || "Failed to delete snapshot collection."
-                );
-                push("Failed to delete snapshot collection", "err");
-            } finally {
-                setDeletingCollectionById((m) => {
-                    const n = { ...m };
-                    delete n[snapshotId];
-                    return n;
-                });
+            } catch (err) {
+                console.error("Failed to save render nameHint", err);
             }
         },
-        [user, docSnap, push]
+        [user],
     );
-
 
     // ---- state ----
 
@@ -2065,37 +1971,44 @@ export default function PreviewPage(): JSX.Element {
             if (!user) return;
             if (!storageKeys.length) return;
 
-            // Use first key for optimistic bookkeeping
             const primaryKey = storageKeys[0];
 
-            const alreadyQueued = renders.find(
+            // hard guard: if anything already queued or pending for this key, bail
+            const alreadyQueued = renders.some(
                 (r) =>
                     r.key === primaryKey &&
                     r.status === "queued" &&
-                    !r.archived
+                    !r.archived,
             );
             if (alreadyQueued || pendingByKey[primaryKey]) return;
 
             if (!canUsePreviewCredit()) {
                 push(
                     "You have used all available preview credits for today on this plan.",
-                    "warn"
+                    "warn",
                 );
                 setShowCreditsPaywall("preview");
                 return;
             }
 
-            if (!window.confirm("Generate an editable preview for 15 credits?")) {
+            // from here down, NOTHING should happen unless user confirms
+            const confirmed = window.confirm(
+                "Generate an editable preview for 15 credits?",
+            );
+            if (!confirmed) {
+                // explicit no-op on cancel
                 return;
             }
 
+            // ── only confirmed path below ──
+
             const optimisticId = `local_${hash64(
-                `${user.uid}|${primaryKey}|${Date.now()}`
+                `${user.uid}|${primaryKey}|${Date.now()}`,
             )}`;
 
             const optimistic: { id: string } & RenderDoc = {
                 id: optimisticId,
-                key: primaryKey, // still store a primary key
+                key: primaryKey,
                 referenceImage: null,
                 html: "",
                 status: "queued",
@@ -2110,6 +2023,7 @@ export default function PreviewPage(): JSX.Element {
                 controllerVersion: null,
             } as any;
 
+            // lock AFTER confirm so a cancelled prompt never locks anything
             startHardLock(primaryKey, optimisticId, 60_000);
 
             setRenders((prev) => [optimistic, ...prev]);
@@ -2158,13 +2072,12 @@ export default function PreviewPage(): JSX.Element {
             } catch (e: any) {
                 const msg = e?.message || "Failed to start collection preview.";
 
-                // ensure wizard error is always populated
                 setDeployWizardError(msg);
 
                 setRenders((prev) =>
                     prev.map((r) =>
-                        r.id === optimisticId ? { ...r, status: "failed" } : r
-                    )
+                        r.id === optimisticId ? { ...r, status: "failed" } : r,
+                    ),
                 );
                 setOptimisticByKey((m) => {
                     const v = m[primaryKey];
@@ -2182,15 +2095,15 @@ export default function PreviewPage(): JSX.Element {
             user,
             targetUrl,
             renders,
+            pendingByKey,
             refreshRenders,
             push,
             startHardLock,
-            pendingByKey,
             canUsePreviewCredit,
             setErr,
-            setInfo,
             setDeployWizardError,
-        ]
+            setShowCreditsPaywall,
+        ],
     );
 
 
@@ -2393,8 +2306,6 @@ export default function PreviewPage(): JSX.Element {
         [user, docSnap, push]
     );
 
-    /* ───────── export / deploy ───────── */
-
     async function exportToVercel(opts: {
         html: string;
         name?: string;
@@ -2403,11 +2314,13 @@ export default function PreviewPage(): JSX.Element {
         setEditorOpen(false);
 
         const { html, name, renderId } = opts;
-
         const resolvedRenderId = renderId || activeRenderId || null;
 
-        const trimmedName = name?.trim();
-        if (!trimmedName) {
+        const trimmedNameInput = name?.trim() || "";
+        const hasName = trimmedNameInput.length > 0;
+
+        // If no name, open wizard at step 1 and bail.
+        if (!hasName) {
             setDeployWizardBusy(false);
             setDeployWizardError(null);
             setDeployWizardStep(1);
@@ -2415,7 +2328,9 @@ export default function PreviewPage(): JSX.Element {
 
             if (resolvedRenderId) {
                 setDeployWizardRenderId(resolvedRenderId);
-                setDeployWizardProjectName("");
+
+                const target = renders.find((r) => r.id === resolvedRenderId);
+                setDeployWizardProjectName(target?.nameHint || "");
             } else {
                 setDeployWizardRenderId(null);
                 setDeployWizardProjectName("");
@@ -2425,6 +2340,7 @@ export default function PreviewPage(): JSX.Element {
             return;
         }
 
+        // Free tier: force upgrade step, do NOT deploy.
         if (userTier === "free") {
             if (deployWizardStep !== 5) {
                 setDeployWizardBusy(false);
@@ -2434,17 +2350,51 @@ export default function PreviewPage(): JSX.Element {
                 if (resolvedRenderId) {
                     setDeployWizardRenderId(resolvedRenderId);
                     const target = renders.find((r) => r.id === resolvedRenderId);
-                    setDeployWizardProjectName(target?.nameHint || trimmedName || "");
+                    setDeployWizardProjectName(
+                        target?.nameHint || trimmedNameInput,
+                    );
                 } else {
                     setDeployWizardRenderId(null);
-                    setDeployWizardProjectName(trimmedName || "");
+                    setDeployWizardProjectName(trimmedNameInput);
                 }
 
                 setDeployWizardOpen(true);
                 push("Export and deploy are reserved for paid plans.", "warn");
             }
-
             return;
+        }
+
+        // ── Resolve canonical project name from Firestore ──
+        let projectName = trimmedNameInput;
+
+        if (user && resolvedRenderId) {
+            const renderRef = doc(
+                db,
+                "kloner_users",
+                user.uid,
+                "kloner_renders",
+                resolvedRenderId,
+            );
+
+            try {
+                // write the name immediately
+                await updateDoc(renderRef, { nameHint: projectName });
+
+                // then read back as canonical (in case some other process changed it)
+                const snap = await getDoc(renderRef);
+                if (snap.exists()) {
+                    const data = snap.data() as any;
+                    if (typeof data?.nameHint === "string") {
+                        const dbName = data.nameHint.trim();
+                        if (dbName) {
+                            projectName = dbName;
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to sync project name with Firestore", err);
+                // fall back to local projectName
+            }
         }
 
         if (resolvedRenderId) {
@@ -2452,16 +2402,19 @@ export default function PreviewPage(): JSX.Element {
         } else {
             setDeployWizardRenderId(null);
         }
-        setDeployWizardProjectName(trimmedName);
+
+        setDeployWizardProjectName(projectName);
         setDeployWizardError(null);
         setDeployWizardStep(3);
         setDeployWizardOpen(true);
         setDeployWizardBusy(true);
-        setDeployWizardLiveUrl(null); // reset live URL for this run
+        setDeployWizardLiveUrl(null);
+        autoDeployTriggeredRef.current = false;
 
         if (resolvedRenderId) {
             setDeployingRenderId(resolvedRenderId);
         }
+
         push("Starting deployment…", "ok");
 
         const csrf = await ensureSessionAndCsrf();
@@ -2483,7 +2436,7 @@ export default function PreviewPage(): JSX.Element {
                 credentials: "include",
                 body: JSON.stringify({
                     html: finalHtml,
-                    projectName: trimmedName,
+                    projectName,
                     renderId: resolvedRenderId,
                 }),
             });
@@ -2493,17 +2446,42 @@ export default function PreviewPage(): JSX.Element {
             if (!r.ok || !j?.url) {
                 const msg = j?.error || "Vercel deploy failed";
                 setDeployWizardError(msg);
-                setDeployWizardLiveUrl(null); // ensure no stale URL on failure
+                setDeployWizardLiveUrl(null);
                 push(msg, "err");
                 console.error("Deploy failed", msg);
                 return;
             }
 
-            // j.url is your live deployment URL
-            setDeployWizardLiveUrl(j.url);
+            const {
+                url,
+                vercelProjectId: apiProjectId,
+                vercelProjectName: apiProjectName,
+            } = j;
 
+            // update local render state so the overlay switches out of "Deploy"
+            if (resolvedRenderId) {
+                setRenders((prev) =>
+                    prev.map((rr) =>
+                        rr.id !== resolvedRenderId
+                            ? rr
+                            : {
+                                ...rr,
+                                lastDeployUrl: url,
+                                lastExportedAt: new Date(),
+                                vercelProjectId:
+                                    apiProjectId ?? rr.vercelProjectId ?? null,
+                                vercelProjectName:
+                                    apiProjectName ??
+                                    projectName ??
+                                    rr.vercelProjectName ??
+                                    null,
+                            },
+                    ),
+                );
+            }
+
+            setDeployWizardLiveUrl(url);
             autoDeployTriggeredRef.current = true;
-
 
             if (user && resolvedRenderId) {
                 await updateDoc(
@@ -2514,11 +2492,17 @@ export default function PreviewPage(): JSX.Element {
                         "kloner_renders",
                         resolvedRenderId,
                     ),
-                    { lastExportedAt: serverTimestamp() },
+                    {
+                        lastExportedAt: serverTimestamp(),
+                        lastDeployUrl: url,
+                        vercelProjectId: apiProjectId ?? null,
+                        vercelProjectName:
+                            apiProjectName ?? projectName ?? null,
+                    },
                 );
             }
 
-            navigator.clipboard?.writeText(j.url).catch(() => void 0);
+            navigator.clipboard?.writeText(url).catch(() => void 0);
 
             try {
                 localStorage.setItem("kloner.deployments.hasUnseen", "1");
@@ -2541,7 +2525,6 @@ export default function PreviewPage(): JSX.Element {
             setDeployWizardBusy(false);
         }
     }
-
 
     const saveDraft = useCallback(
         async (payload: {
@@ -2871,12 +2854,36 @@ export default function PreviewPage(): JSX.Element {
 
     const closeDeployWizard = useCallback(() => {
         setDeployWizardOpen(false);
-        setDeployWizardRenderId(null);
+        setDeployWizardBusy(false);
         setDeployWizardError(null);
-        setDeployWizardProjectName("");
         setDeployWizardStep(1);
+        setDeployWizardProjectName("");
+        setDeployWizardRenderId(null);
+        setDeployWizardLiveUrl(null);
+        setShowDeployNextSteps(false);
+        setDeployingRenderId(null);
         autoDeployTriggeredRef.current = false;
-    }, []);
+
+        try {
+            const url = new URL(window.location.href);
+            const params = url.searchParams;
+
+            // strip all wizard/billing/vercel flags that could reopen it
+            params.delete("wizard");
+            params.delete("step");
+            params.delete("billing");
+            params.delete("render");
+            params.delete("vercel");
+            params.delete("upgraded");
+
+            const qs = params.toString();
+            const next = qs ? `${url.pathname}?${qs}` : url.pathname;
+
+            router.replace(next, { scroll: false });
+        } catch (e) {
+            console.error("Failed to clear wizard query params on close", e);
+        }
+    }, [router]);
 
 
     const startProCheckout = useCallback(async () => {
@@ -2884,6 +2891,16 @@ export default function PreviewPage(): JSX.Element {
         setCheckoutBusy(true);
 
         try {
+            // ⬇️ persist project name so Stripe callback can read it from nameHint
+            const slug = deployWizardProjectName.trim();
+            if (slug && deployWizardRenderId) {
+                try {
+                    await saveRenderNameHintNow(deployWizardRenderId, slug);
+                } catch (e) {
+                    console.error("Failed to persist project name before checkout", e);
+                }
+            }
+
             const csrfRes = await fetch("/api/auth/csrf", {
                 method: "POST",
                 headers: { "content-type": "application/json" },
@@ -2925,7 +2942,8 @@ export default function PreviewPage(): JSX.Element {
         } finally {
             setCheckoutBusy(false);
         }
-    }, [checkoutBusy, deployWizardRenderId]);
+    }, [checkoutBusy, deployWizardRenderId, deployWizardProjectName]);
+
 
 
     // ───────── auto-advance from step 2 → 3 only if we have a render id ─────────
@@ -3638,25 +3656,34 @@ export default function PreviewPage(): JSX.Element {
                                                             onClick={closeDeployWizard}
                                                             className="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-semibold text-neutral-600 hover:bg-neutral-50"
                                                         >
-                                                            Cancel
+                                                            Close
                                                         </button>
                                                         <button
                                                             type="button"
-                                                            onClick={() => setDeployWizardStep(2)}
+                                                            onClick={async () => {
+                                                                const slug = deployWizardProjectName.trim();
+                                                                if (!slug || deployWizardError || deployWizardBusy) return;
+
+                                                                if (deployWizardRenderId) {
+                                                                    await saveRenderNameHintNow(deployWizardRenderId, slug);
+                                                                }
+
+                                                                setDeployWizardStep(2);
+                                                            }}
                                                             disabled={
                                                                 !deployWizardProjectName.trim() ||
                                                                 !!deployWizardError ||
                                                                 deployWizardBusy
                                                             }
-                                                            className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60"
+                                                            className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60 disabled:cursor-not-allowed"
                                                             style={{ backgroundColor: ACCENT }}
                                                         >
                                                             Continue
                                                         </button>
+
                                                     </div>
                                                 </motion.div>
                                             )}
-
 
                                             {deployWizardStep === 2 && (
                                                 <motion.div
@@ -3684,7 +3711,8 @@ export default function PreviewPage(): JSX.Element {
                                                     ) : (
                                                         <>
                                                             <p className="text-sm text-neutral-600">
-                                                                Kloner deploys using your saved Vercel integration. Connect once, then future deploys are one click.
+                                                                Kloner deploys using your saved Vercel integration. Connect once, then
+                                                                future deploys are one click.
                                                             </p>
                                                         </>
                                                     )}
@@ -3693,15 +3721,17 @@ export default function PreviewPage(): JSX.Element {
                                                         <div className="mt-4 flex items-center justify-between gap-2">
                                                             <button
                                                                 type="button"
-                                                                onClick={() => setDeployWizardStep(1)}
-                                                                className="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-semibold text-neutral-600 hover:bg-neutral-50"
+                                                                onClick={closeDeployWizard}
+                                                                disabled={deployWizardBusy}
+                                                                className="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-semibold text-neutral-600 hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
                                                             >
-                                                                Back
+                                                                Close
                                                             </button>
                                                             <button
                                                                 type="button"
                                                                 onClick={handleConnectVercelFromWizard}
-                                                                className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white"
+                                                                disabled={deployWizardBusy}
+                                                                className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed"
                                                                 style={{ backgroundColor: ACCENT }}
                                                             >
                                                                 Connect Vercel
@@ -3775,18 +3805,16 @@ export default function PreviewPage(): JSX.Element {
                                                                     href={deployWizardLiveUrl}
                                                                     target="_blank"
                                                                     rel="noreferrer"
-                                                                    className="group flex flex-inline items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold text-white"
+                                                                    className="group flex flex-inline items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-semibold text-white"
                                                                     style={{ backgroundColor: ACCENT }}
                                                                 >
-                                                                    <span>View live site</span>
+                                                                    <span>View Site</span>
                                                                     <Rocket className="h-4 w-4 transform transition-transform duration-150 group-hover:translate-x-0.5" />
                                                                 </a>
                                                             )}
                                                     </div>
                                                 </motion.div>
                                             )}
-
-
 
                                             {deployWizardStep === 5 && (
                                                 <motion.div
@@ -3936,6 +3964,7 @@ export default function PreviewPage(): JSX.Element {
                         </motion.div>
                     )}
                 </AnimatePresence>
+
 
 
                 <Toasts toasts={toasts} />

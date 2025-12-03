@@ -1566,7 +1566,7 @@ export default function PreviewEditor({
     const [uiScale, setUiScale] = useState<number>(() => {
         if (typeof window === "undefined") return 0.80
         const v = Number(localStorage.getItem("kloner:uiScale"));
-        return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : 0.85;
+        return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : 0.80
     });
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -2696,7 +2696,7 @@ export default function PreviewEditor({
                                             UI Scale
                                         </span>
 
-                                        <div className="flex items-center gap-1 text-xs text-slate-600">
+                                        <div className="flex items-center gap-1 text-lg font-semibold text-slate-600">
                                             <button
                                                 className="px-2 py-1 rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50"
                                                 onClick={() =>
