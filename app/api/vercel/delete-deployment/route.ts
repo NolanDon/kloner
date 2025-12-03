@@ -68,6 +68,34 @@ type DeploymentDoc = {
     publicUrl?: string | null;
 };
 
+type DeleteResult = {
+    deploymentId: string;
+    ok: boolean;
+    firestoreDeleted?: boolean;
+    renderDeleted?: boolean;
+    screenshotsDeleted?: number;
+    vercelDeleted?: boolean;
+    vercelStatus?: number | null;
+    vercelProjectDeleted?: boolean;
+    vercelProjectStatus?: number | null;
+    error?: string;
+};
+
+function projectKeyFromDoc(dep: DeploymentDoc): string | null {
+    const id = dep.vercelProjectId?.trim();
+    const name = dep.vercelProjectName?.trim();
+    if (id) return `id:${id}`;
+    if (name) return `name:${name}`;
+    return null;
+}
+
+function projectIdOrNameFromKey(key: string): string | null {
+    // key is "id:xxx" or "name:yyy"
+    const idx = key.indexOf(":");
+    if (idx === -1) return null;
+    return key.slice(idx + 1) || null;
+}
+
 export async function POST(req: NextRequest) {
     return requireSessionAndMaybeCsrf(
         req,
@@ -113,36 +141,61 @@ export async function POST(req: NextRequest) {
                 const accessToken = integ.accessToken || null;
                 const teamId = integ.vercelTeamId || null;
 
-                const results: Array<{
-                    deploymentId: string;
-                    ok: boolean;
-                    firestoreDeleted?: boolean;
-                    renderDeleted?: boolean;
-                    screenshotsDeleted?: number;
-                    vercelDeleted?: boolean;
-                    vercelStatus?: number | null;
-                    error?: string;
-                }> = [];
+                // ------------------------------------------------------
+                // 1) Pre-scan all deployment docs for this user to know
+                //    which Vercel projects are being fully deleted.
+                // ------------------------------------------------------
+                const depCol = db
+                    .collection("kloner_users")
+                    .doc(uid)
+                    .collection("deployments");
+                const allDepSnap = await depCol.get();
 
+                const projectToDocIds = new Map<string, string[]>();
+
+                allDepSnap.docs.forEach((d) => {
+                    const data = d.data() as DeploymentDoc;
+                    const key = projectKeyFromDoc(data);
+                    if (!key) return;
+                    const list = projectToDocIds.get(key) || [];
+                    list.push(d.id);
+                    projectToDocIds.set(key, list);
+                });
+
+                const targetSet = new Set(targetIds);
+                const projectsToDeleteFully = new Set<string>();
+
+                for (const [key, docIds] of projectToDocIds.entries()) {
+                    // delete project only if ALL its deployment docs are in targetIds
+                    const allSelected = docIds.every((id) => targetSet.has(id));
+                    if (allSelected) {
+                        projectsToDeleteFully.add(key);
+                    }
+                }
+
+                // Track which projects we've already attempted to delete
+                const projectDeletedOnce = new Set<string>();
+
+                const results: DeleteResult[] = [];
+
+                // ------------------------------------------------------
+                // 2) Process each deployment (Vercel delete, renders, etc.)
+                // ------------------------------------------------------
                 for (const deploymentDocId of targetIds) {
-                    const base = {
+                    const base: DeleteResult = {
                         deploymentId: deploymentDocId,
                         ok: false,
                         firestoreDeleted: false,
                         renderDeleted: false,
                         screenshotsDeleted: 0,
                         vercelDeleted: false,
-                        vercelStatus: null as number | null,
-                        error: undefined as string | undefined,
+                        vercelStatus: null,
+                        vercelProjectDeleted: false,
+                        vercelProjectStatus: null,
                     };
 
                     try {
-                        const depRef = db
-                            .collection("kloner_users")
-                            .doc(uid)
-                            .collection("deployments")
-                            .doc(deploymentDocId);
-
+                        const depRef = depCol.doc(deploymentDocId);
                         const depSnap = await depRef.get();
                         if (!depSnap.exists) {
                             results.push({
@@ -157,9 +210,10 @@ export async function POST(req: NextRequest) {
                         const vercelDeploymentId = dep.vercelDeploymentId?.trim() || null;
                         const renderId = dep.renderId?.trim() || null;
                         const depVercelProjectId = dep.vercelProjectId?.trim() || null;
-                        const depVercelProjectName = dep.vercelProjectName?.trim() || null;
+                        const depVercelProjectName =
+                            dep.vercelProjectName?.trim() || null;
 
-                        // 1) Delete from Vercel (best effort)
+                        // 2.1) Delete deployment from Vercel (best effort)
                         let vercelDeleted = false;
                         let vercelStatus: number | null = null;
 
@@ -184,7 +238,7 @@ export async function POST(req: NextRequest) {
                                 const bodyJson = await vercelRes
                                     .json()
                                     .catch(() => ({} as any));
-                                console.error("Vercel delete failed", {
+                                console.error("Vercel deployment delete failed", {
                                     deploymentId: vercelDeploymentId,
                                     status: vercelRes.status,
                                     body: bodyJson,
@@ -192,14 +246,11 @@ export async function POST(req: NextRequest) {
                             }
                         }
 
-                        // 2) Figure out ALL renderIds we should clean up
+                        // 2.2) Find all renderIds to clean up
                         const renderIdsToDelete = new Set<string>();
 
                         if (renderId) renderIdsToDelete.add(renderId);
 
-                        // Fallback by vercelProjectId (covers cases where renderId
-                        // was never stored on the deployment doc but the initial
-                        // render has the same Vercel project wired in).
                         try {
                             const rendersCol = db
                                 .collection("kloner_users")
@@ -220,17 +271,21 @@ export async function POST(req: NextRequest) {
                         } catch (e) {
                             console.error(
                                 "Error querying kloner_renders for cleanup",
-                                { uid, deploymentDocId, depVercelProjectId, depVercelProjectName },
+                                {
+                                    uid,
+                                    deploymentDocId,
+                                    depVercelProjectId,
+                                    depVercelProjectName,
+                                },
                                 e,
                             );
                         }
 
-                        // 3) Delete screenshots + render docs for each renderId
+                        // 2.3) Delete screenshots + render docs
                         let screenshotsDeleted = 0;
                         let renderDeleted = false;
 
                         for (const rid of renderIdsToDelete) {
-                            // screenshots under kloner-screenshots/{uid}/{renderId}/**
                             const prefix = `kloner-screenshots/${uid}/${rid}/`;
                             try {
                                 const [files] = await bucket.getFiles({ prefix });
@@ -244,8 +299,7 @@ export async function POST(req: NextRequest) {
                                                     e,
                                                 );
                                             }),
-                                        ),
-                                    );
+                                        ))
                                     screenshotsDeleted += files.length;
                                 }
                             } catch (e) {
@@ -256,7 +310,6 @@ export async function POST(req: NextRequest) {
                                 );
                             }
 
-                            // render doc itself
                             try {
                                 const renderRef = db
                                     .collection("kloner_users")
@@ -270,7 +323,7 @@ export async function POST(req: NextRequest) {
                             }
                         }
 
-                        // 4) Delete deployment doc
+                        // 2.4) Delete deployment doc itself
                         let firestoreDeleted = false;
                         try {
                             await depRef.delete();
@@ -283,6 +336,60 @@ export async function POST(req: NextRequest) {
                             );
                         }
 
+                        // 2.5) If this project is fully selected for delete, delete the Vercel project itself
+                        let vercelProjectDeleted = false;
+                        let vercelProjectStatus: number | null = null;
+                        const projKey = projectKeyFromDoc(dep);
+
+                        if (
+                            accessToken &&
+                            projKey &&
+                            projectsToDeleteFully.has(projKey) &&
+                            !projectDeletedOnce.has(projKey)
+                        ) {
+                            const idOrName = projectIdOrNameFromKey(projKey);
+                            if (idOrName) {
+                                const params = new URLSearchParams();
+                                if (teamId) params.set("teamId", teamId);
+
+                                const projUrl = `https://api.vercel.com/v9/projects/${encodeURIComponent(
+                                    idOrName,
+                                )}${params.toString() ? `?${params.toString()}` : ""}`;
+
+                                try {
+                                    const projRes = await fetch(projUrl, {
+                                        method: "DELETE",
+                                        headers: {
+                                            Authorization: `Bearer ${accessToken}`,
+                                        },
+                                    });
+
+                                    vercelProjectStatus = projRes.status;
+                                    if (projRes.ok || projRes.status === 404) {
+                                        vercelProjectDeleted = true;
+                                        projectDeletedOnce.add(projKey);
+                                    } else {
+                                        const projBody = await projRes
+                                            .json()
+                                            .catch(() => ({} as any));
+                                        console.error("Vercel project delete failed", {
+                                            projectKey: projKey,
+                                            idOrName,
+                                            status: projRes.status,
+                                            body: projBody,
+                                        });
+                                    }
+                                } catch (e) {
+                                    console.error("Error deleting Vercel project", {
+                                        projectKey: projKey,
+                                        idOrName,
+                                        uid,
+                                        e,
+                                    });
+                                }
+                            }
+                        }
+
                         results.push({
                             ...base,
                             ok: true,
@@ -291,6 +398,8 @@ export async function POST(req: NextRequest) {
                             screenshotsDeleted,
                             renderDeleted,
                             firestoreDeleted,
+                            vercelProjectDeleted,
+                            vercelProjectStatus,
                         });
                     } catch (e: any) {
                         console.error("delete-deployment bulk item error", { deploymentDocId }, e);

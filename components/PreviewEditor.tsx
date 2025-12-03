@@ -1564,7 +1564,7 @@ export default function PreviewEditor({
     }, [previewHtml, activePageId, allPages]);
 
     const [uiScale, setUiScale] = useState<number>(() => {
-        if (typeof window === "undefined") return 0.85;
+        if (typeof window === "undefined") return 0.80
         const v = Number(localStorage.getItem("kloner:uiScale"));
         return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : 0.85;
     });

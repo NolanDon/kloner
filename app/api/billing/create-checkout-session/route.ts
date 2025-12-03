@@ -21,17 +21,17 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
 
     const isProd = process.env.NODE_ENV === "production";
 
-    // const priceId =
-    //     plan === "pro"
-    //         ? isProd
-    //             ? process.env.STRIPE_PRICE_PRO_PROD
-    //             : process.env.STRIPE_PRICE_PRO_TEST
-    //         : isProd
-    //             ? process.env.STRIPE_PRICE_PRO_AGENCY
-    //             : process.env.STRIPE_PRICE_AGENCY_TEST;
+    const priceId =
+        plan === "pro"
+            ? isProd
+                ? process.env.STRIPE_PRICE_PRO_PROD
+                : process.env.STRIPE_PRICE_PRO_TEST
+            : isProd
+                ? process.env.STRIPE_PRICE_PRO_AGENCY
+                : process.env.STRIPE_PRICE_AGENCY_TEST;
 
     // delete-me
-    const priceId = plan === "pro" ? process.env.STRIPE_PRICE_PRO_TEST : process.env.STRIPE_PRICE_AGENCY_TEST;
+    // const priceId = plan === "pro" ? process.env.STRIPE_PRICE_PRO_TEST : process.env.STRIPE_PRICE_AGENCY_TEST;
 
     if (!priceId) {
         return NextResponse.json(
@@ -67,12 +67,12 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
     }
 
 
-    // const appOrigin = isProd
-    //     ? process.env.NEXT_PUBLIC_APP_ORIGIN || "https://kloner.app"
-    //     : process.env.NEXT_PUBLIC_APP_ORIGIN || "http://localhost:3000";
+    const appOrigin = isProd
+        ? process.env.NEXT_PUBLIC_APP_ORIGIN || "https://kloner.app"
+        : process.env.NEXT_PUBLIC_APP_ORIGIN || "http://localhost:3000";
 
     // delete-me
-    const appOrigin = "https://kloner.app"
+    // const appOrigin = "https://kloner.app"
 
     let successUrl: string;
 

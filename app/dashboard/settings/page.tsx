@@ -510,7 +510,7 @@ export default function SettingsPage(): JSX.Element {
     return (
         <>
             {/* <NavBar /> */}
-            <main className="min-h-screen bg-white pt-[15px] pb-[30px]">
+            <main className="min-h-screen bg-white pt-[15px] pb-[30px] overflow-y-auto">
 
                 <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-10 py-16">
                     {/* Hero */}
@@ -799,7 +799,7 @@ export default function SettingsPage(): JSX.Element {
                         <div className="mt-3 flex flex-wrap items-center gap-2">
                             <a
                                 href="mailto:support@kloner.app?subject=Kloner%20account%20closure%20or%20data%20deletion%20request"
-                                className="inline-flex items-center gap-2 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white border border-neutral-200 hover:bg-neutral-50"
+                                className="inline-flex items-center gap-2 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white"
                             >
                                 Contact support about my account
                             </a>
@@ -917,7 +917,7 @@ export default function SettingsPage(): JSX.Element {
                                                     d,
                                                     latestReadyByProject,
                                                 );
-                                                const displayUrl =
+                                                const displayUrl = d.publicDomain ||
                                                     d.publicUrl ||
                                                     (d.publicDomain
                                                         ? `https://${d.publicDomain}`

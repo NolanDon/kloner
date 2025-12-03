@@ -230,27 +230,12 @@ function RenderCardInner({
     const [alreadyShared, setAlreadyShared] = useState(false);
     const [checkingShared, setCheckingShared] = useState(false);
     const [shareError, setShareError] = useState<string | null>(null);
+
+    // Community share name (separate)
     const [shareProjectName, setShareProjectName] = useState("");
 
-    function getInitialShareName() {
-        if (r.nameHint && r.nameHint.trim()) {
-            return sanitizeName(r.nameHint.trim());
-        }
 
-        if (versionLabel && String(versionLabel).trim()) {
-            return sanitizeName(`Kloner build ${String(versionLabel).trim()}`);
-        }
-
-        return "Untitled";
-    }
-
-    useEffect(() => {
-        if (!shareOpen) return;
-        if (shareProjectName.trim()) return;
-
-        const fallback = getInitialShareName();
-        setShareProjectName(fallback);
-    }, [shareOpen, shareProjectName, r.nameHint, versionLabel]);
+    const hasEditedShareNameRef = useRef(false);
 
     const srcDoc = useMemo(() => {
         if (!r.html) return "";
@@ -321,11 +306,20 @@ function RenderCardInner({
     async function handleShareClick() {
         if (!r.id || !r.html || !r.key) return;
 
-        const finalName = (shareProjectName || "").trim() || getInitialShareName();
-        if (!finalName.trim()) {
+        const raw = (shareProjectName ?? "").trim();
+
+        // hard require a user-entered name
+        if (!raw) {
             setShareError("Add a name for this build before sharing.");
             return;
         }
+
+        if (shareError) {
+            // don't submit if current input is invalid
+            return;
+        }
+
+        const finalName = raw; // no fallback
 
         setShareBusy(true);
         setShareError(null);
@@ -359,6 +353,9 @@ function RenderCardInner({
 
             onShareWithCommunity?.(r.id as any);
             setShareOpen(false);
+            // optional reset:
+            // hasEditedShareNameRef.current = false;
+            // setShareProjectName("");
         } catch (err: any) {
             console.error("Failed to share community build", err);
             setShareError(err?.message || "Failed to share community build");
@@ -369,6 +366,7 @@ function RenderCardInner({
             setShareBusy(false);
         }
     }
+
 
     useEffect(() => {
         let cancelled = false;
@@ -451,7 +449,7 @@ function RenderCardInner({
             )}
 
             {/* main visual area – fixed aspect so no extra deadspace */}
-            <div className="relative aspect-[4/3] w-full overflow-hidden">
+            <div className="relative aspect-[3/3] w-full overflow-hidden">
                 {!refImgUrl ? (
                     <div className="grid h-full w-full place-items-center text-sm text-neutral-500">
                         No snapshot available
@@ -638,26 +636,20 @@ function RenderCardInner({
                                                 value={shareProjectName}
                                                 onChange={(e) => {
                                                     const v = e.target.value;
+                                                    hasEditedShareNameRef.current = true;
 
                                                     const forbidden =
-                                                        /\.(com|ca|org|net|io|co|app|dev)\b/i.test(
-                                                            v,
-                                                        ) ||
+                                                        /\.(com|ca|org|net|io|co|app|dev)\b/i.test(v) ||
                                                         /\bwww\./i.test(v) ||
                                                         /\bhttps?:\/\//i.test(v) ||
                                                         /\.\w{2,}$/i.test(v);
 
-                                                    const allowed =
-                                                        /^[a-zA-Z0-9\- ]*$/.test(v);
+                                                    const allowed = /^[a-zA-Z0-9\- ]*$/.test(v);
 
                                                     if (forbidden) {
-                                                        setShareError(
-                                                            "Remove .com/.ca/www and any dots or URLs.",
-                                                        );
+                                                        setShareError("Remove .com/.ca/www and any dots or URLs.");
                                                     } else if (!allowed) {
-                                                        setShareError(
-                                                            "Use only letters, numbers, spaces, and dashes.",
-                                                        );
+                                                        setShareError("Use only letters, numbers, spaces, and dashes.");
                                                     } else {
                                                         setShareError(null);
                                                     }
@@ -670,6 +662,7 @@ function RenderCardInner({
                                                     : "border-neutral-300 focus:ring-accent"
                                                     }`}
                                             />
+
 
                                             <div className="min-h-[14px] mt-0.5">
                                                 {shareError && (
@@ -709,12 +702,6 @@ function RenderCardInner({
                                                 {shareBusy ? "Sharing…" : "Share build"}
                                             </button>
                                         </div>
-
-                                        {shareError && (
-                                            <p className="mt-1 text-[10px] text-red-600">
-                                                {shareError}
-                                            </p>
-                                        )}
                                     </div>
                                 )}
                             </div>
@@ -837,10 +824,10 @@ const CenterSpinner = memo(function CenterSpinner({
         </div>
     );
 });
+
 const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     locked,
     onClick,
-    compact = false,
 }: {
     locked: boolean;
     onClick: () => void;
@@ -864,11 +851,12 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
         : "Create an editable website.";
 
     // medium-compact sizing
-    const sizeMinH = compact ? "min-h-[200px]" : "min-h-[260px]";
-    const sizeMaxW = compact ? "max-w-sm" : "w-full";
-    const iconWrapperSize = compact ? "h-12 w-12" : "h-14 w-14";
-    const titleSize = compact ? "text-[13px]" : "text-sm";
-    const subtitleSize = compact ? "text-[12px]" : "text-sm";
+    const sizeMinH = "min-h-[260px]";
+    const sizeMaxW = "max-w-[350px]";
+    const sizeMinW = "min-w-[220px] sm:min-w-[260px]"; // ✅ mobile-friendly min width
+    const iconWrapperSize = "h-14 w-14";
+    const titleSize = "text-sm";
+    const subtitleSize = "text-sm";
 
     return (
         <>
@@ -901,7 +889,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                 onClick={handleClick}
                 disabled={effectiveLocked}
                 aria-busy={effectiveLocked}
-                className={`group relative flex ${sizeMinH} ${sizeMaxW} items-center justify-center rounded-xl border-2 border-dashed bg-white text-center transition ${effectiveLocked
+                className={`group relative flex ${sizeMinH} ${sizeMinW} ${sizeMaxW} items-center justify-center rounded-xl border-2 border-dashed bg-white text-center transition ${effectiveLocked
                     ? "opacity-70 cursor-wait"
                     : "hover:border-neutral-400"
                     }`}
@@ -920,7 +908,9 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                             aria-hidden
                         />
                     </div>
-                    <div className={`mt-3 font-semibold text-neutral-800 ${titleSize}`}>
+                    <div
+                        className={`mt-3 font-semibold text-neutral-800 ${titleSize}`}
+                    >
                         {title}
                     </div>
                     <div className={`mt-1 text-neutral-500 ${subtitleSize}`}>
@@ -1037,14 +1027,62 @@ export default function PreviewPage(): JSX.Element {
     const wizard = search.get("wizard");
     const step = Number(search.get("step"));
     const render = search.get("render");
+    const didStripeAutoDeployRef = useRef(false);
 
     useEffect(() => {
         if (billing === "success" && wizard === "1") {
+            // reopen the wizard at the correct step
             if (render) setDeployWizardRenderId(render);
             if (step) setDeployWizardStep(step as any);
             setDeployWizardOpen(true);
+
+            // only auto-deploy once after Stripe returns
+            if (didStripeAutoDeployRef.current) return;
+            didStripeAutoDeployRef.current = true;
+
+            const targetRenderId = render || deployWizardRenderId;
+            if (!targetRenderId) return;
+
+            const r = renders.find((rr) => rr.id === targetRenderId);
+            if (!r || !r.html) return;
+
+            // mark as triggered so UI doesn’t show “Ready to deploy”
+            autoDeployTriggeredRef.current = true;
+
+            // fall back to nameHint if the wizard name is empty
+            const name =
+                (deployWizardProjectName && deployWizardProjectName.trim()) ||
+                r.nameHint ||
+                "";
+
+            void exportToVercel({
+                html: r.html,
+                name,
+                renderId: r.id,
+            });
+
+            // optional: clean the billing params from the URL
+            try {
+                const url = new URL(window.location.href);
+                url.searchParams.delete("billing");
+                url.searchParams.delete("wizard");
+                url.searchParams.delete("step");
+                url.searchParams.delete("render");
+                window.history.replaceState({}, "", url.toString());
+            } catch {
+                // ignore
+            }
         }
-    }, [billing, wizard, step, render]);
+    }, [
+        billing,
+        wizard,
+        step,
+        render,
+        renders,
+        deployWizardProjectName,
+        deployWizardRenderId,
+    ]);
+
 
 
     async function handleShareWithCommunity(opts: { renderId: string; remixable: boolean }) {
@@ -1250,6 +1288,10 @@ export default function PreviewPage(): JSX.Element {
 
 
     // ---- state ----
+
+    const [deployWizardLiveUrl, setDeployWizardLiveUrl] = useState<string | null>(null);
+
+
     type UICredits = {
         screenshotUsed: number;
         previewUsed: number;
@@ -1510,8 +1552,18 @@ export default function PreviewPage(): JSX.Element {
     /* ───────── url + tier ───────── */
 
     const targetUrl = useMemo(() => {
-        const raw = search.get("u");
+        let raw = search.get("u");
+
+        if (!raw) {
+            try {
+                raw = localStorage.getItem("kloner:lastUrl") || "";
+            } catch {
+                raw = "";
+            }
+        }
+
         if (!raw) return "";
+
         try {
             const dec = decodeURIComponent(raw);
             return normUrl(ensureHttp(dec));
@@ -2352,13 +2404,10 @@ export default function PreviewPage(): JSX.Element {
 
         const { html, name, renderId } = opts;
 
-        // Resolve which render id we're operating on (for state + Firestore)
         const resolvedRenderId = renderId || activeRenderId || null;
 
-        // If no project name yet, start the deploy wizard from a fresh state and bail out
         const trimmedName = name?.trim();
         if (!trimmedName) {
-            // reset wizard state
             setDeployWizardBusy(false);
             setDeployWizardError(null);
             setDeployWizardStep(1);
@@ -2366,8 +2415,6 @@ export default function PreviewPage(): JSX.Element {
 
             if (resolvedRenderId) {
                 setDeployWizardRenderId(resolvedRenderId);
-
-                // optional: prefill with existing nameHint if we have it
                 setDeployWizardProjectName("");
             } else {
                 setDeployWizardRenderId(null);
@@ -2378,7 +2425,6 @@ export default function PreviewPage(): JSX.Element {
             return;
         }
 
-        // free tier: show upgrade step instead of actually deploying
         if (userTier === "free") {
             if (deployWizardStep !== 5) {
                 setDeployWizardBusy(false);
@@ -2398,10 +2444,8 @@ export default function PreviewPage(): JSX.Element {
                 push("Export and deploy are reserved for paid plans.", "warn");
             }
 
-            return; // hard stop
+            return;
         }
-
-        // paid tier: actually deploy and show status in wizard step 3
 
         if (resolvedRenderId) {
             setDeployWizardRenderId(resolvedRenderId);
@@ -2413,8 +2457,8 @@ export default function PreviewPage(): JSX.Element {
         setDeployWizardStep(3);
         setDeployWizardOpen(true);
         setDeployWizardBusy(true);
+        setDeployWizardLiveUrl(null); // reset live URL for this run
 
-        // visual feedback: mark this render as deploying
         if (resolvedRenderId) {
             setDeployingRenderId(resolvedRenderId);
         }
@@ -2422,7 +2466,6 @@ export default function PreviewPage(): JSX.Element {
 
         const csrf = await ensureSessionAndCsrf();
 
-        // NEW: build HTML with latest SEO from Firestore (or state)
         const finalHtml = await buildFinalExport({
             html,
             user,
@@ -2449,13 +2492,18 @@ export default function PreviewPage(): JSX.Element {
 
             if (!r.ok || !j?.url) {
                 const msg = j?.error || "Vercel deploy failed";
-                setDeployWizardError(msg);          // <- feed wizard error
+                setDeployWizardError(msg);
+                setDeployWizardLiveUrl(null); // ensure no stale URL on failure
                 push(msg, "err");
                 console.error("Deploy failed", msg);
-                return;                             // don't throw, let UI show error
+                return;
             }
 
+            // j.url is your live deployment URL
+            setDeployWizardLiveUrl(j.url);
+
             autoDeployTriggeredRef.current = true;
+
 
             if (user && resolvedRenderId) {
                 await updateDoc(
@@ -2484,7 +2532,8 @@ export default function PreviewPage(): JSX.Element {
             await refreshRenders();
         } catch (err: any) {
             const msg = err?.message || "Vercel deploy failed";
-            setDeployWizardError(msg);              // <- ensure wizard sees exception too
+            setDeployWizardError(msg);
+            setDeployWizardLiveUrl(null);
             push(msg, "err");
             console.error("Deploy failed", err);
         } finally {
@@ -2492,8 +2541,6 @@ export default function PreviewPage(): JSX.Element {
             setDeployWizardBusy(false);
         }
     }
-
-
 
 
     const saveDraft = useCallback(
@@ -2595,75 +2642,75 @@ export default function PreviewPage(): JSX.Element {
     );
 
 
-    const rescan = useCallback(
-        async () => {
-            if (
-                !isHttpUrl(targetUrl) ||
-                !user ||
-                !docData
-            )
-                return;
+    // const rescan = useCallback(
+    //     async () => {
+    //         if (
+    //             !isHttpUrl(targetUrl) ||
+    //             !user ||
+    //             !docData
+    //         )
+    //             return;
 
-            if (!canUseScreenshotCredit()) {
-                push(
-                    "You have used all available screenshot credits for today on this plan.",
-                    "warn"
-                );
-                setShowCreditsPaywall("screenshot");
-                return;
-            }
+    //         if (!canUseScreenshotCredit()) {
+    //             push(
+    //                 "You have used all available screenshot credits for today on this plan.",
+    //                 "warn"
+    //             );
+    //             setShowCreditsPaywall("screenshot");
+    //             return;
+    //         }
 
-            if (
-                !window.confirm(
-                    "Queue a fresh snapshot collection for 10 credits?"
-                )
-            )
-                return;
+    //         if (
+    //             !window.confirm(
+    //                 "Queue a fresh snapshot collection for 10 credits?"
+    //             )
+    //         )
+    //             return;
 
-            setRescanning(true);
-            setErr("");
+    //         setRescanning(true);
+    //         setErr("");
 
-            try {
-                const r = await fetch(
-                    "/api/private/generate",
-                    {
-                        method: "POST",
-                        headers: {
-                            "content-type": "application/json",
-                        },
-                        credentials: "include",
-                        body: JSON.stringify({ url: targetUrl }),
-                    }
-                );
+    //         try {
+    //             const r = await fetch(
+    //                 "/api/private/generate",
+    //                 {
+    //                     method: "POST",
+    //                     headers: {
+    //                         "content-type": "application/json",
+    //                     },
+    //                     credentials: "include",
+    //                     body: JSON.stringify({ url: targetUrl }),
+    //                 }
+    //             );
 
-                if (!r.ok) {
-                    const j = (await r
-                        .json()
-                        .catch(() => ({}))) as any;
-                    setErr(
-                        j?.error || "Rescan failed."
-                    );
-                    push("Rescan failed", "err");
-                } else {
-                    push("Rescan started", "ok");
-                }
-            } catch (e: any) {
-                setErr(
-                    e?.message || "Rescan failed."
-                );
-                push("Rescan failed", "err");
-            } finally {
-                setRescanning(false);
-            }
-        },
-        [
-            targetUrl,
-            user,
-            docData,
-            push,
-            canUseScreenshotCredit,
-        ]
-    );
+    //             if (!r.ok) {
+    //                 const j = (await r
+    //                     .json()
+    //                     .catch(() => ({}))) as any;
+    //                 setErr(
+    //                     j?.error || "Rescan failed."
+    //                 );
+    //                 push("Rescan failed", "err");
+    //             } else {
+    //                 push("Rescan started", "ok");
+    //             }
+    //         } catch (e: any) {
+    //             setErr(
+    //                 e?.message || "Rescan failed."
+    //             );
+    //             push("Rescan failed", "err");
+    //         } finally {
+    //             setRescanning(false);
+    //         }
+    //     },
+    //     [
+    //         targetUrl,
+    //         user,
+    //         docData,
+    //         push,
+    //         canUseScreenshotCredit,
+    //     ]
+    // );
 
     useEffect(() => {
         if (didAutoSelectRef.current) return;
@@ -2955,198 +3002,6 @@ export default function PreviewPage(): JSX.Element {
     ]);
 
 
-    /* ───────── cards ───────── */
-
-    // const ShotCard = useMemo(
-    //     () =>
-    //         memo(
-    //             function ShotCardInner({
-    //                 s,
-    //                 locked,
-    //                 index,
-    //                 onView,
-    //                 // NEW: optional collection props
-    //                 isGroupRoot,
-    //                 extraCount,
-    //                 onGenerateCollection,
-    //             }: {
-    //                 s: Shot;
-    //                 locked: boolean;
-    //                 index: number;
-    //                 onView: (i: number) => void;
-
-    //                 // if true, this card represents an entire snapshot collection
-    //                 isGroupRoot?: boolean;
-    //                 // how many additional pages are in this collection
-    //                 extraCount?: number;
-    //                 // if provided, use this instead of buildFromKey for generate
-    //                 onGenerateCollection?: (snapshotId: string) => void;
-    //             }) {
-    //                 const [imgLoading, setImgLoading] = useState<boolean>(true);
-    //                 const isDeleting = !!deletingByKey[s.path];
-    //                 const hardLocked =
-    //                     (lockUntilByKey[s.path] || 0) > Date.now();
-    //                 const showOverlay =
-    //                     locked || imgLoading || hardLocked || isDeleting;
-
-    //                 const versionLabel = shortVersionFromShotPath(
-    //                     s.path,
-    //                     (docData?.urlHash as string | undefined) ?? null
-    //                 );
-
-    //                 const isCollectionCard =
-    //                     !!isGroupRoot && !!s.snapshotId && !!onGenerateCollection;
-
-    //                 const handleGenerateClick = (e: React.MouseEvent) => {
-    //                     e.preventDefault();
-    //                     if (locked || isDeleting) return;
-
-    //                     if (isCollectionCard) {
-    //                         onGenerateCollection!(s.snapshotId!);
-    //                     } else {
-    //                         // legacy single-shot behavior
-    //                         buildFromKey(s.path);
-    //                     }
-    //                 };
-
-    //                 return (
-    //                     <figure className="relative rounded-xl border border-neutral-200 bg-white shadow-sm flex flex-col">
-    //                         <span
-    //                             className="absolute top-2 left-2 z-10 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white shadow"
-    //                             style={{ backgroundColor: "#1d4ed8" }}
-    //                             title={`Version ${versionLabel}`}
-    //                         >
-    //                             {versionLabel}
-    //                         </span>
-
-    //                         {/* optional +N more badge for collections */}
-    //                         {isCollectionCard && extraCount && extraCount > 0 && (
-    //                             <span className="absolute top-2 right-2 z-10 rounded-full bg-neutral-900/80 px-2 py-0.5 text-[10px] font-semibold text-white shadow">
-    //                                 +{extraCount} more
-    //                             </span>
-    //                         )}
-
-    //                         <button
-    //                             onClick={() => discardShot(s)}
-    //                             disabled={locked || isDeleting}
-    //                             aria-label="Discard screenshot"
-    //                             title="Delete this screenshot and all previews from it"
-    //                             className="absolute top-0 right-0 z-40 grid h-5 w-5 place-items-center -translate-y-1/2 translate-x-1/2 rounded-full bg-red-600 text-white shadow-md ring-1 ring-white hover:bg-red-700 hover:ring-red-300 disabled:opacity-50"
-    //                         >
-    //                             <span className="text-lg mb-0.5 leading-none">
-    //                                 ×
-    //                             </span>
-    //                         </button>
-
-    //                         {isDeleting && <CenterSpinner label="Deleting…" />}
-
-    //                         <a
-    //                             className="block"
-    //                             title={
-    //                                 isCollectionCard
-    //                                     ? "Open collection screenshots"
-    //                                     : "Open full-size screenshot"
-    //                             }
-    //                         >
-    //                             <div className="w-full aspect-[4/3] bg-neutral-50 flex items-center justify-center rounded-t-xl relative">
-    //                                 <img
-    //                                     src={s.url}
-    //                                     alt={s.fileName}
-    //                                     className="h-full w-full object-cover opacity-30"
-    //                                     loading="lazy"
-    //                                     onLoad={() => setImgLoading(false)}
-    //                                     onError={() => setImgLoading(false)}
-    //                                 />
-
-    //                                 <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
-    //                                     <div className="pointer-events-auto flex flex-col xl:flex-row items-center gap-2 rounded-xl bg-white/90 p-2 ring-1 ring-neutral-200 backdrop-blur">
-    //                                         <button
-    //                                             onClick={(e) => {
-    //                                                 e.preventDefault();
-    //                                                 onView(index);
-    //                                             }}
-    //                                             className="shrink-0 rounded-md px-2 py-1 text-[0.75rem] border border-neutral-400 text-neutral-800 hover:bg-neutral-50 inline-flex items-center gap-1.5"
-    //                                             title={
-    //                                                 isCollectionCard
-    //                                                     ? "View this collection"
-    //                                                     : "View full-screen"
-    //                                             }
-    //                                         >
-    //                                             <span>
-    //                                                 {isCollectionCard
-    //                                                     ? "View collection"
-    //                                                     : "View"}
-    //                                             </span>
-    //                                             <Eye
-    //                                                 className="h-4 w-4"
-    //                                                 aria-hidden
-    //                                             />
-    //                                         </button>
-
-    //                                         <button
-    //                                             onClick={handleGenerateClick}
-    //                                             disabled={locked || isDeleting}
-    //                                             aria-busy={locked}
-    //                                             className="shrink-0 rounded-md px-2 py-1 text-[0.75rem] border border-neutral-400 text-neutral-800 hover:bg-neutral-50 inline-flex items-center gap-1.5"
-    //                                             title={
-    //                                                 isCollectionCard
-    //                                                     ? "Create editable preview from this collection"
-    //                                                     : "Create editable preview from this screenshot"
-    //                                             }
-    //                                         >
-    //                                             <span>
-    //                                                 {locked
-    //                                                     ? "In progress"
-    //                                                     : isCollectionCard
-    //                                                         ? "Generate collection preview"
-    //                                                         : "Generate preview"}
-    //                                             </span>
-    //                                             <Hammer
-    //                                                 className={`h-4 w-4 ${locked
-    //                                                     ? "animate-pulse"
-    //                                                     : ""
-    //                                                     }`}
-    //                                                 aria-hidden
-    //                                             />
-    //                                         </button>
-    //                                     </div>
-    //                                 </div>
-
-    //                                 {showOverlay && (
-    //                                     <CenterSpinner
-    //                                         label={
-    //                                             locked
-    //                                                 ? "Queued preview…"
-    //                                                 : "Loading…"
-    //                                         }
-    //                                     />
-    //                                 )}
-    //                             </div>
-    //                         </a>
-
-    //                         <figcaption className="px-3 py-2 text-sm text-neutral-700 rounded-b-xl">
-    //                             <div className="flex items-center justify-between gap-2 flex-wrap">
-    //                                 <span className="truncate text-[11px] text-neutral-500">
-    //                                     {s.fileName}
-    //                                 </span>
-    //                             </div>
-    //                         </figcaption>
-    //                     </figure>
-    //                 );
-    //             },
-    //             (prev, next) =>
-    //                 prev.locked === next.locked &&
-    //                 prev.s.path === next.s.path &&
-    //                 prev.s.url === next.s.url &&
-    //                 prev.s.fileName === next.s.fileName &&
-    //                 prev.isGroupRoot === next.isGroupRoot &&
-    //                 prev.extraCount === next.extraCount &&
-    //                 prev.onGenerateCollection === next.onGenerateCollection
-    //         ),
-    //     [buildFromKey, discardShot, deletingByKey, lockUntilByKey, docData?.urlHash]
-    // );
-
-
     /* ───────── UI state / labels ───────── */
 
     const step1Done = !!activeUrlDoc;
@@ -3167,14 +3022,6 @@ export default function PreviewPage(): JSX.Element {
                     : userTier === "agency"
                         ? "Agency plan"
                         : "Enterprise plan";
-
-    // wizard for first customization → upgrade → deploy
-    const [upgradeStep, setUpgradeStep] = useState<3 | 4 | 5>(3);
-    const [upgradeProjectName, setUpgradeProjectName] = useState("");
-    const [upgradeBusy, setUpgradeBusy] = useState(false);
-    const [upgradeError, setUpgradeError] = useState<string | null>(null);
-
-    /* ───────── render ───────── */
 
     /* ───────── collections grouping ───────── */
 
@@ -3215,6 +3062,15 @@ export default function PreviewPage(): JSX.Element {
 
         return groups;
     }, [shots]);
+
+    useEffect(() => {
+        const current = search.get("u");
+        if (current) {
+            try {
+                localStorage.setItem("kloner:lastUrl", current);
+            } catch { }
+        }
+    }, [search]);
 
 
     return (
@@ -3423,250 +3279,6 @@ export default function PreviewPage(): JSX.Element {
                         {info}
                     </div>
                 ) : null}
-                {/* 
-                <section className="mt-6 rounded-3xl border border-neutral-200 bg-white/70 px-4 py-5 sm:px-5 sm:py-6 shadow-sm">
-                    <div className="mb-3 flex items-center justify-between gap-2">
-                        <div className="space-y-1">
-                            <div className="inline-flex items-center gap-2 rounded-full bg-neutral-100 pl-1 pr-3 py-1 text-[17px] mb-4 font-medium text-neutral-600">
-                                {step2Done ? (
-                                    <CheckCircle2 className="h-4.5 w-4.5 text-emerald-500" />
-                                ) : (
-                                    <Clock10 className="h-4 w-4 text-amber-500" />
-                                )} 
-                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent text-white text-[12px]">
-                                    2
-                                </span>
-                                <span>Collections</span>
-                            </div>
-
-                            <p className="my-1 text-sm text-neutral-500">
-                                These are screenshot collections captured directly from
-                                your entered URL.
-                            </p>
-                        </div>
-                    </div>
-
-                    {!targetUrl ? (
-                        <>
-                            <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-2 text-sm text-neutral-700 my-2 flex items-center gap-2">
-                                <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1">
-                                    {step2Done ? (
-                                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                                    ) : (
-                                        <Clock10 className="h-4 w-4 text-amber-500" />
-                                    )}
-                                    Step 1
-                                </strong>{" "}
-                                — Below will host your base images.
-                            </div>
-
-                            <div className="mt-3 rounded-xl border border-neutral-200 bg-neutral-50 p-6 text-sm text-neutral-700">
-                                Select a URL above to manage its screenshots and previews.
-                            </div>
-                        </>
-                    ) : loading ? (
-                        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {Array.from({ length: 6 }).map((_, i) => (
-                                <div
-                                    key={i}
-                                    className="h-64 rounded-xl bg-neutral-100 animate-pulse"
-                                />
-                            ))}
-                        </div>
-                    ) : shots.length === 0 ? (
-                        <>
-                            <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-2 text-sm text-neutral-700 my-4">
-                                <strong className="text-neutral-800 inline-flex font-semibold gap-1">
-                                    {step2Done ? (
-                                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                                    ) : (
-                                        <Clock10 className="h-4 w-4 text-amber-500" />
-                                    )}
-                                    Step 2
-                                </strong>{" "}
-                                — Generate your first screenshot by clicking
-                                <span className="inline-flex h-5 w-5 items-center justify-center mx-1 rounded-full border border-neutral-200 bg-neutral-50">
-                                    <Plus className="h-3 w-3 text-neutral-600" />
-                                </span>
-                                below.
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                <GhostActionCard
-                                    title={
-                                        rescanning ? "Starting…" : "Generate new base image"
-                                    }
-                                    subtitle="Captures a fresh screenshot for this URL. Safe; does not remove prior versions."
-                                    onClick={rescan}
-                                    disabled={rescanning || !isHttpUrl(targetUrl)}
-                                />
-                            </div>
-                        </>
-                    ) : (
-                        <>
-                            <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-2 text-sm text-neutral-700 my-2 flex items-center gap-2">
-                                <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1">
-                                    {step2Done ? (
-                                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                                    ) : (
-                                        <Clock10 className="h-4 w-4 text-amber-500" />
-                                    )}
-                                    Step 2
-                                </strong>{" "}
-                                — Base collection captured.{" "}
-                            </div>
-
-                            <div className="space-y-3">
-                                {groupedShots.map((group, groupIndex) => {
-                                    const first = group.items[0];
-                                    if (!first) return null;
-
-                                    const extraCount = group.items.length - 1;
-
-                                    // keys for this snapshot run
-                                    const collectionKeys = group.items.map(
-                                        (s) => s.path,
-                                    );
-
-                                    // index in flat shots so your existing viewer still works
-                                    const globalIndex = shots.findIndex(
-                                        (sh) => sh.path === first.path,
-                                    );
-
-                                    // lock if ANY shot in the collection is pending or has a queued render
-                                    const locked = group.items.some((s) => {
-                                        if (pendingByKey[s.path]) return true;
-                                        return renders.some(
-                                            (r) =>
-                                                r.key === s.path &&
-                                                r.status === "queued" &&
-                                                !r.archived,
-                                        );
-                                    });
-
-                                    return (
-                                        <div
-                                            key={group.snapshotId + "-" + groupIndex}
-                                            className="flex items-center justify-between rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm"
-                                        >
-                <button
-                    type="button"
-                    onClick={() =>
-                        openViewer(
-                            globalIndex >= 0 ? globalIndex : 0,
-                        )
-                    }
-                    className="flex items-center gap-2 text-left"
-                    disabled={locked}
-                >
-                    <div
-                        className={`h-10 w-16 ${locked ? "opacity-50" : ""
-                            } overflow-hidden rounded-md bg-neutral-100`}
-                    >
-                        <img
-                            src={first.url}
-                            alt={first.fileName}
-                            className="h-full w-full object-cover"
-                            loading="lazy"
-                        />
-                    </div>
-
-                    <div className="flex flex-col">
-                        <span className="text-[11px] font-semibold text-neutral-800">
-                            Snapshot Collection{" "}
-                            {groupedShots.length -
-                                groupIndex}
-                        </span>
-                        {group.snapshotCreatedAt && (
-                            <span className="text-[10px] text-neutral-500">
-                                {new Date(
-                                    group.snapshotCreatedAt,
-                                ).toLocaleString()}
-                            </span>
-                        )}
-                        {extraCount > 0 && (
-                            <span className="text-[10px] text-neutral-500">
-                                +{extraCount} more page
-                                {extraCount > 1 ? "s" : ""}
-                            </span>
-                        )}
-                    </div>
-                </button>
-
-                <div className="ml-2 flex items-center gap-2">
-                    <button
-                        type="button"
-                        onClick={() => {
-                            if (locked) return;
-                            buildFromCollection(
-                                collectionKeys,
-                            );
-                        }}
-                        disabled={locked}
-                        aria-busy={locked}
-                        className="inline-flex items-center rounded-md px-4 py-2 text-[13px] bg-accent text-white font-semibold disabled:opacity-50"
-                        title="Create editable preview from this snapshot collection"
-                    >
-                        <span>
-                            {locked
-                                ? "In progress"
-                                : "Generate preview"}
-                        </span>
-                        <Hammer
-                            className={`ml-1 h-4 w-4 ${locked ? "animate-pulse" : ""
-                                }`}
-                            aria-hidden
-                        />
-                    </button>
-
-                    <button
-                        type="button"
-                        onClick={() =>
-                            discardCollection(group)
-                        }
-                        disabled={
-                            locked ||
-                            !!deletingCollectionById[
-                            group.snapshotId
-                            ]
-                        }
-                        aria-busy={
-                            !!deletingCollectionById[
-                            group.snapshotId
-                            ]
-                        }
-                        className="inline-flex items-center rounded-md border border-red-200 px-2 py-2 text-[12px] font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
-                        title="Permanently delete this snapshot collection and all related images"
-                    >
-                        {deletingCollectionById[
-                            group.snapshotId
-                        ]
-                            ? "Deleting…"
-                            : "Remove"}
-                    </button>
-                </div>
-            </div>
-            );
-                                })}
-
-            <div>
-                <GhostActionRow
-                    title={
-                        rescanning ? "Starting…" : "Add / Rescan"
-                    }
-                    subtitle="Captures a fresh screenshot collection."
-                    onClick={rescan}
-                    disabled={
-                        rescanning || !isHttpUrl(targetUrl)
-                    }
-                />
-            </div>
-        </div>
-                        </>
-                    )
-}
-                </section >
-                 */}
-
                 <section className="mt-10 rounded-3xl border border-neutral-200 bg-white/70 px-4 py-5 sm:px-5 sm:py-6 shadow-sm">
                     <div className="mb-3 flex items-center justify-between">
                         <div className="space-y-1">
@@ -3725,7 +3337,6 @@ export default function PreviewPage(): JSX.Element {
                                         <GhostGeneratePreviewCard
                                             key={`ghost-${first.path}`}
                                             locked={locked}
-                                            compact
                                             onClick={() => buildFromCollection(collectionKeys)}
                                         />
                                     );
@@ -4141,7 +3752,9 @@ export default function PreviewPage(): JSX.Element {
                                                                 {!deployWizardError &&
                                                                     !deployWizardBusy &&
                                                                     autoDeployTriggeredRef.current &&
-                                                                    "Open the Deployments tab to see build status and your live URL."}
+                                                                    (deployWizardLiveUrl
+                                                                        ? "Your site is live. You can open it in a new tab."
+                                                                        : "Open the Deployments tab to see build status and your live URL.")}
                                                             </p>
                                                         </div>
                                                     </div>
@@ -4154,28 +3767,25 @@ export default function PreviewPage(): JSX.Element {
                                                         >
                                                             Close
                                                         </button>
-                                                        {!deployWizardBusy && !deployWizardError && (
-                                                            <div
-                                                                className="group flex flex-inline items-center gap-1 rounded-lg px-3 py-1.5 text-white text-xs"
-                                                                style={{ backgroundColor: ACCENT }}
-                                                            >
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => {
-                                                                        closeDeployWizard();
-                                                                        router.push("/dashboard/deployments");
-                                                                    }}
-                                                                    className="font-semibold"
-                                                                >
-                                                                    View
-                                                                </button>
-                                                                <Rocket className="h-4 w-4 transform transition-transform duration-150 group-hover:translate-x-0.5" />
-                                                            </div>
-                                                        )}
 
+                                                        {!deployWizardBusy &&
+                                                            !deployWizardError &&
+                                                            deployWizardLiveUrl && (
+                                                                <a
+                                                                    href={deployWizardLiveUrl}
+                                                                    target="_blank"
+                                                                    rel="noreferrer"
+                                                                    className="group flex flex-inline items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold text-white"
+                                                                    style={{ backgroundColor: ACCENT }}
+                                                                >
+                                                                    <span>View live site</span>
+                                                                    <Rocket className="h-4 w-4 transform transition-transform duration-150 group-hover:translate-x-0.5" />
+                                                                </a>
+                                                            )}
                                                     </div>
                                                 </motion.div>
                                             )}
+
 
 
                                             {deployWizardStep === 5 && (
@@ -4212,7 +3822,14 @@ export default function PreviewPage(): JSX.Element {
                                                                             className="h-1.5 w-1.5 rounded-full"
                                                                             style={{ backgroundColor: ACCENT }}
                                                                         />
-                                                                        <span>Deploy unlimited iterations in seconds</span>
+                                                                        <span>Deploy multiple websites</span>
+                                                                    </li>
+                                                                    <li className="flex items-center gap-1.5">
+                                                                        <span
+                                                                            className="h-1.5 w-1.5 rounded-full"
+                                                                            style={{ backgroundColor: ACCENT }}
+                                                                        />
+                                                                        <span>Access to 200+ design tools</span>
                                                                     </li>
                                                                     <li className="flex items-center gap-1.5">
                                                                         <span
@@ -4226,28 +3843,14 @@ export default function PreviewPage(): JSX.Element {
                                                                             className="h-1.5 w-1.5 rounded-full"
                                                                             style={{ backgroundColor: ACCENT }}
                                                                         />
-                                                                        <span>Priority access to more powerful engines</span>
+                                                                        <span>Priority access to new design engines</span>
                                                                     </li>
                                                                     <li className="flex items-center gap-1.5">
                                                                         <span
                                                                             className="h-1.5 w-1.5 rounded-full"
                                                                             style={{ backgroundColor: ACCENT }}
                                                                         />
-                                                                        <span>Multiple live projects under same account</span>
-                                                                    </li>
-                                                                    <li className="flex items-center gap-1.5">
-                                                                        <span
-                                                                            className="h-1.5 w-1.5 rounded-full"
-                                                                            style={{ backgroundColor: ACCENT }}
-                                                                        />
-                                                                        <span>Full visual customization options</span>
-                                                                    </li>
-                                                                    <li className="flex items-center gap-1.5">
-                                                                        <span
-                                                                            className="h-1.5 w-1.5 rounded-full"
-                                                                            style={{ backgroundColor: ACCENT }}
-                                                                        />
-                                                                        <span>Priority queue for faster preview generation</span>
+                                                                        <span>Priority queue for faster generations</span>
                                                                     </li>
                                                                     <li className="flex items-center gap-1.5">
                                                                         <span
@@ -4275,7 +3878,7 @@ export default function PreviewPage(): JSX.Element {
                                                             <span>
                                                                 {checkoutBusy
                                                                     ? "Redirecting to Stripe…"
-                                                                    : "Go Pro and deploy your site"}
+                                                                    : "Go Pro and Deploy Your Site"}
                                                             </span>
                                                             <span
                                                                 className="inline-flex items-center justify-center overflow-hidden text-base opacity-0 translate-x-[-4px] transition-all duration-150 group-hover:opacity-100 group-hover:translate-x-0"

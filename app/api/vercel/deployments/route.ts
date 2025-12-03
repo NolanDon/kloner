@@ -35,14 +35,12 @@ type KlonerDeployment = {
     vercelProjectName?: string | null;
     renderId?: string | null;
     createdAt?: FirebaseFirestore.Timestamp | null;
-
     vercelReadyState?: string | null;
     vercelState?: string | null;
     lastEventType?: string | null;
-
     publicDomain?: string | null;
     publicUrl?: string | null;
-
+    vercelUrl?: string | null;
     archived?: boolean | null;
 };
 
@@ -55,9 +53,9 @@ export async function GET(req: NextRequest) {
                 .doc(uid)
                 .collection("deployments");
 
-            // 1) Normal docs with fields (what you already had)
+            // 1) Load all deployment docs, then filter archived in code
+            //    This matches the dashboard behaviour (which does NOT filter on "archived").
             const snap = await depCol
-                .where("archived", "==", false)
                 .orderBy("createdAt", "desc")
                 .get();
 
@@ -66,6 +64,10 @@ export async function GET(req: NextRequest) {
 
             for (const d of snap.docs) {
                 const data = d.data() as KlonerDeployment;
+
+                // Treat only explicit "true" as archived. Missing field = NOT archived.
+                if (data.archived === true) continue;
+
                 seenIds.add(d.id);
 
                 deployments.push({
@@ -81,18 +83,17 @@ export async function GET(req: NextRequest) {
                     lastEventType: data.lastEventType ?? null,
                     publicDomain: data.publicDomain ?? null,
                     publicUrl: data.publicUrl ?? null,
+                    // optional extra field used on the deployments dashboard
+                    vercelUrl: data.vercelUrl ?? null,
                 });
             }
 
             // 2) Orphan / empty docs (show as deletable “unknown” entries)
             const docRefs = await depCol.listDocuments();
-
             for (const ref of docRefs) {
-                if (seenIds.has(ref.id)) continue; // already in list above
+                if (seenIds.has(ref.id)) continue;
 
-                // These are the ones like in your screenshot: no fields.
-                // Firestore shows them as "document does not exist" and they never
-                // appear in queries, but listDocuments() still returns the refs.
+                // These are the ones with no fields (never appear in queries).
                 deployments.push({
                     id: ref.id,
                     url: null,
@@ -106,10 +107,11 @@ export async function GET(req: NextRequest) {
                     lastEventType: null,
                     publicDomain: null,
                     publicUrl: null,
+                    vercelUrl: null,
                 });
             }
 
-            // 3) Optional: sort by createdAt desc, then by id so the UI is stable
+            // 3) Stable sort: newest createdAt first, then id
             deployments.sort((a, b) => {
                 const aTs = typeof a.createdAt === "number" ? a.createdAt : 0;
                 const bTs = typeof b.createdAt === "number" ? b.createdAt : 0;
