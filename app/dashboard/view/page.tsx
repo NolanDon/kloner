@@ -3220,7 +3220,7 @@ export default function PreviewPage(): JSX.Element {
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                         <div className="space-y-2">
                             <div className="flex items-center gap-2">
-                                <div className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1">
+                                <div className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1">
                                     <Crown className="h-3.5 w-3.5 text-amber-500" />
                                     <span className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">
                                         Current plan
@@ -3946,34 +3946,69 @@ export default function PreviewPage(): JSX.Element {
                                                     className="space-y-4"
                                                 >
                                                     <p className="text-sm text-neutral-600">
-                                                        Name your Vercel project. This becomes the
-                                                        base for your live URL and deployment.
+                                                        Name your Vercel project. This becomes the base for your live URL and deployment.
                                                     </p>
+
                                                     <div className="space-y-1">
                                                         <label className="text-[11px] font-medium text-neutral-700">
                                                             Project name
                                                         </label>
+
                                                         <div className="flex items-center gap-2">
                                                             <input
                                                                 autoFocus
                                                                 value={deployWizardProjectName}
                                                                 onChange={(e) => {
-                                                                    const value = e.target.value;
-                                                                    setDeployWizardProjectName(value);
+                                                                    const raw = e.target.value;
+                                                                    const value = raw.trim();
 
-                                                                    if (deployWizardRenderId) {
-                                                                        persistProjectNameHint(
-                                                                            deployWizardRenderId,
-                                                                            value
-                                                                        );
+                                                                    let err: string | null = null;
+
+                                                                    const hasProtocol = /\bhttps?:\/\//i.test(raw);
+                                                                    const hasWww = /\bwww\./i.test(raw);
+                                                                    const hasDotTld = /\.(com|ca|net|org|io|app|dev|co|uk|us)\b/i.test(raw);
+                                                                    const hasAnyDot = /\./.test(raw);
+                                                                    const slugOk =
+                                                                        value.length > 0 &&
+                                                                        /^(?!-)[a-zA-Z0-9-]+(?<!-)$/.test(value); // letters, numbers, dash; no leading/trailing dash
+
+                                                                    if (!value) {
+                                                                        err = "Enter a project name.";
+                                                                    } else if (hasProtocol) {
+                                                                        err = "Remove https:// or http:// – only the project slug.";
+                                                                    } else if (hasWww) {
+                                                                        err = "Remove www. – only the project slug.";
+                                                                    } else if (hasDotTld || hasAnyDot) {
+                                                                        err = "Remove .com/.ca and any dots. Use only the slug.";
+                                                                    } else if (!slugOk) {
+                                                                        err =
+                                                                            "Use only letters, numbers, and dashes, no spaces, and don't start or end with a dash.";
+                                                                    }
+
+                                                                    setDeployWizardProjectName(raw);
+                                                                    setDeployWizardError(err);
+
+                                                                    if (!err && deployWizardRenderId) {
+                                                                        persistProjectNameHint(deployWizardRenderId, value);
                                                                     }
                                                                 }}
                                                                 placeholder="e.g. kloner-landing, client-site-01"
-                                                                className="mt-0.5 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-[rgba(245,95,42,0.6)] focus:border-transparent"
+                                                                className={`mt-0.5 w-full rounded-lg border px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 ${deployWizardError
+                                                                        ? "border-red-500 focus:ring-red-500"
+                                                                        : "border-neutral-300 focus:ring-[rgba(245,95,42,0.6)] focus:border-transparent"
+                                                                    }`}
                                                             />
                                                             <span className="text-[11px] text-neutral-600">
                                                                 .vercel.app
                                                             </span>
+                                                        </div>
+
+                                                        <div className="min-h-[14px] mt-0.5">
+                                                            {deployWizardError && (
+                                                                <p className="text-[11px] text-red-600">
+                                                                    {deployWizardError}
+                                                                </p>
+                                                            )}
                                                         </div>
                                                     </div>
 
@@ -3988,7 +4023,11 @@ export default function PreviewPage(): JSX.Element {
                                                         <button
                                                             type="button"
                                                             onClick={() => setDeployWizardStep(2)}
-                                                            disabled={!deployWizardProjectName.trim()}
+                                                            disabled={
+                                                                !deployWizardProjectName.trim() ||
+                                                                !!deployWizardError ||
+                                                                deployWizardBusy
+                                                            }
                                                             className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60"
                                                             style={{ backgroundColor: ACCENT }}
                                                         >
@@ -3997,6 +4036,7 @@ export default function PreviewPage(): JSX.Element {
                                                     </div>
                                                 </motion.div>
                                             )}
+
 
                                             {deployWizardStep === 2 && (
                                                 <motion.div
