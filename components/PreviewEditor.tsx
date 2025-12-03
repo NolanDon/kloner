@@ -1726,51 +1726,6 @@ export default function PreviewEditor({
         }, 450);
     }
 
-    // helper to strip Kloner editor UI when saving
-    function snapshotCleanFromDocument(doc: any): string {
-        const root = doc.documentElement;
-        if (!root) {
-            // fallback: raw outerHTML if something is off
-            return "<!doctype html>\n" + doc.documentElement.outerHTML;
-        }
-
-        const docClone = root.cloneNode(true) as HTMLElement;
-        const htmlEl = docClone as HTMLHtmlElement;
-        const head = htmlEl.querySelector("head");
-        const body = htmlEl.querySelector("body");
-
-        if (body) {
-            // Remove overlay UI and helpers from body
-            body
-                .querySelectorAll(
-                    ".kloner-toolbar, .kloner-style-panel, .khint, [data-kloner-upload-input]"
-                )
-                .forEach((n) => n.remove());
-
-            // Strip selection + edit attributes
-            body.querySelectorAll("[data-kloner-sel]").forEach((n) =>
-                (n as HTMLElement).removeAttribute("data-kloner-sel")
-            );
-            body.querySelectorAll("[contenteditable]").forEach((n) =>
-                (n as HTMLElement).removeAttribute("contenteditable")
-            );
-        }
-
-        if (head) {
-            // Remove injected style block(s) for the editor from head
-            head.querySelectorAll("[data-kloner-style]").forEach((n) => n.remove());
-
-            // Safety net: if any generic <style> contains .kloner-toolbar, remove it
-            head.querySelectorAll("style").forEach((s) => {
-                if (s.textContent && s.textContent.includes(".kloner-toolbar")) {
-                    s.remove();
-                }
-            });
-        }
-
-        return "<!doctype html>\n" + (docClone as any).outerHTML;
-    }
-
 
     async function doSave(options?: { applyToPreview?: boolean }) {
         if (savingDraft) return;
@@ -1879,7 +1834,6 @@ export default function PreviewEditor({
     };
 
 
-
     // inside your editor component
     async function doExport() {
         if (exporting) return;
@@ -1887,9 +1841,7 @@ export default function PreviewEditor({
         setExporting(true);
 
         try {
-            // if (dirty) {
             await doSave({ applyToPreview: true });
-            // }
 
             const baseHtmlRaw = snapshotFromIframeOrDraft();
             const baseHtml = (baseHtmlRaw || previewHtml || "").trim();
@@ -1897,12 +1849,14 @@ export default function PreviewEditor({
                 throw new Error("No HTML available to export");
             }
 
-            // scrub, apply SEO from Firestore, then inject SPA router if multipage
+            // FINAL SAFETY PASS: strip any Kloner UI one last time
+            const cleanedForExport = cleanHtmlBeforeExport(baseHtml);
+
             const finalHtml = await buildFinalExport({
-                html: baseHtml,
-                user,                              // Firebase user (for path)
-                draftId,                          // render doc id in kloner_renders
-                fallbackSeoMetaByPage: seoMetaByPage || null, // editor state fallback
+                html: cleanedForExport,
+                user,
+                draftId,
+                fallbackSeoMetaByPage: seoMetaByPage || null,
             });
 
             await onExport(finalHtml, nameHint || undefined);
@@ -1919,6 +1873,127 @@ export default function PreviewEditor({
         } finally {
             setExporting(false);
         }
+    }
+
+    /**
+     * FINAL HTML SCRUB BEFORE EXPORT
+     * Parse the raw HTML into a real Document, run snapshotCleanFromDocument,
+     * and return a clean string.
+     */
+    function cleanHtmlBeforeExport(rawHtml: string): string {
+        if (typeof window === "undefined" || typeof DOMParser === "undefined") {
+            return rawHtml;
+        }
+
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(rawHtml, "text/html");
+            return snapshotCleanFromDocument(doc);
+        } catch {
+            return rawHtml;
+        }
+    }
+    function snapshotCleanFromDocument(doc: Document): string {
+        const root = doc.documentElement;
+        if (!root) {
+            const html = (doc as any).documentElement?.outerHTML || "";
+            return "<!doctype html>\n" + html;
+        }
+
+        const docClone = root.cloneNode(true) as HTMLHtmlElement;
+        const head = docClone.querySelector("head");
+        const body = docClone.querySelector("body");
+
+        if (body) {
+            // Core Kloner UI + legacy toolbar selectors
+            const uiSelectors = [
+                ".kloner-toolbar",
+                ".kloner-style-panel",
+                ".khint",
+                "[data-kloner-upload-input]",
+                "[data-kloner-ui]",
+                "[data-kloner-overlay]",
+                "[data-kloner-toolbar]",
+                "#kloner-toolbar",
+                "[id^='kloner-toolbar']",
+                "[class*='kloner-toolbar']",
+                "[class*='kloner-ui']",
+
+                // legacy image/link toolbar
+                ".kgroup",
+                ".kgroup-img",
+                ".kgroup-link",
+                ".kbtn",
+                ".kbtn-img",
+                ".kbtn-link",
+            ];
+
+            body.querySelectorAll(uiSelectors.join(",")).forEach((n) => n.remove());
+
+            // Attribute-based cleanup for any remaining toolbar fragments
+            body.querySelectorAll<HTMLElement>("[data-group],[data-act]").forEach((n) => {
+                const group = n.getAttribute("data-group");
+                const act = n.getAttribute("data-act") || "";
+                if (
+                    n.classList.contains("kgroup") ||
+                    n.classList.contains("kbtn") ||
+                    group === "img" ||
+                    group === "link" ||
+                    act === "link" ||
+                    act.startsWith("img-")
+                ) {
+                    n.remove();
+                }
+            });
+
+            // Strip selection/edit attributes
+            body.querySelectorAll("[data-kloner-sel]").forEach((n) =>
+                (n as HTMLElement).removeAttribute("data-kloner-sel")
+            );
+            body.querySelectorAll("[contenteditable]").forEach((n) =>
+                (n as HTMLElement).removeAttribute("contenteditable")
+            );
+            body.querySelectorAll<HTMLElement>("[data-kloner]").forEach((n) =>
+                n.removeAttribute("data-kloner")
+            );
+
+            // Kill any <meta> / <title> that ended up inside <body>
+            body.querySelectorAll("meta, title").forEach((n) => n.remove());
+        }
+
+        if (head) {
+            // Editor style blocks
+            head.querySelectorAll("[data-kloner-style]").forEach((n) => n.remove());
+            head.querySelectorAll("style[id^='kloner-']").forEach((n) => n.remove());
+
+            // Safety net: nukes any remaining editor styles
+            head.querySelectorAll("style").forEach((s) => {
+                const txt = s.textContent || "";
+                if (
+                    txt.includes(".kloner-toolbar") ||
+                    txt.includes("kloner-style-panel") ||
+                    txt.includes("data-kloner") ||
+                    txt.includes(".kgroup") ||
+                    txt.includes(".kbtn")
+                ) {
+                    s.remove();
+                }
+            });
+
+            // Optional: remove any explicit editor scripts by id or content
+            head.querySelectorAll("script[id^='kloner-']").forEach((n) => n.remove());
+            head.querySelectorAll("script").forEach((s) => {
+                const txt = s.textContent || "";
+                if (
+                    txt.includes("kloner-toolbar") ||
+                    txt.includes("data-kloner")
+                ) {
+                    s.remove();
+                }
+            });
+        }
+
+        return "<!doctype html>\n" + (docClone as any).outerHTML;
     }
 
 
@@ -2033,7 +2108,7 @@ export default function PreviewEditor({
 
         console.log("[flushPendingImagesBeforeSave] start", { draftId });
 
-        // 0) Backwards-compat: delete any stale data-kloner-old-path assets
+        // 0) Backwards-compat: delete any stale data-kloner-old-path assets (foreground)
         const imgsWithOldPath = Array.from(
             doc.querySelectorAll<HTMLImageElement>("img[data-kloner-old-path]")
         );
@@ -2043,6 +2118,17 @@ export default function PreviewEditor({
             const p = img.getAttribute("data-kloner-old-path");
             if (p) stalePaths.push(p);
             img.removeAttribute("data-kloner-old-path");
+        }
+
+        // 0b) Backwards-compat: delete any stale data-kloner-bg-old-path assets (backgrounds)
+        const bgElsWithOldPath = Array.from(
+            doc.querySelectorAll<HTMLElement>("[data-kloner-bg-old-path]")
+        );
+
+        for (const el of bgElsWithOldPath) {
+            const p = el.getAttribute("data-kloner-bg-old-path");
+            if (p) stalePaths.push(p);
+            el.removeAttribute("data-kloner-bg-old-path");
         }
 
         if (stalePaths.length) {
@@ -2061,7 +2147,9 @@ export default function PreviewEditor({
             }
         }
 
-        // 1) normal pending-local-image flow
+        // ----------------------------------------
+        // 1) normal pending-local-image flow (foreground <img>)
+        // ----------------------------------------
         const imgs = Array.from(
             doc.querySelectorAll<HTMLImageElement>("img[data-local-image-id]")
         );
@@ -2084,7 +2172,7 @@ export default function PreviewEditor({
             }
 
             try {
-                console.log("[flushPendingImagesBeforeSave] fetching blob URL", {
+                console.log("[flushPendingImagesBeforeSave] fetching blob URL (img)", {
                     localId,
                     tempUrl,
                 });
@@ -2092,7 +2180,7 @@ export default function PreviewEditor({
                 const res = await fetch(tempUrl);
                 if (!res.ok) {
                     console.error(
-                        "[flushPendingImagesBeforeSave] fetch failed for blob URL",
+                        "[flushPendingImagesBeforeSave] fetch failed for blob URL (img)",
                         { localId, tempUrl, status: res.status }
                     );
                     continue;
@@ -2103,7 +2191,7 @@ export default function PreviewEditor({
                     type: blob.type || "application/octet-stream",
                 });
 
-                console.log("[flushPendingImagesBeforeSave] uploading image", {
+                console.log("[flushPendingImagesBeforeSave] uploading image (img)", {
                     localId,
                     fileName: file.name,
                     fileSize: file.size,
@@ -2132,19 +2220,135 @@ export default function PreviewEditor({
                 try {
                     URL.revokeObjectURL(oldTempUrl);
                     console.log(
-                        "[flushPendingImagesBeforeSave] revoked temp URL",
+                        "[flushPendingImagesBeforeSave] revoked temp URL (img)",
                         { localId }
                     );
                 } catch (e) {
                     console.warn(
-                        "[flushPendingImagesBeforeSave] revokeObjectURL failed",
+                        "[flushPendingImagesBeforeSave] revokeObjectURL failed (img)",
                         { localId, oldTempUrl },
                         e
                     );
                 }
             } catch (err) {
                 console.error(
-                    "[flushPendingImagesBeforeSave] upload failed",
+                    "[flushPendingImagesBeforeSave] upload failed (img)",
+                    { localId, tempUrl },
+                    err
+                );
+                continue;
+            }
+        }
+
+        // ----------------------------------------
+        // 2) pending-local-image flow for background images on blocks
+        // ----------------------------------------
+
+        function extractBgUrlFromStyle(el: HTMLElement): string | null {
+            // Prefer inline style first so we match what setBlockBackgroundImage wrote
+            let bg = el.style.backgroundImage;
+            if (!bg) {
+                const cs = doc.defaultView?.getComputedStyle(el);
+                bg = cs?.backgroundImage || "";
+            }
+            if (!bg || bg === "none") return null;
+
+            // Expect patterns like: url("blob:...") or url(blob:...)
+            const match = bg.match(/url\((['"]?)(.*?)\1\)/i);
+            if (!match) return null;
+
+            return match[2] || null;
+        }
+
+        const bgBlocks = Array.from(
+            doc.querySelectorAll<HTMLElement>("[data-local-image-id]")
+        ).filter((el) => el.tagName !== "IMG");
+
+        console.log("[flushPendingImagesBeforeSave] found bg blocks with local image", {
+            count: bgBlocks.length,
+        });
+
+        for (const el of bgBlocks) {
+            const localId = (el.dataset as any).localImageId as string | undefined;
+            const localFilename =
+                (el.dataset as any).localFilename || "background.bin";
+
+            const tempUrl = extractBgUrlFromStyle(el);
+
+            if (!localId || !tempUrl) {
+                console.warn(
+                    "[flushPendingImagesBeforeSave] bg block missing local id or bg url",
+                    { localId, tempUrl }
+                );
+                continue;
+            }
+
+            try {
+                console.log(
+                    "[flushPendingImagesBeforeSave] fetching blob URL (bg block)",
+                    { localId, tempUrl }
+                );
+
+                const res = await fetch(tempUrl);
+                if (!res.ok) {
+                    console.error(
+                        "[flushPendingImagesBeforeSave] fetch failed for blob URL (bg block)",
+                        { localId, tempUrl, status: res.status }
+                    );
+                    continue;
+                }
+
+                const blob = await res.blob();
+                const file = new File([blob], sanitizeName(localFilename), {
+                    type: blob.type || "application/octet-stream",
+                });
+
+                console.log("[flushPendingImagesBeforeSave] uploading image (bg block)", {
+                    localId,
+                    fileName: file.name,
+                    fileSize: file.size,
+                    type: file.type,
+                });
+
+                const asset = await uploadFileToUserBlob(file, draftId);
+
+                const oldTempUrl = tempUrl;
+
+                // Swap background to the real storage URL
+                el.style.backgroundImage = `url("${asset.url}")`;
+
+                // Clear local markers
+                delete (el.dataset as any).localImageId;
+                delete (el.dataset as any).localFilename;
+
+                // Persist bg asset path for future deletions
+                if (asset.path) {
+                    el.setAttribute("data-kloner-bg-path", asset.path);
+                }
+
+                console.log("[flushPendingImagesBeforeSave] bg block updated", {
+                    localId,
+                    oldTempUrl,
+                    newUrl: asset.url,
+                    path: asset.path,
+                });
+
+                try {
+                    URL.revokeObjectURL(oldTempUrl);
+                    console.log(
+                        "[flushPendingImagesBeforeSave] revoked temp URL (bg block)",
+                        { localId }
+                    );
+                } catch (e) {
+                    console.warn(
+                        "[flushPendingImagesBeforeSave] revokeObjectURL failed (bg block)",
+                        { localId, oldTempUrl },
+                        e
+                    );
+                }
+            } catch (err) {
+                console.error(
+                    "[flushPendingImagesBeforeSave] upload failed (bg block)",
                     { localId, tempUrl },
                     err
                 );
@@ -2152,7 +2356,6 @@ export default function PreviewEditor({
             }
         }
     }
-
 
     // iframe messages: uploads + selection meta + delete-assets
     useEffect(() => {
@@ -2340,9 +2543,9 @@ export default function PreviewEditor({
                         }`}
                 >
                     <span>Close editor</span>
-                    <span aria-hidden="true" className="text-base leading-none">
+                    {/* <span aria-hidden="true" className="text-base leading-none">
                         ✕
-                    </span>
+                    </span> */}
                 </button>
 
                 <div
@@ -3494,7 +3697,7 @@ export default function PreviewEditor({
                                                             <span>{p.label}</span>
 
                                                             {/* archive icon chip */}
-                                                            <button
+                                                            <a
                                                                 type="button"
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
@@ -3517,7 +3720,7 @@ export default function PreviewEditor({
                                                                     <path d="M5 3a2 2 0 00-2 2v4h2V5h10v4h2V5a2 2 0 00-2-2H5z" />
                                                                     <path d="M3 11v4a2 2 0 002 2h10a2 2 0 002-2v-4h-3a3 3 0 01-6 0H3z" />
                                                                 </svg>
-                                                            </button>
+                                                            </a>
                                                         </motion.button>
                                                     </motion.div>
                                                 );
@@ -3890,7 +4093,7 @@ function UiBtn({
         </button>
     );
 }
-/* ------------------------ in-iframe edit layer ------------------------ */
+
 function injectEditableOverlay(
     doc: Document,
     onChange: (updatedHtml: string) => void
@@ -3905,6 +4108,10 @@ function injectEditableOverlay(
     :root { --amber-50:#FFFBEB; --amber-200:#FDE68A; --amber-700:#B45309; --rose-50:#FFF1F2; --rose-200:#FECDD3; --rose-700:#BE123C; --slate-700:#334155; --slate-300:#cbd5e1; }
 
     [data-kloner-sel]{ outline:2px dashed #10b981 !important; outline-offset:2px !important; }
+
+    [data-kloner-textbox]{
+      cursor:text;
+    }
 
     .kloner-toolbar{
       position:fixed;
@@ -4089,9 +4296,25 @@ function injectEditableOverlay(
           <span class="kbtn-icon">⧉</span>
           <span class="kbtn-text">Duplicate</span>
         </button>
+        <button class="kbtn kbtn-edit" data-act="box-add" title="Add text box overlay">
+          <span class="kbtn-icon">T+</span>
+          <span class="kbtn-text">Text box</span>
+        </button>
         <button class="kbtn kbtn-del"  data-act="del" title="Delete block">
           <span class="kbtn-icon">🗑</span>
           <span class="kbtn-text">Delete Block</span>
+        </button>
+      </div>
+
+      <div class="kgroup kgroup-layout" data-group="layout">
+        <span class="kgroup-label">Layout</span>
+        <button class="kbtn kbtn-edit" data-act="pad-more" title="Increase inner padding">
+          <span class="kbtn-icon">⬚+</span>
+          <span class="kbtn-text">More pad</span>
+        </button>
+        <button class="kbtn kbtn-edit" data-act="pad-less" title="Decrease inner padding">
+          <span class="kbtn-icon">⬚−</span>
+          <span class="kbtn-text">Less pad</span>
         </button>
       </div>
 
@@ -4101,13 +4324,17 @@ function injectEditableOverlay(
           <span class="kbtn-icon">🖼+</span>
           <span class="kbtn-text">Insert</span>
         </button>
+        <button class="kbtn kbtn-img"  data-act="img-bg" title="Set this block's background image">
+          <span class="kbtn-icon">⬚</span>
+          <span class="kbtn-text">Bg</span>
+        </button>
         <button class="kbtn kbtn-img"  data-act="img-replace" title="Replace selected image">
           <span class="kbtn-icon">🖼⟳</span>
           <span class="kbtn-text">Replace</span>
         </button>
         <button class="kbtn kbtn-img"  data-act="img-del" title="Delete image">
           <span class="kbtn-icon">🗑</span>
-          <span class="kbtn-text">Remove Image</span>
+          <span class="kbtn-text">Remove</span>
         </button>
         <button class="kbtn kbtn-img"  data-act="img-alt" title="Edit ALT text for accessibility">
           <span class="kbtn-icon">ALT</span>
@@ -4359,7 +4586,6 @@ function injectEditableOverlay(
         true
     );
 
-
     async function requestParentUpload(
         file: File
     ): Promise<{ url: string; path?: string }> {
@@ -4434,8 +4660,18 @@ function injectEditableOverlay(
             if (p) paths.add(p);
         }
 
+        if (root.hasAttribute("data-kloner-bg-path")) {
+            const p = root.getAttribute("data-kloner-bg-path");
+            if (p) paths.add(p);
+        }
+
         root.querySelectorAll("img[data-kloner-path]").forEach((img) => {
             const p = img.getAttribute("data-kloner-path");
+            if (p) paths.add(p);
+        });
+
+        root.querySelectorAll<HTMLElement>("[data-kloner-bg-path]").forEach((el) => {
+            const p = el.getAttribute("data-kloner-bg-path");
             if (p) paths.add(p);
         });
 
@@ -4594,6 +4830,59 @@ function injectEditableOverlay(
         showHint("Image replaced (pending upload).", el);
     }
 
+    async function setBlockBackgroundImage(block: HTMLElement) {
+        const file = await pickLocalFile();
+        if (!file) return;
+
+        const tempUrl = URL.createObjectURL(file);
+
+        const oldPath = block.getAttribute("data-kloner-bg-path") || undefined;
+        if (oldPath) {
+            block.setAttribute("data-kloner-bg-old-path", oldPath);
+            block.removeAttribute("data-kloner-bg-path");
+        }
+
+        const cs = doc.defaultView!.getComputedStyle(block);
+        if (cs.position === "static") {
+            block.style.position = "relative";
+        }
+
+        block.style.backgroundImage = `url("${tempUrl}")`;
+        block.style.backgroundSize = "cover";
+        block.style.backgroundPosition = "center center";
+        block.style.backgroundRepeat = "no-repeat";
+
+        const localId =
+            typeof crypto !== "undefined" && crypto.randomUUID
+                ? crypto.randomUUID()
+                : String(Date.now());
+
+        // use the same dataset keys as insertImageIntoBlock
+        (block.dataset as any).localImageId = localId;
+        (block.dataset as any).localFilename = file.name || "background";
+
+        saveHistory();
+        notify();
+        showHint("Background image set (pending upload).", block);
+    }
+
+
+    function adjustBlockPadding(block: HTMLElement, deltaPx: number) {
+        const cs = doc.defaultView!.getComputedStyle(block);
+        const current = parseFloat(cs.paddingTop || "0") || 0;
+        let next = current + deltaPx;
+
+        if (next < 0) next = 0;
+        if (next > 160) next = 160; // hard cap so users don't blow up layout
+
+        const rounded = Math.round(next);
+        block.style.padding = `${rounded}px`;
+
+        saveHistory();
+        notify();
+        showHint(`Padding set to ${rounded}px.`, block);
+    }
+
     function editLink(target: HTMLElement) {
         let linkEl: HTMLAnchorElement | null = null;
         if (target.tagName === "A") {
@@ -4702,6 +4991,49 @@ function injectEditableOverlay(
         showHint("Image resized.", img);
     }
 
+    function createTextBox(anchor: HTMLElement) {
+        let container: HTMLElement = anchor;
+        if (anchor.tagName === "IMG" && anchor.parentElement) {
+            container = anchor.parentElement as HTMLElement;
+        }
+
+        const cs = doc.defaultView!.getComputedStyle(container);
+        if (cs.position === "static") {
+            container.style.position = "relative";
+        }
+
+        const box = doc.createElement("div");
+        box.setAttribute("data-kloner-textbox", "1");
+        box.contentEditable = "true";
+        box.textContent = "Edit text";
+
+        box.style.position = "absolute";
+        box.style.left = "50%";
+        box.style.top = "50%";
+        box.style.transform = "translate(-50%, -50%)";
+
+        box.style.minWidth = "140px";
+        box.style.minHeight = "40px";
+        box.style.padding = "10px 12px";
+        box.style.borderRadius = "8px";
+        box.style.background = "rgba(15,23,42,0.78)";
+        box.style.color = "#f9fafb";
+        box.style.fontSize = "16px";
+        box.style.lineHeight = "1.4";
+        box.style.boxShadow = "0 12px 25px rgba(15,23,42,0.35)";
+        box.style.resize = "both";
+        box.style.overflow = "auto";
+        box.style.zIndex = "20";
+
+        container.appendChild(box);
+        markEditable(box);
+
+        select(box);
+        saveHistory();
+        notify();
+        showHint("Text box added. Click to edit, drag corner to resize.", box);
+    }
+
     function handleAction(act: string | null, sourceEl: HTMLElement) {
         if (!act) return;
 
@@ -4709,9 +5041,10 @@ function injectEditableOverlay(
             (doc.defaultView as any).__klonerApi?.clear();
             return;
         }
-        if (!selected) return;
+        if (!selected && act !== "img-insert" && act !== "img-bg") return;
 
         if (act === "del") {
+            if (!selected) return;
             deleteAssetsForElement(selected);
 
             const parent = selected.parentElement;
@@ -4724,6 +5057,7 @@ function injectEditableOverlay(
         }
 
         if (act === "dup") {
+            if (!selected) return;
             const clone = selected.cloneNode(true) as HTMLElement;
             selected.insertAdjacentElement("afterend", clone);
             markEditable(clone);
@@ -4733,15 +5067,40 @@ function injectEditableOverlay(
             return;
         }
 
+        if (act === "box-add") {
+            if (!selected) return;
+            createTextBox(selected);
+            return;
+        }
+
+        if (act === "pad-more") {
+            if (!selected) return;
+            adjustBlockPadding(selected, 8);
+            return;
+        }
+
+        if (act === "pad-less") {
+            if (!selected) return;
+            adjustBlockPadding(selected, -8);
+            return;
+        }
+
         if (act === "img-insert") {
+            if (!selected) return;
             insertImageIntoBlock(selected).catch(() => { });
+            return;
+        }
+
+        if (act === "img-bg") {
+            if (!selected) return;
+            setBlockBackgroundImage(selected).catch(() => { });
             return;
         }
 
         if (act === "img-replace") {
             const img = getImageFromSelection(selected);
             if (!img) {
-                showHint("No <img> here. Use Insert image.", selected);
+                showHint("No <img> here. Use Insert image.", selected!);
                 return;
             }
             replaceImage(img);
@@ -4749,6 +5108,7 @@ function injectEditableOverlay(
         }
 
         if (act === "img-del") {
+            if (!selected) return;
             deleteImageOnBlock(selected);
             return;
         }
@@ -4756,7 +5116,7 @@ function injectEditableOverlay(
         if (act === "img-alt") {
             const img = getImageFromSelection(selected);
             if (!img) {
-                showHint("Select a block with an <img>.", selected);
+                showHint("Select a block with an <img>.", selected!);
                 return;
             }
             const next = prompt("Alt text:", img.getAttribute("alt") || "");
@@ -4772,7 +5132,7 @@ function injectEditableOverlay(
         if (act === "img-front") {
             const img = getImageFromSelection(selected);
             if (!img) {
-                showHint("Select a block with an <img> to bring forward.", selected);
+                showHint("Select a block with an <img> to bring forward.", selected!);
                 return;
             }
             moveImageLayer(img, "forward");
@@ -4784,7 +5144,7 @@ function injectEditableOverlay(
         if (act === "img-back") {
             const img = getImageFromSelection(selected);
             if (!img) {
-                showHint("Select a block with an <img> to send backward.", selected);
+                showHint("Select a block with an <img> to send backward.", selected!);
                 return;
             }
             moveImageLayer(img, "backward");
@@ -4794,30 +5154,29 @@ function injectEditableOverlay(
         }
 
         if (act === "img-grow") {
+            if (!selected) return;
             const img = getImageFromSelection(selected);
             if (!img) {
                 showHint("Select a block with an <img> to resize.", selected);
                 return;
             }
-            resizeImage(img, 1.1);
-            saveHistory();
-            notify();
+            resizeImage(selected, 1.1);
             return;
         }
 
         if (act === "img-shrink") {
+            if (!selected) return;
             const img = getImageFromSelection(selected);
             if (!img) {
                 showHint("Select a block with an <img> to resize.", selected);
                 return;
             }
-            resizeImage(img, 0.9);
-            saveHistory();
-            notify();
+            resizeImage(selected, 0.9);
             return;
         }
 
         if (act === "link") {
+            if (!selected) return;
             editLink(selected);
             return;
         }
