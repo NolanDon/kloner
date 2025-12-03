@@ -479,6 +479,7 @@ import { Loader2, Rocket } from "lucide-react";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { sanitizeImageName } from "./helpers";
 import AiEditPanel from "./editor/AiEditPanel";
+import { PreviewEditorTour } from "./PreviewEditorTour";
 
 
 // ───────── SEO helpers for export ─────────
@@ -2521,12 +2522,14 @@ export default function PreviewEditor({
     );
 
 
+
     return (
         <div
             ref={containerRef}
             tabIndex={-1}
             className="fixed inset-0 z-[9999] bg-black/50"
         >
+            <PreviewEditorTour />
             {/* make this relative so we can anchor the close button */}
             <div className="absolute inset-4 overflow-hidden">
                 {/* NEW: global top-right close button, above iframe */}
@@ -2543,9 +2546,6 @@ export default function PreviewEditor({
                         }`}
                 >
                     <span>Close editor</span>
-                    {/* <span aria-hidden="true" className="text-base leading-none">
-                        ✕
-                    </span> */}
                 </button>
 
                 <div
@@ -2557,26 +2557,10 @@ export default function PreviewEditor({
                         height: `${100 / uiScale}%`,
                     }}
                 >
-                    {/* ⛔️ REMOVE this old close button block entirely */}
-                    {/*
-                        <button
-                        onClick={() => {
-                            if (dirty) setClosePrompt(true);
-                            else performClose("discard");
-                        }}
-                        disabled={closing}
-                        className={`px-3 w-full py-3 mt-2 text-md font-medium rounded-md transition-colors ${
-                            closing
-                            ? "bg-accent text-white opacity-80 cursor-not-allowed"
-                            : "bg-accent text-white"
-                        }`}
-                        >
-                        Close Editor
-                        </button>
-                        */}
-
-                    <aside className="flex flex-col min-w-0 overflow-auto pr-1 max-lg:order-2">
-
+                    <aside
+                        className="flex flex-col min-w-0 overflow-auto pr-1 max-lg:order-2"
+                        id="kloner-style-sidebar"
+                    >
                         {/* NEW: Style/Meta Toggle */}
                         <div className="inline-flex rounded-md shadow-sm mb-4">
                             <button
@@ -2585,6 +2569,7 @@ export default function PreviewEditor({
                                     ? "bg-accent text-white"
                                     : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                                     }`}
+                                id="kloner-style-toggle"
                             >
                                 Edit Styles
                             </button>
@@ -2621,7 +2606,7 @@ export default function PreviewEditor({
                         </div>
 
                         {/* All existing controls – only hidden when collapsed */}
-                        {(!controlsCollapsed && sidePanelMode === "style") && (
+                        {!controlsCollapsed && sidePanelMode === "style" && (
                             <>
                                 <div className="mb-3">
                                     <div className="text-xs font-semibold text-neutral-500 mb-1">
@@ -2637,9 +2622,7 @@ export default function PreviewEditor({
                                             Code
                                         </UiBtn> */}
                                         <button
-                                            onClick={() =>
-                                                handleModeClick("preview")
-                                            }
+                                            onClick={() => handleModeClick("preview")}
                                             disabled={closing}
                                             className={`px-3 py-1 text-md font-medium rounded-l-md transition-colors ${mode === "preview"
                                                 ? "bg-accent text-white"
@@ -2649,9 +2632,7 @@ export default function PreviewEditor({
                                             Preview
                                         </button>
                                         <button
-                                            onClick={() =>
-                                                handleModeClick("screenshot")
-                                            }
+                                            onClick={() => handleModeClick("screenshot")}
                                             disabled={closing}
                                             className={`px-3 py-1 text-md font-medium rounded-r-md transition-colors ${mode === "screenshot"
                                                 ? "bg-accent text-white"
@@ -2663,7 +2644,7 @@ export default function PreviewEditor({
                                     </div>
                                 </div>
 
-                                <div className="mb-3">
+                                <div className="mb-3" id="kloner-device-toggle">
                                     <div className="text-xs font-semibold text-neutral-500 mb-1">
                                         Device
                                     </div>
@@ -2710,7 +2691,6 @@ export default function PreviewEditor({
                                         </motion.button>
                                     </div>
 
-
                                     <div className="flex flex-col items-start gap-1 mt-4">
                                         <span className="text-xs font-semibold mb-1 text-neutral-500">
                                             UI Scale
@@ -2740,75 +2720,28 @@ export default function PreviewEditor({
                                             </button>
                                         </div>
                                     </div>
-
                                 </div>
 
-                                <div className="my-3">
-                                    <div className="text-xs font-semibold text-neutral-500 mb-1">
+                                <div className="my-3" id="kloner-actions-row">
+                                    <div className="text-xs font-semibold text-neutral-500 mb-2">
                                         Actions
                                     </div>
 
-                                    {/* MATCHES 1) EXACT LOOK + FEEL */}
-                                    <div className="flex flex-wrap items-center gap-1">
-
-                                        {/* Save Draft
+                                    <div
+                                        className="group inline-flex items-center gap-1 rounded-md px-4 py-3 text-lg text-white"
+                                        style={{ backgroundColor: ACCENT }}
+                                        id="kloner-deploy-button"
+                                    >
                                         <button
-                                              onClick={() => setExportPrompt(true)}
-                                              disabled={closing || exporting}
-                                            className={`px-3 py-1 text-md font-medium rounded-md transition-colors
-                ${savingDraft
-                                                    ? "bg-accent text-white opacity-80 cursor-not-allowed"
-                                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                                                }`}
-                                        >
-                                            {savingDraft ? "💾 Saving…" : "💾 Save changes"}
-                                        </button> */}
-
-
-
-                                        <div
-                                            className="group flex flex-inline items-center gap-1 rounded-lg px-3 py-1.5 text-white text-md"
-                                            style={{ backgroundColor: ACCENT }}
-                                        >
-                                            <button
-                                                type="button"
-                                                onClick={() => setExportPrompt(true)}
-                                                className="font-semibold"
-                                            >
-                                                {exporting ? "Exporting…" : "Deploy"}
-                                            </button>
-                                            <Rocket className="h-4 w-4 transform transition-transform duration-150 group-hover:translate-x-0.5 text-md" />
-                                        </div>
-
-                                        {/* Export to Vercel */}
-                                        {/* <button
+                                            type="button"
                                             onClick={() => setExportPrompt(true)}
-                                            disabled={closing || exporting}
-                                            className={`px-3 py-1 text-md font-medium rounded-md transition-colors
-                                                ${exporting
-                                                    ? "bg-accent text-white opacity-80 cursor-not-allowed"
-                                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                                                }`}
+                                            className="font-semibold leading-none"
                                         >
-                                            {exporting ? "🚀 Exporting…" : "🚀 Deploy Website"}
-                                        </button> */}
-                                        {/* 
-                                        <button
-                                            onClick={() => {
-                                                if (dirty) setClosePrompt(true);
-                                                else performClose("discard");
-                                            }}
-                                            disabled={closing}
-                                            className={`px-3 w-full py-3 mt-2 text-md font-medium rounded-md transition-colors ${closing
-                                                ? "bg-accent text-white opacity-80 cursor-not-allowed"
-                                                : "bg-accent text-white"
-                                                }`}
-                                        >
-                                            Close Editor
+                                            {exporting ? "Exporting…" : "Deploy"}
                                         </button>
-
- */}
+                                        <Rocket className="h-3 w-3 transform transition-transform duration-150 group-hover:translate-x-0.5" />
                                     </div>
+
 
                                     {exportNote && (
                                         <div className="mt-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[12px] text-amber-800">
@@ -2817,32 +2750,28 @@ export default function PreviewEditor({
                                     )}
                                 </div>
 
-
                                 {/* Selection styling sidebar */}
                                 {mode === "preview" && (
-                                    <div className="mb-3 border-t pt-5 mt-2">
+                                    <div
+                                        className="mb-3 border-t pt-5 mt-2"
+                                        id="kloner-selection-style"
+                                    >
                                         <div className="flex items-center justify-between mb-1">
                                             <div className="text-sm font-semibold text-neutral-500">
                                                 Selection style
                                             </div>
                                             <div className="text-[10px] text-neutral-400">
                                                 {selectionMeta.has
-                                                    ? selectionMeta.tagName ||
-                                                    "Element"
+                                                    ? selectionMeta.tagName || "Element"
                                                     : "Click any block to style it"}
                                             </div>
                                         </div>
                                         <div className="mb-1 text-[10px] text-neutral-400">
                                             Styles here are scoped to the current{" "}
-                                            <span className="font-semibold">
-                                                {device}
-                                            </span>{" "}
-                                            layout.
+                                            <span className="font-semibold">{device}</span> layout.
                                         </div>
 
                                         <div className="space-y-2 text-sm max-h-64 lg:max-h-none overflow-y-auto pr-1">
-
-                                            {/* Theme from page */}
                                             {(theme.textColors.length ||
                                                 theme.bgColors.length ||
                                                 theme.fontFamilies.length) > 0 && (
@@ -2851,7 +2780,6 @@ export default function PreviewEditor({
                                                             Theme (from this page)
                                                         </div>
 
-                                                        {/* Theme text colors */}
                                                         {theme.textColors.length > 0 && (
                                                             <div>
                                                                 <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
@@ -2877,7 +2805,6 @@ export default function PreviewEditor({
                                                             </div>
                                                         )}
 
-                                                        {/* Theme background colors */}
                                                         {theme.bgColors.length > 0 && (
                                                             <div>
                                                                 <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
@@ -2933,8 +2860,6 @@ export default function PreviewEditor({
                                                     </div>
                                                 )}
 
-
-                                            {/* Font family */}
                                             <div>
                                                 <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
                                                     Font
@@ -2943,13 +2868,9 @@ export default function PreviewEditor({
                                                     className="w-full border rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-50"
                                                     disabled={closing}
                                                     onChange={(e) => {
-                                                        const opt =
-                                                            FONT_OPTIONS.find(
-                                                                (f) =>
-                                                                    f.id ===
-                                                                    e.target
-                                                                        .value
-                                                            );
+                                                        const opt = FONT_OPTIONS.find(
+                                                            (f) => f.id === e.target.value
+                                                        );
                                                         if (!opt) return;
                                                         sendStyleCommand({
                                                             kind: "fontFamily",
@@ -2962,17 +2883,13 @@ export default function PreviewEditor({
                                                         Choose font
                                                     </option>
                                                     {FONT_OPTIONS.map((f) => (
-                                                        <option
-                                                            key={f.id}
-                                                            value={f.id}
-                                                        >
+                                                        <option key={f.id} value={f.id}>
                                                             {f.label}
                                                         </option>
                                                     ))}
                                                 </select>
                                             </div>
 
-                                            {/* Font size */}
                                             <div>
                                                 <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
                                                     Size & headings
@@ -2998,26 +2915,15 @@ export default function PreviewEditor({
                                                 </div>
                                             </div>
 
-
-                                            {/* Align */}
                                             <div>
                                                 <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
                                                     Text align
                                                 </div>
                                                 <div className="flex gap-1">
                                                     {[
-                                                        {
-                                                            id: "left",
-                                                            label: "Left",
-                                                        },
-                                                        {
-                                                            id: "center",
-                                                            label: "Center",
-                                                        },
-                                                        {
-                                                            id: "right",
-                                                            label: "Right",
-                                                        },
+                                                        { id: "left", label: "Left" },
+                                                        { id: "center", label: "Center" },
+                                                        { id: "right", label: "Right" },
                                                     ].map((a) => (
                                                         <button
                                                             key={a.id}
@@ -3025,15 +2931,10 @@ export default function PreviewEditor({
                                                             className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                             disabled={closing}
                                                             onClick={() =>
-                                                                sendStyleCommand(
-                                                                    {
-                                                                        kind: "align",
-                                                                        value: a.id as
-                                                                            | "left"
-                                                                            | "center"
-                                                                            | "right",
-                                                                    }
-                                                                )
+                                                                sendStyleCommand({
+                                                                    kind: "align",
+                                                                    value: a.id as "left" | "center" | "right",
+                                                                })
                                                             }
                                                         >
                                                             {a.label}
@@ -3046,9 +2947,7 @@ export default function PreviewEditor({
                                                 Font weight & transform
                                             </div>
 
-                                            {/* Weight / transform */}
                                             <div className="flex flex-wrap gap-1">
-                                                {/* font-weight */}
                                                 <button
                                                     type="button"
                                                     className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] font-light hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
@@ -3128,7 +3027,6 @@ export default function PreviewEditor({
                                                     Extra-bold
                                                 </button>
 
-                                                {/* text-transform */}
                                                 <button
                                                     type="button"
                                                     className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] uppercase tracking-wide hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
@@ -3157,135 +3055,52 @@ export default function PreviewEditor({
                                                 </button>
                                             </div>
 
-                                            {/* Image size
-                                            <div>
-                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
-                                                    Image size
-                                                </div>
-                                                <div className="flex flex-wrap gap-1">
-                                                    <button
-                                                        type="button"
-                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                        disabled={closing}
-                                                        onClick={() =>
-                                                            sendStyleCommand({
-                                                                kind: "widthPreset",
-                                                                value: "auto",
-                                                            })
-                                                        }
-                                                    >
-                                                        Auto
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                        disabled={closing}
-                                                        onClick={() =>
-                                                            sendStyleCommand({
-                                                                kind: "widthPreset",
-                                                                value: "narrow",
-                                                            })
-                                                        }
-                                                    >
-                                                        Small
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                        disabled={closing}
-                                                        onClick={() =>
-                                                            sendStyleCommand({
-                                                                kind: "widthPreset",
-                                                                value: "wide",
-                                                            })
-                                                        }
-                                                    >
-                                                        Medium
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                        disabled={closing}
-                                                        onClick={() =>
-                                                            sendStyleCommand({
-                                                                kind: "widthPreset",
-                                                                value: "full",
-                                                            })
-                                                        }
-                                                    >
-                                                        Full
-                                                    </button>
-                                                </div>
-                                            </div> */}
-
-
-                                            {/* Text color */}
                                             <div>
                                                 <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
                                                     Text color
                                                 </div>
                                                 <div className="flex flex-wrap gap-1">
-                                                    {TEXT_COLOR_SWATCHES.map(
-                                                        (c) => (
-                                                            <button
-                                                                key={c}
-                                                                type="button"
-                                                                className="w-6 h-6 rounded-full border border-black/10 shadow-sm hover:scale-105 active:scale-95 disabled:opacity-40"
-                                                                style={{
-                                                                    background:
-                                                                        c,
-                                                                }}
-                                                                disabled={
-                                                                    closing
-                                                                }
-                                                                onClick={() =>
-                                                                    sendStyleCommand(
-                                                                        {
-                                                                            kind: "textColor",
-                                                                            value: c,
-                                                                        }
-                                                                    )
-                                                                }
-                                                            />
-                                                        )
-                                                    )}
+                                                    {TEXT_COLOR_SWATCHES.map((c) => (
+                                                        <button
+                                                            key={c}
+                                                            type="button"
+                                                            className="w-6 h-6 rounded-full border border-black/10 shadow-sm hover:scale-105 active:scale-95 disabled:opacity-40"
+                                                            style={{ background: c }}
+                                                            disabled={closing}
+                                                            onClick={() =>
+                                                                sendStyleCommand({
+                                                                    kind: "textColor",
+                                                                    value: c,
+                                                                })
+                                                            }
+                                                        />
+                                                    ))}
                                                 </div>
                                             </div>
 
-                                            {/* Background color */}
                                             <div>
                                                 <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
                                                     Background
                                                 </div>
                                                 <div className="flex flex-wrap gap-1">
-                                                    {BG_COLOR_SWATCHES.map(
-                                                        (c) => (
-                                                            <button
-                                                                key={c}
-                                                                type="button"
-                                                                className="w-6 h-6 rounded-full border border-black/10 shadow-sm hover:scale-105 active:scale-95 disabled:opacity-40"
-                                                                style={{
-                                                                    background:
-                                                                        c,
-                                                                }}
-                                                                disabled={
-                                                                    closing
-                                                                }
-                                                                onClick={() =>
-                                                                    sendStyleCommand(
-                                                                        {
-                                                                            kind: "bgColor",
-                                                                            value: c,
-                                                                        }
-                                                                    )
-                                                                }
-                                                            />
-                                                        )
-                                                    )}
+                                                    {BG_COLOR_SWATCHES.map((c) => (
+                                                        <button
+                                                            key={c}
+                                                            type="button"
+                                                            className="w-6 h-6 rounded-full border border-black/10 shadow-sm hover:scale-105 active:scale-95 disabled:opacity-40"
+                                                            style={{ background: c }}
+                                                            disabled={closing}
+                                                            onClick={() =>
+                                                                sendStyleCommand({
+                                                                    kind: "bgColor",
+                                                                    value: c,
+                                                                })
+                                                            }
+                                                        />
+                                                    ))}
                                                 </div>
                                             </div>
 
-                                            {/* Spacing (letter-spacing) */}
                                             <div>
                                                 <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
                                                     Letter spacing
@@ -3333,7 +3148,6 @@ export default function PreviewEditor({
                                                 </div>
                                             </div>
 
-                                            {/* Layout width */}
                                             <div>
                                                 <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
                                                     Layout width
@@ -3394,7 +3208,6 @@ export default function PreviewEditor({
                                                 </div>
                                             </div>
 
-                                            {/* Block alignment */}
                                             <div>
                                                 <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
                                                     Block align
@@ -3442,7 +3255,6 @@ export default function PreviewEditor({
                                                 </div>
                                             </div>
 
-                                            {/* Vertical spacing */}
                                             <div>
                                                 <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
                                                     Vertical spacing
@@ -3556,9 +3368,8 @@ export default function PreviewEditor({
                                     </div>
                                 )}
 
-
                                 <div className="block lg:hidden fixed bottom-10 left-0 right-0 z-50 bg-white/95 border-t border-neutral-200 px-4 py-3">
-                                    <div className="flex flex-col gap-2">
+                                    <div className="flex flex-col gap-2" id="kloner-save-changes-mobile">
                                         <button
                                             onClick={() => doSave()}
                                             disabled={closing || savingDraft || !dirty}
@@ -3606,8 +3417,7 @@ export default function PreviewEditor({
 
                                 {mode === "screenshot" && (
                                     <div className="text-xs text-slate-600">
-                                        Edit in Preview, apply with “Apply
-                                        changes".
+                                        Edit in Preview, apply with “Apply changes".
                                     </div>
                                 )}
                             </>
@@ -3615,17 +3425,12 @@ export default function PreviewEditor({
                     </aside>
 
                     {/* Right / canvas */}
-                    <section
-                        className="relative bg-slate-50 rounded-lg border overflow-hidden flex flex-col max-lg:order-1"
-                    // this was unselecting the block when clicking edit panel
-                    // onPointerDown={(e) => {
-                    //     if (!(e.target as HTMLElement).closest("iframe"))
-                    //         tryClearIframeSelection();
-                    // }}
-                    >
-
+                    <section className="relative bg-slate-50 rounded-lg border overflow-hidden flex flex-col max-lg:order-1">
                         {mode === "preview" && draftId && (
-                            <div className="border-t max-h-72 overflow-auto">
+                            <div
+                                className="border-t max-h-72 overflow-auto"
+                                id="kloner-ai-edit-panel"
+                            >
                                 <AiEditPanel
                                     renderId={draftId}
                                     getSelectedBlockHtml={getSelectedBlockHtml}
@@ -3633,27 +3438,28 @@ export default function PreviewEditor({
                                     onApplyBlockHtml={(afterBlockHtml: string) => {
                                         const fullHtml = applyBlockHtmlToIframeAndSerialize(
                                             afterBlockHtml,
-                                            true, // still mutate iframe directly
+                                            true
                                         );
 
                                         if (!fullHtml) {
                                             console.warn(
-                                                "[PreviewEditor] applyBlockHtmlToIframeAndSerialize returned null",
+                                                "[PreviewEditor] applyBlockHtmlToIframeAndSerialize returned null"
                                             );
                                             return;
                                         }
 
-                                        // NEW: run the saved HTML through the same cleaner used on snapshot
                                         let cleanedHtml = fullHtml;
                                         try {
                                             const parser = new DOMParser();
                                             const doc = parser.parseFromString(fullHtml, "text/html");
                                             cleanedHtml = snapshotCleanFromDocument(doc);
                                         } catch (err) {
-                                            console.warn("[PreviewEditor] failed to clean AI-edited HTML", err);
+                                            console.warn(
+                                                "[PreviewEditor] failed to clean AI-edited HTML",
+                                                err
+                                            );
                                         }
 
-                                        // Mark editor dirty and sync draft/preview so Save works
                                         setDirty(true);
                                         setHtmlDraft(cleanedHtml);
                                         setPreviewHtml(cleanedHtml);
@@ -3663,10 +3469,8 @@ export default function PreviewEditor({
                             </div>
                         )}
 
-
                         {allPages && allPages.length > 1 && (
-                            <div className="mt-3 space-y-2">
-                                {/* active (non-archived) pages */}
+                            <div className="mt-3 space-y-2" id="kloner-page-switcher">
                                 <div className="flex justify-center">
                                     <div className="inline-flex items-center gap-3 rounded-full border border-neutral-200 bg-white/80 px-1 py-1 shadow-sm">
                                         {allPages
@@ -3691,12 +3495,11 @@ export default function PreviewEditor({
                                                                 "px-3 py-4 rounded-full text-md font-medium transition-colors flex items-center gap-2",
                                                                 isActive
                                                                     ? "bg-accent text-white"
-                                                                    : "bg-white text-neutral-700 hover:bg-neutral-100 border border-neutral-200"
+                                                                    : "bg-white text-neutral-700 hover:bg-neutral-100 border border-neutral-200",
                                                             ].join(" ")}
                                                         >
                                                             <span>{p.label}</span>
 
-                                                            {/* archive icon chip */}
                                                             <a
                                                                 type="button"
                                                                 onClick={(e) => {
@@ -3708,7 +3511,7 @@ export default function PreviewEditor({
                                                                     "flex h-5 w-5 items-center justify-center rounded-full transition",
                                                                     isActive
                                                                         ? "bg-white/20 text-white hover:bg-white/30"
-                                                                        : "bg-neutral-200 text-neutral-700 hover:bg-neutral-300"
+                                                                        : "bg-neutral-200 text-neutral-700 hover:bg-neutral-300",
                                                                 ].join(" ")}
                                                             >
                                                                 <svg
@@ -3728,7 +3531,6 @@ export default function PreviewEditor({
                                     </div>
                                 </div>
 
-                                {/* archived pages row */}
                                 {archivedPageIds.length > 0 && (
                                     <div className="flex justify-center">
                                         <div className="inline-flex items-center gap-1 rounded-full border border-dashed border-neutral-300 bg-neutral-50/80 px-2 py-1">
@@ -3755,14 +3557,6 @@ export default function PreviewEditor({
                                 )}
                             </div>
                         )}
-
-                        {/* {activeSourceImage && mode !== "screenshot" && (
-                            <img
-                                src={activeSourceImage}
-                                alt="reference"
-                                className="absolute right-3 top-3 h-28 w-auto rounded border shadow pointer-events-none max-sm:hidden"
-                            />
-                        )} */}
 
                         {(mode === "preview" || mode === "code") && (
                             <div className="flex-1 overflow-auto p-3 sm:p-6">
@@ -3820,7 +3614,6 @@ export default function PreviewEditor({
                             </div>
                         )}
 
-
                         {mode === "screenshot" && (
                             <div className="flex-1 overflow-auto p-6">
                                 <div
@@ -3850,8 +3643,7 @@ export default function PreviewEditor({
                             </div>
                         )}
 
-                        <div className="
-                        hidden lg:block mb-3">
+                        <div className="hidden lg:block mb-3" id="kloner-save-changes-desktop">
                             <button
                                 onClick={() => doSave()}
                                 disabled={closing || savingDraft || !dirty}
@@ -3861,6 +3653,7 @@ export default function PreviewEditor({
                                     : "bg-emerald-50 text-emerald-700 pointer-events-none"
                                     }`}
                                 title="Apply current draft to the live preview"
+                                id="kloner-apply-changes"
                             >
                                 {applyingPreview || savingDraft ? (
                                     <a className="flex items-center justify-center flex-inline gap-2">
@@ -3877,7 +3670,6 @@ export default function PreviewEditor({
                     </section>
                 </div>
 
-                {/* page switch confirmation, closePrompt, exportPrompt, styles, etc. remain unchanged below */}
                 <AnimatePresence>
                     {pageSwitchConfirm && (
                         <motion.div
@@ -3928,8 +3720,8 @@ export default function PreviewEditor({
                                 Close editor?
                             </div>
                             <p className="text-xs text-neutral-600 mb-3">
-                                You have unsaved changes. Save them before closing,
-                                or discard this draft.
+                                You have unsaved changes. Save them before closing, or discard
+                                this draft.
                             </p>
                             <div className="flex justify-end gap-2 text-xs">
                                 <button
@@ -3965,8 +3757,8 @@ export default function PreviewEditor({
                                 Deploy your Website?
                             </div>
                             <p className="text-xs text-neutral-600 mb-2">
-                                This will export your current preview and trigger a
-                                deployment to your connected Vercel project.
+                                This will export your current preview and trigger a deployment to
+                                your connected Vercel project.
                             </p>
                             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mb-3">
                                 Warning: these changes can reach your live site once the
@@ -3993,7 +3785,6 @@ export default function PreviewEditor({
                                     <span>Deploy now</span>
                                     <Rocket className="h-3.5 w-3.5" />
                                 </button>
-
                             </div>
                         </div>
                     </div>
@@ -4123,7 +3914,7 @@ function injectEditableOverlay(
       padding:6px 8px;
       background:#020617;
       color:#e5e7eb;
-      border-radius:999px;
+      border-radius:15px;
       font:11px/1.2 system-ui,-apple-system,Segoe UI,Roboto;
       box-shadow:0 10px 30px rgba(0,0,0,.25);
       max-width:calc(100vw - 16px);
@@ -4306,17 +4097,35 @@ function injectEditableOverlay(
         </button>
       </div>
 
-      <div class="kgroup kgroup-layout" data-group="layout">
+    <div class="kgroup kgroup-layout" data-group="layout">
         <span class="kgroup-label">Layout</span>
+
+        <button class="kbtn kbtn-edit" data-act="block-up" title="Move block up">
+        <span class="kbtn-icon">↑</span>
+        <span class="kbtn-text">Up</span>
+        </button>
+        <button class="kbtn kbtn-edit" data-act="block-down" title="Move block down">
+        <span class="kbtn-icon">↓</span>
+        <span class="kbtn-text">Down</span>
+        </button>
+        <button class="kbtn kbtn-edit" data-act="block-left" title="Move block left (earlier in layout)">
+        <span class="kbtn-icon">←</span>
+        <span class="kbtn-text">Left</span>
+        </button>
+        <button class="kbtn kbtn-edit" data-act="block-right" title="Move block right (later in layout)">
+        <span class="kbtn-icon">→</span>
+        <span class="kbtn-text">Right</span>
+        </button>
+
         <button class="kbtn kbtn-edit" data-act="pad-more" title="Increase inner padding">
-          <span class="kbtn-icon">⬚+</span>
-          <span class="kbtn-text">More pad</span>
+        <span class="kbtn-icon">⬚+</span>
+        <span class="kbtn-text">More pad</span>
         </button>
         <button class="kbtn kbtn-edit" data-act="pad-less" title="Decrease inner padding">
-          <span class="kbtn-icon">⬚−</span>
-          <span class="kbtn-text">Less pad</span>
+        <span class="kbtn-icon">⬚−</span>
+        <span class="kbtn-text">Less pad</span>
         </button>
-      </div>
+    </div>
 
       <div class="kgroup kgroup-img" data-group="img">
         <span class="kgroup-label">Image</span>
@@ -4883,6 +4692,48 @@ function injectEditableOverlay(
         showHint(`Padding set to ${rounded}px.`, block);
     }
 
+    function moveBlock(
+        block: HTMLElement,
+        direction: "up" | "down" | "left" | "right"
+    ) {
+        const parent = block.parentElement;
+        if (!parent) return;
+
+        const children = Array.from(parent.children) as HTMLElement[];
+        const index = children.indexOf(block);
+        if (index === -1) return;
+
+        const isBackward = direction === "up" || direction === "left";
+        const isForward = direction === "down" || direction === "right";
+
+        if (isBackward && index === 0) {
+            showHint("This block is already at the start of its group.", block);
+            return;
+        }
+        if (isForward && index === children.length - 1) {
+            showHint("This block is already at the end of its group.", block);
+            return;
+        }
+
+        let targetIndex = index;
+        if (isBackward) targetIndex = index - 1;
+        if (isForward) targetIndex = index + 1;
+
+        const target = children[targetIndex];
+        if (!target) return;
+
+        if (isBackward) {
+            parent.insertBefore(block, target);
+        } else {
+            target.after(block);
+        }
+
+        saveHistory();
+        notify();
+        showHint("Block moved in the layout.", block);
+    }
+
+
     function editLink(target: HTMLElement) {
         let linkEl: HTMLAnchorElement | null = null;
         if (target.tagName === "A") {
@@ -5072,6 +4923,38 @@ function injectEditableOverlay(
             createTextBox(selected);
             return;
         }
+
+        if (
+            act === "block-up" ||
+            act === "block-down" ||
+            act === "block-left" ||
+            act === "block-right"
+        ) {
+            if (!selected) return;
+
+            if (act === "block-up") {
+                moveBlock(selected, "up");
+            } else if (act === "block-down") {
+                moveBlock(selected, "down");
+            } else if (act === "block-left") {
+                moveBlock(selected, "left");
+            } else if (act === "block-right") {
+                moveBlock(selected, "right");
+            }
+            return;
+        }
+
+        if (act === "pad-more") {
+            if (!selected) return;
+            adjustBlockPadding(selected, 8);
+            return;
+        }
+        if (act === "pad-less") {
+            if (!selected) return;
+            adjustBlockPadding(selected, -8);
+            return;
+        }
+
 
         if (act === "pad-more") {
             if (!selected) return;

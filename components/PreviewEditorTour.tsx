@@ -1,0 +1,134 @@
+// components/PreviewEditorTour.tsx
+"use client";
+
+import { useState, useEffect } from "react";
+import Joyride, { CallBackProps, STATUS, Step } from "react-joyride";
+import { getFirestore, doc, updateDoc } from "firebase/firestore";
+import { useAuth } from "@/src/hooks/useAuth";
+
+const steps: Step[] = [
+    {
+        target: "#kloner-device-toggle",
+        content: "Switch between desktop, tablet, and mobile views of your cloned page.",
+        disableBeacon: true,
+    },
+    {
+        target: "#kloner-page-switcher",
+        content: "Use the page switcher to jump between different pages like Home, Pricing, and About.",
+        disableBeacon: true,
+    },
+    {
+        target: "#kloner-style-panel",
+        content: "Adjust typography, spacing, colors, and layout for the currently selected block here.",
+        disableBeacon: true,
+    },
+    {
+        target: "#kloner-ai-edit-panel",
+        content: "Use AI Edit to rewrite or refine copy and layout for the selected block.",
+        disableBeacon: true,
+    },
+    {
+        target: "#kloner-meta-settings",
+        content: "Set SEO titles, descriptions, and social preview tags for the current page.",
+        disableBeacon: true,
+    },
+    {
+        target: "#kloner-selection-style",
+        content: "Fine-tune typography, spacing, alignment, and colors for the currently selected block here.",
+        disableBeacon: true,
+    },
+    {
+        target: "#kloner-apply-changes",
+        content: "Apply your changes to update the live preview.",
+        disableBeacon: true,
+    },
+    {
+        target: "#kloner-actions-row",
+        content: "When your edits are ready, use this to deploy changes to a live website.",
+        disableBeacon: true,
+    }
+];
+
+const LOCAL_KEY = "kloner_preview_tour_done";
+
+const isLocalhost =
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1");
+
+export function PreviewEditorTour() {
+    const [run, setRun] = useState(false);
+    const { user } = useAuth();
+    const db = getFirestore();
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        // If you're not logged in, just use localStorage gating
+        if (!user) {
+            const seenLocal = window.localStorage.getItem(LOCAL_KEY) === "1";
+            if (!seenLocal) setRun(true);
+            return;
+        }
+
+        // In localhost: always run so you can test repeatedly
+        if (isLocalhost) {
+            setRun(true);
+            return;
+        }
+
+        // In production: still gate by localStorage; Firestore is write-only
+        const seenLocal = window.localStorage.getItem(LOCAL_KEY) === "1";
+        if (!seenLocal) setRun(true);
+    }, [user]);
+
+    const handleJoyrideCallback = async (data: CallBackProps) => {
+        const finished =
+            data.status === STATUS.FINISHED || data.status === STATUS.SKIPPED;
+
+        if (!finished) return;
+
+        if (typeof window !== "undefined") {
+            window.localStorage.setItem(LOCAL_KEY, "1");
+        }
+
+        // Only persist flag to Firestore when NOT on localhost
+        if (!isLocalhost && user?.uid) {
+            try {
+                await updateDoc(doc(db, "kloner_users", user.uid), {
+                    hasSeenPreviewTour: true,
+                });
+            } catch {
+                // non-critical; ignore
+            }
+        }
+
+        setRun(false);
+    };
+
+    return (
+        <Joyride
+            run={run}
+            steps={steps}
+            callback={handleJoyrideCallback}
+            continuous
+            showProgress
+            showSkipButton
+            spotlightClicks={true}
+            disableOverlayClose={true}
+            styles={{
+                options: {
+                    primaryColor: "#f55f2a",
+                    zIndex: 9999999,
+                },
+            }}
+            locale={{
+                back: "Back",
+                close: "Close",
+                last: "Done",
+                next: "Next",
+                skip: "Skip",
+            }}
+        />
+    );
+}

@@ -742,7 +742,7 @@ function RenderCardInner({
                     <iframe
                         title={`r-${r.id}`}
                         className="h-0 w-full"
-                        sandbox="allow-popups allow-popups-to-escape-sandbox allow-forms allow-pointer-lock"
+                        sandbox="allow-same-origin"
                         referrerPolicy="no-referrer"
                         allow="clipboard-read; clipboard-write"
                         key={`frame-${r.id}`}
@@ -750,6 +750,7 @@ function RenderCardInner({
                     />
                 </div>
             )}
+
         </div>
     );
 }

@@ -235,7 +235,7 @@ export default function CommunityBuildsClient() {
                                                 title={item.name}
                                                 srcDoc={firstPageHtml}
                                                 className="h-full w-full pointer-events-none blur-[2px]"
-                                                sandbox="allow-same-origin allow-scripts allow-forms allow-pointer-lock allow-modals allow-popups"
+                                                sandbox="allow-same-origin"
                                             />
                                         </div>
                                     ) : item.screenshotUrl ? (
@@ -392,8 +392,7 @@ export default function CommunityBuildsClient() {
                                             </style>
                                             `}
                                         className="h-full w-full overflow-auto"
-                                        sandbox="allow-same-origin allow-scripts"
-                                        scrolling="yes"
+                                        sandbox="allow-same-origin"
                                     />
 
                                     {totalPages > 1 && (
