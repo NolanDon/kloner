@@ -503,12 +503,12 @@ function UrlRow({ uid, r }: UrlRowProps) {
                 disabled={busy || locked}
                 aria-label="Delete tracked URL"
                 title="Delete this tracked URL"
-                className="absolute rounded-full left-1 top-1 pb-1 z-40 inline-flex h-7 w-7 items-center justify-center border border-red-200 bg-white/95 text-[18px] font-bold leading-none text-red-600 shadow-sm hover:bg-red-600 hover:text-white hover:border-red-500 disabled:opacity-60"
+                className="absolute rounded-full right-1 top-1 pb-1 z-40 inline-flex h-7 w-7 items-center justify-center border border-red-200 bg-white/95 text-[18px] font-bold leading-none text-red-600 shadow-sm hover:bg-red-600 hover:text-white hover:border-red-500 disabled:opacity-60"
             >
                 ×
             </button>
 
-            <div className="pl-5 flex flex-col sm:flex-row gap-4 sm:gap-5">
+            <div className="flex flex-col sm:flex-row gap-4 sm:gap-5">
                 {thumbUrl ? (
                     <div className="h-12 w-12 rounded-lg overflow-hidden border border-neutral-200 bg-neutral-100 shrink-0">
                         <img
@@ -535,15 +535,14 @@ function UrlRow({ uid, r }: UrlRowProps) {
                             target={locked ? undefined : "_blank"}
                             rel={locked ? undefined : "noreferrer"}
                             className={`truncate max-w-full sm:max-w-[70%] text-sm ${locked
-                                ? "text-neutral-400 pointer-events-none"
-                                : "text-neutral-800 hover:underline"
+                                    ? "text-neutral-400 pointer-events-none"
+                                    : "text-neutral-800 hover:underline"
                                 }`}
                             aria-disabled={locked}
                             tabIndex={locked ? -1 : 0}
                         >
                             {r.url}
                         </a>
-                        <StatusBadge status={uiStatus} />
                     </div>
 
                     {r.lastError && (uiStatus === "stale" || uiStatus === "error") ? (
@@ -573,8 +572,8 @@ function UrlRow({ uid, r }: UrlRowProps) {
                                     : `/dashboard/view?u=${encodeURIComponent(r.url)}`
                             }
                             className={`rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs ${locked
-                                ? "text-neutral-400 pointer-events-none"
-                                : "text-neutral-700 hover:bg-neutral-50"
+                                    ? "text-neutral-400 pointer-events-none"
+                                    : "text-neutral-700 hover:bg-neutral-50"
                                 }`}
                             aria-disabled={locked}
                             tabIndex={locked ? -1 : 0}
@@ -592,6 +591,11 @@ function UrlRow({ uid, r }: UrlRowProps) {
                             </span>
                         </div>
                     )}
+
+                    {/* status badge bottom-right */}
+                    <div className="mt-3 flex justify-start">
+                        <StatusBadge status={uiStatus} />
+                    </div>
                 </div>
             </div>
 
@@ -738,8 +742,8 @@ export default function DashboardPage() {
                     {billingMsg && (
                         <div
                             className={`mt-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${billingMsg.type === "success"
-                                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                                : "border-amber-200 bg-amber-50 text-amber-800"
+                                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                                    : "border-amber-200 bg-amber-50 text-amber-800"
                                 }`}
                         >
                             {billingMsg.type === "success" ? (
