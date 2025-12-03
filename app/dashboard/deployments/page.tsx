@@ -29,6 +29,7 @@ import {
     RefreshCw,
     Code2,
     Loader2,
+    BrushIcon,
 } from "lucide-react";
 import PreviewEditor, { SeoMeta } from "@/components/PreviewEditor";
 import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
@@ -1068,29 +1069,29 @@ export default function DeploymentsPage(): JSX.Element {
                                             <div className="border-t border-neutral-100 pt-3">
                                                 <div className="mt-1 space-y-3 rounded-lg border border-neutral-200 bg-neutral-50/80 p-3">
                                                     <div className="flex flex-wrap items-center gap-2">
+
                                                         <button
                                                             type="button"
                                                             onClick={() => openEditorForDeployment(d)}
                                                             disabled={isEditorLoading}
-                                                            className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-semibold text-white"
+                                                            className="group inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-semibold text-white"
                                                             style={{
                                                                 backgroundColor: ACCENT,
                                                                 boxShadow:
                                                                     "0 5px 15px rgba(245,95,42,0.40)",
                                                             }}
                                                         >
-                                                            <Code2 className="h-4 w-4" />
-                                                            <span>Open in Preview Editor</span>
+                                                            <span>Customize</span>
+                                                            <BrushIcon className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
                                                         </button>
-
                                                         <a
                                                             href={displayUrl || "#"}
                                                             target={displayUrl ? "_blank" : undefined}
                                                             rel={displayUrl ? "noreferrer" : undefined}
-                                                            className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm  text-neutral-800 hover:bg-neutral-50"
+                                                            className="group inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm  text-neutral-800 hover:bg-neutral-50"
                                                         >
                                                             <span>Open site</span>
-                                                            <ArrowUpRight className="h-3 w-3" />
+                                                            <ArrowUpRight className="h-3 w-3 transform transition-transform duration-150" />
                                                         </a>
                                                     </div>
 

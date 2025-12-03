@@ -8,8 +8,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
 
-    // const isProd = process.env.NODE_ENV === "production";
-    const isProd = false
+    const isProd = process.env.NODE_ENV === "production";
 
     const base = isProd ? (process.env.OAUTH_REDIRECT_BASE_PROD || "https://kloner.app") : process.env.OAUTH_REDIRECT_BASE_DEV
 

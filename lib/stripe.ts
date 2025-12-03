@@ -4,8 +4,7 @@ import Stripe from "stripe";
 const API_VERSION = "2025-10-29.clover" as Stripe.LatestApiVersion;
 
 function resolveStripeSecretKey(): string | null {
-    // const isProd = process.env.NODE_ENV === "production";
-    const isProd = false;
+    const isProd = process.env.NODE_ENV === "production";
 
     const key = isProd
         ? process.env.STRIPE_SECRET_KEY_PROD || null

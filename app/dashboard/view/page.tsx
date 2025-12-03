@@ -115,7 +115,6 @@ type Shot = {
     status?: string;
     bytes?: number;
 };
-
 const RenderCard = memo(
     RenderCardInner,
     (prev, next) => {
@@ -190,7 +189,6 @@ type RenderCardProps = {
 };
 
 
-
 function RenderCardInner({
     r,
     isDeleting,
@@ -243,9 +241,8 @@ function RenderCardInner({
             return sanitizeName(`Kloner build ${String(versionLabel).trim()}`);
         }
 
-        return "Untitled Kloner build";
+        return "Untitled";
     }
-
 
     useEffect(() => {
         if (!shareOpen) return;
@@ -293,17 +290,20 @@ function RenderCardInner({
         return `${csp}${base}${safeHtml}`;
     }, [r.html]);
 
+    const isDeployedFlag = isDeployed;
+    const isArchivedFlag = isArchived;
+
     const deployThis = () => {
         if (!r.html?.trim()) return;
-        if (isDeployed) return;
-        if (isArchived) return;
+        if (isDeployedFlag) return;
+        if (isArchivedFlag) return;
         startDeployWizard({ id: r.id, nameHint: r.nameHint ?? undefined });
     };
 
     const handleArchiveClick = () => {
         if (isDeleting || isDeploying) return;
 
-        if (isArchived) {
+        if (isArchivedFlag) {
             unarchiveRender(r.id);
             return;
         }
@@ -422,19 +422,12 @@ function RenderCardInner({
 
     return (
         <div
-            className={`relative flex flex-col overflow-visible rounded-xl border bg-white shadow-sm ${isArchived ? "border-amber-300/70 bg-amber-50/50" : "border-neutral-200"
+            className={`relative flex flex-col overflow-visible rounded-xl border bg-white shadow-sm ${isArchivedFlag
+                ? "border-amber-300/70 bg-amber-50/50"
+                : "border-neutral-200"
                 }`}
         >
-            {/* {controllerVersion && (
-                <span
-                    className="absolute right-2 top-2 z-30 rounded-md bg-amber-300 px-1.5 py-0.5 text-[10px] font-semibold text-neutral-900 shadow"
-                    title={`Controller v${controllerVersion}`}
-                >
-                    v{controllerVersion}
-                </span>
-            )} */}
-
-            {isArchived && (
+            {isArchivedFlag && (
                 <span
                     className="absolute left-2 top-7 z-30 mt-1 rounded-md bg-amber-200/90 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900 shadow"
                     title="Archived previews are hidden from the main dashboard"
@@ -443,15 +436,15 @@ function RenderCardInner({
                 </span>
             )}
 
-            {!isDeployed && !isArchived && (
+            {!isDeployedFlag && !isArchivedFlag && (
                 <button
                     onClick={() => discardRender(r.id)}
                     disabled={isDeleting}
                     aria-label="Discard preview"
                     title="Delete this editable preview"
-                    className="absolute right-0 top-0 z-40 grid h-5 w-5 -translate-y-1/2 translate-x-1/2 place-items-center rounded-full bg-red-600 text-white shadow-md ring-1 ring-white hover:bg-red-700 hover:ring-red-300 disabled:opacity-50"
+                    className="absolute right-2 top-2 z-40 inline-flex h-7 w-7 items-center justify-center border border-red-200 bg-white/95 text-[18px] font-bold leading-none text-red-600 shadow-sm hover:bg-red-600 hover:text-white hover:border-red-500 disabled:opacity-60"
                 >
-                    <span className="mb-0.5 text-lg leading-none">×</span>
+                    ×
                 </button>
             )}
 
@@ -467,7 +460,7 @@ function RenderCardInner({
                             alt={r.nameHint || "preview"}
                             loading="lazy"
                             onError={refImgErr}
-                            className={`pointer-events-none h-full max-h-[260px] w-full select-none object-cover opacity-[0.25] ${isArchived ? "grayscale" : ""
+                            className={`pointer-events-none h-full max-h-[260px] w-full select-none object-cover opacity-[0.25] ${isArchivedFlag ? "grayscale" : ""
                                 }`}
                             draggable={false}
                         />
@@ -475,34 +468,33 @@ function RenderCardInner({
                 )}
 
                 <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
-                    <div className="pointer-events-auto flex min-w-[260px] max-w-xs flex-col items-stretch gap-2 rounded-xl border border-neutral-200 bg-white/80 p-3 shadow-lg backdrop-blur-sm md:max-w-sm text-xs">
-                        {/* PRIMARY ACTIONS ROW */}
+                    <div className="pointer-events-auto flex max-w-xs flex-col items-stretch gap-2 rounded-xl border border-neutral-200 bg-white/80 p-3 shadow-lg backdrop-blur-sm md:max-w-sm text-xs">
                         <div className="flex w-full flex-col gap-2 sm:flex-row">
                             <button
                                 onClick={
-                                    isDeployed
+                                    isDeployedFlag
                                         ? () => {
                                             router.push("/dashboard/deployments");
                                         }
                                         : deployThis
                                 }
                                 disabled={
-                                    isArchived ||
-                                    (!r.html && !isDeployed) ||
+                                    isArchivedFlag ||
+                                    (!r.html && !isDeployedFlag) ||
                                     isDeleting ||
                                     isQueued ||
                                     isDeploying
                                 }
-                                className={`group flex-1 inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-xs ${isArchived
+                                className={`group flex-1 inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-xs ${isArchivedFlag
                                     ? "cursor-not-allowed border border-neutral-300 bg-neutral-50 text-neutral-400"
                                     : "border border-neutral-300 bg-accent text-white shadow-sm hover:bg-accent/90 disabled:opacity-60"
                                     }`}
                                 title={
-                                    isArchived
+                                    isArchivedFlag
                                         ? "Unarchive this preview to deploy it"
                                         : deployLocked
                                             ? "Upgrade to publish live sites"
-                                            : isDeployed
+                                            : isDeployedFlag
                                                 ? "View and modify this deployment"
                                                 : "Deploy current HTML to Vercel"
                                 }
@@ -512,7 +504,7 @@ function RenderCardInner({
                                         <span>Deploying…</span>
                                         <Rocket className="h-4 w-4 animate-pulse" />
                                     </>
-                                ) : isDeployed ? (
+                                ) : isDeployedFlag ? (
                                     <>
                                         <span>View deployment</span>
                                         <Rocket className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
@@ -525,14 +517,13 @@ function RenderCardInner({
                                 )}
                             </button>
 
-
-                            {!isDeployed && (
+                            {!isDeployedFlag && (
                                 <button
                                     onClick={() => continueRender(r.id)}
                                     disabled={disableOpen || isDeleting}
                                     className="group flex-1 inline-flex items-center justify-center gap-2 rounded-md border border-neutral-800 px-3 py-1.5 font-medium text-neutral-800 shadow-sm disabled:opacity-60"
                                     title={
-                                        isArchived
+                                        isArchivedFlag
                                             ? "Unarchive to customize this preview"
                                             : isQueued
                                                 ? "Still building preview"
@@ -548,11 +539,9 @@ function RenderCardInner({
                                             : "Customize"}
                                     <BrushIcon className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
                                 </button>
-
                             )}
                         </div>
 
-                        {/* SECONDARY ACTIONS ROW */}
                         <div className="flex w-full flex-wrap items-center justify-between gap-1">
                             {r.siteConfigId && (
                                 <button
@@ -567,12 +556,14 @@ function RenderCardInner({
                             )}
 
                             {onShareWithCommunity && (
-                                <div className="flex w-full items-center justify-center gap-1 mt-4">
+                                <div className="mt-4 flex w-full items-center justify-center gap-1">
                                     {!shareOpen && (
                                         <>
                                             <button
                                                 type="button"
-                                                onClick={() => setShareOpen((prev) => !prev)}
+                                                onClick={() =>
+                                                    setShareOpen((prev) => !prev)
+                                                }
                                                 disabled={
                                                     alreadyShared ||
                                                     !r.html?.trim() ||
@@ -601,17 +592,21 @@ function RenderCardInner({
                                             <button
                                                 onClick={handleArchiveClick}
                                                 disabled={isDeleting || isDeploying}
-                                                className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] shadow-sm ${isArchived
+                                                className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] shadow-sm ${isArchivedFlag
                                                     ? "border-amber-500 bg-amber-50 text-amber-900 hover:bg-amber-100"
                                                     : "border-neutral-300 bg-white/60 text-neutral-700 hover:border-neutral-400"
                                                     }`}
                                                 title={
-                                                    isArchived
+                                                    isArchivedFlag
                                                         ? "Move back to active previews"
                                                         : "Move this preview into your archive"
                                                 }
                                             >
-                                                <span>{isArchived ? "Unarchive" : "Archive"}</span>
+                                                <span>
+                                                    {isArchivedFlag
+                                                        ? "Unarchive"
+                                                        : "Archive"}
+                                                </span>
                                                 <Archive className="h-3.5 w-3.5" />
                                             </button>
                                         </>
@@ -625,8 +620,9 @@ function RenderCardInner({
                                 {shareOpen && !alreadyShared && (
                                     <div className="mt-1 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-[10px] text-neutral-700">
                                         <p className="mb-2">
-                                            Publishing to Kloner community. Name your project and
-                                            optionally allow other users to remix a copy of your layout.
+                                            Publishing to Kloner community. Name your
+                                            project and optionally allow other users to
+                                            remix a copy of your layout.
                                         </p>
 
                                         <div className="mb-2">
@@ -650,7 +646,9 @@ function RenderCardInner({
                                                 type="checkbox"
                                                 className="h-3 w-3 rounded border-neutral-300"
                                                 checked={shareRemixable}
-                                                onChange={(e) => setShareRemixable(e.target.checked)}
+                                                onChange={(e) =>
+                                                    setShareRemixable(e.target.checked)
+                                                }
                                             />
                                             <span>Allow community to copy build</span>
                                         </label>
@@ -674,7 +672,9 @@ function RenderCardInner({
                                         </div>
 
                                         {shareError && (
-                                            <p className="mt-1 text-[10px] text-red-600">{shareError}</p>
+                                            <p className="mt-1 text-[10px] text-red-600">
+                                                {shareError}
+                                            </p>
                                         )}
                                     </div>
                                 )}
@@ -682,27 +682,6 @@ function RenderCardInner({
                         )}
                     </div>
                 </div>
-
-
-                {/* <span
-                    className="absolute bottom-2 left-2 z-20 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-neutral-600 ring-1 ring-neutral-200"
-                    title="Preview status label"
-                >
-                    {isArchived
-                        ? "Archived"
-                        : isFailed
-                            ? "Failed"
-                            : r.html?.trim()
-                                ? "Preview ready"
-                                : "Awaiting HTML"}
-                </span> */}
-                {/* <span className="absolute bottom-2 right-2 z-20 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-neutral-600 ring-1 ring-neutral-200">
-                    {isDeploying
-                        ? "Deploying…"
-                        : isDeployed
-                            ? "Deployed"
-                            : r.status}
-                </span> */}
 
                 {isDeleting && <CenterSpinner />}
 
@@ -815,87 +794,106 @@ const CenterSpinner = memo(function CenterSpinner({
         </div>
     );
 });
-
-const GhostActionRow = memo(function GhostActionCard({
-    title,
-    subtitle,
+export const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
+    locked,
     onClick,
-    disabled,
+    compact = false,
 }: {
-    title: string;
-    subtitle?: string;
+    locked: boolean;
     onClick: () => void;
-    disabled?: boolean;
+    compact?: boolean;
 }) {
+    const [localLocked, setLocalLocked] = useState(false);
+    const effectiveLocked = locked || localLocked;
+
+    const handleClick = () => {
+        if (effectiveLocked) return;
+        setLocalLocked(true);
+        onClick();
+        window.setTimeout(() => {
+            setLocalLocked(false);
+        }, 30_000);
+    };
+
+    const title = effectiveLocked ? "Generating preview…" : "Generate preview";
+    const subtitle = effectiveLocked
+        ? "Building an editable preview from this url."
+        : "Create an editable preview from this url.";
+
+    // medium-compact sizing
+    const sizeMinH = compact ? "min-h-[200px]" : "min-h-[260px]";
+    const sizeMaxW = compact ? "max-w-sm" : "w-full";
+    const iconWrapperSize = compact ? "h-12 w-12" : "h-14 w-14";
+    const titleSize = compact ? "text-[13px]" : "text-sm";
+    const subtitleSize = compact ? "text-[12px]" : "text-sm";
+
     return (
-        <button
-            type="button"
-            onClick={onClick}
-            disabled={disabled}
-            className={`group relative w-full rounded-lg border border-dashed border-neutral-200 bg-neutral-50/60 px-3 py-2 text-left text-[11px] text-neutral-500 transition
-                ${disabled ? "opacity-50 cursor-not-allowed" : "hover:bg-neutral-50"}`}
-            title={title}
-            aria-disabled={disabled}
-        >
-            <div className="pointer-events-none flex items-center gap-2">
-                <div className="grid h-6 w-6 place-items-center rounded-full border border-neutral-200 bg-white">
-                    <Plus className="h-3.5 w-3.5 text-neutral-500" />
-                </div>
-                <div className="flex flex-col">
-                    <span className="font-medium text-[11px] text-neutral-600">
+        <>
+            <style jsx global>{`
+                @keyframes ghost-hammer-swing {
+                    0% {
+                        transform: rotate(-20deg) translateY(-1px);
+                    }
+                    25% {
+                        transform: rotate(-5deg) translateY(0);
+                    }
+                    50% {
+                        transform: rotate(10deg) translateY(1px);
+                    }
+                    75% {
+                        transform: rotate(-5deg) translateY(0);
+                    }
+                    100% {
+                        transform: rotate(-20deg) translateY(-1px);
+                    }
+                }
+                .ghost-hammer-swing {
+                    animation: ghost-hammer-swing 0.8s ease-in-out infinite;
+                    transform-origin: 25% 10%;
+                }
+            `}</style>
+
+            <button
+                type="button"
+                onClick={handleClick}
+                disabled={effectiveLocked}
+                aria-busy={effectiveLocked}
+                className={`group relative flex ${sizeMinH} ${sizeMaxW} items-center justify-center rounded-xl border-2 border-dashed bg-white text-center transition ${effectiveLocked
+                    ? "opacity-70 cursor-wait"
+                    : "hover:border-neutral-400"
+                    }`}
+                title={title}
+                aria-disabled={effectiveLocked}
+            >
+                <div className="pointer-events-none flex flex-col items-center">
+                    <div
+                        className={`grid ${iconWrapperSize} place-items-center rounded-full border border-neutral-200 bg-neutral-50 transition group-hover:scale-105`}
+                    >
+                        <Hammer
+                            className={`h-7 w-7 text-neutral-600 ${effectiveLocked
+                                ? "ghost-hammer-swing"
+                                : "transition-transform group-hover:-rotate-6"
+                                }`}
+                            aria-hidden
+                        />
+                    </div>
+                    <div className={`mt-3 font-semibold text-neutral-800 ${titleSize}`}>
                         {title}
-                    </span>
-                    {subtitle ? (
-                        <span className="mt-0.5 text-[10px] text-neutral-400">
-                            {subtitle}
-                        </span>
-                    ) : null}
-                </div>
-            </div>
-        </button>
-    );
-});
-
-
-const GhostActionCard = memo(function GhostActionCard({
-    title,
-    subtitle,
-    onClick,
-    disabled,
-}: {
-    title: string;
-    subtitle?: string;
-    onClick: () => void;
-    disabled?: boolean;
-}) {
-    return (
-        <button
-            type="button"
-            onClick={onClick}
-            disabled={disabled}
-            className={`group relative p-6 flex aspect-[4/3] w-full items-center justify-center rounded-xl border-2 border-dashed bg-white text-center transition ${disabled
-                ? "opacity-60 cursor-not-allowed"
-                : "hover:border-neutral-400"
-                }`}
-            title={title}
-            aria-disabled={disabled}
-        >
-            <div className="pointer-events-none flex flex-col items-center">
-                <div className="grid h-14 w-14 place-items-center rounded-full border border-neutral-200 bg-neutral-50 transition group-hover:scale-105">
-                    <Plus className="h-7 w-7 text-neutral-600" />
-                </div>
-                <div className="mt-3 text-sm font-semibold text-neutral-800">
-                    {title}
-                </div>
-                {subtitle ? (
-                    <div className="mt-1 text-sm text-neutral-500">
+                    </div>
+                    <div className={`mt-1 text-neutral-500 ${subtitleSize}`}>
                         {subtitle}
                     </div>
-                ) : null}
-            </div>
-        </button>
+                </div>
+            </button>
+        </>
     );
 });
+
+
+// ---------------------------------------------------------------------
+// RenderCard (full) – only change is the X button styling/placement
+// ---------------------------------------------------------------------
+
 
 /* ───────── main page ───────── */
 
@@ -2852,7 +2850,7 @@ export default function PreviewPage(): JSX.Element {
 
         const t = setTimeout(() => {
             setDeployWizardStep(3);
-        }, 1500); // short “connected” flash
+        }, 1200); // short “connected” flash
 
         return () => clearTimeout(t);
     }, [
@@ -3383,17 +3381,16 @@ export default function PreviewPage(): JSX.Element {
                         {info}
                     </div>
                 ) : null}
-
-                {/* Step 2: collections */}
+                {/* 
                 <section className="mt-6 rounded-3xl border border-neutral-200 bg-white/70 px-4 py-5 sm:px-5 sm:py-6 shadow-sm">
                     <div className="mb-3 flex items-center justify-between gap-2">
                         <div className="space-y-1">
                             <div className="inline-flex items-center gap-2 rounded-full bg-neutral-100 pl-1 pr-3 py-1 text-[17px] mb-4 font-medium text-neutral-600">
-                                {/* {step2Done ? (
+                                {step2Done ? (
                                     <CheckCircle2 className="h-4.5 w-4.5 text-emerald-500" />
                                 ) : (
                                     <Clock10 className="h-4 w-4 text-amber-500" />
-                                )} */}
+                                )} 
                                 <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent text-white text-[12px]">
                                     2
                                 </span>
@@ -3509,146 +3506,138 @@ export default function PreviewPage(): JSX.Element {
                                             key={group.snapshotId + "-" + groupIndex}
                                             className="flex items-center justify-between rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm"
                                         >
-                                            {/* left side: tiny preview + meta */}
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    openViewer(
-                                                        globalIndex >= 0 ? globalIndex : 0,
-                                                    )
-                                                }
-                                                className="flex items-center gap-2 text-left"
-                                                disabled={locked}
-                                            >
-                                                <div
-                                                    className={`h-10 w-16 ${locked ? "opacity-50" : ""
-                                                        } overflow-hidden rounded-md bg-neutral-100`}
-                                                >
-                                                    <img
-                                                        src={first.url}
-                                                        alt={first.fileName}
-                                                        className="h-full w-full object-cover"
-                                                        loading="lazy"
-                                                    />
-                                                </div>
+                <button
+                    type="button"
+                    onClick={() =>
+                        openViewer(
+                            globalIndex >= 0 ? globalIndex : 0,
+                        )
+                    }
+                    className="flex items-center gap-2 text-left"
+                    disabled={locked}
+                >
+                    <div
+                        className={`h-10 w-16 ${locked ? "opacity-50" : ""
+                            } overflow-hidden rounded-md bg-neutral-100`}
+                    >
+                        <img
+                            src={first.url}
+                            alt={first.fileName}
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                        />
+                    </div>
 
-                                                <div className="flex flex-col">
-                                                    <span className="text-[11px] font-semibold text-neutral-800">
-                                                        Snapshot Collection{" "}
-                                                        {groupedShots.length -
-                                                            groupIndex}
-                                                    </span>
-                                                    {group.snapshotCreatedAt && (
-                                                        <span className="text-[10px] text-neutral-500">
-                                                            {new Date(
-                                                                group.snapshotCreatedAt,
-                                                            ).toLocaleString()}
-                                                        </span>
-                                                    )}
-                                                    {extraCount > 0 && (
-                                                        <span className="text-[10px] text-neutral-500">
-                                                            +{extraCount} more page
-                                                            {extraCount > 1 ? "s" : ""}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </button>
+                    <div className="flex flex-col">
+                        <span className="text-[11px] font-semibold text-neutral-800">
+                            Snapshot Collection{" "}
+                            {groupedShots.length -
+                                groupIndex}
+                        </span>
+                        {group.snapshotCreatedAt && (
+                            <span className="text-[10px] text-neutral-500">
+                                {new Date(
+                                    group.snapshotCreatedAt,
+                                ).toLocaleString()}
+                            </span>
+                        )}
+                        {extraCount > 0 && (
+                            <span className="text-[10px] text-neutral-500">
+                                +{extraCount} more page
+                                {extraCount > 1 ? "s" : ""}
+                            </span>
+                        )}
+                    </div>
+                </button>
 
-                                            {/* right side: actions for the whole collection */}
-                                            <div className="ml-2 flex items-center gap-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        if (locked) return;
-                                                        buildFromCollection(
-                                                            collectionKeys,
-                                                        );
-                                                    }}
-                                                    disabled={locked}
-                                                    aria-busy={locked}
-                                                    className="inline-flex items-center rounded-md px-4 py-2 text-[13px] bg-accent text-white font-semibold disabled:opacity-50"
-                                                    title="Create editable preview from this snapshot collection"
-                                                >
-                                                    <span>
-                                                        {locked
-                                                            ? "In progress"
-                                                            : "Generate preview"}
-                                                    </span>
-                                                    <Hammer
-                                                        className={`ml-1 h-4 w-4 ${locked ? "animate-pulse" : ""
-                                                            }`}
-                                                        aria-hidden
-                                                    />
-                                                </button>
+                <div className="ml-2 flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (locked) return;
+                            buildFromCollection(
+                                collectionKeys,
+                            );
+                        }}
+                        disabled={locked}
+                        aria-busy={locked}
+                        className="inline-flex items-center rounded-md px-4 py-2 text-[13px] bg-accent text-white font-semibold disabled:opacity-50"
+                        title="Create editable preview from this snapshot collection"
+                    >
+                        <span>
+                            {locked
+                                ? "In progress"
+                                : "Generate preview"}
+                        </span>
+                        <Hammer
+                            className={`ml-1 h-4 w-4 ${locked ? "animate-pulse" : ""
+                                }`}
+                            aria-hidden
+                        />
+                    </button>
 
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        discardCollection(group)
-                                                    }
-                                                    disabled={
-                                                        locked ||
-                                                        !!deletingCollectionById[
-                                                        group.snapshotId
-                                                        ]
-                                                    }
-                                                    aria-busy={
-                                                        !!deletingCollectionById[
-                                                        group.snapshotId
-                                                        ]
-                                                    }
-                                                    className="inline-flex items-center rounded-md border border-red-200 px-2 py-2 text-[12px] font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
-                                                    title="Permanently delete this snapshot collection and all related images"
-                                                >
-                                                    {deletingCollectionById[
-                                                        group.snapshotId
-                                                    ]
-                                                        ? "Deleting…"
-                                                        : "Remove"}
-                                                </button>
-                                            </div>
-                                        </div>
-                                    );
+                    <button
+                        type="button"
+                        onClick={() =>
+                            discardCollection(group)
+                        }
+                        disabled={
+                            locked ||
+                            !!deletingCollectionById[
+                            group.snapshotId
+                            ]
+                        }
+                        aria-busy={
+                            !!deletingCollectionById[
+                            group.snapshotId
+                            ]
+                        }
+                        className="inline-flex items-center rounded-md border border-red-200 px-2 py-2 text-[12px] font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                        title="Permanently delete this snapshot collection and all related images"
+                    >
+                        {deletingCollectionById[
+                            group.snapshotId
+                        ]
+                            ? "Deleting…"
+                            : "Remove"}
+                    </button>
+                </div>
+            </div>
+            );
                                 })}
 
-                                <div>
-                                    <GhostActionRow
-                                        title={
-                                            rescanning ? "Starting…" : "Add / Rescan"
-                                        }
-                                        subtitle="Captures a fresh screenshot collection."
-                                        onClick={rescan}
-                                        disabled={
-                                            rescanning || !isHttpUrl(targetUrl)
-                                        }
-                                    />
-                                </div>
-                            </div>
+            <div>
+                <GhostActionRow
+                    title={
+                        rescanning ? "Starting…" : "Add / Rescan"
+                    }
+                    subtitle="Captures a fresh screenshot collection."
+                    onClick={rescan}
+                    disabled={
+                        rescanning || !isHttpUrl(targetUrl)
+                    }
+                />
+            </div>
+        </div>
                         </>
-                    )}
-                </section>
+                    )
+}
+                </section >
+                 */}
 
-                {/* Step 3: previews */}
                 <section className="mt-10 rounded-3xl border border-neutral-200 bg-white/70 px-4 py-5 sm:px-5 sm:py-6 shadow-sm">
                     <div className="mb-3 flex items-center justify-between">
                         <div className="space-y-1">
                             <div className="inline-flex items-center gap-2 rounded-full bg-neutral-100 pl-1 pr-3 py-1 text-[17px] mb-4 font-medium text-neutral-600">
                                 <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent text-white text-[12px]">
-                                    3
+                                    2
                                 </span>
                                 <span>Websites</span>
-                                {/* {step3Done ? (
-                                    <CheckCircle2 className="h-4.5 w-4.5 text-emerald-500" />
-                                ) :
-                                    <Clock10 className="h-4 w-4 text-amber-500" />
-                                } */}
                             </div>
-
                         </div>
                     </div>
-                    <p className="mt-1 text-sm text-neutral-500">
-                        These are the concept sites generated from your chosen
-                        snapshot.
+                    <p className="mt-1 mb-2 text-sm text-neutral-500">
+                        These are the concept sites generated from your url.
                     </p>
 
                     {renders.length === 0 ? (
@@ -3661,15 +3650,44 @@ export default function PreviewPage(): JSX.Element {
                                         ) : (
                                             <Clock10 className="h-4 w-4 text-amber-500" />
                                         )}
-                                        <span>Step 3</span>
+                                        <span>Step 2</span>
                                     </strong>
                                     <span className="text-neutral-800">
-                                        {`${step2Done ? '— Generate a preview from your screenshot collection options above.' : '—  Below will host your website previews.'}`}
+                                        {`${step2Done
+                                            ? "— Generate a preview."
+                                            : "—  Below will host your website previews."
+                                            }`}
                                     </span>
                                 </div>
                             </div>
-                            <div className="mt-1 rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-700 my-4">
-                                No previews yet.
+                            <div className="mt-4 flex flex-wrap gap-4 text-sm text-neutral-500">
+                                {groupedShots.map((group, groupIndex) => {
+                                    if (groupIndex > 0) return null;
+
+                                    const first = group.items[0];
+                                    if (!first) return null;
+
+                                    const collectionKeys = group.items.map((s) => s.path);
+
+                                    const locked = group.items.some((s) => {
+                                        if (pendingByKey[s.path]) return true;
+                                        return renders.some(
+                                            (r) =>
+                                                r.key === s.path &&
+                                                r.status === "queued" &&
+                                                !r.archived,
+                                        );
+                                    });
+
+                                    return (
+                                        <GhostGeneratePreviewCard
+                                            key={`ghost-${first.path}`}
+                                            locked={locked}
+                                            compact
+                                            onClick={() => buildFromCollection(collectionKeys)}
+                                        />
+                                    );
+                                })}
                             </div>
                         </>
                     ) : (
@@ -3681,29 +3699,16 @@ export default function PreviewPage(): JSX.Element {
                                     ) : (
                                         <Clock10 className="h-4 w-4 text-amber-500" />
                                     )}
-                                    Step 3
+                                    Step 2
                                 </strong>
 
                                 {step4Done ? (
                                     <>
-                                        <span>
-                                            — Render deployed. Modify it by clicking{" "}
-                                        </span>
-
-                                        <button
-                                            type="button"
-                                            className="mx-1 inline-flex items-center rounded-md border border-neutral-400 bg-white px-3 py-1.5 text-xs text-neutral-800 shadow-sm"
-                                            disabled
-                                        >
-                                            View Deployment
-                                            <Rocket className="ml-1 h-3 w-3" />
-                                        </button>
+                                        <span>— Render deployed.</span>
                                     </>
                                 ) : step3Done ? (
                                     <>
-                                        <span>
-                                            — Customize your preview. When ready, click{" "}
-                                        </span>
+                                        <span>— Customize your website, and when you're satisfied, click </span>
 
                                         <button
                                             type="button"
@@ -3749,75 +3754,94 @@ export default function PreviewPage(): JSX.Element {
                                     />
                                 ))}
 
+                                {groupedShots.map((group, groupIndex) => {
+                                    if (groupIndex > 0) return null;
 
+                                    const first = group.items[0];
+                                    if (!first) return null;
+
+                                    const collectionKeys = group.items.map((s) => s.path);
+
+                                    const locked = group.items.some((s) => {
+                                        if (pendingByKey[s.path]) return true;
+                                        return renders.some(
+                                            (r) =>
+                                                r.key === s.path &&
+                                                r.status === "queued" &&
+                                                !r.archived,
+                                        );
+                                    });
+
+                                    return (
+                                        <GhostGeneratePreviewCard
+                                            key={`ghost-${first.path}`}
+                                            locked={locked}
+                                            onClick={() => buildFromCollection(collectionKeys)}
+                                        />
+                                    );
+                                })}
                             </div>
                         </>
                     )}
                 </section>
 
-                {/* subtle spacer at bottom */}
-                <div className="mt-16">
-                    <div className="mb-4 flex items-center gap-2">
-                        <div className="h-px flex-1 bg-neutral-200/70" />
-                        <div className="h-px flex-1 bg-neutral-200/70" />
-                    </div>
-                </div>
+                {
+                    editorOpen && (
+                        <PreviewEditor
+                            initialHtml={editorHtml}
+                            sourceImage={editorRefImg}
+                            initialSeoMetaByPage={activeSeoMetaByPage || undefined}
+                            onClose={() => {
+                                setEditorOpen(false);
+                                setActiveRenderId(undefined);
+                                setActiveSeoMetaByPage(null);
+                            }}
+                            onExport={(html, name) =>
+                                exportToVercel({
+                                    html,
+                                    name,
+                                    renderId: activeRenderId,
+                                })
+                            }
+                            draftId={activeRenderId}
+                            saveDraft={saveDraft}
+                            onLiveHtml={(html) => {
+                                if (!activeRenderId) return;
+                                setRenders((prev) =>
+                                    prev.map((r) =>
+                                        r.id === activeRenderId ? { ...r, html } : r,
+                                    ),
+                                );
+                            }}
+                            onSaveMeta={async (pageId, meta, fullMap) => {
+                                if (!user || !activeRenderId) return;
 
-                {editorOpen && (
-                    <PreviewEditor
-                        initialHtml={editorHtml}
-                        sourceImage={editorRefImg}
-                        initialSeoMetaByPage={activeSeoMetaByPage || undefined}
-                        onClose={() => {
-                            setEditorOpen(false);
-                            setActiveRenderId(undefined);
-                            setActiveSeoMetaByPage(null);
-                        }}
-                        onExport={(html, name) =>
-                            exportToVercel({
-                                html,
-                                name,
-                                renderId: activeRenderId,
-                            })
-                        }
-                        draftId={activeRenderId}
-                        saveDraft={saveDraft}
-                        onLiveHtml={(html) => {
-                            if (!activeRenderId) return;
-                            setRenders((prev) =>
-                                prev.map((r) =>
-                                    r.id === activeRenderId ? { ...r, html } : r,
-                                ),
-                            );
-                        }}
-                        onSaveMeta={async (pageId, meta, fullMap) => {
-                            if (!user || !activeRenderId) return;
+                                // 1) persist in Firestore
+                                const dref = doc(
+                                    db,
+                                    "kloner_users",
+                                    user.uid,
+                                    "kloner_renders",
+                                    activeRenderId,
+                                );
+                                await updateDoc(dref, {
+                                    seoMetaByPage: fullMap,
+                                    updatedAt: serverTimestamp(),
+                                });
 
-                            // 1) persist in Firestore
-                            const dref = doc(
-                                db,
-                                "kloner_users",
-                                user.uid,
-                                "kloner_renders",
-                                activeRenderId,
-                            );
-                            await updateDoc(dref, {
-                                seoMetaByPage: fullMap,
-                                updatedAt: serverTimestamp(),
-                            });
+                                // 2) keep local render list in sync
+                                setRenders((prev) =>
+                                    prev.map((r) =>
+                                        r.id === activeRenderId ? { ...r, seoMetaByPage: fullMap } : r,
+                                    ),
+                                );
 
-                            // 2) keep local render list in sync
-                            setRenders((prev) =>
-                                prev.map((r) =>
-                                    r.id === activeRenderId ? { ...r, seoMetaByPage: fullMap } : r,
-                                ),
-                            );
-
-                            // 3) keep active map in sync (so Meta tab shows correct data)
-                            setActiveSeoMetaByPage(fullMap);
-                        }}
-                    />
-                )}
+                                // 3) keep active map in sync (so Meta tab shows correct data)
+                                setActiveSeoMetaByPage(fullMap);
+                            }}
+                        />
+                    )
+                }
 
 
                 {/* deploy wizard */}
@@ -4061,7 +4085,7 @@ export default function PreviewPage(): JSX.Element {
                                                                     }}
                                                                     className="font-semibold"
                                                                 >
-                                                                    View deployment
+                                                                    View
                                                                 </button>
                                                                 <Rocket className="h-4 w-4 transform transition-transform duration-150 group-hover:translate-x-0.5" />
                                                             </div>
@@ -4236,288 +4260,296 @@ export default function PreviewPage(): JSX.Element {
                 </style>
 
                 {/* screenshot viewer */}
-                {viewerOpen && shots[viewerIdx] && (
-                    <div className="fixed inset-0 z-[10000]">
-                        <div
-                            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-                            onClick={closeViewer}
-                        />
-                        <div className="absolute inset-0 p-4 sm:p-6 md:p-8 grid place-items-center">
-                            <div className="relative w-full h-full max-w-[min(95vw,1400px)]">
-                                <div className="absolute top-0 bg-black/70 h-20 left-0 right-0 z-10 flex items-center justify-between gap-2 p-2 sm:p-3">
-                                    <div className="text-[11px] sm:text-sm text-white/80 truncate">
-                                        {shots[viewerIdx].fileName}
+                {
+                    viewerOpen && shots[viewerIdx] && (
+                        <div className="fixed inset-0 z-[10000]">
+                            <div
+                                className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+                                onClick={closeViewer}
+                            />
+                            <div className="absolute inset-0 p-4 sm:p-6 md:p-8 grid place-items-center">
+                                <div className="relative w-full h-full max-w-[min(95vw,1400px)]">
+                                    <div className="absolute top-0 bg-black/70 h-20 left-0 right-0 z-10 flex items-center justify-between gap-2 p-2 sm:p-3">
+                                        <div className="text-[11px] sm:text-sm text-white/80 truncate">
+                                            {shots[viewerIdx].fileName}
+                                        </div>
+                                        <button
+                                            onClick={closeViewer}
+                                            className="rounded-md"
+                                            style={{
+                                                background: ACCENT,
+                                                color: "#fff",
+                                                padding: "6px 10px",
+                                                fontSize: "12px",
+                                            }}
+                                        >
+                                            Close
+                                        </button>
+                                    </div>
+                                    <div className="absolute inset-0 mt-8 mb-8 overflow-auto rounded-md ring-1 ring-white/10 bg-black/40">
+                                        <div className="min-h-full w-full grid place-items-center p-4">
+                                            <img
+                                                src={shots[viewerIdx].url}
+                                                alt={shots[viewerIdx].fileName}
+                                                style={{
+                                                    width: "auto",
+                                                    height: "auto",
+                                                }}
+                                            />
+                                        </div>
                                     </div>
                                     <button
-                                        onClick={closeViewer}
-                                        className="rounded-md"
-                                        style={{
-                                            background: ACCENT,
-                                            color: "#fff",
-                                            padding: "6px 10px",
-                                            fontSize: "12px",
-                                        }}
+                                        onClick={prevShot}
+                                        className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full text-white h-9 w-9 grid place-items-center shadow ring-1 ring-neutral-200"
+                                        style={{ background: ACCENT }}
+                                        aria-label="Previous screenshot"
                                     >
-                                        Close
+                                        ‹
+                                    </button>
+                                    <button
+                                        onClick={nextShot}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full text-white h-9 w-9 grid place-items-center shadow ring-1 ring-neutral-200"
+                                        style={{ background: ACCENT }}
+                                        aria-label="Next screenshot"
+                                    >
+                                        ›
                                     </button>
                                 </div>
-                                <div className="absolute inset-0 mt-8 mb-8 overflow-auto rounded-md ring-1 ring-white/10 bg-black/40">
-                                    <div className="min-h-full w-full grid place-items-center p-4">
-                                        <img
-                                            src={shots[viewerIdx].url}
-                                            alt={shots[viewerIdx].fileName}
-                                            style={{
-                                                width: "auto",
-                                                height: "auto",
-                                            }}
-                                        />
-                                    </div>
-                                </div>
-                                <button
-                                    onClick={prevShot}
-                                    className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full text-white h-9 w-9 grid place-items-center shadow ring-1 ring-neutral-200"
-                                    style={{ background: ACCENT }}
-                                    aria-label="Previous screenshot"
-                                >
-                                    ‹
-                                </button>
-                                <button
-                                    onClick={nextShot}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full text-white h-9 w-9 grid place-items-center shadow ring-1 ring-neutral-200"
-                                    style={{ background: ACCENT }}
-                                    aria-label="Next screenshot"
-                                >
-                                    ›
-                                </button>
                             </div>
                         </div>
-                    </div>
-                )}
+                    )
+                }
 
                 {/* generic paywall */}
-                {showCreditsPaywall && (
-                    <div className="fixed inset-0 z-[12000]">
-                        <div className="absolute inset-0 bg-black/60" />
-                        <div className="absolute inset-0 flex items-center justify-center p-4">
-                            <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border border-neutral-200 p-6 text-sm text-neutral-800">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <Crown className="h-4 w-4 text-amber-500" />
-                                    <h3 className="text-base font-semibold">
-                                        You’ve hit the limit on your{" "}
-                                        {userTier === "free" ? "free" : userTier} plan
-                                    </h3>
-                                </div>
-                                <p className="text-sm text-neutral-600 mb-3">
-                                    {showCreditsPaywall === "screenshot" &&
-                                        "You have used all monthly screenshot credits. Upgrade to capture more pages and monitor more sites."}
-                                    {showCreditsPaywall === "preview" &&
-                                        "You have used all monthly preview credits. Upgrade to generate more designs and unlock one-click deploy."}
-                                    {showCreditsPaywall === "deploy" &&
-                                        "To deploy your website live, upgrade to a paid plan to unlock one-click deploy."}
-                                </p>
-                                <ul className="mb-4 list-disc list-inside text-sm text-neutral-700 space-y-1">
-                                    <li>
-                                        Higher monthly limits for screenshots and previews
-                                    </li>
-                                    <li>
-                                        Unlock deployments and live URLs
-                                    </li>
-                                    <li>Priority rendering and faster queues</li>
-                                </ul>
-                                <div className="flex items-center justify-end gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowCreditsPaywall(null)}
-                                        className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
-                                    >
-                                        Not now
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setShowCreditsPaywall(null);
-                                            router.push("/price");
-                                        }}
-                                        className="rounded-md px-3 py-1.5 text-sm font-semibold text-white"
-                                        style={{ backgroundColor: ACCENT }}
-                                    >
-                                        View upgrade options
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {showUpgradeAfterCustomize && (
-                    <div className="fixed inset-0 z-[12050]">
-                        {/* Backdrop */}
-                        <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-
-                        {/* Shell */}
-                        <div className="absolute inset-0 flex items-center justify-center px-4 sm:px-6">
-                            <div className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-white/8 bg-neutral-950/95 text-neutral-50 shadow-[0_30px_120px_rgba(0,0,0,0.85)]">
-                                {/* Accent glow */}
-                                <div
-                                    className="pointer-events-none absolute inset-x-10 -top-24 h-40 rounded-full blur-3xl opacity-80"
-                                    style={{
-                                        background: `radial-gradient(circle, ${ACCENT}40 0%, transparent 65%)`,
-                                    }}
-                                />
-
-                                <div className="relative p-6 sm:p-7">
-                                    {/* Header row */}
-                                    <div className="mb-4 flex items-start justify-between gap-3">
-                                        <div className="flex items-start gap-3">
-                                            <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-neutral-900/80 border border-white/10">
-                                                <Crown className="h-4 w-4 text-amber-400" />
-                                            </div>
-                                            <div>
-                                                <p className="mb-1 text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-400">
-                                                    You just customized a live preview
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        <span className="whitespace-nowrap rounded-full border border-white/10 bg-neutral-900/80 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-400">
-                                            Pro upgrade
-                                        </span>
+                {
+                    showCreditsPaywall && (
+                        <div className="fixed inset-0 z-[12000]">
+                            <div className="absolute inset-0 bg-black/60" />
+                            <div className="absolute inset-0 flex items-center justify-center p-4">
+                                <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border border-neutral-200 p-6 text-sm text-neutral-800">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <Crown className="h-4 w-4 text-amber-500" />
+                                        <h3 className="text-base font-semibold">
+                                            You’ve hit the limit on your{" "}
+                                            {userTier === "free" ? "free" : userTier} plan
+                                        </h3>
                                     </div>
-
-                                    <h3 className="text-2xl mb-4  font-semibold tracking-tight text-white">
-                                        Turn this preview into a real, live site
-                                    </h3>
-                                    {/* Value stack */}
-                                    <div className="mb-4 grid gap-2 text-sm sm:text-[13px] text-neutral-200">
-                                        <div className="flex items-start gap-2.5">
-                                            <div
-                                                className="mt-[3px] h-2 w-2 rounded-full"
-                                                style={{ backgroundColor: ACCENT }}
-                                            />
-                                            <div>
-                                                <p className="font-medium text-white">
-                                                    Publish in minutes
-                                                </p>
-                                                <p className="text-[11px] text-neutral-400">
-                                                    Kloner ships this exact preview to a
-                                                    live URL, no Git, no config.
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex items-start gap-2.5">
-                                            <div
-                                                className="mt-[3px] h-2 w-2 rounded-full"
-                                                style={{ backgroundColor: ACCENT }}
-                                            />
-                                            <div>
-                                                <p className="font-medium text-white">
-                                                    Your domain, your branding
-                                                </p>
-                                                <p className="text-[11px] text-neutral-400">
-                                                    Point your own domain, and own the
-                                                    experience.
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex items-start gap-2.5">
-                                            <div
-                                                className="mt-[3px] h-2 w-2 rounded-full"
-                                                style={{ backgroundColor: ACCENT }}
-                                            />
-                                            <div>
-                                                <p className="font-medium text-white">
-                                                    Keep editing visually
-                                                </p>
-                                                <p className="text-[11px] text-neutral-400">
-                                                    Keep using the editor you’re in right
-                                                    now. Every change ships with one click.
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* What happens next strip */}
-                                    <div className="mb-5 rounded-2xl border border-white/10 bg-neutral-900/80 px-3 py-2.5 text-[14px] text-neutral-300">
-                                        <p className="mb-1 font-medium text-neutral-100">
-                                            What happens when you continue
-                                        </p>
-                                        <p className="text-[12px] text-neutral-200">
-                                            1) Pick a plan · 2) Fast, secure checkout · 3)
-                                            Click publish and your site goes live.
-                                        </p>
-                                    </div>
-
-                                    {/* Actions */}
-                                    <div className="space-y-2.5">
+                                    <p className="text-sm text-neutral-600 mb-3">
+                                        {showCreditsPaywall === "screenshot" &&
+                                            "You have used all monthly screenshot credits. Upgrade to capture more pages and monitor more sites."}
+                                        {showCreditsPaywall === "preview" &&
+                                            "You have used all monthly preview credits. Upgrade to generate more designs and unlock one-click deploy."}
+                                        {showCreditsPaywall === "deploy" &&
+                                            "To deploy your website live, upgrade to a paid plan to unlock one-click deploy."}
+                                    </p>
+                                    <ul className="mb-4 list-disc list-inside text-sm text-neutral-700 space-y-1">
+                                        <li>
+                                            Higher monthly limits for screenshots and previews
+                                        </li>
+                                        <li>
+                                            Unlock deployments and live URLs
+                                        </li>
+                                        <li>Priority rendering and faster queues</li>
+                                    </ul>
+                                    <div className="flex items-center justify-end gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowCreditsPaywall(null)}
+                                            className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
+                                        >
+                                            Not now
+                                        </button>
                                         <button
                                             type="button"
                                             onClick={() => {
-                                                setShowUpgradeAfterCustomize(false);
+                                                setShowCreditsPaywall(null);
                                                 router.push("/price");
                                             }}
-                                            className="flex w-full items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-[0_18px_40px_rgba(0,0,0,0.6)] transition transform hover:-translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-white/20"
+                                            className="rounded-md px-3 py-1.5 text-sm font-semibold text-white"
                                             style={{ backgroundColor: ACCENT }}
                                         >
-                                            Upgrade and publish this site
-                                        </button>
-
-                                        <button
-                                            type="button"
-                                            onClick={() =>
-                                                setShowUpgradeAfterCustomize(false)
-                                            }
-                                            className="flex w-full items-center justify-center rounded-xl px-4 py-2 text-[11px] font-medium text-neutral-400 hover:bg-neutral-900/70 hover:text-neutral-200 transition"
-                                        >
-                                            Keep editing for now
+                                            View upgrade options
                                         </button>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                )}
+                    )
+                }
 
-                {/* deploy next-steps banner */}
-                {showDeployNextSteps && (
-                    <div className="fixed bottom-4 left-1/2 z-[9000] -translate-x-1/2 px-4">
-                        <div className="max-w-xl rounded-2xl border border-neutral-400 bg-white shadow-lg px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 text-sm sm:text-sm text-neutral-800">
-                            <div className="flex-1">
-                                <div className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-800">
-                                    <CheckCircle2 className="text-green-600" />
-                                    <span>New deployment in progress</span>
+                {
+                    showUpgradeAfterCustomize && (
+                        <div className="fixed inset-0 z-[12050]">
+                            {/* Backdrop */}
+                            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+
+                            {/* Shell */}
+                            <div className="absolute inset-0 flex items-center justify-center px-4 sm:px-6">
+                                <div className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-white/8 bg-neutral-950/95 text-neutral-50 shadow-[0_30px_120px_rgba(0,0,0,0.85)]">
+                                    {/* Accent glow */}
+                                    <div
+                                        className="pointer-events-none absolute inset-x-10 -top-24 h-40 rounded-full blur-3xl opacity-80"
+                                        style={{
+                                            background: `radial-gradient(circle, ${ACCENT}40 0%, transparent 65%)`,
+                                        }}
+                                    />
+
+                                    <div className="relative p-6 sm:p-7">
+                                        {/* Header row */}
+                                        <div className="mb-4 flex items-start justify-between gap-3">
+                                            <div className="flex items-start gap-3">
+                                                <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-neutral-900/80 border border-white/10">
+                                                    <Crown className="h-4 w-4 text-amber-400" />
+                                                </div>
+                                                <div>
+                                                    <p className="mb-1 text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-400">
+                                                        You just customized a live preview
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <span className="whitespace-nowrap rounded-full border border-white/10 bg-neutral-900/80 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-400">
+                                                Pro upgrade
+                                            </span>
+                                        </div>
+
+                                        <h3 className="text-2xl mb-4  font-semibold tracking-tight text-white">
+                                            Turn this preview into a real, live site
+                                        </h3>
+                                        {/* Value stack */}
+                                        <div className="mb-4 grid gap-2 text-sm sm:text-[13px] text-neutral-200">
+                                            <div className="flex items-start gap-2.5">
+                                                <div
+                                                    className="mt-[3px] h-2 w-2 rounded-full"
+                                                    style={{ backgroundColor: ACCENT }}
+                                                />
+                                                <div>
+                                                    <p className="font-medium text-white">
+                                                        Publish in minutes
+                                                    </p>
+                                                    <p className="text-[11px] text-neutral-400">
+                                                        Kloner ships this exact preview to a
+                                                        live URL, no Git, no config.
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-start gap-2.5">
+                                                <div
+                                                    className="mt-[3px] h-2 w-2 rounded-full"
+                                                    style={{ backgroundColor: ACCENT }}
+                                                />
+                                                <div>
+                                                    <p className="font-medium text-white">
+                                                        Your domain, your branding
+                                                    </p>
+                                                    <p className="text-[11px] text-neutral-400">
+                                                        Point your own domain, and own the
+                                                        experience.
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-start gap-2.5">
+                                                <div
+                                                    className="mt-[3px] h-2 w-2 rounded-full"
+                                                    style={{ backgroundColor: ACCENT }}
+                                                />
+                                                <div>
+                                                    <p className="font-medium text-white">
+                                                        Keep editing visually
+                                                    </p>
+                                                    <p className="text-[11px] text-neutral-400">
+                                                        Keep using the editor you’re in right
+                                                        now. Every change ships with one click.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* What happens next strip */}
+                                        <div className="mb-5 rounded-2xl border border-white/10 bg-neutral-900/80 px-3 py-2.5 text-[14px] text-neutral-300">
+                                            <p className="mb-1 font-medium text-neutral-100">
+                                                What happens when you continue
+                                            </p>
+                                            <p className="text-[12px] text-neutral-200">
+                                                1) Pick a plan · 2) Fast, secure checkout · 3)
+                                                Click publish and your site goes live.
+                                            </p>
+                                        </div>
+
+                                        {/* Actions */}
+                                        <div className="space-y-2.5">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setShowUpgradeAfterCustomize(false);
+                                                    router.push("/price");
+                                                }}
+                                                className="flex w-full items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-[0_18px_40px_rgba(0,0,0,0.6)] transition transform hover:-translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-white/20"
+                                                style={{ backgroundColor: ACCENT }}
+                                            >
+                                                Upgrade and publish this site
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    setShowUpgradeAfterCustomize(false)
+                                                }
+                                                className="flex w-full items-center justify-center rounded-xl px-4 py-2 text-[11px] font-medium text-neutral-400 hover:bg-neutral-900/70 hover:text-neutral-200 transition"
+                                            >
+                                                Keep editing for now
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
-                                <p className="mt-1 text-[11px] sm:text-sm text-neutral-600">
-                                    Watch build status, logs, and history on the
-                                    Deployments tab. Your latest deploy has just been
-                                    created.
-                                </p>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setShowDeployNextSteps(false);
-                                        router.push("/dashboard/deployments");
-                                    }}
-                                    className="rounded-md px-3 py-1.5 text-[11px] sm:text-sm text-white"
-                                    style={{ backgroundColor: ACCENT }}
-                                >
-                                    Open deployments
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowDeployNextSteps(false)}
-                                    className="rounded-md border border-neutral-300 px-3 py-1.5 text-[11px] sm:text-sm text-neutral-700 hover:bg-neutral-50"
-                                >
-                                    Dismiss
-                                </button>
                             </div>
                         </div>
-                    </div>
-                )}
-            </div>
-        </main>
+                    )
+                }
+
+                {/* deploy next-steps banner */}
+                {
+                    showDeployNextSteps && (
+                        <div className="fixed bottom-4 left-1/2 z-[9000] -translate-x-1/2 px-4">
+                            <div className="max-w-xl rounded-2xl border border-neutral-400 bg-white shadow-lg px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 text-sm sm:text-sm text-neutral-800">
+                                <div className="flex-1">
+                                    <div className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-800">
+                                        <CheckCircle2 className="text-green-600" />
+                                        <span>New deployment in progress</span>
+                                    </div>
+                                    <p className="mt-1 text-[11px] sm:text-sm text-neutral-600">
+                                        Watch build status, logs, and history on the
+                                        Deployments tab. Your latest deploy has just been
+                                        created.
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowDeployNextSteps(false);
+                                            router.push("/dashboard/deployments");
+                                        }}
+                                        className="rounded-md px-3 py-1.5 text-[11px] sm:text-sm text-white"
+                                        style={{ backgroundColor: ACCENT }}
+                                    >
+                                        Open deployments
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowDeployNextSteps(false)}
+                                        className="rounded-md border border-neutral-300 px-3 py-1.5 text-[11px] sm:text-sm text-neutral-700 hover:bg-neutral-50"
+                                    >
+                                        Dismiss
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )
+                }
+            </div >
+        </main >
     );
 }

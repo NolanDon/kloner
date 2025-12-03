@@ -1726,6 +1726,51 @@ export default function PreviewEditor({
         }, 450);
     }
 
+    // helper to strip Kloner editor UI when saving
+    function snapshotCleanFromDocument(doc: any): string {
+        const root = doc.documentElement;
+        if (!root) {
+            // fallback: raw outerHTML if something is off
+            return "<!doctype html>\n" + doc.documentElement.outerHTML;
+        }
+
+        const docClone = root.cloneNode(true) as HTMLElement;
+        const htmlEl = docClone as HTMLHtmlElement;
+        const head = htmlEl.querySelector("head");
+        const body = htmlEl.querySelector("body");
+
+        if (body) {
+            // Remove overlay UI and helpers from body
+            body
+                .querySelectorAll(
+                    ".kloner-toolbar, .kloner-style-panel, .khint, [data-kloner-upload-input]"
+                )
+                .forEach((n) => n.remove());
+
+            // Strip selection + edit attributes
+            body.querySelectorAll("[data-kloner-sel]").forEach((n) =>
+                (n as HTMLElement).removeAttribute("data-kloner-sel")
+            );
+            body.querySelectorAll("[contenteditable]").forEach((n) =>
+                (n as HTMLElement).removeAttribute("contenteditable")
+            );
+        }
+
+        if (head) {
+            // Remove injected style block(s) for the editor from head
+            head.querySelectorAll("[data-kloner-style]").forEach((n) => n.remove());
+
+            // Safety net: if any generic <style> contains .kloner-toolbar, remove it
+            head.querySelectorAll("style").forEach((s) => {
+                if (s.textContent && s.textContent.includes(".kloner-toolbar")) {
+                    s.remove();
+                }
+            });
+        }
+
+        return "<!doctype html>\n" + (docClone as any).outerHTML;
+    }
+
 
     async function doSave(options?: { applyToPreview?: boolean }) {
         if (savingDraft) return;
@@ -1745,8 +1790,12 @@ export default function PreviewEditor({
                 doc,
                 draftId,
             });
-            // 2) now capture HTML with final URLs, not blob: URLs
-            const nextHtml = snapshotFromIframeOrDraft();
+
+            // 2) now capture HTML with final URLs and WITHOUT Kloner toolbar / editor UI
+            const nextHtml = doc
+                ? snapshotCleanFromDocument(doc)
+                : snapshotFromIframeOrDraft();
+
             setHtmlDraft(nextHtml);
 
             if (!saveDraft) {
@@ -1788,6 +1837,7 @@ export default function PreviewEditor({
             setSavingDraft(false);
         }
     }
+
 
     const handlePageSwitch = async (nextId: string) => {
         if (!nextId || nextId === activePageId) return;
@@ -2274,7 +2324,27 @@ export default function PreviewEditor({
             tabIndex={-1}
             className="fixed inset-0 z-[9999] bg-black/50"
         >
+            {/* make this relative so we can anchor the close button */}
             <div className="absolute inset-4 overflow-hidden">
+                {/* NEW: global top-right close button, above iframe */}
+                <button
+                    type="button"
+                    onClick={() => {
+                        if (dirty) setClosePrompt(true);
+                        else performClose("discard");
+                    }}
+                    disabled={closing}
+                    className={`absolute top-5 right-5 z-[100] inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs sm:text-sm font-semibold shadow-lg  ${closing
+                        ? "bg-accent text-white cursor-not-allowed opacity-90"
+                        : "bg-accent text-white hover:bg-accent/50"
+                        }`}
+                >
+                    <span>Close editor</span>
+                    <span aria-hidden="true" className="text-base leading-none">
+                        ✕
+                    </span>
+                </button>
+
                 <div
                     className="bg-white rounded-xl shadow-xl grid grid-cols-[minmax(320px,360px),1fr] gap-4 p-4 max-lg:grid-cols-1"
                     style={{
@@ -2284,6 +2354,24 @@ export default function PreviewEditor({
                         height: `${100 / uiScale}%`,
                     }}
                 >
+                    {/* ⛔️ REMOVE this old close button block entirely */}
+                    {/*
+                        <button
+                        onClick={() => {
+                            if (dirty) setClosePrompt(true);
+                            else performClose("discard");
+                        }}
+                        disabled={closing}
+                        className={`px-3 w-full py-3 mt-2 text-md font-medium rounded-md transition-colors ${
+                            closing
+                            ? "bg-accent text-white opacity-80 cursor-not-allowed"
+                            : "bg-accent text-white"
+                        }`}
+                        >
+                        Close Editor
+                        </button>
+                        */}
+
                     <aside className="flex flex-col min-w-0 overflow-auto pr-1 max-lg:order-2">
 
                         {/* NEW: Style/Meta Toggle */}
@@ -2306,42 +2394,11 @@ export default function PreviewEditor({
                             >
                                 📝 Edit Meta
                             </button>
-
-                            {/* <button
-                                type="button"
-                                onClick={() =>
-                                    setControlsCollapsed((v) => !v)
-                                }
-                                disabled={closing}
-                                className={`ml-2 px-3 py-1 text-sm font-medium rounded-md transition-colors ${controlsCollapsed
-                                    ? "bg-accent text-white"
-                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                                    }`}
-                            >
-                                {controlsCollapsed ? "Show Controls" : "Collapse Controls"}
-                            </button> */}
                         </div>
 
                         {/* Compact header + toggle – always visible */}
                         <div className="sticky top-0 z-10 flex items-center justify-between bg-white/95 pb-2 backdrop-blur-sm">
-
-                            {/* Compact header + toggle – always visible */}
                             <div className="flex items-center justify-between w-full">
-                                {/* <div className="flex items-center gap-2">
-                                    <div className="relative h-[30px] w-[30px]">
-                                        <Image
-                                            src={logo}
-                                            alt="kloner logo"
-                                            fill
-                                            priority
-                                            className="object-contain"
-                                        />
-                                    </div>
-                                    <span className="text-[10px] font-medium text-neutral-500 lg:hidden">
-                                        Editor control
-                                    </span>
-                                </div> */}
-
                                 {sidePanelMode === "meta" && (
                                     <MetaSettings
                                         key={currentPageKey}
@@ -2354,24 +2411,15 @@ export default function PreviewEditor({
                             </div>
 
                             <div className="flex items-center gap-2">
-                                {/* <div className="relative h-[30px] w-[30px]">
-                                    <Image
-                                        src={logo}
-                                        alt="kloner logo"
-                                        fill
-                                        priority
-                                        className="object-contain"
-                                    />
-                                </div> */}
                                 <span className="text-[10px] font-medium text-neutral-500 lg:hidden">
                                     Editor controls
                                 </span>
                             </div>
                         </div>
+
                         {/* All existing controls – only hidden when collapsed */}
                         {(!controlsCollapsed && sidePanelMode === "style") && (
                             <>
-
                                 <div className="mb-3">
                                     <div className="text-xs font-semibold text-neutral-500 mb-1">
                                         View
@@ -2409,8 +2457,6 @@ export default function PreviewEditor({
                                         >
                                             👁️ Screenshot
                                         </button>
-
-
                                     </div>
                                 </div>
 
@@ -2461,9 +2507,40 @@ export default function PreviewEditor({
                                         </motion.button>
                                     </div>
 
+
+                                    <div className="flex flex-col items-start gap-1 mt-4">
+                                        <span className="text-xs font-semibold mb-1 text-neutral-500">
+                                            UI Scale
+                                        </span>
+
+                                        <div className="flex items-center gap-1 text-xs text-slate-600">
+                                            <button
+                                                className="px-2 py-1 rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+                                                onClick={() =>
+                                                    setUiScale((s) => Math.max(0.5, +(s - 0.05).toFixed(2)))
+                                                }
+                                                disabled={closing}
+                                            >
+                                                -
+                                            </button>
+                                            <span className="w-10 text-center">
+                                                {Math.round(uiScale * 100)}%
+                                            </span>
+                                            <button
+                                                className="px-2 py-1 rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+                                                onClick={() =>
+                                                    setUiScale((s) => Math.min(1.25, +(s + 0.05).toFixed(2)))
+                                                }
+                                                disabled={closing}
+                                            >
+                                                +
+                                            </button>
+                                        </div>
+                                    </div>
+
                                 </div>
 
-                                <div className="mb-3">
+                                <div className="my-3">
                                     <div className="text-xs font-semibold text-neutral-500 mb-1">
                                         Actions
                                     </div>
@@ -2471,10 +2548,10 @@ export default function PreviewEditor({
                                     {/* MATCHES 1) EXACT LOOK + FEEL */}
                                     <div className="flex flex-wrap items-center gap-1">
 
-                                        {/* Save Draft */}
+                                        {/* Save Draft
                                         <button
-                                            onClick={() => doSave()}
-                                            disabled={closing || savingDraft}
+                                              onClick={() => setExportPrompt(true)}
+                                              disabled={closing || exporting}
                                             className={`px-3 py-1 text-md font-medium rounded-md transition-colors
                 ${savingDraft
                                                     ? "bg-accent text-white opacity-80 cursor-not-allowed"
@@ -2482,21 +2559,37 @@ export default function PreviewEditor({
                                                 }`}
                                         >
                                             {savingDraft ? "💾 Saving…" : "💾 Save changes"}
-                                        </button>
+                                        </button> */}
+
+
+
+                                        <div
+                                            className="group flex flex-inline items-center gap-1 rounded-lg px-3 py-1.5 text-white text-md"
+                                            style={{ backgroundColor: ACCENT }}
+                                        >
+                                            <button
+                                                type="button"
+                                                onClick={() => setExportPrompt(true)}
+                                                className="font-semibold"
+                                            >
+                                                {exporting ? "Exporting…" : "Deploy"}
+                                            </button>
+                                            <Rocket className="h-4 w-4 transform transition-transform duration-150 group-hover:translate-x-0.5 text-md" />
+                                        </div>
 
                                         {/* Export to Vercel */}
-                                        <button
+                                        {/* <button
                                             onClick={() => setExportPrompt(true)}
                                             disabled={closing || exporting}
                                             className={`px-3 py-1 text-md font-medium rounded-md transition-colors
-                ${exporting
+                                                ${exporting
                                                     ? "bg-accent text-white opacity-80 cursor-not-allowed"
                                                     : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                                                 }`}
                                         >
                                             {exporting ? "🚀 Exporting…" : "🚀 Deploy Website"}
-                                        </button>
-
+                                        </button> */}
+                                        {/* 
                                         <button
                                             onClick={() => {
                                                 if (dirty) setClosePrompt(true);
@@ -2511,48 +2604,7 @@ export default function PreviewEditor({
                                             Close Editor
                                         </button>
 
-
-
-
-                                        <div className="mt-3 flex items-center justify-end text-sm text-slate-500">
-                                            {/* Version – move elsewhere later if needed */}
-                                            {/*
-    <span className="mr-3 text-xs text-slate-500 self-center">
-        v{version}
-    </span>
-    */}
-
-                                            <div className="flex flex-col items-start gap-1">
-                                                <span className="text-xs font-semibold mb-1 text-neutral-500">
-                                                    UI Scale
-                                                </span>
-
-                                                <div className="flex items-center gap-1 text-xs text-slate-600">
-                                                    <button
-                                                        className="px-2 py-1 rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50"
-                                                        onClick={() =>
-                                                            setUiScale((s) => Math.max(0.5, +(s - 0.05).toFixed(2)))
-                                                        }
-                                                        disabled={closing}
-                                                    >
-                                                        -
-                                                    </button>
-                                                    <span className="w-10 text-center">
-                                                        {Math.round(uiScale * 100)}%
-                                                    </span>
-                                                    <button
-                                                        className="px-2 py-1 rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50"
-                                                        onClick={() =>
-                                                            setUiScale((s) => Math.min(1.25, +(s + 0.05).toFixed(2)))
-                                                        }
-                                                        disabled={closing}
-                                                    >
-                                                        +
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-
+ */}
                                     </div>
 
                                     {exportNote && (
@@ -2561,7 +2613,6 @@ export default function PreviewEditor({
                                         </div>
                                     )}
                                 </div>
-
 
 
                                 {/* Selection styling sidebar */}
@@ -3303,10 +3354,8 @@ export default function PreviewEditor({
                                 )}
 
 
-                                <div className="block lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 border-t border-neutral-200 px-4 py-3">
+                                <div className="block lg:hidden fixed bottom-10 left-0 right-0 z-50 bg-white/95 border-t border-neutral-200 px-4 py-3">
                                     <div className="flex flex-col gap-2">
-
-                                        {/* Apply to preview (TOP) */}
                                         <button
                                             onClick={() => doSave()}
                                             disabled={closing || savingDraft || !dirty}
@@ -3324,7 +3373,6 @@ export default function PreviewEditor({
                                                     : "Preview is up to date"}
                                         </button>
 
-                                        {/* Close (BOTTOM) */}
                                         <button
                                             onClick={() => {
                                                 if (dirty) setClosePrompt(true);
@@ -3589,32 +3637,34 @@ export default function PreviewEditor({
                             </div>
                         )}
 
-                        <div className="hidden lg:block mb-3">
-                            {/* Utility Buttons: Increased size and a cohesive look (using lg:px-4 lg:py-2.5 lg:text-base) */}
-
-                            {/* Main Action Button: HUGE size and full width */}
+                        <div className="
+                        hidden lg:block mb-3">
                             <button
                                 onClick={() => doSave()}
                                 disabled={closing || savingDraft || !dirty}
                                 aria-busy={applyingPreview}
-                                // Increased padding (px-4 py-4) and font size (text-xl/text-2xl) to make it HUGE
                                 className={`rounded px-4 py-4 text-xl w-full transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${dirty
-                                    ? "bg-emerald-600 text-white hover:brightness-95 shadow-lg" // Added shadow for emphasis
-                                    : "bg-emerald-50 text-emerald-700 pointer-events-none" // Added pointer-events-none when up to date
+                                    ? "bg-emerald-600 text-white hover:brightness-95 shadow-lg"
+                                    : "bg-emerald-50 text-emerald-700 pointer-events-none"
                                     }`}
                                 title="Apply current draft to the live preview"
                             >
-                                {applyingPreview || savingDraft
-                                    ? <a className="flex items-center justify-center flex-inline gap-2"><Loader2 className="h-10 w-10 animate-spin" />Updating preview…</a>
-                                    : dirty
-                                        ? "Apply changes" // Changed text and added emoji for urgency
-                                        : "Preview is up to date"}
+                                {applyingPreview || savingDraft ? (
+                                    <a className="flex items-center justify-center flex-inline gap-2">
+                                        <Loader2 className="h-10 w-10 animate-spin" />
+                                        Updating preview…
+                                    </a>
+                                ) : dirty ? (
+                                    "Apply changes"
+                                ) : (
+                                    "Preview is up to date"
+                                )}
                             </button>
                         </div>
                     </section>
                 </div>
 
-                {/* page switch confirmation for pending local images */}
+                {/* page switch confirmation, closePrompt, exportPrompt, styles, etc. remain unchanged below */}
                 <AnimatePresence>
                     {pageSwitchConfirm && (
                         <motion.div
@@ -3658,8 +3708,6 @@ export default function PreviewEditor({
                     )}
                 </AnimatePresence>
 
-
-                {/* close/save/discard prompt */}
                 {closePrompt && (
                     <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/40">
                         <div className="bg-white rounded-lg shadow-xl p-4 w-full max-w-sm border border-neutral-200">
@@ -3697,7 +3745,6 @@ export default function PreviewEditor({
                     </div>
                 )}
 
-                {/* export confirmation */}
                 {exportPrompt && (
                     <div className="fixed inset-0 z-[10010] flex items-center justify-center bg-black/40">
                         <div className="bg-white rounded-lg shadow-xl p-4 w-full max-w-sm border border-neutral-200">
@@ -3743,6 +3790,7 @@ export default function PreviewEditor({
             </div>
         </div>
     );
+
 }
 
 function Spinner({ size = 18 }: { size?: number }) {
@@ -4300,6 +4348,7 @@ function injectEditableOverlay(
         },
         true
     );
+
 
     async function requestParentUpload(
         file: File

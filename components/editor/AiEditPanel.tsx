@@ -256,12 +256,9 @@ export default function AiEditPanel(props: AiEditPanelProps) {
     return (
         <>
             {/* centered input bar above canvas */}
-            <div className="mb-4 flex justify-center mt-2">
+            <div className="mb-4 flex justify-center mt-2 pt-8">
                 <div className="w-full max-w-[820px]">
                     <div className="mb-1 flex items-center justify-between px-1">
-                        <span className="ml-2 text-[13px] font-semibold uppercase tracking-wide text-neutral-700">
-                            AI assist
-                        </span>
                         {loading && (
                             <span className="text-[11px] text-neutral-500">
                                 Thinking…
@@ -274,6 +271,14 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                             {error}
                         </p>
                     )}
+
+
+                    {/* NEW: credits indicator under the input */}
+                    <div className="mt-1 px-2 min-h-[16px] text-[11px] text-neutral-400">
+                        {creditsText
+                            ? <>Each AI edit uses 5 credits. {creditsText}</>
+                            : null}
+                    </div>
 
                     <div className="flex items-center gap-1 rounded-full bg-neutral-900 px-3 py-2.5 shadow-[0_10px_26px_rgba(0,0,0,0.35)] mt-2">
                         <input
@@ -294,35 +299,37 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                             type="button"
                             onClick={handleRun}
                             disabled={generateDisabled}
-                            className={`inline-flex h-12 items-center whitespace-nowrap justify-center rounded-full px-3 text-[13px] font-semibold transition ${generateDisabled
+                            className={`inline-flex h-12 items-center whitespace-nowrap justify-center rounded-full px-3 text-[16px] font-semibold transition ${generateDisabled
                                 ? "cursor-not-allowed bg-neutral-700 text-neutral-400"
                                 : "bg-[var(--accent,#f55f2a)] text-white hover:brightness-110"
                                 }`}
                         >
-                            {loading ? "Generating…" : "Suggest for 5 credits"}
+                            {loading ? "Generating…" : "Create"}
                         </button>
                     </div>
 
-                    {atMaxChars ? (
-                        <p className="mt-2 px-1 text-[14px] text-red-600">
-                            Max {MAX_PROMPT_CHARS} characters reached.
-                        </p>
-                    ) : (
-                        <div className="ml-4 mt-4 px-1 min-h-[22px] text-[14px]">
-                            {(!hasScopedBlock && prompt.length > 0) && (
-                                <p className="text-amber-600">
-                                    No section is selected. Click a block in the preview
-                                    before asking for a change.
-                                </p>
-                            )}
+                    <div className="ml-4">
+                        {atMaxChars ? (
+                            <p className="mt-2 px-1 text-[14px] text-red-600">
+                                Max {MAX_PROMPT_CHARS} characters reached.
+                            </p>
+                        ) : (
+                            <div className="mt-4 px-1 min-h-[22px] text-[14px]">
+                                {(!hasScopedBlock && prompt.length > 0) && (
+                                    <p className="text-amber-600">
+                                        No section is selected. Click a block in the preview
+                                        before asking for a change.
+                                    </p>
+                                )}
 
-                            {(hasScopedBlock && prompt.length > 0) && (
-                                <p className="text-emerald-600">
-                                    Changes will only take affect on your selection below.
-                                </p>
-                            )}
-                        </div>
-                    )}
+                                {(hasScopedBlock && prompt.length > 0) && (
+                                    <p className="text-emerald-600">
+                                        Changes will only take affect on your selection below.
+                                    </p>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
 
