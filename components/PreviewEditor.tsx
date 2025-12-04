@@ -113,6 +113,7 @@ type Props = {
 
 const ACCENT = "#f55f2a";
 const STORAGE_KEY = (id?: string) => `kloner:draft:${id || "default"}`;
+const SAVE_NUDGE_KEY = "kloner_save_nudge_seen";
 
 type SelectionMeta = {
     has: boolean;
@@ -483,6 +484,41 @@ import { PreviewEditorTour } from "./PreviewEditorTour";
 
 
 // ───────── SEO helpers for export ─────────
+
+// extend the existing source type to cover all cases we need
+type DraftSnapshotSource = "manual" | "auto" | "before-ai" | "apply";
+
+type DraftSnapshot = {
+    id: string;
+    createdAt: number;
+    source: DraftSnapshotSource;
+    html: string;
+};
+
+const MAX_HISTORY_SNAPSHOTS = 40;
+
+const HISTORY_KEY = (draftId?: string | null) =>
+    draftId ? `kloner:draftHistory:${draftId}` : "kloner:draftHistory:__anonymous";
+
+function formatSnapshotTime(ts: number) {
+    try {
+        const d = new Date(ts);
+        return d.toLocaleTimeString(undefined, {
+            hour: "2-digit",
+            minute: "2-digit",
+        });
+    } catch {
+        return "";
+    }
+}
+
+function formatSnapshotLabel(snap: DraftSnapshot): string {
+    const when = formatSnapshotTime(snap.createdAt);
+    if (snap.source === "auto") return `${when} · Autosave`;
+    if (snap.source === "apply") return `${when} · Applied`;
+    return `${when} · Manual`;
+}
+
 
 function deriveRootMetaFromSeoMap(
     seo: SeoMetaByPage | null | undefined
@@ -937,7 +973,117 @@ export default function PreviewEditor({
     const [archivedPageIds, setArchivedPageIds] = useState<string[]>([]);
     const [selectionMeta, setSelectionMeta] = useState<SelectionMeta>({ has: false });
     const [lastSelectedPath, setLastSelectedPath] = useState<string | null>(null);
+    const [showSaveNudge, setShowSaveNudge] = useState(false);
+    const [saveNudgeArmed, setSaveNudgeArmed] = useState(false);
+    const [history, setHistory] = useState<DraftSnapshot[]>([]);
 
+    const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
+
+    type HtmlSnapshotSource = "manual" | "autosave" | "before-ai" | "apply";
+
+    type HtmlSnapshot = {
+        id: string;
+        createdAt: number;
+        source: any;
+        html: string;
+    };
+
+    // if you already use DraftSnapshot elsewhere, just alias:
+    type DraftSnapshot = HtmlSnapshot;
+
+
+    const HISTORY_STORAGE_KEY = (draftId?: string | null) =>
+        draftId ? `kloner:history:${draftId}` : "kloner:history:temp";
+
+    // load history from localStorage when draftId changes
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const key = HISTORY_STORAGE_KEY(draftId);
+        const raw = window.localStorage.getItem(key);
+        if (!raw) return;
+        try {
+            const parsed = JSON.parse(raw) as DraftSnapshot[];
+            if (Array.isArray(parsed)) {
+                setHistory(parsed);
+            }
+        } catch {
+            // ignore bad data
+        }
+    }, [draftId]);
+
+    // persist history to localStorage
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const key = HISTORY_STORAGE_KEY(draftId);
+        try {
+            window.localStorage.setItem(key, JSON.stringify(history));
+        } catch {
+            // ignore quota errors
+        }
+    }, [history, draftId]);
+
+    function addSnapshot(opts: { id: string, createdAt: any, html: string; source: DraftSnapshotSource }) {
+        const trimmed = opts.html.trim();
+        if (!trimmed) return;
+
+        setHistory((prev): DraftSnapshot[] => {
+            const next: DraftSnapshot[] = [
+                ...prev as any,
+                {
+                    id:
+                        typeof crypto !== "undefined" && "randomUUID" in crypto
+                            ? crypto.randomUUID()
+                            : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+                    createdAt: Date.now(),
+                    source: opts.source,
+                    html: trimmed,
+                },
+            ];
+
+            // cap at last 50 entries to avoid unbounded growth
+            return next.length > 50 ? next.slice(next.length - 50) : next;
+        });
+    }
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        const key = HISTORY_KEY(draftId);
+        const raw = window.localStorage.getItem(key);
+        if (!raw) {
+            setHistory([]);
+            setActiveHistoryId(null);
+            return;
+        }
+
+        try {
+            const parsed = JSON.parse(raw) as DraftSnapshot[];
+            if (Array.isArray(parsed)) {
+                setHistory(parsed);
+                setActiveHistoryId(parsed.length ? parsed[parsed.length - 1].id : null);
+            } else {
+                setHistory([]);
+                setActiveHistoryId(null);
+            }
+        } catch {
+            setHistory([]);
+            setActiveHistoryId(null);
+        }
+    }, [draftId]);
+
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const key = HISTORY_KEY(draftId);
+        try {
+            window.localStorage.setItem(key, JSON.stringify(history));
+        } catch {
+            // ignore quota errors
+        }
+    }, [history, draftId]);
+
+
+    // Dont remove
     const localImageStore: Map<string, File> = new Map();
 
     // this is used as a “last known good” snapshot for export fallback
@@ -1014,6 +1160,38 @@ export default function PreviewEditor({
         if (!el) return null;
         return el.outerHTML;
     }
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        const seen = window.localStorage.getItem(SAVE_NUDGE_KEY) === "1";
+        if (!seen) {
+            setSaveNudgeArmed(true);
+        }
+    }, []);
+
+
+    useEffect(() => {
+        if (!saveNudgeArmed) return;
+        if (!dirty) return; // no edits yet, nothing to remind
+
+        const timer = window.setTimeout(() => {
+            setShowSaveNudge(true);
+            setSaveNudgeArmed(false);
+
+            if (typeof window !== "undefined") {
+                window.localStorage.setItem(SAVE_NUDGE_KEY, "1");
+            }
+
+            // auto-hide after 15s
+            window.setTimeout(() => {
+                setShowSaveNudge(false);
+            }, 10_000); // show for 10 seconds
+        }, 120_000); // 2 minutes of editing
+
+        return () => window.clearTimeout(timer);
+    }, [dirty, saveNudgeArmed]);
+
 
     /**
      * Apply updated block HTML to the currently selected element in the iframe
@@ -1598,6 +1776,7 @@ export default function PreviewEditor({
         setDirty(false);
     }, [draftId, initialHtml]);
 
+
     // set initial active page, and keep it valid when page set changes
     useEffect(() => {
         if (!allPages || allPages.length === 0) {
@@ -1644,6 +1823,48 @@ export default function PreviewEditor({
             return htmlDraft;
         }
     }, [htmlDraft, mode]);
+
+    const snapshotDraft = useCallback(
+        (source: DraftSnapshotSource) => {
+            const html = snapshotFromIframeOrDraft();
+            if (!html) return;
+
+            setHistory((prev) => {
+                // avoid duplicate entry if HTML identical to the last snapshot
+                const last = prev[prev.length - 1];
+                if (last && last.html === html) return prev;
+
+                const snap: DraftSnapshot = {
+                    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                    createdAt: Date.now(),
+                    source,
+                    html,
+                };
+
+                const merged = [...prev, snap];
+                if (merged.length > MAX_HISTORY_SNAPSHOTS) merged.shift();
+
+                return merged;
+            });
+
+            // track “current” snapshot id
+            setActiveHistoryId((prev) => prev || `${Date.now()}`);
+        },
+        [snapshotFromIframeOrDraft]
+    );
+
+    useEffect(() => {
+        if (!draftId) return;
+        if (typeof window === "undefined") return;
+
+        const intervalMs = 60_000; // 1 minute; change if you want
+        const id = window.setInterval(() => {
+            snapshotDraft("auto");
+        }, intervalMs);
+
+        return () => window.clearInterval(id);
+    }, [draftId, snapshotDraft]);
+
 
     // bump iframe key when HTML or mode changes (except pure screenshot mode)
     useEffect(() => {
@@ -1708,19 +1929,104 @@ export default function PreviewEditor({
         [onLiveHtml]
     );
 
+    const handleRestoreSnapshot = useCallback(
+        (snap: DraftSnapshot) => {
+            if (!snap) return;
+
+            const confirmRestore =
+                dirty
+                    ? window.confirm(
+                        "Replace the current draft with this version? Unsaved changes will be lost."
+                    )
+                    : true;
+
+            if (!confirmRestore) return;
+
+            setHtmlDraft(snap.html);
+            setPreviewHtml(snap.html);
+            emitLive(snap.html);
+            setDirty(false);
+            setActiveHistoryId(snap.id);
+        },
+        [dirty, emitLive]
+    );
+
+
+    function HistoryPanel(props: {
+        snapshots: DraftSnapshot[];
+        onRestore: (snap: DraftSnapshot) => void;
+    }) {
+        const { snapshots, onRestore } = props;
+
+        if (!snapshots.length) {
+            return (
+                <div className="text-xs text-gray-500">
+                    No history yet. Autosaves and applied versions will appear here.
+                </div>
+            );
+        }
+
+        const ordered = [...snapshots].sort((a, b) => b.createdAt - a.createdAt);
+
+        return (
+            <div className="flex flex-col gap-2 text-xs h-full">
+                <div className="flex items-center justify-between mb-1">
+                    <h3 className="text-sm font-semibold text-gray-800">
+                        Draft history
+                    </h3>
+                    <span className="text-[11px] text-gray-500">
+                        {ordered.length} versions
+                    </span>
+                </div>
+
+                <div className="flex-1 overflow-y-auto rounded-md border border-gray-200 bg-white">
+                    {ordered.map((snap) => (
+                        <button
+                            key={snap.id}
+                            type="button"
+                            onClick={() => onRestore(snap)}
+                            className="w-full text-left px-3 py-2 border-b border-gray-100 hover:bg-gray-50 focus:outline-none focus:bg-gray-100"
+                        >
+                            <div className="flex items-center justify-between">
+                                <span className="font-medium text-[11px] uppercase tracking-wide text-gray-600">
+                                    {snap.source === "auto"
+                                        ? "Autosave"
+                                        : snap.source === "apply"
+                                            ? "Applied"
+                                            : "Manual save"}
+                                </span>
+                                <span className="text-[11px] text-gray-500">
+                                    {formatSnapshotTime(snap.createdAt)}
+                                </span>
+                            </div>
+                            <p className="mt-0.5 line-clamp-2 text-[11px] text-gray-500">
+                                {formatSnapshotLabel(snap)}
+                            </p>
+                        </button>
+                    ))}
+                </div>
+
+                <p className="text-[10px] text-gray-400 mt-1">
+                    Oldest versions are removed automatically once the list is full.
+                </p>
+            </div>
+        );
+    }
+
+
     function applyDraftToPreview() {
-        // hard debounce – ignore if an apply is already in flight
         if (applyingPreview) return;
 
         setApplyingPreview(true);
 
-        // Use the current draft as the single source of truth
-        // Do NOT re-read from the iframe or original HTML here.
         const nextHtml = htmlDraft;
 
-        setPreviewHtml(nextHtml); // what you use for srcDoc / export
-        emitLive(nextHtml);       // whatever live sync / broadcast you do
+        setPreviewHtml(nextHtml);
+        emitLive(nextHtml);
         setDirty(false);
+
+        // history entry when user explicitly applies to preview
+        snapshotDraft("apply");
 
         window.setTimeout(() => {
             setApplyingPreview(false);
@@ -1753,6 +2059,9 @@ export default function PreviewEditor({
                 : snapshotFromIframeOrDraft();
 
             setHtmlDraft(nextHtml);
+
+            // manual snapshot when user hits save
+            snapshotDraft("manual");
 
             if (!saveDraft) {
                 setPreviewHtml(nextHtml);
@@ -2357,6 +2666,7 @@ export default function PreviewEditor({
             }
         }
     }
+    const [historyOpen, setHistoryOpen] = useState(true);
 
     // iframe messages: uploads + selection meta + delete-assets
     useEffect(() => {
@@ -2521,7 +2831,14 @@ export default function PreviewEditor({
         />
     );
 
-
+    function snapshotBeforeAiEdit(fullHtml: string) {
+        addSnapshot({
+            id: crypto.randomUUID(),
+            createdAt: Date.now(),
+            source: "before-ai", // new label
+            html: fullHtml
+        });
+    }
 
     return (
         <div
@@ -2530,6 +2847,7 @@ export default function PreviewEditor({
             className="fixed inset-0 z-[9999] bg-black/50"
         >
             <PreviewEditorTour />
+
             {/* make this relative so we can anchor the close button */}
             <div className="absolute inset-4 overflow-hidden">
                 {/* NEW: global top-right close button, above iframe */}
@@ -2547,6 +2865,8 @@ export default function PreviewEditor({
                 >
                     <span>Close editor</span>
                 </button>
+
+
 
                 <div
                     className="bg-white rounded-xl shadow-xl grid grid-cols-[minmax(320px,360px),1fr] gap-4 p-4 max-lg:grid-cols-1"
@@ -3436,6 +3756,18 @@ export default function PreviewEditor({
                                     getSelectedBlockHtml={getSelectedBlockHtml}
                                     selectionMeta={selectionMeta}
                                     onApplyBlockHtml={(afterBlockHtml: string) => {
+                                        // 1. Capture current HTML BEFORE AI modifies anything
+                                        try {
+                                            const iframe = iframeRef.current;
+                                            if (iframe && iframe.contentDocument) {
+                                                const preAiDoc = iframe.contentDocument.documentElement.outerHTML;
+                                                snapshotBeforeAiEdit(preAiDoc);
+                                            }
+                                        } catch (err) {
+                                            console.warn("Failed to snapshot before AI edit", err);
+                                        }
+
+                                        // 2. Apply AI-edited block and serialize
                                         const fullHtml = applyBlockHtmlToIframeAndSerialize(
                                             afterBlockHtml,
                                             true
@@ -3465,6 +3797,7 @@ export default function PreviewEditor({
                                         setPreviewHtml(cleanedHtml);
                                         if (onLiveHtml) onLiveHtml(cleanedHtml);
                                     }}
+
                                 />
                             </div>
                         )}
@@ -3558,6 +3891,13 @@ export default function PreviewEditor({
                             </div>
                         )}
 
+                        {showSaveNudge && (
+                            <div className="mt-4 flex justify-center mt-3pointer-events-none z-[96] rounded-full bg-emerald-600 text-white hover:brightness-95 shadow-lg px-4 py-2 text-sm">
+                                This is a one-time friendly reminder to save or apply your changes as you edit, so you don’t lose them.
+                            </div>
+                        )}
+
+
                         {(mode === "preview" || mode === "code") && (
                             <div className="flex-1 overflow-auto p-3 sm:p-6">
                                 <AnimatePresence mode="wait">
@@ -3643,6 +3983,47 @@ export default function PreviewEditor({
                             </div>
                         )}
 
+                        {/* Right-side history menu (top-right overlay) */}
+                        {historyOpen ? (
+                            <div className="hidden lg:block absolute top-20 right-3 z-[80] w-72 max-h-[70vh]">
+                                <div className="flex flex-col rounded-lg border border-neutral-200 bg-white/95 shadow-lg">
+                                    <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-200">
+                                        <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                                            Edit history
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setHistoryOpen(false)}
+                                            className="text-[12px] text-neutral-500 px-2 py-1 rounded bg-accent hover:brightness-95 text-white"
+                                        >
+                                            Hide
+                                        </button>
+                                    </div>
+
+                                    <div className="min-h-0 flex-1 overflow-y-auto p-2">
+                                        <HistoryPanel
+                                            snapshots={history}
+                                            onRestore={handleRestoreSnapshot}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={() => setHistoryOpen(true)}
+                                className="hidden lg:flex absolute gap-1 top-20 right-3 z-[70] items-center rounded-full bg-accent px-3 py-1 text-[12px] font-medium text-white shadow-sm hover:brightness-95"
+                                title="Show edit history"
+                            >
+                                <span className="leading-none">Show History</span>
+                                <span className="text-[12px] text-white leading-none translate-y-[0.5px]">
+                                    ▼
+                                </span>
+                            </button>
+                        )}
+
+
+
                         <div className="hidden lg:block mb-3" id="kloner-save-changes-desktop">
                             <button
                                 onClick={() => doSave()}
@@ -3666,7 +4047,10 @@ export default function PreviewEditor({
                                     "Preview is up to date"
                                 )}
                             </button>
+
                         </div>
+
+
                     </section>
                 </div>
 
@@ -4064,6 +4448,7 @@ function injectEditableOverlay(
         "A",
         "DIV",
     ]);
+
     function markEditable(root: ParentNode) {
         const w = doc.createTreeWalker(root as Node, NodeFilter.SHOW_ELEMENT);
         while (w.nextNode()) {
@@ -4072,6 +4457,25 @@ function injectEditableOverlay(
         }
     }
     markEditable(doc.body);
+
+    // Ensure button/anchor never ends up with fully-empty text (prevents “visual deletion”)
+    function ensureButtonHasContent(target: HTMLElement | null) {
+        if (!target) return;
+        const buttonLike = target.closest("button, a") as HTMLElement | null;
+        if (!buttonLike || !buttonLike.isContentEditable) return;
+
+        const raw = buttonLike.textContent || "";
+        const normalized = raw.replace(/\u00A0/g, " ").trim();
+        if (normalized.length === 0) {
+            // Keep a minimum non-breaking space so layout stays visible
+            buttonLike.innerHTML = "\u00A0";
+        }
+    }
+
+    // Initialize existing editable buttons/links so none are empty
+    doc.querySelectorAll<HTMLElement>("button[contenteditable], a[contenteditable]").forEach((el) => {
+        ensureButtonHasContent(el);
+    });
 
     const toolbar = doc.createElement("div");
     toolbar.className = "kloner-toolbar";
@@ -4245,6 +4649,11 @@ function injectEditableOverlay(
         doc.body.appendChild(fileInput);
 
         markEditable(doc.body);
+        // re-ensure buttons/links are never empty after restore
+        doc.querySelectorAll<HTMLElement>("button[contenteditable], a[contenteditable]").forEach((el) => {
+            ensureButtonHasContent(el);
+        });
+
         select(null);
         updateUndoRedoState();
         notify();
@@ -4675,7 +5084,6 @@ function injectEditableOverlay(
         showHint("Background image set (pending upload).", block);
     }
 
-
     function adjustBlockPadding(block: HTMLElement, deltaPx: number) {
         const cs = doc.defaultView!.getComputedStyle(block);
         const current = parseFloat(cs.paddingTop || "0") || 0;
@@ -4732,7 +5140,6 @@ function injectEditableOverlay(
         notify();
         showHint("Block moved in the layout.", block);
     }
-
 
     function editLink(target: HTMLElement) {
         let linkEl: HTMLAnchorElement | null = null;
@@ -4955,19 +5362,6 @@ function injectEditableOverlay(
             return;
         }
 
-
-        if (act === "pad-more") {
-            if (!selected) return;
-            adjustBlockPadding(selected, 8);
-            return;
-        }
-
-        if (act === "pad-less") {
-            if (!selected) return;
-            adjustBlockPadding(selected, -8);
-            return;
-        }
-
         if (act === "img-insert") {
             if (!selected) return;
             insertImageIntoBlock(selected).catch(() => { });
@@ -5084,7 +5478,17 @@ function injectEditableOverlay(
         characterData: true,
         attributes: true,
     });
-    doc.addEventListener("input", notify, true);
+
+    // input handler that also protects buttons/links from becoming visually empty
+    doc.addEventListener(
+        "input",
+        (e) => {
+            const target = e.target as HTMLElement | null;
+            ensureButtonHasContent(target || null);
+            notify();
+        },
+        true
+    );
 
     doc.addEventListener("keydown", (e) => {
         const key = e.key.toLowerCase();
