@@ -43,6 +43,17 @@ const steps: Step[] = [
         disableBeacon: true,
     },
     {
+        target: "#kloner-undo",
+        content: "Undo your most recent edit directly in the editor.",
+        disableBeacon: true,
+    },
+    {
+        target: "#kloner-history",
+        content: "View and restore previous versions of your page from the edit history.",
+        disableBeacon: true,
+    },
+
+    {
         target: "#kloner-actions-row",
         content: "When your edits are ready, use this to deploy changes to a live website.",
         disableBeacon: true,

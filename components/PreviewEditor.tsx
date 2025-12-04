@@ -476,7 +476,7 @@ import { db } from "@/lib/firebase"; // or wherever your db is
 import type { User as FirebaseUser } from "firebase/auth";
 import { RenderDoc } from "@/app/dashboard/view/page";
 import { useAuth } from "@/src/hooks/useAuth";
-import { Loader2, Rocket } from "lucide-react";
+import { Loader2, Rocket, RotateCcw } from "lucide-react";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { sanitizeImageName } from "./helpers";
 import AiEditPanel from "./editor/AiEditPanel";
@@ -1044,6 +1044,34 @@ export default function PreviewEditor({
             return next.length > 50 ? next.slice(next.length - 50) : next;
         });
     }
+
+
+    function applySnapshotHtml(html: string) {
+        let cleanedHtml = html;
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, "text/html");
+            cleanedHtml = snapshotCleanFromDocument(doc);
+        } catch (err) {
+            console.warn("[PreviewEditor] failed to clean snapshot HTML", err);
+        }
+
+        setHtmlDraft(cleanedHtml);
+        setPreviewHtml(cleanedHtml);
+        setDirty(true);
+        if (onLiveHtml) onLiveHtml(cleanedHtml);
+    }
+
+    function handleUndoLastChange() {
+        if (!history.length) return;
+
+        const last = history[history.length - 1];
+        applySnapshotHtml(last.html);
+
+        // drop the last snapshot so repeated clicks walk back in time
+        setHistory((prev) => (prev.length ? prev.slice(0, prev.length - 1) : prev));
+    }
+
 
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -1742,9 +1770,9 @@ export default function PreviewEditor({
     }, [previewHtml, activePageId, allPages]);
 
     const [uiScale, setUiScale] = useState<number>(() => {
-        if (typeof window === "undefined") return 0.80
+        if (typeof window === "undefined") return 0.75
         const v = Number(localStorage.getItem("kloner:uiScale"));
-        return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : 0.80
+        return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : 0.75
     });
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -2763,6 +2791,38 @@ export default function PreviewEditor({
         [device]
     );
 
+    const handleNativeUndo = () => {
+        try {
+            const iframe = iframeRef.current;
+
+            // Prefer undo inside the iframe (where the user is editing)
+            if (iframe?.contentWindow?.document) {
+                const doc = iframe.contentWindow.document as Document & {
+                    execCommand?: (commandId: string) => boolean;
+                };
+
+                if (typeof doc.execCommand === "function") {
+                    doc.execCommand("undo");
+                    return;
+                }
+            }
+
+            // Fallback: undo in the host document (if something here has focus)
+            if (typeof document !== "undefined") {
+                const anyDoc = document as Document & {
+                    execCommand?: (commandId: string) => boolean;
+                };
+
+                if (typeof anyDoc.execCommand === "function") {
+                    anyDoc.execCommand("undo");
+                }
+            }
+        } catch (err) {
+            console.warn("[PreviewEditor] native undo failed", err);
+        }
+    };
+
+
     const performClose = useCallback(
         async (closeMode: "save" | "discard") => {
             if (closing) return;
@@ -3735,6 +3795,9 @@ export default function PreviewEditor({
                                     </div>
                                 )} */}
 
+                                {/* Revert / undo overlay sitting on top of the frame */}
+
+
                                 {mode === "screenshot" && (
                                     <div className="text-xs text-slate-600">
                                         Edit in Preview, apply with “Apply changes".
@@ -3891,6 +3954,23 @@ export default function PreviewEditor({
                             </div>
                         )}
 
+                        {mode === "preview" && (
+                            <div className="mt-3 flex justify-center"
+                                id="kloner-undo">
+                                <button
+                                    type="button"
+                                    onClick={handleNativeUndo}
+                                    className="z-[60] inline-flex items-center justify-center max-w-[180px] gap-2
+                                     rounded-full bg-accent px-4 py-1.5 text-[20px] font-semibold text-white
+                                      shadow-md border border-neutral-200 hover:shadow-lg active:scale-[.97]"
+                                    title="Undo last change"
+                                >
+                                    <RotateCcw className="h-5 w-5" />
+                                    <span>Undo</span>
+                                </button>
+                            </div>
+                        )}
+
                         {showSaveNudge && (
                             <div className="mt-4 flex justify-center mt-3pointer-events-none z-[96] rounded-full bg-emerald-600 text-white hover:brightness-95 shadow-lg px-4 py-2 text-sm">
                                 This is a one-time friendly reminder to save or apply your changes as you edit, so you don’t lose them.
@@ -3985,10 +4065,12 @@ export default function PreviewEditor({
 
                         {/* Right-side history menu (top-right overlay) */}
                         {historyOpen ? (
-                            <div className="hidden lg:block absolute top-20 right-3 z-[80] w-72 max-h-[70vh]">
+                            <div
+                                id="kloner-history"
+                                className="hidden lg:block absolute top-20 right-3 z-[80] w-72 max-h-[70vh]">
                                 <div className="flex flex-col rounded-lg border border-neutral-200 bg-white/95 shadow-lg">
                                     <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-200">
-                                        <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                                        <div className="text-[13px] font-semibold uppercase tracking-wide text-neutral-500">
                                             Edit history
                                         </div>
                                         <button
