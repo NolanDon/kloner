@@ -76,7 +76,7 @@ import { UrlDoc } from "../page";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 import { archiveRender, resolveStorageUrl, useResolvedImg } from "@/src/lib/renders";
 import { AnimatePresence, motion } from "framer-motion";
-import { sanitizeName } from "@/components/helpers";
+import { extractArchivedPageIdsFromRender, getArchivedRoutesForRender, persistArchivedPageIds, scrubArchivedRoutes, withArchivedPageIds } from "@/components/helpers";
 
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
@@ -100,8 +100,11 @@ export type KlonerRender = {
     htmlByteLength?: number | null;
     // NEW
     seoMetaByPage?: SeoMetaByPage | null;
-};
 
+    // PROGRESS (matches backend progress implementation)
+    progressLabel?: string | null;
+    progressPercent?: number | null;
+};
 
 type Shot = {
     path: string;
@@ -115,6 +118,7 @@ type Shot = {
     status?: string;
     bytes?: number;
 };
+
 const RenderCard = memo(
     RenderCardInner,
     (prev, next) => {
@@ -130,6 +134,8 @@ const RenderCard = memo(
             (a.lastExportedAt || "") === (b.lastExportedAt || "") &&
             (a.siteConfigId || "") === (b.siteConfigId || "") &&
             (a.controllerVersion || "") === (b.controllerVersion || "") &&
+            (a.progressLabel || "") === (b.progressLabel || "") &&
+            (a.progressPercent || null) === (b.progressPercent || null) &&
             prev.isDeleting === next.isDeleting &&
             prev.isOpening === next.isOpening &&
             prev.hardLocked === next.hardLocked &&
@@ -139,7 +145,6 @@ const RenderCard = memo(
         );
     },
 );
-
 
 export type RenderDoc = {
     url?: string | null;
@@ -161,6 +166,10 @@ export type RenderDoc = {
     vercelProjectName?: string | null;
     lastDeployUrl?: string | null;
     seoMetaByPage?: SeoMetaByPage | null;
+
+    // PROGRESS (matches backend progress implementation)
+    progressLabel?: string | null;
+    progressPercent?: number | null;
 };
 
 type ToastMsg = {
@@ -168,7 +177,6 @@ type ToastMsg = {
     text: string;
     tone?: "ok" | "warn" | "err";
 };
-
 
 type RenderCardProps = {
     r: { id: string } & RenderDoc;
@@ -187,7 +195,6 @@ type RenderCardProps = {
     setShowCreditsPaywall: (mode: "deploy" | null) => void;
     push: (message: string, level?: string) => void;
 };
-
 
 function RenderCardInner({
     r,
@@ -223,6 +230,25 @@ function RenderCardInner({
 
     const controllerVersion =
         typeof r.controllerVersion === "string" ? r.controllerVersion : "";
+
+    // PROGRESS: normalize backend values
+    const normalizedProgressPercent =
+        typeof r.progressPercent === "number" && !Number.isNaN(r.progressPercent)
+            ? Math.min(100, Math.max(0, r.progressPercent))
+            : null;
+
+    const normalizedProgressLabel =
+        r.progressLabel ||
+        (isDeploying
+            ? "Deploying…"
+            : isQueued
+                ? "Building preview…"
+                : hardLocked
+                    ? "Working…"
+                    : null);
+
+    const hasProgressInfo =
+        !!normalizedProgressLabel || normalizedProgressPercent !== null;
 
     const [shareOpen, setShareOpen] = useState(false);
     const [shareRemixable, setShareRemixable] = useState(true);
@@ -352,9 +378,6 @@ function RenderCardInner({
 
             onShareWithCommunity?.(r.id as any);
             setShareOpen(false);
-            // optional reset:
-            // hasEditedShareNameRef.current = false;
-            // setShareProjectName("");
         } catch (err: any) {
             console.error("Failed to share community build", err);
             setShareError(err?.message || "Failed to share community build");
@@ -365,7 +388,6 @@ function RenderCardInner({
             setShareBusy(false);
         }
     }
-
 
     useEffect(() => {
         let cancelled = false;
@@ -422,8 +444,8 @@ function RenderCardInner({
     return (
         <div
             className={`relative flex flex-col overflow-visible rounded-xl border bg-white shadow-sm ${isArchivedFlag
-                ? "border-amber-300/70 bg-amber-50/50"
-                : "border-neutral-200"
+                    ? "border-amber-300/70 bg-amber-50/50"
+                    : "border-neutral-200"
                 }`}
         >
             {isArchivedFlag && (
@@ -469,6 +491,7 @@ function RenderCardInner({
 
                 <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
                     <div className="pointer-events-auto flex max-w-xs flex-col items-stretch gap-2 rounded-xl border border-neutral-200 bg-white/80 p-3 shadow-lg backdrop-blur-sm md:max-w-sm text-xs">
+                        {/* top row: deploy / customize */}
                         <div className="flex w-full flex-col gap-2 sm:flex-row">
                             <button
                                 onClick={
@@ -486,8 +509,8 @@ function RenderCardInner({
                                     isDeploying
                                 }
                                 className={`group flex-1 inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-xs ${isArchivedFlag
-                                    ? "cursor-not-allowed border border-neutral-300 bg-neutral-50 text-neutral-400"
-                                    : "border border-neutral-300 bg-accent text-white shadow-sm hover:bg-accent/90 disabled:opacity-60"
+                                        ? "cursor-not-allowed border border-neutral-300 bg-neutral-50 text-neutral-400"
+                                        : "border border-neutral-300 bg-accent text-white shadow-sm hover:bg-accent/90 disabled:opacity-60"
                                     }`}
                                 title={
                                     isArchivedFlag
@@ -542,6 +565,33 @@ function RenderCardInner({
                             )}
                         </div>
 
+                        {/* PROGRESS BAR / STATUS BLOCK – replaces generic “Locked…” when data exists */}
+                        {hasProgressInfo && (
+                            <div className="mt-1 w-full">
+                                <div className="mb-1 flex items-center justify-between text-[10px] text-neutral-600">
+                                    <span className="truncate max-w-[70%]">
+                                        {normalizedProgressLabel}
+                                    </span>
+                                    {normalizedProgressPercent !== null && (
+                                        <span className="font-semibold">
+                                            {Math.round(normalizedProgressPercent)}%
+                                        </span>
+                                    )}
+                                </div>
+                                {normalizedProgressPercent !== null && (
+                                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200/80">
+                                        <div
+                                            className="h-full rounded-full bg-accent transition-[width] duration-300 ease-out"
+                                            style={{
+                                                width: `${normalizedProgressPercent}%`,
+                                            }}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* bottom row: open site / share / archive */}
                         <div className="flex w-full flex-wrap items-center justify-between gap-1">
                             {r.siteConfigId && (
                                 <button
@@ -593,8 +643,8 @@ function RenderCardInner({
                                                 onClick={handleArchiveClick}
                                                 disabled={isDeleting || isDeploying}
                                                 className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] shadow-sm ${isArchivedFlag
-                                                    ? "border-amber-500 bg-amber-50 text-amber-900 hover:bg-amber-100"
-                                                    : "border-neutral-300 bg-white/60 text-neutral-700 hover:border-neutral-400"
+                                                        ? "border-amber-500 bg-amber-50 text-amber-900 hover:bg-amber-100"
+                                                        : "border-neutral-300 bg-white/60 text-neutral-700 hover:border-neutral-400"
                                                     }`}
                                                 title={
                                                     isArchivedFlag
@@ -638,17 +688,24 @@ function RenderCardInner({
                                                     hasEditedShareNameRef.current = true;
 
                                                     const forbidden =
-                                                        /\.(com|ca|org|net|io|co|app|dev)\b/i.test(v) ||
+                                                        /\.(com|ca|org|net|io|co|app|dev)\b/i.test(
+                                                            v,
+                                                        ) ||
                                                         /\bwww\./i.test(v) ||
                                                         /\bhttps?:\/\//i.test(v) ||
                                                         /\.\w{2,}$/i.test(v);
 
-                                                    const allowed = /^[a-zA-Z0-9\- ]*$/.test(v);
+                                                    const allowed =
+                                                        /^[a-zA-Z0-9\- ]*$/.test(v);
 
                                                     if (forbidden) {
-                                                        setShareError("Remove .com/.ca/www and any dots or URLs.");
+                                                        setShareError(
+                                                            "Remove .com/.ca/www and any dots or URLs.",
+                                                        );
                                                     } else if (!allowed) {
-                                                        setShareError("Use only letters, numbers, spaces, and dashes.");
+                                                        setShareError(
+                                                            "Use only letters, numbers, spaces, and dashes.",
+                                                        );
                                                     } else {
                                                         setShareError(null);
                                                     }
@@ -657,11 +714,10 @@ function RenderCardInner({
                                                 }}
                                                 placeholder="e.g. cookie gift landing, portfolio v2"
                                                 className={`w-full rounded-md border px-2 py-1 text-[10px] bg-white text-neutral-800 placeholder:text-neutral-400 focus:outline-none focus:ring-1 ${shareError
-                                                    ? "border-red-500 focus:ring-red-500"
-                                                    : "border-neutral-300 focus:ring-accent"
+                                                        ? "border-red-500 focus:ring-red-500"
+                                                        : "border-neutral-300 focus:ring-accent"
                                                     }`}
                                             />
-
 
                                             <div className="min-h-[14px] mt-0.5">
                                                 {shareError && (
@@ -710,7 +766,8 @@ function RenderCardInner({
 
                 {isDeleting && <CenterSpinner />}
 
-                {(isQueued || hardLocked || isDeploying) && (
+                {/* only show generic overlay spinner when we do NOT have progress info */}
+                {(isQueued || hardLocked || isDeploying) && !hasProgressInfo && (
                     <CenterSpinner
                         label={
                             isDeploying
@@ -736,12 +793,9 @@ function RenderCardInner({
                     />
                 </div>
             )}
-
         </div>
     );
 }
-
-
 
 
 /* ───────── toasts ───────── */
@@ -2329,8 +2383,9 @@ export default function PreviewPage(): JSX.Element {
             if (resolvedRenderId) {
                 setDeployWizardRenderId(resolvedRenderId);
 
-                const target = renders.find((r) => r.id === resolvedRenderId);
-                setDeployWizardProjectName(target?.nameHint || "");
+                setDeployWizardProjectName("your-website");
+                // const target = renders.find((r) => r.id === resolvedRenderId);
+                // setDeployWizardProjectName(target?.nameHint || "");
             } else {
                 setDeployWizardRenderId(null);
                 setDeployWizardProjectName("");
@@ -2419,8 +2474,12 @@ export default function PreviewPage(): JSX.Element {
 
         const csrf = await ensureSessionAndCsrf();
 
+        // derive archived routes for this render and scrub them out of the HTML
+        const archivedRoutes = getArchivedRoutesForRender(resolvedRenderId, renders);
+        const scrubbedHtml = scrubArchivedRoutes(html, archivedRoutes);
+
         const finalHtml = await buildFinalExport({
-            html,
+            html: scrubbedHtml,
             user,
             draftId: resolvedRenderId,
             fallbackSeoMetaByPage: activeSeoMetaByPage as SeoMetaByPage | null,
@@ -2526,20 +2585,50 @@ export default function PreviewPage(): JSX.Element {
         }
     }
 
+
+    const activeRender = useMemo(
+        () => renders.find((r) => r.id === activeRenderId) || null,
+        [renders, activeRenderId]
+    );
+
     const saveDraft = useCallback(
         async (payload: {
             draftId?: string;
             html: string;
             meta: {
                 nameHint?: string;
-                device: string;
-                mode: string;
+                device: any;
+                mode: any;
+                pageId?: string;
+                archivedPageIds?: string[];
             };
             version: number;
         }) => {
             if (!user) return;
 
             const rid = payload.draftId || activeRenderId;
+            const trimmedNameHint =
+                typeof payload.meta?.nameHint === "string"
+                    ? payload.meta.nameHint.trim()
+                    : "";
+
+            const safeNameHint =
+                trimmedNameHint ||
+                (targetUrl ? new URL(targetUrl).hostname : null);
+
+            const safeArchivedPageIds = Array.isArray(
+                payload.meta?.archivedPageIds
+            )
+                ? payload.meta.archivedPageIds.filter(Boolean)
+                : [];
+
+            const baseMeta = {
+                // meta is just for editor context, not the canonical archive list
+                device: payload.meta.device,
+                mode: payload.meta.mode,
+                pageId: payload.meta.pageId || "/",
+                ...(safeNameHint ? { nameHint: safeNameHint } : {}),
+            };
 
             if (!rid) {
                 const created = await addDoc(
@@ -2551,24 +2640,21 @@ export default function PreviewPage(): JSX.Element {
                     ),
                     {
                         url: targetUrl || null,
-                        urlHash: targetUrl
-                            ? hash64(targetUrl)
-                            : null,
+                        urlHash: targetUrl ? hash64(targetUrl) : null,
                         key: null,
                         referenceImage: editorRefImg || null,
                         html: payload.html,
-                        nameHint:
-                            payload.meta?.nameHint ||
-                            (targetUrl
-                                ? new URL(targetUrl).hostname
-                                : null),
+                        nameHint: safeNameHint,
                         status: "ready",
                         archived: false,
+                        archivedPageIds: safeArchivedPageIds,
                         version: payload.version || 1,
                         createdAt: serverTimestamp(),
                         updatedAt: serverTimestamp(),
+                        meta: baseMeta,
                     } as any
                 );
+
                 setActiveRenderId(created.id);
                 push("Draft saved", "ok");
                 await refreshRenders();
@@ -2583,21 +2669,18 @@ export default function PreviewPage(): JSX.Element {
                     ),
                     {
                         url: targetUrl || null,
-                        urlHash: targetUrl
-                            ? hash64(targetUrl)
-                            : null,
+                        urlHash: targetUrl ? hash64(targetUrl) : null,
                         html: payload.html,
                         referenceImage: editorRefImg || null,
-                        nameHint:
-                            payload.meta?.nameHint ||
-                            (targetUrl
-                                ? new URL(targetUrl).hostname
-                                : null),
+                        nameHint: safeNameHint,
+                        archivedPageIds: safeArchivedPageIds,
                         version: payload.version || 1,
                         updatedAt: serverTimestamp(),
+                        meta: baseMeta,
                     },
                     { merge: true }
                 );
+
                 push("Draft updated", "ok");
                 await refreshRenders();
             }
@@ -2612,6 +2695,7 @@ export default function PreviewPage(): JSX.Element {
         ]
     );
 
+
     const shotsPollRef =
         useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -2623,6 +2707,19 @@ export default function PreviewPage(): JSX.Element {
         },
         []
     );
+
+    const handleArchivedPageIdsChange = async (ids: string[]) => {
+        if (!user || !activeRenderId) return;
+
+        await persistArchivedPageIds({
+            userId: user.uid,
+            renderId: activeRenderId,
+            ids,
+        });
+
+        setRenders((prev) => withArchivedPageIds(prev, activeRenderId, ids));
+    };
+
 
 
     // const rescan = useCallback(
@@ -3091,6 +3188,8 @@ export default function PreviewPage(): JSX.Element {
     }, [search]);
 
 
+
+
     return (
         <main className="min-h-screen bg-white">
             <div className="mx-auto max-w-[1200px] px-4 sm:px-6 lg:px-10 py-8">
@@ -3456,63 +3555,62 @@ export default function PreviewPage(): JSX.Element {
                     )}
                 </section>
 
-                {
-                    editorOpen && (
-                        <PreviewEditor
-                            initialHtml={editorHtml}
-                            sourceImage={editorRefImg}
-                            initialSeoMetaByPage={activeSeoMetaByPage || undefined}
-                            onClose={() => {
-                                setEditorOpen(false);
-                                setActiveRenderId(undefined);
-                                setActiveSeoMetaByPage(null);
-                            }}
-                            onExport={(html, name) =>
-                                exportToVercel({
-                                    html,
-                                    name,
-                                    renderId: activeRenderId,
-                                })
-                            }
-                            draftId={activeRenderId}
-                            saveDraft={saveDraft}
-                            onLiveHtml={(html) => {
-                                if (!activeRenderId) return;
-                                setRenders((prev) =>
-                                    prev.map((r) =>
-                                        r.id === activeRenderId ? { ...r, html } : r,
-                                    ),
-                                );
-                            }}
-                            onSaveMeta={async (pageId, meta, fullMap) => {
-                                if (!user || !activeRenderId) return;
+                {editorOpen && (
+                    <PreviewEditor
+                        initialHtml={editorHtml}
+                        sourceImage={editorRefImg}
+                        initialSeoMetaByPage={activeSeoMetaByPage || undefined}
+                        initialArchivedPageIds={extractArchivedPageIdsFromRender(activeRender)}
+                        onClose={() => {
+                            setEditorOpen(false);
+                            setActiveRenderId(undefined);
+                            setActiveSeoMetaByPage(null);
+                        }}
+                        onExport={(html, name) =>
+                            exportToVercel({
+                                html,
+                                name,
+                                renderId: activeRenderId,
+                            })
+                        }
+                        draftId={activeRenderId}
+                        saveDraft={saveDraft}
+                        onLiveHtml={(html) => {
+                            if (!activeRenderId) return;
+                            setRenders((prev) =>
+                                prev.map((r) =>
+                                    r.id === activeRenderId ? { ...r, html } : r
+                                )
+                            );
+                        }}
+                        onSaveMeta={async (pageId, meta, fullMap) => {
+                            if (!user || !activeRenderId) return;
 
-                                // 1) persist in Firestore
-                                const dref = doc(
-                                    db,
-                                    "kloner_users",
-                                    user.uid,
-                                    "kloner_renders",
-                                    activeRenderId,
-                                );
-                                await updateDoc(dref, {
-                                    seoMetaByPage: fullMap,
-                                    updatedAt: serverTimestamp(),
-                                });
+                            const dref = doc(
+                                db,
+                                "kloner_users",
+                                user.uid,
+                                "kloner_renders",
+                                activeRenderId
+                            );
 
-                                // 2) keep local render list in sync
-                                setRenders((prev) =>
-                                    prev.map((r) =>
-                                        r.id === activeRenderId ? { ...r, seoMetaByPage: fullMap } : r,
-                                    ),
-                                );
+                            await updateDoc(dref, {
+                                seoMetaByPage: fullMap,
+                                updatedAt: serverTimestamp(),
+                            });
 
-                                // 3) keep active map in sync (so Meta tab shows correct data)
-                                setActiveSeoMetaByPage(fullMap);
-                            }}
-                        />
-                    )
-                }
+                            setRenders((prev) =>
+                                prev.map((r) =>
+                                    r.id === activeRenderId
+                                        ? { ...r, seoMetaByPage: fullMap }
+                                        : r
+                                )
+                            );
+
+                            setActiveSeoMetaByPage(fullMap);
+                        }}
+                    />
+                )}
 
 
                 {/* deploy wizard */}

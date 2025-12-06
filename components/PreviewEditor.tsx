@@ -5,8 +5,8 @@ import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 import { useEffect, useMemo, useRef, useState, useCallback, ChangeEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
-type Device = "desktop" | "tablet" | "mobile";
-type ViewMode = "code" | "preview" | "screenshot";
+export type Device = "desktop" | "tablet" | "mobile";
+export type ViewMode = "code" | "preview" | "screenshot";
 
 type EditorPage = {
     id: string; // should match data-route when possible
@@ -20,43 +20,7 @@ export interface SeoMeta {
     description?: string;
     ogImageUrl?: string;
     faviconUrl?: string;
-    // NEW: raw JSON-LD object for this page
     jsonLd?: unknown;
-}
-
-
-async function deleteAssetsOnServer(paths: string[]) {
-    if (!paths.length) return;
-
-    try {
-        const csrf = await ensureSessionAndCsrf?.();
-        const res = await fetch("/api/user-blob/delete", {
-            method: "POST",
-            headers: {
-                "content-type": "application/json",
-                ...(csrf ? { "x-csrf": csrf } : {}),
-            },
-            credentials: "include",
-            body: JSON.stringify({ paths }),
-        });
-
-        const body = await res.json().catch(() => ({} as any));
-
-        console.log("[deleteAssetsOnServer] response", {
-            ok: res.ok,
-            status: res.status,
-            body,
-        });
-
-        if (!res.ok) {
-            console.error("[deleteAssetsOnServer] failed", {
-                status: res.status,
-                body,
-            });
-        }
-    } catch (err) {
-        console.error("[deleteAssetsOnServer] error", err);
-    }
 }
 
 
@@ -77,6 +41,8 @@ function requestDeleteAssetsByPaths(paths: string[]) {
 type Props = {
     initialHtml: string;
     sourceImage?: string;
+    initialArchivedPageIds?: string[];
+    onArchivedPageIdsChange?: (ids: string[]) => void;
     onClose: () => Promise<void> | void;
     onExport: (html: string, name?: string, skipBuildFinalExport?: boolean) => Promise<void>;
     draftId?: string;
@@ -88,6 +54,7 @@ type Props = {
             device: Device;
             mode: ViewMode;
             pageId?: string;
+            archivedPageIds?: any;
         };
         version: number;
     }) => Promise<void>;
@@ -115,10 +82,11 @@ const ACCENT = "#f55f2a";
 const STORAGE_KEY = (id?: string) => `kloner:draft:${id || "default"}`;
 const SAVE_NUDGE_KEY = "kloner_save_nudge_seen";
 
-type SelectionMeta = {
+export type SelectionMeta = {
     has: boolean;
     tagName?: string;
     path?: string | null;
+    rect?: any;
 };
 
 const FONT_OPTIONS = [
@@ -126,41 +94,245 @@ const FONT_OPTIONS = [
         id: "system-sans",
         label: "System Sans",
         css: '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
     },
     {
         id: "system-serif",
         label: "System Serif",
         css: 'Georgia, "Times New Roman", Times, serif',
+        sample: "Inter – The quick brown fox",
+
     },
     {
         id: "inter",
         label: "Inter",
         css: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
     },
     {
         id: "roboto",
         label: "Roboto",
         css: '"Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
     },
     {
         id: "poppins",
         label: "Poppins",
         css: '"Poppins", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
     },
     {
         id: "space-grotesk",
         label: "Space Grotesk",
         css: '"Space Grotesk", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+        sample: "Inter – The quick brown fox",
+
     },
     {
         id: "playfair",
         label: "Playfair Display",
         css: '"Playfair Display", Georgia, "Times New Roman", Times, serif',
+        sample: "Inter – The quick brown fox",
+
     },
     {
         id: "mono",
         label: "Monospace",
         css: '"SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+        sample: "Inter – The quick brown fox",
+
+    },
+
+    // Modern Sans – primary choices
+    {
+        id: "plus-jakarta-sans",
+        label: "Plus Jakarta Sans",
+        css: '"Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "manrope",
+        label: "Manrope",
+        css: '"Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "dm-sans",
+        label: "DM Sans",
+        css: '"DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "nunito-sans",
+        label: "Nunito Sans",
+        css: '"Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "work-sans",
+        label: "Work Sans",
+        css: '"Work Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "urbanist",
+        label: "Urbanist",
+        css: '"Urbanist", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "outfit",
+        label: "Outfit",
+        css: '"Outfit", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "sora",
+        label: "Sora",
+        css: '"Sora", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "lexend",
+        label: "Lexend",
+        css: '"Lexend", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "rubik",
+        label: "Rubik",
+        css: '"Rubik", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "archivo",
+        label: "Archivo",
+        css: '"Archivo", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "mulish",
+        label: "Mulish",
+        css: '"Mulish", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "source-sans-3",
+        label: "Source Sans 3",
+        css: '"Source Sans 3", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "ibm-plex-sans",
+        label: "IBM Plex Sans",
+        css: '"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "open-sans",
+        label: "Open Sans",
+        css: '"Open Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "lato",
+        label: "Lato",
+        css: '"Lato", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "montserrat",
+        label: "Montserrat",
+        css: '"Montserrat", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "raleway",
+        label: "Raleway",
+        css: '"Raleway", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+
+    // Modern Serif / Display
+    {
+        id: "dm-serif-display",
+        label: "DM Serif Display",
+        css: '"DM Serif Display", Georgia, "Times New Roman", Times, serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "lora",
+        label: "Lora",
+        css: '"Lora", Georgia, "Times New Roman", Times, serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "merriweather",
+        label: "Merriweather",
+        css: '"Merriweather", Georgia, "Times New Roman", Times, serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "fraunces",
+        label: "Fraunces",
+        css: '"Fraunces", Georgia, "Times New Roman", Times, serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "cormorant-garamond",
+        label: "Cormorant Garamond",
+        css: '"Cormorant Garamond", Georgia, "Times New Roman", Times, serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+
+    // Extra modern sans options
+    {
+        id: "barlow",
+        label: "Barlow",
+        css: '"Barlow", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "karla",
+        label: "Karla",
+        css: '"Karla", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "cabin",
+        label: "Cabin",
+        css: '"Cabin", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
     },
 ];
 
@@ -476,24 +648,14 @@ import { db } from "@/lib/firebase"; // or wherever your db is
 import type { User as FirebaseUser } from "firebase/auth";
 import { RenderDoc } from "@/app/dashboard/view/page";
 import { useAuth } from "@/src/hooks/useAuth";
-import { Loader2, Rocket, RotateCcw } from "lucide-react";
+import { Eye, Loader2, Monitor, Rocket, RotateCcw, Smartphone, Tablet } from "lucide-react";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { sanitizeImageName } from "./helpers";
 import AiEditPanel from "./editor/AiEditPanel";
 import { PreviewEditorTour } from "./PreviewEditorTour";
-
-
-// ───────── SEO helpers for export ─────────
-
-// extend the existing source type to cover all cases we need
-type DraftSnapshotSource = "manual" | "auto" | "before-ai" | "apply";
-
-type DraftSnapshot = {
-    id: string;
-    createdAt: number;
-    source: DraftSnapshotSource;
-    html: string;
-};
+import { injectEditableOverlay } from "@/src/lib/klonerIframeRuntime";
+import { MetaSettings, UploadedAsset } from "./MetaSettings";
+import { FloatingBlockToolbar } from "@/src/lib/floatingToolbar";
 
 const MAX_HISTORY_SNAPSHOTS = 40;
 
@@ -824,11 +986,6 @@ function derivePagesFromHtml(html: string): EditorPage[] {
     }
 }
 
-type UploadedAsset = {
-    url: string;
-    path: string;
-};
-
 type DerivedTheme = {
     textColors: string[];
     bgColors: string[];
@@ -929,6 +1086,19 @@ function deriveThemeFromInitialHtml(html: string | undefined | null): DerivedThe
     };
 }
 
+interface AiEditSuggestion { createdAt: string, afterHtml: string, id: string; renderId: string; prompt: string; summary: string; beforeHtml: string; }
+
+type DraftSnapshotSource = "manual" | "auto" | "before-ai" | "apply" | "ai";
+
+type DraftSnapshot = {
+    id: string;
+    createdAt: number;
+    html: string;
+    source: DraftSnapshotSource;
+    summary?: string;
+    prompt?: string;
+};
+
 const SINGLE_PAGE_KEY = "__single__";
 
 export default function PreviewEditor({
@@ -942,9 +1112,11 @@ export default function PreviewEditor({
     pages,
     initialPageId,
     onPageHtmlChange,
+    initialArchivedPageIds,
     initialSeoMeta,
     onSaveMeta,
     initialSeoMetaByPage,
+    onArchivedPageIdsChange,
 }: Props) {
     const [nameHint, setNameHint] = useState<string>("");
     const [version, setVersion] = useState<number>(1);
@@ -970,26 +1142,150 @@ export default function PreviewEditor({
     const [derivedPages, setDerivedPages] = useState<EditorPage[]>([]);
     const [pageSwitchConfirm, setPageSwitchConfirm] = useState<{ targetId: string } | null>(null);
     const [aiPreviewHtml, setAiPreviewHtml] = useState<string | null>(null);
-    const [archivedPageIds, setArchivedPageIds] = useState<string[]>([]);
-    const [selectionMeta, setSelectionMeta] = useState<SelectionMeta>({ has: false });
-    const [lastSelectedPath, setLastSelectedPath] = useState<string | null>(null);
     const [showSaveNudge, setShowSaveNudge] = useState(false);
     const [saveNudgeArmed, setSaveNudgeArmed] = useState(false);
     const [history, setHistory] = useState<DraftSnapshot[]>([]);
+    const [aiHistory, setAiHistory] = useState<AiEditSuggestion[]>([]);
 
+    // Custom colors
+    const [customTextColor, setCustomTextColor] = useState<string>("#000000");
+    const [customBgColor, setCustomBgColor] = useState<string>("#ffffff");
+    const [selectionMeta, setSelectionMeta] = useState<SelectionMeta>({ has: false });
+    const [lastSelectedPath, setLastSelectedPath] = useState(null);
     const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
+    const [archivedPageIds, setArchivedPageIds] = useState<string[]>([]);
+
+
+    useEffect(() => {
+        const win = iframeRef.current?.contentWindow as any;
+        if (!win?.__klonerApi?.setDevice) return;
+        try {
+            win.__klonerApi.setDevice(device);
+        } catch {
+            // ignore
+        }
+    }, [device]);
+
+    useEffect(() => {
+        if (Array.isArray(initialArchivedPageIds)) {
+            const next = initialArchivedPageIds.filter(
+                (v) => typeof v === "string" && v.trim().length > 0
+            );
+            setArchivedPageIds(next);
+        } else {
+            setArchivedPageIds([]);
+        }
+    }, [initialArchivedPageIds]);
+
+    function pushArchivedIds(updater: (prev: string[]) => string[]) {
+        setArchivedPageIds((prev) => {
+            const next = updater(prev);
+            if (onArchivedPageIdsChange) {
+                onArchivedPageIdsChange(next);
+            }
+            return next;
+        });
+    }
+
+    function archivePage(pageId: string) {
+        if (
+            !window.confirm(
+                "Archive this page? It will be removed from the preview and export, but you can restore it later."
+            )
+        ) {
+            return;
+        }
+
+        // update in-editor + propagate up
+        pushArchivedIds((prev) =>
+            prev.includes(pageId) ? prev : [...prev, pageId]
+        );
+
+        setHtmlDraft((prev) => {
+            if (!prev) return prev;
+
+            const next = removePageFromHtmlById(prev, pageId); // your existing logic
+
+            setPreviewHtml(next);
+            if (onLiveHtml) onLiveHtml(next);
+            setDirty(true);
+
+            return next;
+        });
+    }
+
+    function restorePageInHtmlById(html: string, pageId: string): string {
+        if (!html) return html;
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, "text/html");
+
+            const nodes = doc.querySelectorAll<HTMLElement>(
+                `[data-kloner-page-id="${pageId}"]`
+            );
+
+            nodes.forEach((node) => {
+                node.removeAttribute("data-kloner-archived");
+                if (node.style.display === "none") {
+                    node.style.display = "";
+                }
+            });
+
+            return "<!doctype html>\n" + doc.documentElement.outerHTML;
+        } catch (err) {
+            console.warn("[restorePageInHtmlById] failed", err);
+            return html;
+        }
+    }
+
+    const restorePage = (pageId: string) => {
+        // drop from archive list + propagate up
+        pushArchivedIds((prev) => prev.filter((id) => id !== pageId));
+
+        setHtmlDraft((prev) => {
+            if (!prev) return prev;
+            const next = restorePageInHtmlById(prev, pageId);
+            setPreviewHtml(next);
+            if (onLiveHtml) onLiveHtml(next);
+            setDirty(true);
+            return next;
+        });
+    };
+
+    function aiSuggestionToSnapshot(s: AiEditSuggestion): DraftSnapshot {
+        let createdMs: number | null = null;
+
+        if (s.createdAt) {
+            const t = new Date(s.createdAt as any).getTime();
+            createdMs = Number.isNaN(t) ? null : t;
+        }
+
+        return {
+            id: `ai-${s.id}`,
+            html: s.afterHtml,
+            createdAt: createdMs ?? 0, // or keep 0 so unknown ones sink to the bottom
+            source: "ai",
+            summary: s.summary,
+            prompt: s.prompt,
+        };
+    }
+
+
+    const mergedHistory: DraftSnapshot[] = [
+        ...history,
+        ...aiHistory.map(aiSuggestionToSnapshot),
+    ].sort((a, b) => b.createdAt - a.createdAt);
 
     type HtmlSnapshotSource = "manual" | "autosave" | "before-ai" | "apply";
 
     type HtmlSnapshot = {
         id: string;
         createdAt: number;
+        summary: any;
         source: any;
         html: string;
+        prompt: any;
     };
-
-    // if you already use DraftSnapshot elsewhere, just alias:
-    type DraftSnapshot = HtmlSnapshot;
 
 
     const HISTORY_STORAGE_KEY = (draftId?: string | null) =>
@@ -997,19 +1293,46 @@ export default function PreviewEditor({
 
     // load history from localStorage when draftId changes
     useEffect(() => {
-        if (typeof window === "undefined") return;
-        const key = HISTORY_STORAGE_KEY(draftId);
-        const raw = window.localStorage.getItem(key);
-        if (!raw) return;
-        try {
-            const parsed = JSON.parse(raw) as DraftSnapshot[];
-            if (Array.isArray(parsed)) {
-                setHistory(parsed);
+        if (!draftId) return;
+
+        let cancelled = false;
+
+        async function loadAiHistory() {
+            try {
+                const res = await fetch(
+                    `/api/ai-edit?renderId=${encodeURIComponent(draftId as any)}`,
+                    { credentials: "include" }
+                );
+                if (!res.ok) return;
+
+                const j = await res.json();
+                if (cancelled) return;
+
+                const all: AiEditSuggestion[] = Array.isArray(j.suggestions)
+                    ? j.suggestions
+                    : [];
+
+                const limited = [...all]
+                    .sort((a, b) => {
+                        const aT = new Date(a.createdAt).getTime();
+                        const bT = new Date(b.createdAt).getTime();
+                        return bT - aT;
+                    })
+                    .slice(0, 10);
+
+                setAiHistory(limited);
+            } catch {
+                // ignore
             }
-        } catch {
-            // ignore bad data
         }
+
+        loadAiHistory();
+
+        return () => {
+            cancelled = true;
+        };
     }, [draftId]);
+
 
     // persist history to localStorage
     useEffect(() => {
@@ -1062,54 +1385,28 @@ export default function PreviewEditor({
         if (onLiveHtml) onLiveHtml(cleanedHtml);
     }
 
-    function handleUndoLastChange() {
-        if (!history.length) return;
 
-        const last = history[history.length - 1];
-        applySnapshotHtml(last.html);
-
-        // drop the last snapshot so repeated clicks walk back in time
-        setHistory((prev) => (prev.length ? prev.slice(0, prev.length - 1) : prev));
-    }
-
-
+    // load history from localStorage when draftId changes
     useEffect(() => {
         if (typeof window === "undefined") return;
-
-        const key = HISTORY_KEY(draftId);
+        const key = HISTORY_STORAGE_KEY(draftId);
         const raw = window.localStorage.getItem(key);
-        if (!raw) {
-            setHistory([]);
-            setActiveHistoryId(null);
-            return;
-        }
+        if (!raw) return;
 
         try {
             const parsed = JSON.parse(raw) as DraftSnapshot[];
-            if (Array.isArray(parsed)) {
-                setHistory(parsed);
-                setActiveHistoryId(parsed.length ? parsed[parsed.length - 1].id : null);
-            } else {
-                setHistory([]);
-                setActiveHistoryId(null);
-            }
+            if (!Array.isArray(parsed)) return;
+
+            // keep only the last 10 by createdAt
+            const limited = [...parsed]
+                .sort((a, b) => b.createdAt - a.createdAt)
+                .slice(0, 10);
+
+            setHistory(limited);
         } catch {
-            setHistory([]);
-            setActiveHistoryId(null);
+            // ignore bad data
         }
     }, [draftId]);
-
-
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-        const key = HISTORY_KEY(draftId);
-        try {
-            window.localStorage.setItem(key, JSON.stringify(history));
-        } catch {
-            // ignore quota errors
-        }
-    }, [history, draftId]);
-
 
     // Dont remove
     const localImageStore: Map<string, File> = new Map();
@@ -1135,23 +1432,28 @@ export default function PreviewEditor({
         [allPages, activePageId]
     );
 
-    function archivePage(id: string) {
-        setArchivedPageIds((prev) =>
-            prev.includes(id) ? prev : [...prev, id]
-        );
+    // function archivePageInHtmlById(html: string, pageId: string): string {
+    //     if (!html) return html;
+    //     try {
+    //         const parser = new DOMParser();
+    //         const doc = parser.parseFromString(html, "text/html");
 
-        // if the active page gets archived, switch to the first non-archived page
-        if (id === activePageId && allPages) {
-            const next = allPages.find((p) => !archivedPageIds.includes(p.id) && p.id !== id);
-            if (next) {
-                handlePageSwitch(next.id);
-            }
-        }
-    }
+    //         // assumes page roots have data-kloner-page-id="<pageId>"
+    //         const nodes = doc.querySelectorAll<HTMLElement>(
+    //             `[data-kloner-page-id="${pageId}"]`
+    //         );
 
-    function restorePage(id: string) {
-        setArchivedPageIds((prev) => prev.filter((x) => x !== id));
-    }
+    //         nodes.forEach((node) => {
+    //             node.setAttribute("data-kloner-archived", "1");
+    //             node.style.display = "none";
+    //         });
+
+    //         return "<!doctype html>\n" + doc.documentElement.outerHTML;
+    //     } catch (err) {
+    //         console.warn("[archivePageInHtmlById] failed", err);
+    //         return html;
+    //     }
+    // }
 
 
     function postToEditor(data: any) {
@@ -1242,7 +1544,6 @@ export default function PreviewEditor({
         const doc = iframe.contentDocument;
         if (!doc) return null;
 
-        // Prefer path-based targeting (same as getSelectedBlockHtml)
         const path =
             (selectionMeta && selectionMeta.path) ||
             lastSelectedPath ||
@@ -1418,338 +1719,12 @@ export default function PreviewEditor({
         [initialHtml],
     );
 
-    type MetaWithJsonLd = SeoMeta & {
-        jsonLd?: unknown;
-    };
+    const mergedThemeColors = useMemo(
+        () => Array.from(new Set([...(theme.textColors || []), ...(theme.bgColors || [])])),
+        [theme.textColors, theme.bgColors]
+    );
 
-    type MetaSettingsProps = {
-        draftId?: string;
-        meta: MetaWithJsonLd;
-        uploadFileToUserBlob: (file: File, draftId: string) => Promise<UploadedAsset>;
-        onSaveMeta?: (meta: MetaWithJsonLd) => Promise<void> | void;
-    };
-
-    function MetaSettings({
-        draftId,
-        meta,
-        uploadFileToUserBlob,
-        onSaveMeta,
-    }: MetaSettingsProps) {
-        const [uploading, setUploading] = useState(false);
-
-        // save state + hard debounce guard
-        const [saving, setSaving] = useState(false);
-        const savingRef = useRef(false);
-        const [justSaved, setJustSaved] = useState(false);
-
-        // local meta copy
-        const [draftMeta, setDraftMeta] = useState<MetaWithJsonLd>(meta);
-
-        // JSON-LD text version for editing
-        const [jsonText, setJsonText] = useState<string>(() =>
-            meta.jsonLd ? JSON.stringify(meta.jsonLd, null, 2) : ""
-        );
-
-        useEffect(() => {
-            function handleMessage(event: MessageEvent) {
-                const data = event.data;
-                if (!data || typeof data !== "object") return;
-
-                if (data.type === "kloner:selection-changed") {
-                    const nextMeta: SelectionMeta = {
-                        has: !!data.has,
-                        path: data.path ?? data.meta?.path ?? null,
-                        // keep any other fields you use:
-                        // isTextLike: !!data.isTextLike,
-                        // isImage: !!data.isImage,
-                    };
-
-                    setSelectionMeta(nextMeta);
-
-                    // only update lastSelectedPath when we have an active selection
-                    if (nextMeta.has && nextMeta.path) {
-                        setLastSelectedPath(nextMeta.path);
-                    }
-                }
-
-                if (data.type === "kloner:clear-selection") {
-                    // allow the highlight to clear, but keep lastSelectedPath
-                    setSelectionMeta((prev) => ({
-                        ...prev,
-                        has: false,
-                        // DO NOT blank path here
-                    }));
-                }
-            }
-
-            window.addEventListener("message", handleMessage);
-            return () => window.removeEventListener("message", handleMessage);
-        }, []);
-
-
-
-        // when page / meta changes, re-seed form + JSON editor
-        useEffect(() => {
-            setDraftMeta(meta);
-            setJsonText(meta.jsonLd ? JSON.stringify(meta.jsonLd, null, 2) : "");
-        }, [meta]);
-
-        const handleMetaChange = (key: keyof MetaWithJsonLd, value: string) => {
-            setDraftMeta((prev) => ({ ...prev, [key]: value }));
-        };
-
-        useEffect(() => {
-            function handleMessage(event: MessageEvent) {
-                const data = event.data;
-                if (!data || typeof data !== "object") return;
-
-                if (data.type === "kloner:delete-assets") {
-                    const paths = Array.isArray(data.paths) ? data.paths : [];
-                    console.log("[PreviewEditor] kloner:delete-assets", { paths });
-                    deleteAssetsOnServer(paths);
-                }
-            }
-
-            window.addEventListener("message", handleMessage);
-            return () => window.removeEventListener("message", handleMessage);
-        }, []);
-
-
-        const handleMetaSaveClick = async () => {
-            if (!onSaveMeta) return;
-            if (savingRef.current) return;
-
-            savingRef.current = true;
-            setSaving(true);
-            setJustSaved(false);
-
-            try {
-                let parsedJsonLd: unknown | undefined = draftMeta.jsonLd;
-
-                const trimmed = jsonText.trim();
-                if (trimmed.length > 0) {
-                    try {
-                        parsedJsonLd = JSON.parse(trimmed);
-                    } catch (err) {
-                        alert("JSON-LD is not valid JSON. Fix it or clear the field.");
-                        savingRef.current = false;
-                        setSaving(false);
-                        return;
-                    }
-                } else {
-                    parsedJsonLd = undefined;
-                }
-
-                const metaToSave: SeoMeta = {
-                    ...draftMeta,
-                    jsonLd: parsedJsonLd,
-                };
-
-                await onSaveMeta(metaToSave);
-                setJustSaved(true);
-                setTimeout(() => setJustSaved(false), 1500);
-            } finally {
-                savingRef.current = false;
-                setSaving(false);
-            }
-        };
-
-
-        const uploadFavicon = async (e: ChangeEvent<HTMLInputElement>) => {
-            const file = e.target.files?.[0];
-            e.target.value = "";
-
-            if (!file || !draftId) return;
-            if (!file.type.startsWith("image/")) {
-                alert("Please upload a valid image file for the favicon.");
-                return;
-            }
-
-            setUploading(true);
-            try {
-                const { url } = await uploadFileToUserBlob(file, draftId);
-                setDraftMeta((prev) => ({ ...prev, faviconUrl: url }));
-                alert("Favicon uploaded successfully.");
-            } catch (error) {
-                console.error("Favicon upload failed:", error);
-                alert("Favicon upload failed. See console for details.");
-            } finally {
-                setUploading(false);
-            }
-        };
-
-        return (
-            <div className="space-y-4">
-                <h3 className="text-lg font-bold">SEO &amp; Site Metadata</h3>
-
-                {/* Page title */}
-                <div>
-                    <label
-                        htmlFor="meta-title"
-                        className="block text-sm font-medium text-gray-700"
-                    >
-                        Page Title
-                    </label>
-                    <input
-                        id="meta-title"
-                        name="meta-title"
-                        type="text"
-                        value={draftMeta.title ?? ""}
-                        onChange={(e) => handleMetaChange("title", e.target.value)}
-                        placeholder="E.g. Cookie Gifts & Holiday Boxes"
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-accent focus:ring-accent sm:text-sm p-2 border"
-                        maxLength={60}
-                        autoComplete="off"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                        Used in browser tabs and search results. Max 60 characters.
-                    </p>
-                </div>
-
-                {/* Meta description */}
-                <div>
-                    <label
-                        htmlFor="meta-description"
-                        className="block text-sm font-medium text-gray-700"
-                    >
-                        Meta Description
-                    </label>
-                    <textarea
-                        id="meta-description"
-                        name="meta-description"
-                        value={draftMeta.description ?? ""}
-                        onChange={(e) =>
-                            handleMetaChange("description", e.target.value)
-                        }
-                        placeholder="A short, search-friendly summary of this page..."
-                        rows={3}
-                        className="mt-1 min-h-[100px] block w-full rounded-md border-gray-300 shadow-sm focus:border-accent focus:ring-accent sm:text-sm p-2 border"
-                        maxLength={160}
-                        autoComplete="off"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                        Used for search snippets. Max 160 characters.
-                    </p>
-                </div>
-
-                {/* OG image URL */}
-                <div>
-                    <label
-                        htmlFor="meta-og-image"
-                        className="block text-sm font-medium text-gray-700"
-                    >
-                        Social Share Image URL (OpenGraph)
-                    </label>
-                    <input
-                        id="meta-og-image"
-                        name="meta-og-image"
-                        type="url"
-                        value={draftMeta.ogImageUrl ?? ""}
-                        onChange={(e) =>
-                            handleMetaChange("ogImageUrl", e.target.value)
-                        }
-                        placeholder="https://example.com/share.png"
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-accent focus:ring-accent sm:text-sm p-2 border"
-                        autoComplete="off"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                        Image shown when this page is shared on social platforms.
-                    </p>
-                </div>
-
-                {/* Favicon upload */}
-                <div>
-                    <label
-                        htmlFor="meta-favicon"
-                        className="block text-sm font-medium text-gray-700"
-                    >
-                        Favicon
-                    </label>
-                    <div className="flex items-center space-x-3 mt-1">
-                        {draftMeta.faviconUrl ? (
-                            <span className="inline-block w-6 h-6 border rounded-sm flex items-center justify-center overflow-hidden">
-                                <img
-                                    src={draftMeta.faviconUrl}
-                                    alt="Favicon preview"
-                                    className="object-cover w-full h-full"
-                                />
-                            </span>
-                        ) : (
-                            <span className="text-sm text-gray-500">
-                                No favicon uploaded
-                            </span>
-                        )}
-                        <label
-                            className={`cursor-pointer inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md shadow-sm text-white ${uploading
-                                ? "bg-gray-400"
-                                : "bg-orange-600 hover:bg-orange-700"
-                                } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent`}
-                        >
-                            {uploading ? "Uploading..." : "Upload Favicon"}
-                            <input
-                                id="meta-favicon"
-                                name="meta-favicon"
-                                type="file"
-                                accept="image/*"
-                                onChange={uploadFavicon}
-                                disabled={uploading}
-                                className="sr-only"
-                            />
-                        </label>
-                    </div>
-                </div>
-
-                {/* JSON-LD editor */}
-                <div>
-                    <label
-                        htmlFor="meta-jsonld"
-                        className="block text-sm font-medium text-gray-700"
-                    >
-                        JSON-LD (advanced)
-                    </label>
-                    <textarea
-                        id="meta-jsonld"
-                        name="meta-jsonld"
-                        value={jsonText}
-                        onChange={(e) => setJsonText(e.target.value)}
-                        placeholder='{
-                            "@context": "https://schema.org",
-                            "@type": "WebPage",
-                            "name": "The Basic Website — Sample Brand",
-                            "url": "https://example.com/"
-                            }'
-                        rows={10}
-                        className="mt-1 block w-full rounded-md border-gray-300 font-mono text-xs leading-5 shadow-sm focus:border-accent focus:ring-accent p-2 border"
-                        spellCheck={false}
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                        Must be valid JSON. This content will be rendered inside a{" "}
-                        {`<script type="application/ld+json">`} tag for this page.
-                    </p>
-                </div>
-
-                {/* Save meta button with debounce */}
-                <button
-                    type="button"
-                    onClick={handleMetaSaveClick}
-                    disabled={saving}
-                    className={`inline-flex items-center rounded-md px-3 py-2 text-sm font-medium transition ${saving
-                        ? "bg-accent/50 text-white cursor-not-allowed"
-                        : justSaved
-                            ? "bg-accent/50 text-white"
-                            : "bg-accent text-white hover:brightness-95"
-                        }`}
-                >
-                    {saving
-                        ? "Saving..."
-                        : justSaved
-                            ? "Saved Changes"
-                            : "Save Changes"}
-                </button>
-            </div>
-        );
-    }
-
+    const [sidebarHidden, setSidebarHidden] = useState(false);
 
     // inject route-specific CSS into the monolithic HTML for iframe preview
     const renderHtml = useMemo(() => {
@@ -1867,6 +1842,8 @@ export default function PreviewEditor({
                     createdAt: Date.now(),
                     source,
                     html,
+                    summary: undefined,
+                    prompt: undefined
                 };
 
                 const merged = [...prev, snap];
@@ -1961,14 +1938,14 @@ export default function PreviewEditor({
         (snap: DraftSnapshot) => {
             if (!snap) return;
 
-            const confirmRestore =
-                dirty
-                    ? window.confirm(
-                        "Replace the current draft with this version? Unsaved changes will be lost."
-                    )
-                    : true;
+            // const confirmRestore =
+            //     dirty
+            //         ? window.confirm(
+            //             "Replace the current draft with this version? Unsaved changes will be lost."
+            //         )
+            //         : true;
 
-            if (!confirmRestore) return;
+            // if (!confirmRestore) return;
 
             setHtmlDraft(snap.html);
             setPreviewHtml(snap.html);
@@ -1988,7 +1965,7 @@ export default function PreviewEditor({
 
         if (!snapshots.length) {
             return (
-                <div className="text-xs text-gray-500">
+                <div className="text-sm text-gray-500">
                     No history yet. Autosaves and applied versions will appear here.
                 </div>
             );
@@ -1997,12 +1974,12 @@ export default function PreviewEditor({
         const ordered = [...snapshots].sort((a, b) => b.createdAt - a.createdAt);
 
         return (
-            <div className="flex flex-col gap-2 text-xs h-full">
+            <div className="flex flex-col gap-2 text-md h-full">
                 <div className="flex items-center justify-between mb-1">
-                    <h3 className="text-sm font-semibold text-gray-800">
+                    <h3 className="text-md font-semibold text-gray-800">
                         Draft history
                     </h3>
-                    <span className="text-[11px] text-gray-500">
+                    <span className="text-[13px] text-gray-500">
                         {ordered.length} versions
                     </span>
                 </div>
@@ -2016,25 +1993,30 @@ export default function PreviewEditor({
                             className="w-full text-left px-3 py-2 border-b border-gray-100 hover:bg-gray-50 focus:outline-none focus:bg-gray-100"
                         >
                             <div className="flex items-center justify-between">
-                                <span className="font-medium text-[11px] uppercase tracking-wide text-gray-600">
-                                    {snap.source === "auto"
-                                        ? "Autosave"
-                                        : snap.source === "apply"
-                                            ? "Applied"
-                                            : "Manual save"}
+                                <span className="font-semibold text-[13px] uppercase tracking-wide text-gray-600">
+                                    <span className="font-semibold text-[13px] uppercase tracking-wide text-gray-600">
+                                        {snap.source === "auto"
+                                            ? "Autosave"
+                                            : snap.source === "apply"
+                                                ? "Applied"
+                                                : snap.source === "ai"
+                                                    ? "AI change"
+                                                    : "Manual save"}
+                                    </span>
+
                                 </span>
-                                <span className="text-[11px] text-gray-500">
+                                <span className="text-[13px] text-gray-500">
                                     {formatSnapshotTime(snap.createdAt)}
                                 </span>
                             </div>
-                            <p className="mt-0.5 line-clamp-2 text-[11px] text-gray-500">
+                            <p className="mt-0.5 line-clamp-2 text-[13px] text-gray-500">
                                 {formatSnapshotLabel(snap)}
                             </p>
                         </button>
                     ))}
                 </div>
 
-                <p className="text-[10px] text-gray-400 mt-1">
+                <p className="text-[12px] text-gray-700 mt-1">
                     Oldest versions are removed automatically once the list is full.
                 </p>
             </div>
@@ -2061,31 +2043,45 @@ export default function PreviewEditor({
         }, 450);
     }
 
+    const [aiEditing, setAiEditing] = useState(false);
 
     async function doSave(options?: { applyToPreview?: boolean }) {
         if (savingDraft) return;
 
-        // must have a draftId to associate uploads with
         if (!draftId) {
             console.error("doSave called without draftId");
             return;
         }
 
         setSavingDraft(true);
+
         try {
             const doc = iframeRef.current?.contentDocument ?? document;
 
-            // 1) upload any local-only images and rewrite DOM src/src-path
+            // 1) Upload any local-only images and rewrite DOM src/src-path
             await flushPendingImagesBeforeSave({
                 doc,
                 draftId,
             });
 
-            // 2) now capture HTML with final URLs and WITHOUT Kloner toolbar / editor UI
-            const nextHtml = doc
+            // 2) Capture HTML from iframe, without Kloner UI
+            const rawHtml = doc
                 ? snapshotCleanFromDocument(doc)
                 : snapshotFromIframeOrDraft();
 
+            // 3) Apply archive filter: strip all archived pages from the HTML string
+            const currentArchivedIds = Array.isArray(archivedPageIds)
+                ? archivedPageIds
+                : [];
+
+            let nextHtml = rawHtml;
+            if (currentArchivedIds.length > 0) {
+                for (const pageId of currentArchivedIds) {
+                    nextHtml = removePageFromHtmlById(nextHtml, pageId);
+                }
+            }
+
+            // 4) Update local draft state
             setHtmlDraft(nextHtml);
 
             // manual snapshot when user hits save
@@ -2100,17 +2096,41 @@ export default function PreviewEditor({
                 return;
             }
 
+            // ----- build safe meta (no undefined, correct types) -----
+            type SaveDraftMeta = {
+                nameHint?: string;
+                device: Device;
+                mode: ViewMode;
+                pageId?: string;
+                archivedPageIds?: string[];
+            };
+
+            const trimmedNameHint =
+                typeof nameHint === "string" ? nameHint.trim() : "";
+
+            const meta: SaveDraftMeta = {
+                device: device as Device,
+                mode: mode as ViewMode,
+            };
+
+            if (trimmedNameHint) {
+                meta.nameHint = trimmedNameHint;
+            }
+            if (activePageId) {
+                meta.pageId = activePageId;
+            }
+            if (currentArchivedIds.length > 0) {
+                meta.archivedPageIds = currentArchivedIds;
+            }
+            // ---------------------------------------------------------
+
+            // 5) Persist to Firestore (or whatever saveDraft does)
             const nextVersion = version + 1;
 
             await saveDraft({
                 draftId,
                 html: nextHtml,
-                meta: {
-                    nameHint: nameHint || undefined,
-                    device,
-                    mode,
-                    pageId: activePageId || undefined,
-                },
+                meta,
                 version: nextVersion,
             });
 
@@ -2239,7 +2259,6 @@ export default function PreviewEditor({
         }
 
         const docClone = root.cloneNode(true) as HTMLHtmlElement;
-        const head = docClone.querySelector("head");
         const body = docClone.querySelector("body");
 
         if (body) {
@@ -2286,50 +2305,21 @@ export default function PreviewEditor({
 
             // Strip selection/edit attributes
             body.querySelectorAll("[data-kloner-sel]").forEach((n) =>
-                (n as HTMLElement).removeAttribute("data-kloner-sel")
+                (n as HTMLElement).removeAttribute("data-kloner-sel"),
             );
             body.querySelectorAll("[contenteditable]").forEach((n) =>
-                (n as HTMLElement).removeAttribute("contenteditable")
+                (n as HTMLElement).removeAttribute("contenteditable"),
             );
             body.querySelectorAll<HTMLElement>("[data-kloner]").forEach((n) =>
-                n.removeAttribute("data-kloner")
+                n.removeAttribute("data-kloner"),
             );
 
             // Kill any <meta> / <title> that ended up inside <body>
             body.querySelectorAll("meta, title").forEach((n) => n.remove());
         }
 
-        if (head) {
-            // Editor style blocks
-            head.querySelectorAll("[data-kloner-style]").forEach((n) => n.remove());
-            head.querySelectorAll("style[id^='kloner-']").forEach((n) => n.remove());
-
-            // Safety net: nukes any remaining editor styles
-            head.querySelectorAll("style").forEach((s) => {
-                const txt = s.textContent || "";
-                if (
-                    txt.includes(".kloner-toolbar") ||
-                    txt.includes("kloner-style-panel") ||
-                    txt.includes("data-kloner") ||
-                    txt.includes(".kgroup") ||
-                    txt.includes(".kbtn")
-                ) {
-                    s.remove();
-                }
-            });
-
-            // Optional: remove any explicit editor scripts by id or content
-            head.querySelectorAll("script[id^='kloner-']").forEach((n) => n.remove());
-            head.querySelectorAll("script").forEach((s) => {
-                const txt = s.textContent || "";
-                if (
-                    txt.includes("kloner-toolbar") ||
-                    txt.includes("data-kloner")
-                ) {
-                    s.remove();
-                }
-            });
-        }
+        // IMPORTANT: do NOT touch <head> here.
+        // We keep all styles/fonts/scripts so exported pages render correctly.
 
         return "<!doctype html>\n" + (docClone as any).outerHTML;
     }
@@ -2694,7 +2684,7 @@ export default function PreviewEditor({
             }
         }
     }
-    const [historyOpen, setHistoryOpen] = useState(true);
+    const [historyOpen, setHistoryOpen] = useState(false);
 
     // iframe messages: uploads + selection meta + delete-assets
     useEffect(() => {
@@ -2778,6 +2768,19 @@ export default function PreviewEditor({
         window.addEventListener("message", onMsg);
         return () => window.removeEventListener("message", onMsg);
     }, [draftId]);
+
+    useEffect(() => {
+        function handleMessage(ev: MessageEvent) {
+            const data = ev.data;
+            if (!data || data.type !== "kloner:selection") return;
+            const meta = data.meta as SelectionMeta;
+            setSelectionMeta(meta || { has: false });
+        }
+
+        window.addEventListener("message", handleMessage);
+        return () => window.removeEventListener("message", handleMessage);
+    }, []);
+
 
     const sendStyleCommand = useCallback(
         (cmd: StyleCmd) => {
@@ -2863,7 +2866,9 @@ export default function PreviewEditor({
         [allPages, activePage, sourceImage]
     );
 
-    // inside your component render, before the return:
+
+    const iframeWrapperRef = useRef<HTMLDivElement | null>(null);
+
     const iframeNode = (
         <iframe
             key={iframeKey}
@@ -2884,12 +2889,13 @@ export default function PreviewEditor({
                 if (mode === "preview") {
                     injectEditableOverlay(doc, (updated) => {
                         setHtmlDraft(updated);
-                    });
+                    }, device);
                     iframeRef.current?.contentWindow?.focus();
                 }
             }}
         />
     );
+
 
     function snapshotBeforeAiEdit(fullHtml: string) {
         addSnapshot({
@@ -2898,6 +2904,23 @@ export default function PreviewEditor({
             source: "before-ai", // new label
             html: fullHtml
         });
+    }
+
+    // ARCHIVING PAGES
+    function removePageFromHtmlById(rawHtml: string, pageId: string): string {
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(rawHtml, "text/html");
+
+            // assumes your page roots are marked with data-kloner-page-id
+            const roots = doc.querySelectorAll<HTMLElement>(`[data-kloner-page-id="${pageId}"]`);
+            roots.forEach((el) => el.remove());
+
+            return doc.documentElement.outerHTML;
+        } catch (err) {
+            console.warn("[PreviewEditor] failed to remove page from HTML", err);
+            return rawHtml;
+        }
     }
 
     return (
@@ -2918,7 +2941,7 @@ export default function PreviewEditor({
                         else performClose("discard");
                     }}
                     disabled={closing}
-                    className={`absolute top-5 right-5 z-[100] inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs sm:text-sm font-semibold shadow-lg  ${closing
+                    className={`absolute top-5 right-5 z-[100] inline-flex items-center gap-2 rounded-lg px-4 py-2 text-md sm:text-sm font-semibold shadow-lg  ${closing
                         ? "bg-accent text-white cursor-not-allowed"
                         : "bg-accent text-white"
                         }`}
@@ -2929,7 +2952,12 @@ export default function PreviewEditor({
 
 
                 <div
-                    className="bg-white rounded-xl shadow-xl grid grid-cols-[minmax(320px,360px),1fr] gap-4 p-4 max-lg:grid-cols-1"
+                    className={[
+                        "relative bg-white rounded-xl shadow-xl gap-4 p-4",
+                        sidebarHidden
+                            ? "grid grid-cols-1" // full-width canvas when sidebar hidden
+                            : "grid grid-cols-[minmax(320px,360px),1fr] max-lg:grid-cols-1",
+                    ].join(" ")}
                     style={{
                         transform: `scale(${uiScale})`,
                         transformOrigin: "top left",
@@ -2937,238 +2965,286 @@ export default function PreviewEditor({
                         height: `${100 / uiScale}%`,
                     }}
                 >
-                    <aside
-                        className="flex flex-col min-w-0 overflow-auto pr-1 max-lg:order-2"
-                        id="kloner-style-sidebar"
-                    >
-                        {/* NEW: Style/Meta Toggle */}
-                        <div className="inline-flex rounded-md shadow-sm mb-4">
-                            <button
-                                onClick={() => setSidePanelMode("style")}
-                                className={`px-3 py-1 text-lg font-medium rounded-l-md transition-colors ${sidePanelMode === "style"
-                                    ? "bg-accent text-white"
-                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                                    }`}
-                                id="kloner-style-toggle"
-                            >
-                                Edit Styles
-                            </button>
-                            <button
-                                onClick={() => setSidePanelMode("meta")}
-                                className={`px-3 py-1 text-md font-medium rounded-r-md transition-colors ${sidePanelMode === "meta"
-                                    ? "bg-accent text-white"
-                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                                    }`}
-                            >
-                                Edit Meta
-                            </button>
-                        </div>
 
-                        {/* Compact header + toggle – always visible */}
-                        <div className="sticky top-0 z-10 flex items-center justify-between bg-white/95 pb-2 backdrop-blur-sm">
-                            <div className="flex items-center justify-between w-full">
-                                {sidePanelMode === "meta" && (
-                                    <MetaSettings
-                                        key={currentPageKey}
-                                        draftId={draftId}
-                                        meta={currentSeoMeta}
-                                        uploadFileToUserBlob={uploadFileToUserBlob}
-                                        onSaveMeta={handleSaveMetaForCurrentPage}
-                                    />
-                                )}
-                            </div>
+                    {/* Sidebar toggle when hidden – small button over content */}
+                    {sidebarHidden && (
+                        <button
+                            type="button"
+                            onClick={() => setSidebarHidden(false)}
+                            className="absolute left-3 top-20 z-30 rounded-md border border-neutral-300 bg-white/95 px-2 py-1 text-[11px] font-medium text-neutral-700 shadow-sm hover:bg-neutral-100"
+                        >
+                            Show editor
+                        </button>
+                    )}
 
-                            <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-medium text-neutral-500 lg:hidden">
+
+                    {!sidebarHidden && (
+
+                        <aside
+                            className="flex flex-col min-w-0 overflow-auto pr-1 max-lg:order-2 bg-transparent"
+                            id="kloner-style-sidebar"
+                        >
+
+                            {/* Header row with hide button */}
+                            <div className="mb-3 flex items-center justify-between">
+                                <span className="text-[12px] font-semibold uppercase tracking-wide text-neutral-500">
                                     Editor controls
                                 </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setSidebarHidden(true)}
+                                    className="inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 py-1 text-[11px] text-neutral-600 shadow-sm hover:bg-neutral-100"
+                                >
+                                    <span>Hide</span>
+                                </button>
                             </div>
-                        </div>
 
-                        {/* All existing controls – only hidden when collapsed */}
-                        {!controlsCollapsed && sidePanelMode === "style" && (
-                            <>
-                                <div className="mb-3">
-                                    <div className="text-xs font-semibold text-neutral-500 mb-1">
-                                        View
-                                    </div>
+                            {/* NEW: Style/Meta Toggle */}
+                            <div className="inline-flex rounded-md shadow-sm mb-4">
+                                <button
+                                    onClick={() => setSidePanelMode("style")}
+                                    className={`px-3 py-1 text-lg font-semibold rounded-l-md transition-colors ${sidePanelMode === "style"
+                                        ? "bg-accent text-white"
+                                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                        }`}
+                                    id="kloner-style-toggle"
+                                >
+                                    Edit Styles
+                                </button>
+                                <button
+                                    onClick={() => setSidePanelMode("meta")}
+                                    className={`px-3 py-1 text-md font-semibold rounded-r-md transition-colors ${sidePanelMode === "meta"
+                                        ? "bg-accent text-white"
+                                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                        }`}
+                                >
+                                    Edit Meta
+                                </button>
+                            </div>
 
-                                    <div className="flex flex-wrap gap-1">
-                                        {/* <UiBtn
-                                            pressed={mode === "code"}
-                                            onClick={() => handleModeClick("code")}
-                                            disabled={closing}
-                                        >
-                                            Code
-                                        </UiBtn> */}
-                                        <button
-                                            onClick={() => handleModeClick("preview")}
-                                            disabled={closing}
-                                            className={`px-3 py-1 text-md font-medium rounded-l-md transition-colors ${mode === "preview"
-                                                ? "bg-accent text-white"
-                                                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                                                }`}
-                                        >
-                                            Preview
-                                        </button>
-                                        <button
-                                            onClick={() => handleModeClick("screenshot")}
-                                            disabled={closing}
-                                            className={`px-3 py-1 text-md font-medium rounded-r-md transition-colors ${mode === "screenshot"
-                                                ? "bg-accent text-white"
-                                                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                                                }`}
-                                        >
-                                            Screenshot
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div className="mb-3" id="kloner-device-toggle">
-                                    <div className="text-xs font-semibold text-neutral-500 mb-1">
-                                        Device
-                                    </div>
-
-                                    <div className="inline-flex rounded-md shadow-sm">
-                                        <motion.button
-                                            type="button"
-                                            onClick={() => handleDeviceChange("desktop")}
-                                            whileHover={{ scale: 1.05 }}
-                                            whileTap={{ scale: 0.97 }}
-                                            className={`p-2 text-lg rounded-l-md transition-colors ${device === "desktop"
-                                                ? "bg-blue-600 text-white"
-                                                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                                                }`}
-                                            title="Desktop"
-                                        >
-                                            💻
-                                        </motion.button>
-                                        <motion.button
-                                            type="button"
-                                            onClick={() => handleDeviceChange("tablet")}
-                                            whileHover={{ scale: 1.05 }}
-                                            whileTap={{ scale: 0.97 }}
-                                            className={`p-2 text-lg transition-colors ${device === "tablet"
-                                                ? "bg-blue-600 text-white"
-                                                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                                                }`}
-                                            title="Tablet"
-                                        >
-                                            📱
-                                        </motion.button>
-                                        <motion.button
-                                            type="button"
-                                            onClick={() => handleDeviceChange("mobile")}
-                                            whileHover={{ scale: 1.05 }}
-                                            whileTap={{ scale: 0.97 }}
-                                            className={`p-2 text-lg rounded-r-md transition-colors ${device === "mobile"
-                                                ? "bg-blue-600 text-white"
-                                                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                                                }`}
-                                            title="Mobile"
-                                        >
-                                            🤳
-                                        </motion.button>
-                                    </div>
-
-                                    <div className="flex flex-col items-start gap-1 mt-4">
-                                        <span className="text-xs font-semibold mb-1 text-neutral-500">
-                                            UI Scale
-                                        </span>
-
-                                        <div className="flex items-center gap-1 text-lg font-semibold text-slate-600">
-                                            <button
-                                                className="px-2 py-1 rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50"
-                                                onClick={() =>
-                                                    setUiScale((s) => Math.max(0.5, +(s - 0.05).toFixed(2)))
-                                                }
-                                                disabled={closing}
-                                            >
-                                                -
-                                            </button>
-                                            <span className="w-10 text-center">
-                                                {Math.round(uiScale * 100)}%
-                                            </span>
-                                            <button
-                                                className="px-2 py-1 rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50"
-                                                onClick={() =>
-                                                    setUiScale((s) => Math.min(1.25, +(s + 0.05).toFixed(2)))
-                                                }
-                                                disabled={closing}
-                                            >
-                                                +
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="my-3" id="kloner-actions-row">
-                                    <div className="text-xs font-semibold text-neutral-500 mb-2">
-                                        Actions
-                                    </div>
-
-                                    <div
-                                        className="group inline-flex items-center gap-1 rounded-md px-4 py-3 text-lg text-white"
-                                        style={{ backgroundColor: ACCENT }}
-                                        id="kloner-deploy-button"
-                                    >
-                                        <button
-                                            type="button"
-                                            onClick={() => setExportPrompt(true)}
-                                            className="font-semibold leading-none"
-                                        >
-                                            {exporting ? "Exporting…" : "Deploy"}
-                                        </button>
-                                        <Rocket className="h-3 w-3 transform transition-transform duration-150 group-hover:translate-x-0.5" />
-                                    </div>
-
-
-                                    {exportNote && (
-                                        <div className="mt-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[12px] text-amber-800">
-                                            {exportNote}
-                                        </div>
+                            {/* Compact header + toggle – always visible */}
+                            <div className="sticky top-0 z-10 flex items-center justify-between bg-white/95 pb-2 backdrop-blur-sm">
+                                <div className="flex items-center justify-between w-full">
+                                    {sidePanelMode === "meta" && (
+                                        <MetaSettings
+                                            key={currentPageKey}
+                                            draftId={draftId}
+                                            meta={currentSeoMeta}
+                                            uploadFileToUserBlob={uploadFileToUserBlob}
+                                            onSaveMeta={handleSaveMetaForCurrentPage}
+                                        />
                                     )}
                                 </div>
 
-                                {/* Selection styling sidebar */}
-                                {mode === "preview" && (
-                                    <div
-                                        className="mb-3 border-t pt-5 mt-2"
-                                        id="kloner-selection-style"
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[12px] font-semibold text-neutral-500 lg:hidden">
+                                        Editor controls
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* All existing controls – only hidden when collapsed */}
+                            {!controlsCollapsed && sidePanelMode === "style" && (
+                                <>
+                                    <UiBtn
+                                        pressed={mode === "code"}
+                                        onClick={() => handleModeClick((mode === "code") ? "preview" : "code")}
+                                        disabled={closing}
                                     >
-                                        <div className="flex items-center justify-between mb-1">
-                                            <div className="text-sm font-semibold text-neutral-500">
-                                                Selection style
-                                            </div>
-                                            <div className="text-[10px] text-neutral-400">
-                                                {selectionMeta.has
-                                                    ? selectionMeta.tagName || "Element"
-                                                    : "Click any block to style it"}
-                                            </div>
-                                        </div>
-                                        <div className="mb-1 text-[10px] text-neutral-400">
-                                            Styles here are scoped to the current{" "}
-                                            <span className="font-semibold">{device}</span> layout.
+                                        {`${mode == "code" ? "show preview" : "show code"}`}
+                                    </UiBtn>
+
+                                    {/* <div className="mb-3">
+                                        <div className="text-md font-semibold text-neutral-500 mb-1">
+                                            View
                                         </div>
 
-                                        <div className="space-y-2 text-sm max-h-64 lg:max-h-none overflow-y-auto pr-1">
-                                            {(theme.textColors.length ||
-                                                theme.bgColors.length ||
-                                                theme.fontFamilies.length) > 0 && (
+                                        <div className="flex flex-wrap gap-1">
+                                         
+                                            <button
+                                                onClick={() => handleModeClick("preview")}
+                                                disabled={closing}
+                                                className={`px-3 py-1 text-lg font-semibold rounded-l-md transition-colors ${mode === "preview"
+                                                    ? "bg-accent text-white"
+                                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                                    }`}
+                                            >
+                                                Preview
+                                            </button>
+                                            <button
+                                                onClick={() => handleModeClick("screenshot")}
+                                                disabled={closing}
+                                                className={`px-3 py-1 text-lg font-semibold rounded-r-md transition-colors ${mode === "screenshot"
+                                                    ? "bg-accent text-white"
+                                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                                    }`}
+                                            >
+                                                Screenshot
+                                            </button>
+                                        </div>
+                                    </div> */}
+
+
+                                    <div className="mb-3" id="kloner-device-toggle">
+                                        <div className="text-md font-semibold text-neutral-500 mb-1">
+                                            Device
+                                        </div>
+
+                                        <div className="inline-flex rounded-md shadow-sm">
+                                            <motion.button
+                                                type="button"
+                                                onClick={() => handleDeviceChange("desktop")}
+                                                whileHover={{ scale: 1.05 }}
+                                                whileTap={{ scale: 0.97 }}
+                                                className={`p-2 text-lg rounded-l-md transition-colors ${device === "desktop"
+                                                    ? "bg-[#f55f2a] text-white"
+                                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                                    }`}
+                                                title="Desktop"
+                                            >
+                                                <Monitor className="h-6 w-6" aria-hidden="true" />
+                                            </motion.button>
+
+                                            <motion.button
+                                                type="button"
+                                                onClick={() => handleDeviceChange("tablet")}
+                                                whileHover={{ scale: 1.05 }}
+                                                whileTap={{ scale: 0.97 }}
+                                                className={`p-2 text-lg transition-colors ${device === "tablet"
+                                                    ? "bg-[#f55f2a] text-white"
+                                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                                    }`}
+                                                title="Tablet"
+                                            >
+                                                <Tablet className="h-6 w-6" aria-hidden="true" />
+                                            </motion.button>
+
+                                            <motion.button
+                                                type="button"
+                                                onClick={() => handleDeviceChange("mobile")}
+                                                whileHover={{ scale: 1.05 }}
+                                                whileTap={{ scale: 0.97 }}
+                                                className={`p-2 text-lg rounded-r-md transition-colors ${device === "mobile"
+                                                    ? "bg-[#f55f2a] text-white"
+                                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                                    }`}
+                                                title="Mobile"
+                                            >
+                                                <Smartphone className="h-6 w-6" aria-hidden="true" />
+                                            </motion.button>
+                                        </div>
+
+                                        <div className="flex flex-col items-start gap-1 mt-4">
+                                            <span className="text-md font-semibold mb-1 text-neutral-500">
+                                                UI Scale
+                                            </span>
+
+                                            <div className="flex items-center gap-1 text-lg font-semibold text-slate-600">
+                                                <button
+                                                    className="px-2 py-1 rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+                                                    onClick={() =>
+                                                        setUiScale((s) => Math.max(0.5, +(s - 0.05).toFixed(2)))
+                                                    }
+                                                    disabled={closing}
+                                                >
+                                                    -
+                                                </button>
+                                                <span className="w-10 text-center">
+                                                    {Math.round(uiScale * 100)}%
+                                                </span>
+                                                <button
+                                                    className="px-2 py-1 rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+                                                    onClick={() =>
+                                                        setUiScale((s) => Math.min(1.25, +(s + 0.05).toFixed(2)))
+                                                    }
+                                                    disabled={closing}
+                                                >
+                                                    +
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+
+                                    <div className="my-3" id="kloner-actions-row">
+                                        <div className="text-md font-semibold text-neutral-500 mb-2">
+                                            Actions
+                                        </div>
+
+                                        <div
+                                            className="group inline-flex items-center gap-1 rounded-md px-4 py-3 font-semibold text-md text-white"
+                                            style={{ backgroundColor: ACCENT }}
+                                            id="kloner-deploy-button"
+                                        >
+                                            <button
+                                                type="button"
+                                                onClick={() => setExportPrompt(true)}
+                                                className="font-semibold leading-none"
+                                            >
+                                                {exporting ? "Exporting…" : "Deploy"}
+                                            </button>
+                                            <Rocket className="h-5 w-5 transform transition-transform duration-150 group-hover:translate-x-0.5" />
+                                            {/* <div className="m-4"
+                                                id="kloner-undo">
+                                                <button
+                                                    type="button"
+                                                    onClick={handleNativeUndo}
+                                                    className="z-[60] inline-flex items-center justify-center max-w-[180px] gap-2
+                                     rounded-full bg-accent px-4 py-1.5 text-[20px] font-semibold text-white
+                                      shadow-md border border-neutral-200 hover:shadow-lg active:scale-[.97]"
+                                                    title="Undo last change"
+                                                >
+                                                    <RotateCcw className="h-5 w-5" />
+                                                    <span>Undo</span>
+                                                </button>
+                                            </div> */}
+                                        </div>
+
+
+                                        {exportNote && (
+                                            <div className="mt-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[12px] text-amber-800">
+                                                {exportNote}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Selection styling sidebar */}
+                                    {mode === "preview" && (
+                                        <div
+                                            className="mb-3 border-t pt-5 mt-2"
+                                            id="kloner-selection-style"
+                                        >
+                                            <div className="flex items-center justify-between mb-1">
+                                                <div className="text-sm font-semibold text-neutral-500">
+                                                    Selection style
+                                                </div>
+                                                <div className="text-[12px] text-neutral-400">
+                                                    {selectionMeta.has
+                                                        ? selectionMeta.tagName || "Element"
+                                                        : "Click any block to style it"}
+                                                </div>
+                                            </div>
+                                            <div className="mb-1 text-[12px] text-neutral-400">
+                                                Styles here are scoped to the current{" "}
+                                                <span className="font-semibold">{device}</span> layout.
+                                            </div>
+
+                                            <div className="space-y-2 text-sm max-h-64 lg:max-h-none overflow-y-auto pr-1">
+                                                {(mergedThemeColors.length || theme.fontFamilies.length) > 0 && (
                                                     <div className="mt-4 space-y-3 border-t border-neutral-200 pt-3">
-                                                        <div className="text-[10px] uppercase tracking-wide text-neutral-400">
+                                                        <div className="text-[12px] uppercase tracking-wide text-neutral-400">
                                                             Theme (from this page)
                                                         </div>
 
-                                                        {theme.textColors.length > 0 && (
+                                                        {mergedThemeColors.length > 0 && (
                                                             <div>
-                                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
+                                                                <div className="mb-1 text-[12px] uppercase tracking-wide text-neutral-400">
                                                                     Theme text color
                                                                 </div>
                                                                 <div className="flex flex-wrap gap-1">
-                                                                    {theme.textColors.map((c) => (
+                                                                    {mergedThemeColors.map((c) => (
                                                                         <button
-                                                                            key={c}
+                                                                            key={`theme-text-${c}`}
                                                                             type="button"
                                                                             className="w-6 h-6 rounded-full border border-black/10 shadow-sm hover:scale-105 active:scale-95 disabled:opacity-40"
                                                                             style={{ background: c }}
@@ -3185,15 +3261,16 @@ export default function PreviewEditor({
                                                             </div>
                                                         )}
 
-                                                        {theme.bgColors.length > 0 && (
+                                                        {mergedThemeColors.length > 0 && (
                                                             <div>
-                                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
+                                                                <div className="mb-1 text-[12px] uppercase tracking-wide text-neutral-400">
                                                                     Theme background
                                                                 </div>
-                                                                <div className="flex flex-wrap gap-1">
-                                                                    {theme.bgColors.map((c) => (
+
+                                                                <div className="flex flex-wrap items-center gap-1 mb-2">
+                                                                    {mergedThemeColors.map((c) => (
                                                                         <button
-                                                                            key={c}
+                                                                            key={`theme-bg-${c}`}
                                                                             type="button"
                                                                             className="w-6 h-6 rounded-full border border-black/10 shadow-sm hover:scale-105 active:scale-95 disabled:opacity-40"
                                                                             style={{ background: c }}
@@ -3206,506 +3283,593 @@ export default function PreviewEditor({
                                                                             }
                                                                         />
                                                                     ))}
+
+                                                                    {/* transparent / none option */}
+                                                                    <button
+                                                                        key="transparent-bg"
+                                                                        type="button"
+                                                                        disabled={closing}
+                                                                        onClick={() =>
+                                                                            sendStyleCommand({
+                                                                                kind: "bgColor",
+                                                                                value: "transparent",
+                                                                            })
+                                                                        }
+                                                                        className="w-7 h-7 inline-flex items-center justify-center rounded-full border border-dashed border-neutral-400/80 bg-white text-[9px] font-semibold uppercase tracking-wide text-neutral-500 shadow-sm hover:bg-neutral-50 hover:scale-105 active:scale-95 disabled:opacity-40"
+                                                                        title="Transparent background"
+                                                                    >
+                                                                        ⌀
+                                                                    </button>
+                                                                </div>
+
+                                                                {/* custom background color */}
+                                                                <div className="flex items-center gap-2 text-[11px]">
+                                                                    <span className="text-[10px] uppercase tracking-wide text-neutral-400">
+                                                                        Custom background
+                                                                    </span>
+
+                                                                    <input
+                                                                        type="color"
+                                                                        value={customBgColor}
+                                                                        disabled={closing}
+                                                                        onChange={(e) => {
+                                                                            const value = e.target.value;
+                                                                            setCustomBgColor(value);
+                                                                            sendStyleCommand({
+                                                                                kind: "bgColor",
+                                                                                value,
+                                                                            });
+                                                                        }}
+                                                                        className="h-6 w-6 cursor-pointer rounded-full border border-black/10 bg-transparent p-0"
+                                                                    />
+
+                                                                    <input
+                                                                        type="text"
+                                                                        value={customBgColor}
+                                                                        disabled={closing}
+                                                                        onChange={(e) => {
+                                                                            const raw = e.target.value.trim();
+                                                                            setCustomBgColor(raw);
+                                                                        }}
+                                                                        onBlur={() => {
+                                                                            const v = customBgColor.trim();
+                                                                            if (!v) return;
+                                                                            const hex = v.startsWith("#") ? v : `#${v}`;
+                                                                            if (hex.length === 4 || hex.length === 7) {
+                                                                                setCustomBgColor(hex);
+                                                                                sendStyleCommand({
+                                                                                    kind: "bgColor",
+                                                                                    value: hex,
+                                                                                });
+                                                                            }
+                                                                        }}
+                                                                        className="h-7 flex-1 rounded border border-neutral-300 bg-white px-2 text-[11px] text-neutral-700 shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400"
+                                                                        placeholder="#ffffff"
+                                                                    />
                                                                 </div>
                                                             </div>
                                                         )}
-
-                                                        {/* Theme font families
-                                                        {theme.fontFamilies.length > 0 && (
-                                                            <div>
-                                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
-                                                                    Theme fonts
-                                                                </div>
-                                                                <div className="flex flex-wrap gap-1">
-                                                                    {theme.fontFamilies.map((f) => (
-                                                                        <button
-                                                                            key={f}
-                                                                            type="button"
-                                                                            disabled={closing}
-                                                                            onClick={() =>
-                                                                                sendStyleCommand({
-                                                                                    kind: "fontFamily",
-                                                                                    value: f,
-                                                                                })
-                                                                            }
-                                                                            className="px-2 py-1 rounded-full border border-black/10 bg-white text-sm shadow-sm hover:scale-105 active:scale-95 disabled:opacity-40"
-                                                                            style={{ fontFamily: f }}
-                                                                        >
-                                                                            {f}
-                                                                        </button>
-                                                                    ))}
-                                                                </div>
-                                                            </div>
-                                                        )} */}
                                                     </div>
                                                 )}
 
-                                            <div>
-                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
-                                                    Font
-                                                </div>
-                                                <select
-                                                    className="w-full border rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-50"
-                                                    disabled={closing}
-                                                    onChange={(e) => {
-                                                        const opt = FONT_OPTIONS.find(
-                                                            (f) => f.id === e.target.value
-                                                        );
-                                                        if (!opt) return;
-                                                        sendStyleCommand({
-                                                            kind: "fontFamily",
-                                                            value: opt.css,
-                                                        });
-                                                    }}
-                                                    defaultValue=""
-                                                >
-                                                    <option value="" disabled>
-                                                        Choose font
-                                                    </option>
-                                                    {FONT_OPTIONS.map((f) => (
-                                                        <option key={f.id} value={f.id}>
-                                                            {f.label}
+                                                <div>
+                                                    <div className="mb-1 text-[12px] uppercase tracking-wide text-neutral-400">
+                                                        Font
+                                                    </div>
+                                                    <select
+                                                        className="w-full border rounded px-2 py-1 text-md bg-white focus:outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-50"
+                                                        disabled={closing}
+                                                        onChange={(e) => {
+                                                            const opt = FONT_OPTIONS.find((f) => f.id === e.target.value);
+                                                            if (!opt) return;
+                                                            sendStyleCommand({
+                                                                kind: "fontFamily",
+                                                                value: opt.css,
+                                                            });
+                                                        }}
+                                                        defaultValue=""
+                                                    >
+                                                        <option value="" disabled>
+                                                            Choose font
                                                         </option>
-                                                    ))}
-                                                </select>
-                                            </div>
-
-                                            <div>
-                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
-                                                    Size & headings
+                                                        {FONT_OPTIONS.map((f) => (
+                                                            <option
+                                                                key={f.id}
+                                                                value={f.id}
+                                                                style={{ fontFamily: f.css }}
+                                                            >
+                                                                {f.label}
+                                                            </option>
+                                                        ))}
+                                                    </select>
                                                 </div>
+
+
+                                                <div>
+                                                    <div className="mb-1 text-[12px] uppercase tracking-wide text-neutral-400">
+                                                        Size & headings
+                                                    </div>
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {FONT_SIZE_PRESETS.map((s) => (
+                                                            <button
+                                                                key={s.id}
+                                                                type="button"
+                                                                className="px-2 py-1 rounded border border-neutral-300 bg-white text-[12px] leading-tight hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                disabled={closing}
+                                                                style={{ fontSize: s.px / 1.5 }}
+                                                                onClick={() =>
+                                                                    sendStyleCommand({
+                                                                        kind: "fontSizePx",
+                                                                        value: s.px,
+                                                                    })
+                                                                }
+                                                            >
+                                                                {s.label}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <div>
+                                                    <div className="mb-1 text-[12px] uppercase tracking-wide text-neutral-400">
+                                                        Text align
+                                                    </div>
+                                                    <div className="flex gap-1">
+                                                        {[
+                                                            { id: "left", label: "Left" },
+                                                            { id: "center", label: "Center" },
+                                                            { id: "right", label: "Right" },
+                                                        ].map((a) => (
+                                                            <button
+                                                                key={a.id}
+                                                                type="button"
+                                                                className="px-2 py-1 rounded border border-neutral-300 bg-white text-[12px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                disabled={closing}
+                                                                onClick={() =>
+                                                                    sendStyleCommand({
+                                                                        kind: "align",
+                                                                        value: a.id as "left" | "center" | "right",
+                                                                    })
+                                                                }
+                                                            >
+                                                                {a.label}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <div className="mb-1 text-[12px] uppercase tracking-wide text-neutral-400">
+                                                    Font weight & transform
+                                                </div>
+
                                                 <div className="flex flex-wrap gap-1">
-                                                    {FONT_SIZE_PRESETS.map((s) => (
-                                                        <button
-                                                            key={s.id}
-                                                            type="button"
-                                                            className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] leading-tight hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                    <button
+                                                        type="button"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[12px] font-light hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        disabled={closing}
+                                                        onClick={() =>
+                                                            sendStyleCommand({
+                                                                kind: "weight",
+                                                                value: "300",
+                                                            })
+                                                        }
+                                                    >
+                                                        Light
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[12px] font-normal hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        disabled={closing}
+                                                        onClick={() =>
+                                                            sendStyleCommand({
+                                                                kind: "weight",
+                                                                value: "400",
+                                                            })
+                                                        }
+                                                    >
+                                                        Regular
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[12px] font-semibold hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        disabled={closing}
+                                                        onClick={() =>
+                                                            sendStyleCommand({
+                                                                kind: "weight",
+                                                                value: "500",
+                                                            })
+                                                        }
+                                                    >
+                                                        Medium
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[12px] font-semibold hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        disabled={closing}
+                                                        onClick={() =>
+                                                            sendStyleCommand({
+                                                                kind: "weight",
+                                                                value: "600",
+                                                            })
+                                                        }
+                                                    >
+                                                        Semi-bold
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[12px] font-bold hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        disabled={closing}
+                                                        onClick={() =>
+                                                            sendStyleCommand({
+                                                                kind: "weight",
+                                                                value: "700",
+                                                            })
+                                                        }
+                                                    >
+                                                        Bold
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[12px] font-extrabold hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        disabled={closing}
+                                                        onClick={() =>
+                                                            sendStyleCommand({
+                                                                kind: "weight",
+                                                                value: "800",
+                                                            })
+                                                        }
+                                                    >
+                                                        Extra-bold
+                                                    </button>
+
+                                                    <button
+                                                        type="button"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[12px] uppercase tracking-wide hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        disabled={closing}
+                                                        onClick={() =>
+                                                            sendStyleCommand({
+                                                                kind: "transform",
+                                                                value: "uppercase",
+                                                            })
+                                                        }
+                                                    >
+                                                        UPPERCASE
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[12px] normal-case hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        disabled={closing}
+                                                        onClick={() =>
+                                                            sendStyleCommand({
+                                                                kind: "transform",
+                                                                value: "none",
+                                                            })
+                                                        }
+                                                    >
+                                                        Aa
+                                                    </button>
+                                                </div>
+
+                                                <div>
+                                                    <div className="mb-1 text-[12px] uppercase tracking-wide text-neutral-400">
+                                                        Text color
+                                                    </div>
+
+                                                    <div className="flex flex-wrap gap-1 mb-2">
+                                                        {TEXT_COLOR_SWATCHES.map((c) => (
+                                                            <button
+                                                                key={c}
+                                                                type="button"
+                                                                className="w-6 h-6 rounded-full border border-black/10 shadow-sm hover:scale-105 active:scale-95 disabled:opacity-40"
+                                                                style={{ background: c }}
+                                                                disabled={closing}
+                                                                onClick={() =>
+                                                                    sendStyleCommand({
+                                                                        kind: "textColor",
+                                                                        value: c,
+                                                                    })
+                                                                }
+                                                            />
+                                                        ))}
+                                                    </div>
+
+                                                    {/* custom text color */}
+                                                    <div className="flex items-center gap-2 text-[11px]">
+                                                        <span className="text-[10px] uppercase tracking-wide text-neutral-400">
+                                                            Custom text
+                                                        </span>
+
+                                                        <input
+                                                            type="color"
+                                                            value={customTextColor}
                                                             disabled={closing}
-                                                            style={{ fontSize: s.px / 1.5 }}
-                                                            onClick={() =>
-                                                                sendStyleCommand({
-                                                                    kind: "fontSizePx",
-                                                                    value: s.px,
-                                                                })
-                                                            }
-                                                        >
-                                                            {s.label}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-
-                                            <div>
-                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
-                                                    Text align
-                                                </div>
-                                                <div className="flex gap-1">
-                                                    {[
-                                                        { id: "left", label: "Left" },
-                                                        { id: "center", label: "Center" },
-                                                        { id: "right", label: "Right" },
-                                                    ].map((a) => (
-                                                        <button
-                                                            key={a.id}
-                                                            type="button"
-                                                            className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                            disabled={closing}
-                                                            onClick={() =>
-                                                                sendStyleCommand({
-                                                                    kind: "align",
-                                                                    value: a.id as "left" | "center" | "right",
-                                                                })
-                                                            }
-                                                        >
-                                                            {a.label}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-
-                                            <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
-                                                Font weight & transform
-                                            </div>
-
-                                            <div className="flex flex-wrap gap-1">
-                                                <button
-                                                    type="button"
-                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] font-light hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                    disabled={closing}
-                                                    onClick={() =>
-                                                        sendStyleCommand({
-                                                            kind: "weight",
-                                                            value: "300",
-                                                        })
-                                                    }
-                                                >
-                                                    Light
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] font-normal hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                    disabled={closing}
-                                                    onClick={() =>
-                                                        sendStyleCommand({
-                                                            kind: "weight",
-                                                            value: "400",
-                                                        })
-                                                    }
-                                                >
-                                                    Regular
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] font-medium hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                    disabled={closing}
-                                                    onClick={() =>
-                                                        sendStyleCommand({
-                                                            kind: "weight",
-                                                            value: "500",
-                                                        })
-                                                    }
-                                                >
-                                                    Medium
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] font-semibold hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                    disabled={closing}
-                                                    onClick={() =>
-                                                        sendStyleCommand({
-                                                            kind: "weight",
-                                                            value: "600",
-                                                        })
-                                                    }
-                                                >
-                                                    Semi-bold
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] font-bold hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                    disabled={closing}
-                                                    onClick={() =>
-                                                        sendStyleCommand({
-                                                            kind: "weight",
-                                                            value: "700",
-                                                        })
-                                                    }
-                                                >
-                                                    Bold
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] font-extrabold hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                    disabled={closing}
-                                                    onClick={() =>
-                                                        sendStyleCommand({
-                                                            kind: "weight",
-                                                            value: "800",
-                                                        })
-                                                    }
-                                                >
-                                                    Extra-bold
-                                                </button>
-
-                                                <button
-                                                    type="button"
-                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] uppercase tracking-wide hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                    disabled={closing}
-                                                    onClick={() =>
-                                                        sendStyleCommand({
-                                                            kind: "transform",
-                                                            value: "uppercase",
-                                                        })
-                                                    }
-                                                >
-                                                    UPPERCASE
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] normal-case hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                    disabled={closing}
-                                                    onClick={() =>
-                                                        sendStyleCommand({
-                                                            kind: "transform",
-                                                            value: "none",
-                                                        })
-                                                    }
-                                                >
-                                                    Aa
-                                                </button>
-                                            </div>
-
-                                            <div>
-                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
-                                                    Text color
-                                                </div>
-                                                <div className="flex flex-wrap gap-1">
-                                                    {TEXT_COLOR_SWATCHES.map((c) => (
-                                                        <button
-                                                            key={c}
-                                                            type="button"
-                                                            className="w-6 h-6 rounded-full border border-black/10 shadow-sm hover:scale-105 active:scale-95 disabled:opacity-40"
-                                                            style={{ background: c }}
-                                                            disabled={closing}
-                                                            onClick={() =>
+                                                            onChange={(e) => {
+                                                                const value = e.target.value;
+                                                                setCustomTextColor(value);
                                                                 sendStyleCommand({
                                                                     kind: "textColor",
-                                                                    value: c,
-                                                                })
-                                                            }
+                                                                    value,
+                                                                });
+                                                            }}
+                                                            className="h-6 w-6 cursor-pointer rounded-full border border-black/10 bg-transparent p-0"
                                                         />
-                                                    ))}
-                                                </div>
-                                            </div>
 
-                                            <div>
-                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
-                                                    Background
+                                                        <input
+                                                            type="text"
+                                                            value={customTextColor}
+                                                            disabled={closing}
+                                                            onChange={(e) => {
+                                                                const raw = e.target.value.trim();
+                                                                setCustomTextColor(raw);
+                                                            }}
+                                                            onBlur={() => {
+                                                                const v = customTextColor.trim();
+                                                                if (!v) return;
+                                                                const hex =
+                                                                    v.startsWith("#") ? v : `#${v}`;
+                                                                if (hex.length === 4 || hex.length === 7) {
+                                                                    setCustomTextColor(hex);
+                                                                    sendStyleCommand({
+                                                                        kind: "textColor",
+                                                                        value: hex,
+                                                                    });
+                                                                }
+                                                            }}
+                                                            className="h-7 flex-1 rounded border border-neutral-300 bg-white px-2 text-[11px] text-neutral-700 shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400"
+                                                            placeholder="#111827"
+                                                        />
+                                                    </div>
                                                 </div>
-                                                <div className="flex flex-wrap gap-1">
-                                                    {BG_COLOR_SWATCHES.map((c) => (
+
+
+                                                <div>
+                                                    <div className="mb-1 text-[12px] uppercase tracking-wide text-neutral-400">
+                                                        Background
+                                                    </div>
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {BG_COLOR_SWATCHES.map((c) => (
+                                                            <button
+                                                                key={c}
+                                                                type="button"
+                                                                className="w-6 h-6 rounded-full border border-black/10 shadow-sm hover:scale-105 active:scale-95 disabled:opacity-40"
+                                                                style={{ background: c }}
+                                                                disabled={closing}
+                                                                onClick={() =>
+                                                                    sendStyleCommand({
+                                                                        kind: "bgColor",
+                                                                        value: c,
+                                                                    })
+                                                                }
+                                                            />
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <div>
+                                                    <div className="mb-1 text-[12px] uppercase tracking-wide text-neutral-400">
+                                                        Letter spacing
+                                                    </div>
+                                                    <div className="flex flex-wrap gap-1">
                                                         <button
-                                                            key={c}
                                                             type="button"
-                                                            className="w-6 h-6 rounded-full border border-black/10 shadow-sm hover:scale-105 active:scale-95 disabled:opacity-40"
-                                                            style={{ background: c }}
+                                                            className="px-2 py-1 rounded border border-neutral-300 bg-white text-[12px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                             disabled={closing}
                                                             onClick={() =>
                                                                 sendStyleCommand({
-                                                                    kind: "bgColor",
-                                                                    value: c,
+                                                                    kind: "letterSpacing",
+                                                                    value: "-0.02em",
                                                                 })
                                                             }
-                                                        />
-                                                    ))}
+                                                        >
+                                                            Tight
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="px-2 py-1 rounded border border-neutral-300 bg-white text-[12px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            disabled={closing}
+                                                            onClick={() =>
+                                                                sendStyleCommand({
+                                                                    kind: "letterSpacing",
+                                                                    value: "0",
+                                                                })
+                                                            }
+                                                        >
+                                                            Normal
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="px-2 py-1 rounded border border-neutral-300 bg-white text-[12px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            disabled={closing}
+                                                            onClick={() =>
+                                                                sendStyleCommand({
+                                                                    kind: "letterSpacing",
+                                                                    value: "0.08em",
+                                                                })
+                                                            }
+                                                        >
+                                                            Wide
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                            </div>
 
-                                            <div>
-                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
-                                                    Letter spacing
+                                                <div>
+                                                    <div className="mb-1 text-[12px] uppercase tracking-wide text-neutral-400">
+                                                        Layout width
+                                                    </div>
+                                                    <div className="flex flex-wrap gap-1">
+                                                        <button
+                                                            type="button"
+                                                            className="px-2 py-1 rounded border border-neutral-300 bg-white text-[12px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            disabled={closing}
+                                                            onClick={() =>
+                                                                sendStyleCommand({
+                                                                    kind: "widthPreset",
+                                                                    value: "auto",
+                                                                })
+                                                            }
+                                                        >
+                                                            Auto
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="px-2 py-1 rounded border border-neutral-300 bg-white text-[12px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            disabled={closing}
+                                                            onClick={() =>
+                                                                sendStyleCommand({
+                                                                    kind: "widthPreset",
+                                                                    value: "narrow",
+                                                                })
+                                                            }
+                                                        >
+                                                            Narrow
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="px-2 py-1 rounded border border-neutral-300 bg-white text-[12px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            disabled={closing}
+                                                            onClick={() =>
+                                                                sendStyleCommand({
+                                                                    kind: "widthPreset",
+                                                                    value: "wide",
+                                                                })
+                                                            }
+                                                        >
+                                                            Wide
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="px-2 py-1 rounded border border-neutral-300 bg-white text-[12px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            disabled={closing}
+                                                            onClick={() =>
+                                                                sendStyleCommand({
+                                                                    kind: "widthPreset",
+                                                                    value: "full",
+                                                                })
+                                                            }
+                                                        >
+                                                            Full bleed
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                                <div className="flex flex-wrap gap-1">
-                                                    <button
-                                                        type="button"
-                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                        disabled={closing}
-                                                        onClick={() =>
-                                                            sendStyleCommand({
-                                                                kind: "letterSpacing",
-                                                                value: "-0.02em",
-                                                            })
-                                                        }
-                                                    >
-                                                        Tight
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                        disabled={closing}
-                                                        onClick={() =>
-                                                            sendStyleCommand({
-                                                                kind: "letterSpacing",
-                                                                value: "0",
-                                                            })
-                                                        }
-                                                    >
-                                                        Normal
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                        disabled={closing}
-                                                        onClick={() =>
-                                                            sendStyleCommand({
-                                                                kind: "letterSpacing",
-                                                                value: "0.08em",
-                                                            })
-                                                        }
-                                                    >
-                                                        Wide
-                                                    </button>
-                                                </div>
-                                            </div>
 
-                                            <div>
-                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
-                                                    Layout width
+                                                <div>
+                                                    <div className="mb-1 text-[12px] uppercase tracking-wide text-neutral-400">
+                                                        Block align
+                                                    </div>
+                                                    <div className="flex flex-wrap gap-1">
+                                                        <button
+                                                            type="button"
+                                                            className="px-2 py-1 rounded border border-neutral-300 bg-white text-[12px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            disabled={closing}
+                                                            onClick={() =>
+                                                                sendStyleCommand({
+                                                                    kind: "blockAlign",
+                                                                    value: "left",
+                                                                })
+                                                            }
+                                                        >
+                                                            Left
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="px-2 py-1 rounded border border-neutral-300 bg-white text-[12px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            disabled={closing}
+                                                            onClick={() =>
+                                                                sendStyleCommand({
+                                                                    kind: "blockAlign",
+                                                                    value: "center",
+                                                                })
+                                                            }
+                                                        >
+                                                            Center
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="px-2 py-1 rounded border border-neutral-300 bg-white text-[12px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            disabled={closing}
+                                                            onClick={() =>
+                                                                sendStyleCommand({
+                                                                    kind: "blockAlign",
+                                                                    value: "right",
+                                                                })
+                                                            }
+                                                        >
+                                                            Right
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                                <div className="flex flex-wrap gap-1">
-                                                    <button
-                                                        type="button"
-                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                        disabled={closing}
-                                                        onClick={() =>
-                                                            sendStyleCommand({
-                                                                kind: "widthPreset",
-                                                                value: "auto",
-                                                            })
-                                                        }
-                                                    >
-                                                        Auto
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                        disabled={closing}
-                                                        onClick={() =>
-                                                            sendStyleCommand({
-                                                                kind: "widthPreset",
-                                                                value: "narrow",
-                                                            })
-                                                        }
-                                                    >
-                                                        Narrow
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                        disabled={closing}
-                                                        onClick={() =>
-                                                            sendStyleCommand({
-                                                                kind: "widthPreset",
-                                                                value: "wide",
-                                                            })
-                                                        }
-                                                    >
-                                                        Wide
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                        disabled={closing}
-                                                        onClick={() =>
-                                                            sendStyleCommand({
-                                                                kind: "widthPreset",
-                                                                value: "full",
-                                                            })
-                                                        }
-                                                    >
-                                                        Full bleed
-                                                    </button>
-                                                </div>
-                                            </div>
 
-                                            <div>
-                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
-                                                    Block align
+                                                <div>
+                                                    <div className="mb-1 text-[12px] uppercase tracking-wide text-neutral-400">
+                                                        Vertical spacing
+                                                    </div>
+                                                    <div className="flex flex-wrap gap-1 mb-1">
+                                                        <button
+                                                            type="button"
+                                                            className="px-2 py-1 rounded border border-neutral-300 bg-white text-[12px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            disabled={closing}
+                                                            onClick={() =>
+                                                                sendStyleCommand({
+                                                                    kind: "marginTop",
+                                                                    value: "none",
+                                                                })
+                                                            }
+                                                        >
+                                                            No top
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="px-2 py-1 rounded border border-neutral-300 bg-white text-[12px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            disabled={closing}
+                                                            onClick={() =>
+                                                                sendStyleCommand({
+                                                                    kind: "marginTop",
+                                                                    value: "md",
+                                                                })
+                                                            }
+                                                        >
+                                                            Top space
+                                                        </button>
+                                                    </div>
+                                                    <div className="flex flex-wrap gap-1">
+                                                        <button
+                                                            type="button"
+                                                            className="px-2 py-1 rounded border border-neutral-300 bg-white text-[12px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            disabled={closing}
+                                                            onClick={() =>
+                                                                sendStyleCommand({
+                                                                    kind: "marginBottom",
+                                                                    value: "none",
+                                                                })
+                                                            }
+                                                        >
+                                                            No bottom
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="px-2 py-1 rounded border border-neutral-300 bg-white text-[12px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            disabled={closing}
+                                                            onClick={() =>
+                                                                sendStyleCommand({
+                                                                    kind: "marginBottom",
+                                                                    value: "lg",
+                                                                })
+                                                            }
+                                                        >
+                                                            Bottom space
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                                <div className="flex flex-wrap gap-1">
-                                                    <button
-                                                        type="button"
-                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                        disabled={closing}
-                                                        onClick={() =>
-                                                            sendStyleCommand({
-                                                                kind: "blockAlign",
-                                                                value: "left",
-                                                            })
-                                                        }
-                                                    >
-                                                        Left
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                        disabled={closing}
-                                                        onClick={() =>
-                                                            sendStyleCommand({
-                                                                kind: "blockAlign",
-                                                                value: "center",
-                                                            })
-                                                        }
-                                                    >
-                                                        Center
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                        disabled={closing}
-                                                        onClick={() =>
-                                                            sendStyleCommand({
-                                                                kind: "blockAlign",
-                                                                value: "right",
-                                                            })
-                                                        }
-                                                    >
-                                                        Right
-                                                    </button>
-                                                </div>
-                                            </div>
 
+                                                {/* Text wrapping
                                             <div>
-                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
-                                                    Vertical spacing
-                                                </div>
-                                                <div className="flex flex-wrap gap-1 mb-1">
-                                                    <button
-                                                        type="button"
-                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                        disabled={closing}
-                                                        onClick={() =>
-                                                            sendStyleCommand({
-                                                                kind: "marginTop",
-                                                                value: "none",
-                                                            })
-                                                        }
-                                                    >
-                                                        No top
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                        disabled={closing}
-                                                        onClick={() =>
-                                                            sendStyleCommand({
-                                                                kind: "marginTop",
-                                                                value: "md",
-                                                            })
-                                                        }
-                                                    >
-                                                        Top space
-                                                    </button>
-                                                </div>
-                                                <div className="flex flex-wrap gap-1">
-                                                    <button
-                                                        type="button"
-                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                        disabled={closing}
-                                                        onClick={() =>
-                                                            sendStyleCommand({
-                                                                kind: "marginBottom",
-                                                                value: "none",
-                                                            })
-                                                        }
-                                                    >
-                                                        No bottom
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                        disabled={closing}
-                                                        onClick={() =>
-                                                            sendStyleCommand({
-                                                                kind: "marginBottom",
-                                                                value: "lg",
-                                                            })
-                                                        }
-                                                    >
-                                                        Bottom space
-                                                    </button>
-                                                </div>
-                                            </div>
-
-                                            {/* Text wrapping
-                                            <div>
-                                                <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">
+                                                <div className="mb-1 text-[12px] uppercase tracking-wide text-neutral-400">
                                                     Text wrapping
                                                 </div>
                                                 <div className="flex flex-wrap gap-1">
                                                     <button
                                                         type="button"
-                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[12px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                         disabled={closing}
                                                         onClick={() =>
                                                             sendStyleCommand({
@@ -3718,7 +3882,7 @@ export default function PreviewEditor({
                                                     </button>
                                                     <button
                                                         type="button"
-                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[12px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                         disabled={closing}
                                                         onClick={() =>
                                                             sendStyleCommand({
@@ -3731,7 +3895,7 @@ export default function PreviewEditor({
                                                     </button>
                                                     <button
                                                         type="button"
-                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[10px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                        className="px-2 py-1 rounded border border-neutral-300 bg-white text-[12px] hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                         disabled={closing}
                                                         onClick={() =>
                                                             sendStyleCommand({
@@ -3744,68 +3908,70 @@ export default function PreviewEditor({
                                                     </button>
                                                 </div>
                                             </div> */}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="block lg:hidden fixed bottom-10 left-0 right-0 z-50 bg-white/95 border-t border-neutral-200 px-4 py-3">
+                                        <div className="flex flex-col gap-2" id="kloner-save-changes-mobile">
+                                            <button
+                                                onClick={() => doSave()}
+                                                disabled={closing || savingDraft || !dirty}
+                                                aria-busy={applyingPreview}
+                                                className={`w-full rounded-md px-3 py-3 text-lg font-semibold transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${dirty
+                                                    ? "bg-emerald-600 text-white hover:brightness-95"
+                                                    : "bg-emerald-50 text-emerald-700"
+                                                    }`}
+                                                title="Apply current draft to the live preview"
+                                            >
+                                                {applyingPreview
+                                                    ? "Updating preview…"
+                                                    : dirty
+                                                        ? "Apply changes to preview"
+                                                        : "Preview is up to date"}
+                                            </button>
+
+                                            <button
+                                                onClick={() => {
+                                                    if (dirty) setClosePrompt(true);
+                                                    else performClose("discard");
+                                                }}
+                                                disabled={closing}
+                                                className={`w-full px-3 py-3 text-lg font-semibold rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${closing
+                                                    ? "bg-accent text-white opacity-80 cursor-not-allowed"
+                                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                                    }`}
+                                            >
+                                                ❌ Close
+                                            </button>
                                         </div>
                                     </div>
-                                )}
 
-                                <div className="block lg:hidden fixed bottom-10 left-0 right-0 z-50 bg-white/95 border-t border-neutral-200 px-4 py-3">
-                                    <div className="flex flex-col gap-2" id="kloner-save-changes-mobile">
-                                        <button
-                                            onClick={() => doSave()}
-                                            disabled={closing || savingDraft || !dirty}
-                                            aria-busy={applyingPreview}
-                                            className={`w-full rounded-md px-3 py-3 text-lg font-medium transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${dirty
-                                                ? "bg-emerald-600 text-white hover:brightness-95"
-                                                : "bg-emerald-50 text-emerald-700"
-                                                }`}
-                                            title="Apply current draft to the live preview"
-                                        >
-                                            {applyingPreview
-                                                ? "Updating preview…"
-                                                : dirty
-                                                    ? "Apply changes to preview"
-                                                    : "Preview is up to date"}
-                                        </button>
+                                    {mode === "code" && (
+                                        <div className="min-h-0 flex-1">
+                                            <textarea
+                                                className="h-full w-full border rounded p-2 font-mono text-md leading-5 outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-60"
+                                                value={htmlDraft}
+                                                onChange={(e) => setHtmlDraft(e.target.value)}
+                                                spellCheck={false}
+                                                disabled={closing}
+                                            />
+                                        </div>
+                                    )}
 
-                                        <button
-                                            onClick={() => {
-                                                if (dirty) setClosePrompt(true);
-                                                else performClose("discard");
-                                            }}
-                                            disabled={closing}
-                                            className={`w-full px-3 py-3 text-lg font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${closing
-                                                ? "bg-accent text-white opacity-80 cursor-not-allowed"
-                                                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                                                }`}
-                                        >
-                                            ❌ Close
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* {mode === "code" && (
-                                    <div className="min-h-0 flex-1">
-                                        <textarea
-                                            className="h-full w-full border rounded p-2 font-mono text-xs leading-5 outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-60"
-                                            value={htmlDraft}
-                                            onChange={(e) => setHtmlDraft(e.target.value)}
-                                            spellCheck={false}
-                                            disabled={closing}
-                                        />
-                                    </div>
-                                )} */}
-
-                                {/* Revert / undo overlay sitting on top of the frame */}
+                                    {/* Revert / undo overlay sitting on top of the frame */}
 
 
-                                {mode === "screenshot" && (
-                                    <div className="text-xs text-slate-600">
-                                        Edit in Preview, apply with “Apply changes".
-                                    </div>
-                                )}
-                            </>
-                        )}
-                    </aside>
+                                    {mode === "screenshot" && (
+                                        <div className="text-md text-slate-600">
+                                            Edit in Preview, apply with “Apply changes".
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </aside>
+                    )}
+
 
                     {/* Right / canvas */}
                     <section className="relative bg-slate-50 rounded-lg border overflow-hidden flex flex-col max-lg:order-1">
@@ -3818,8 +3984,39 @@ export default function PreviewEditor({
                                     renderId={draftId}
                                     getSelectedBlockHtml={getSelectedBlockHtml}
                                     selectionMeta={selectionMeta}
-                                    onApplyBlockHtml={(afterBlockHtml: string) => {
-                                        // 1. Capture current HTML BEFORE AI modifies anything
+                                    onAiHistoryChange={setAiHistory}
+                                    onApplyBlockHtml={async (afterBlockHtml: string) => {
+                                        // 0. Guard against obviously broken AI output
+                                        const raw = (afterBlockHtml ?? "").trim();
+
+                                        const looksBroken =
+                                            !raw ||
+                                            raw === "</" ||
+                                            raw === "<" ||
+                                            raw.length < 8 ||                 // too short to be a meaningful block
+                                            (!raw.includes("<") || !raw.includes(">"));
+
+                                        if (looksBroken) {
+                                            console.warn(
+                                                "[PreviewEditor] Ignoring AI edit – block HTML looked broken",
+                                                { afterBlockHtml }
+                                            );
+                                            // optional toast here
+                                            return;
+                                        }
+
+                                        // 0.5 Save current draft BEFORE applying AI changes, so user can revert later
+                                        try {
+                                            // only bother if there are unsaved edits and we're not already in a save/close cycle
+                                            if (!closing && !savingDraft && !applyingPreview && dirty) {
+                                                // this will create a normal history checkpoint using your existing save flow
+                                                await doSave();
+                                            }
+                                        } catch (err) {
+                                            console.warn("[PreviewEditor] pre-AI save failed, continuing anyway", err);
+                                        }
+
+                                        // 1. Snapshot full DOM before AI edit for local/history restore
                                         try {
                                             const iframe = iframeRef.current;
                                             if (iframe && iframe.contentDocument) {
@@ -3831,10 +4028,7 @@ export default function PreviewEditor({
                                         }
 
                                         // 2. Apply AI-edited block and serialize
-                                        const fullHtml = applyBlockHtmlToIframeAndSerialize(
-                                            afterBlockHtml,
-                                            true
-                                        );
+                                        const fullHtml = applyBlockHtmlToIframeAndSerialize(raw, true);
 
                                         if (!fullHtml) {
                                             console.warn(
@@ -3860,8 +4054,17 @@ export default function PreviewEditor({
                                         setPreviewHtml(cleanedHtml);
                                         if (onLiveHtml) onLiveHtml(cleanedHtml);
                                     }}
-
+                                    onAiEditingStateChange={(isEditing) => {
+                                        setAiEditing(isEditing);
+                                    }}
                                 />
+                            </div>
+                        )}
+
+
+                        {showSaveNudge && (
+                            <div className="mt-4 flex justify-center mt-3pointer-events-none z-[96] rounded-full bg-emerald-600 text-white hover:brightness-95 shadow-lg px-4 py-2 text-sm">
+                                This is a one-time friendly reminder to save or apply your changes as you edit, so you don’t lose them.
                             </div>
                         )}
 
@@ -3888,13 +4091,13 @@ export default function PreviewEditor({
                                                             whileHover={{ scale: 1.03, y: -1 }}
                                                             whileTap={{ scale: 0.97 }}
                                                             className={[
-                                                                "px-3 py-4 rounded-full text-md font-medium transition-colors flex items-center gap-2",
+                                                                "px-3 py-2 rounded-full text-xs font-semibold transition-colors flex items-center gap-2",
                                                                 isActive
                                                                     ? "bg-accent text-white"
                                                                     : "bg-white text-neutral-700 hover:bg-neutral-100 border border-neutral-200",
                                                             ].join(" ")}
                                                         >
-                                                            <span>{p.label}</span>
+                                                            <span>{p.id}</span>
 
                                                             <a
                                                                 type="button"
@@ -3914,7 +4117,7 @@ export default function PreviewEditor({
                                                                     xmlns="http://www.w3.org/2000/svg"
                                                                     viewBox="0 0 20 20"
                                                                     fill="currentColor"
-                                                                    className="h-3.5 w-3.5"
+                                                                    className="h-5 w-5"
                                                                 >
                                                                     <path d="M5 3a2 2 0 00-2 2v4h2V5h10v4h2V5a2 2 0 00-2-2H5z" />
                                                                     <path d="M3 11v4a2 2 0 002 2h10a2 2 0 002-2v-4h-3a3 3 0 01-6 0H3z" />
@@ -3940,9 +4143,9 @@ export default function PreviewEditor({
                                                         key={p.id}
                                                         type="button"
                                                         onClick={() => restorePage(p.id)}
-                                                        className="px-2 py-1 rounded-full text-md font-medium text-neutral-600 bg-white hover:bg-neutral-100 border border-neutral-200"
+                                                        className="px-2 py-1 rounded-full text-xs font-semibold text-neutral-600 bg-white hover:bg-neutral-100 border border-neutral-200"
                                                     >
-                                                        {p.label} ·
+                                                        {p.id} ·
                                                         <span className="ml-1 text-md hover:underline text-emerald-600">
                                                             Restore
                                                         </span>
@@ -3954,32 +4157,13 @@ export default function PreviewEditor({
                             </div>
                         )}
 
-                        {mode === "preview" && (
-                            <div className="mt-3 flex justify-center"
-                                id="kloner-undo">
-                                <button
-                                    type="button"
-                                    onClick={handleNativeUndo}
-                                    className="z-[60] inline-flex items-center justify-center max-w-[180px] gap-2
-                                     rounded-full bg-accent px-4 py-1.5 text-[20px] font-semibold text-white
-                                      shadow-md border border-neutral-200 hover:shadow-lg active:scale-[.97]"
-                                    title="Undo last change"
-                                >
-                                    <RotateCcw className="h-5 w-5" />
-                                    <span>Undo</span>
-                                </button>
-                            </div>
-                        )}
-
-                        {showSaveNudge && (
-                            <div className="mt-4 flex justify-center mt-3pointer-events-none z-[96] rounded-full bg-emerald-600 text-white hover:brightness-95 shadow-lg px-4 py-2 text-sm">
-                                This is a one-time friendly reminder to save or apply your changes as you edit, so you don’t lose them.
-                            </div>
-                        )}
-
 
                         {(mode === "preview" || mode === "code") && (
-                            <div className="flex-1 overflow-auto p-3 sm:p-6">
+                            <div
+                                id="kloner-home"
+                                ref={iframeWrapperRef}
+                                className="flex-1 overflow-auto p-3 sm:p-6"
+                            >
                                 <AnimatePresence mode="wait">
                                     <motion.div
                                         key={activePageId}
@@ -4002,7 +4186,7 @@ export default function PreviewEditor({
                                                         <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
                                                         <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
                                                     </div>
-                                                    <div className="mx-auto h-6 max-w-xs flex-1 rounded-full bg-neutral-800/90 text-[10px] text-neutral-400 px-3 flex items-center">
+                                                    <div className="mx-auto h-6 max-w-xs flex-1 rounded-full bg-neutral-800/90 text-[12px] text-neutral-400 px-3 flex items-center">
                                                         preview.kloner
                                                     </div>
                                                     <div className="w-10" />
@@ -4031,8 +4215,15 @@ export default function PreviewEditor({
                                         )}
                                     </motion.div>
                                 </AnimatePresence>
+
+                                {/* TOOLBAR SHOULD BE RENDERED HERE OR NEAR HERE */}
+                                <FloatingBlockToolbar
+                                    iframeRef={iframeRef}
+                                    wrapperRef={iframeWrapperRef}
+                                    selectionMeta={selectionMeta} uiScale={0} />
                             </div>
                         )}
+
 
                         {mode === "screenshot" && (
                             <div className="flex-1 overflow-auto p-6">
@@ -4047,7 +4238,7 @@ export default function PreviewEditor({
                                             className="w-full h-auto rounded border bg-white"
                                         />
                                     ) : (
-                                        <div className="h-[60vh] grid place-items-center text-slate-500 text-xs">
+                                        <div className="h-[60vh] grid place-items-center text-slate-500 text-md">
                                             No reference screenshot
                                         </div>
                                     )}
@@ -4057,7 +4248,7 @@ export default function PreviewEditor({
 
                         {closing && (
                             <div className="absolute inset-0 bg-white/80 grid place-items-center">
-                                <div className="flex items-center gap-3 rounded border px-3 py-2 bg-white text-xs text-neutral-800">
+                                <div className="flex items-center gap-3 rounded border px-3 py-2 bg-white text-md text-neutral-800">
                                     <Spinner /> Saving & closing…
                                 </div>
                             </div>
@@ -4069,22 +4260,25 @@ export default function PreviewEditor({
                                 id="kloner-history"
                                 className="hidden lg:block absolute top-20 right-3 z-[80] w-72 max-h-[70vh]">
                                 <div className="flex flex-col rounded-lg border border-neutral-200 bg-white/95 shadow-lg">
-                                    <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-200">
-                                        <div className="text-[13px] font-semibold uppercase tracking-wide text-neutral-500">
+                                    <div className="flex items-center justify-end px-3 py-2 border-b border-neutral-200">
+                                        {/* <div className="text-[14px] font-semibold uppercase tracking-wide text-neutral-500">
                                             Edit history
+                                        </div> */}
+                                        <div className="flex flex-inline items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setHistoryOpen(false)}
+                                                className="text-[14px] font-semibold uppercase tracking-wide text-neutral-500"
+                                            >
+                                                Hide
+                                            </button>
+                                            <Eye className="text-neutral-600 w-4 h-4" />
                                         </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => setHistoryOpen(false)}
-                                            className="text-[12px] text-neutral-500 px-2 py-1 rounded bg-accent hover:brightness-95 text-white"
-                                        >
-                                            Hide
-                                        </button>
                                     </div>
 
                                     <div className="min-h-0 flex-1 overflow-y-auto p-2">
                                         <HistoryPanel
-                                            snapshots={history}
+                                            snapshots={mergedHistory}
                                             onRestore={handleRestoreSnapshot}
                                         />
                                     </div>
@@ -4094,11 +4288,13 @@ export default function PreviewEditor({
                             <button
                                 type="button"
                                 onClick={() => setHistoryOpen(true)}
-                                className="hidden lg:flex absolute gap-1 top-20 right-3 z-[70] items-center rounded-full bg-accent px-3 py-1 text-[12px] font-medium text-white shadow-sm hover:brightness-95"
+                                className="hidden lg:flex absolute gap-2 top-20 right-3 z-[70] items-center rounded-full px-3 py-1 text-[12px] font-semibold shadow-sm hover:brightness-95"
                                 title="Show edit history"
                             >
-                                <span className="leading-none">Show History</span>
-                                <span className="text-[12px] text-white leading-none translate-y-[0.5px]">
+                                <div className="text-[14px] font-semibold uppercase tracking-wide text-neutral-500">
+                                    Show History
+                                </div>
+                                <span className="text-[12px] text-neutral-500 leading-none translate-y-[0.5px]">
                                     ▼
                                 </span>
                             </button>
@@ -4132,7 +4328,23 @@ export default function PreviewEditor({
 
                         </div>
 
+                        {exporting && !closing && (
+                            <div className="absolute inset-0 z-[95] bg-white/80 backdrop-blur-[2px] grid place-items-center pointer-events-auto">
+                                <div className="flex items-center gap-3 rounded border px-3 py-2 bg-white text-md text-neutral-800 shadow-md">
+                                    <Spinner />
+                                    <span>Exporting changes…</span>
+                                </div>
+                            </div>
+                        )}
 
+                        {aiEditing && !closing && (
+                            <div className="absolute inset-0 z-[95] bg-white/80 backdrop-blur-[2px] grid place-items-center pointer-events-auto">
+                                <div className="flex items-center gap-3 rounded border px-3 py-2 bg-white text-md text-neutral-800 shadow-md">
+                                    <Spinner />
+                                    <span>Applying AI edit…</span>
+                                </div>
+                            </div>
+                        )}
                     </section>
                 </div>
 
@@ -4151,24 +4363,24 @@ export default function PreviewEditor({
                                 transition={{ type: "keyframes", stiffness: 260, damping: 22 }}
                                 className="bg-white rounded-lg shadow-xl p-4 w-full max-w-sm border border-neutral-200"
                             >
-                                <div className="text-xs font-semibold text-neutral-900 mb-2">
+                                <div className="text-md font-semibold text-neutral-900 mb-2">
                                     Save images before switching pages?
                                 </div>
-                                <p className="text-xs text-neutral-600 mb-3">
+                                <p className="text-md text-neutral-600 mb-3">
                                     This page has images that haven’t been uploaded yet. Save them
                                     before switching, or continue without saving.
                                 </p>
-                                <div className="flex justify-end gap-2 text-xs">
+                                <div className="flex justify-end gap-2 text-md">
                                     <button
                                         type="button"
-                                        className="px-2.5 py-1.5 rounded border border-neutral-300 bg-white hover:bg-neutral-50 active:scale-[.98] font-medium"
+                                        className="px-2.5 py-1.5 rounded border border-neutral-300 bg-white hover:bg-neutral-50 active:scale-[.98] font-semibold"
                                         onClick={cancelPageSwitch}
                                     >
                                         Stay on this page
                                     </button>
                                     <button
                                         type="button"
-                                        className="px-2.5 py-1.5 rounded border border-transparent bg-neutral-900 text-white hover:brightness-110 active:scale-[.98] font-medium"
+                                        className="px-2.5 py-1.5 rounded border border-transparent bg-neutral-900 text-white hover:brightness-110 active:scale-[.98] font-semibold"
                                         onClick={confirmPageSwitch}
                                     >
                                         Save & switch
@@ -4182,31 +4394,31 @@ export default function PreviewEditor({
                 {closePrompt && (
                     <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/40">
                         <div className="bg-white rounded-lg shadow-xl p-4 w-full max-w-sm border border-neutral-200">
-                            <div className="text-xs font-semibold text-neutral-900 mb-2">
+                            <div className="text-md font-semibold text-neutral-900 mb-2">
                                 Close editor?
                             </div>
-                            <p className="text-xs text-neutral-600 mb-3">
+                            <p className="text-md text-neutral-600 mb-3">
                                 You have unsaved changes. Save them before closing, or discard
                                 this draft.
                             </p>
-                            <div className="flex justify-end gap-2 text-xs">
+                            <div className="flex justify-end gap-2 text-sm">
                                 <button
                                     type="button"
-                                    className="px-2.5 py-1.5 rounded border border-neutral-300 bg-white hover:bg-neutral-50 active:scale-[.98] font-medium"
+                                    className="px-2.5 py-1.5 rounded border border-neutral-300 bg-white hover:bg-neutral-50 active:scale-[.98] font-semibold"
                                     onClick={() => setClosePrompt(false)}
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="button"
-                                    className="px-2.5 py-1.5 rounded border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 active:scale-[.98] font-medium"
+                                    className="px-2.5 py-1.5 rounded border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 active:scale-[.98] font-semibold"
                                     onClick={() => performClose("discard")}
                                 >
                                     Discard
                                 </button>
                                 <button
                                     type="button"
-                                    className="px-2.5 py-1.5 rounded border border-transparent bg-accent text-white hover:brightness-110 active:scale-[.98] font-medium"
+                                    className="px-2.5 py-1.5 rounded border border-transparent bg-accent text-white hover:brightness-110 active:scale-[.98] font-semibold"
                                     onClick={() => performClose("save")}
                                 >
                                     Save & close
@@ -4222,7 +4434,7 @@ export default function PreviewEditor({
                             <div className="text-md font-semibold text-neutral-900 mb-2">
                                 Deploy your Website?
                             </div>
-                            <p className="text-xs text-neutral-600 mb-2">
+                            <p className="text-sm text-neutral-600 mb-2">
                                 This will export your current preview and trigger a deployment to
                                 your connected Vercel project.
                             </p>
@@ -4230,7 +4442,7 @@ export default function PreviewEditor({
                                 Warning: these changes can reach your live site once the
                                 deployment finishes.
                             </p>
-                            <div className="flex justify-end gap-2 text-xs">
+                            <div className="flex justify-end gap-2 text-sm">
                                 <button
                                     type="button"
                                     className="px-2.5 py-1.5 rounded border border-neutral-300 bg-white hover:bg-neutral-50 active:scale-[.98] disabled:opacity-60"
@@ -4245,11 +4457,11 @@ export default function PreviewEditor({
                                         await doExport();
                                     }}
                                     disabled={exporting}
-                                    className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 text-xs text-white shadow-sm hover:border-neutral-400 disabled:opacity-60"
+                                    className="inline-flex items-center gap-1.5 rounded-md font-semibold bg-accent px-2.5 py-1 text-white shadow-sm hover:border-neutral-400 disabled:opacity-60"
                                     title="Open generated layout site"
                                 >
                                     <span>Deploy now</span>
-                                    <Rocket className="h-3.5 w-3.5" />
+                                    <Rocket className="h-5 w-5" />
                                 </button>
                             </div>
                         </div>
@@ -4349,1258 +4561,4 @@ function UiBtn({
             {withBusy}
         </button>
     );
-}
-
-function injectEditableOverlay(
-    doc: Document,
-    onChange: (updatedHtml: string) => void
-) {
-    // Hard reset of any existing overlays in this doc
-    doc.querySelectorAll(".kloner-toolbar").forEach((n) => n.remove());
-    doc.querySelectorAll(".kloner-style-panel").forEach((n) => n.remove());
-
-    const style = doc.createElement("style");
-    style.setAttribute("data-kloner-style", "1");
-    style.textContent = `
-    :root { --amber-50:#FFFBEB; --amber-200:#FDE68A; --amber-700:#B45309; --rose-50:#FFF1F2; --rose-200:#FECDD3; --rose-700:#BE123C; --slate-700:#334155; --slate-300:#cbd5e1; }
-
-    [data-kloner-sel]{ outline:2px dashed #10b981 !important; outline-offset:2px !important; }
-
-    [data-kloner-textbox]{
-      cursor:text;
-    }
-
-    .kloner-toolbar{
-      position:fixed;
-      z-index:2147483647;
-      display:none;
-      flex-wrap:wrap;
-      align-items:center;
-      gap:6px;
-      padding:6px 8px;
-      background:#020617;
-      color:#e5e7eb;
-      border-radius:15px;
-      font:11px/1.2 system-ui,-apple-system,Segoe UI,Roboto;
-      box-shadow:0 10px 30px rgba(0,0,0,.25);
-      max-width:calc(100vw - 16px);
-      border:1px solid rgba(148,163,184,0.45);
-      backdrop-filter:blur(14px);
-    }
-
-    .kgroup{
-      display:inline-flex;
-      align-items:center;
-      gap:4px;
-      padding-right:8px;
-      margin-right:4px;
-      border-right:1px solid rgba(148,163,184,0.4);
-    }
-    .kgroup:last-child{
-      border-right:none;
-      margin-right:0;
-      padding-right:0;
-    }
-
-    .kgroup-label{
-      padding:2px 6px;
-      border-radius:999px;
-      font-size:10px;
-      font-weight:600;
-      text-transform:uppercase;
-      letter-spacing:0.04em;
-      background:rgba(15,23,42,0.95);
-      color:rgba(148,163,184,1);
-      border:1px solid rgba(51,65,85,1);
-      margin-right:2px;
-      white-space:nowrap;
-    }
-
-    .kbtn{
-      display:inline-flex;
-      align-items:center;
-      gap:4px;
-      padding:4px 6px;
-      border-radius:7px;
-      border:1px solid transparent;
-      cursor:pointer;
-      font-weight:600;
-      font-size:11px;
-      background:#111827;
-      color:#e5e7eb;
-      white-space:nowrap;
-      line-height:1.15;
-      transition:
-        background-color 120ms ease-out,
-        color 120ms ease-out,
-        border-color 120ms ease-out,
-        transform 80ms ease-out;
-    }
-    .kbtn:hover{
-      transform:translateY(-0.5px);
-    }
-    .kbtn:active{
-      transform:translateY(0.5px) scale(.98);
-    }
-
-    .kbtn-icon{
-      font-size:15px;
-      line-height:1;
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      min-width:16px;
-    }
-    .kbtn-text{
-      font-size:10px;
-    }
-
-    .kbtn-close{ background:#0f172a; color:#fff; border-color:#0f172a; }
-    .kbtn-edit{ background:var(--amber-50); color:var(--amber-700); border-color:var(--amber-200); }
-    .kbtn-del{  background:var(--rose-50);  color:var(--rose-700);  border-color:var(--rose-200); }
-    .kbtn-img { background:#ecfeff; color:#155e75; border-color:#a5f3fc; }
-    .kbtn-link { background:#eef2ff; color:#3730a3; border-color:#c7d2fe; }
-
-    .khint {
-      position:fixed;
-      z-index:2147483646;
-      padding:6px 8px;
-      background:#111827;
-      color:#fff;
-      border-radius:8px;
-      font:12px/1.2 system-ui;
-      max-width:320px;
-    }
-  `;
-    doc.head.appendChild(style);
-
-    const fileInput = doc.createElement("input");
-    fileInput.type = "file";
-    fileInput.accept = "image/*";
-    fileInput.style.display = "none";
-    fileInput.setAttribute("data-kloner-upload-input", "1");
-    doc.body.appendChild(fileInput);
-
-    const hint = doc.createElement("div");
-    hint.className = "khint";
-    hint.style.display = "none";
-    hint.setAttribute("data-kloner-hint", "1");
-    doc.body.appendChild(hint);
-
-    function showHint(text: string, near: HTMLElement) {
-        hint.textContent = text;
-        const r = near.getBoundingClientRect();
-        hint.style.left = `${Math.min(
-            r.left,
-            doc.defaultView!.innerWidth - 340
-        )}px`;
-        hint.style.top = `${r.bottom + 8}px`;
-        hint.style.display = "block";
-        setTimeout(() => (hint.style.display = "none"), 4000);
-    }
-
-    function cssBox(el: HTMLElement) {
-        const cs = doc.defaultView!.getComputedStyle(el);
-        return {
-            w: el.getBoundingClientRect().width,
-            h: el.getBoundingClientRect().height,
-            fontSize: (cs as any).fontSize as string,
-            textAlign: (cs as any).textAlign as string,
-            fontFamily: (cs as any).fontFamily as string,
-            color: (cs as any).color as string,
-            backgroundColor: (cs as any).backgroundColor as string,
-        };
-    }
-
-    const texty = new Set([
-        "P",
-        "SPAN",
-        "H1",
-        "H2",
-        "H3",
-        "H4",
-        "H5",
-        "H6",
-        "LI",
-        "SMALL",
-        "STRONG",
-        "EM",
-        "LABEL",
-        "BUTTON",
-        "A",
-        "DIV",
-    ]);
-
-    function markEditable(root: ParentNode) {
-        const w = doc.createTreeWalker(root as Node, NodeFilter.SHOW_ELEMENT);
-        while (w.nextNode()) {
-            const el = w.currentNode as HTMLElement;
-            if (texty.has(el.tagName)) el.contentEditable = "true";
-        }
-    }
-    markEditable(doc.body);
-
-    // Ensure button/anchor never ends up with fully-empty text (prevents “visual deletion”)
-    function ensureButtonHasContent(target: HTMLElement | null) {
-        if (!target) return;
-        const buttonLike = target.closest("button, a") as HTMLElement | null;
-        if (!buttonLike || !buttonLike.isContentEditable) return;
-
-        const raw = buttonLike.textContent || "";
-        const normalized = raw.replace(/\u00A0/g, " ").trim();
-        if (normalized.length === 0) {
-            // Keep a minimum non-breaking space so layout stays visible
-            buttonLike.innerHTML = "\u00A0";
-        }
-    }
-
-    // Initialize existing editable buttons/links so none are empty
-    doc.querySelectorAll<HTMLElement>("button[contenteditable], a[contenteditable]").forEach((el) => {
-        ensureButtonHasContent(el);
-    });
-
-    const toolbar = doc.createElement("div");
-    toolbar.className = "kloner-toolbar";
-    toolbar.setAttribute("data-kloner-toolbar", "1");
-    toolbar.innerHTML = `
-      <div class="kgroup kgroup-core" data-group="core">
-        <span class="kgroup-label">Block</span>
-        <button class="kbtn kbtn-close" data-act="close" title="Clear selection">
-          <span class="kbtn-icon">✕</span>
-          <span class="kbtn-text">Clear</span>
-        </button>
-        <button class="kbtn kbtn-edit" data-act="dup" title="Duplicate block">
-          <span class="kbtn-icon">⧉</span>
-          <span class="kbtn-text">Duplicate</span>
-        </button>
-        <button class="kbtn kbtn-edit" data-act="box-add" title="Add text box overlay">
-          <span class="kbtn-icon">T+</span>
-          <span class="kbtn-text">Text box</span>
-        </button>
-        <button class="kbtn kbtn-del"  data-act="del" title="Delete block">
-          <span class="kbtn-icon">🗑</span>
-          <span class="kbtn-text">Delete Block</span>
-        </button>
-      </div>
-
-    <div class="kgroup kgroup-layout" data-group="layout">
-        <span class="kgroup-label">Layout</span>
-
-        <button class="kbtn kbtn-edit" data-act="block-up" title="Move block up">
-        <span class="kbtn-icon">↑</span>
-        <span class="kbtn-text">Up</span>
-        </button>
-        <button class="kbtn kbtn-edit" data-act="block-down" title="Move block down">
-        <span class="kbtn-icon">↓</span>
-        <span class="kbtn-text">Down</span>
-        </button>
-        <button class="kbtn kbtn-edit" data-act="block-left" title="Move block left (earlier in layout)">
-        <span class="kbtn-icon">←</span>
-        <span class="kbtn-text">Left</span>
-        </button>
-        <button class="kbtn kbtn-edit" data-act="block-right" title="Move block right (later in layout)">
-        <span class="kbtn-icon">→</span>
-        <span class="kbtn-text">Right</span>
-        </button>
-
-        <button class="kbtn kbtn-edit" data-act="pad-more" title="Increase inner padding">
-        <span class="kbtn-icon">⬚+</span>
-        <span class="kbtn-text">More pad</span>
-        </button>
-        <button class="kbtn kbtn-edit" data-act="pad-less" title="Decrease inner padding">
-        <span class="kbtn-icon">⬚−</span>
-        <span class="kbtn-text">Less pad</span>
-        </button>
-    </div>
-
-      <div class="kgroup kgroup-img" data-group="img">
-        <span class="kgroup-label">Image</span>
-        <button class="kbtn kbtn-img"  data-act="img-insert" title="Insert image into this block">
-          <span class="kbtn-icon">🖼+</span>
-          <span class="kbtn-text">Insert</span>
-        </button>
-        <button class="kbtn kbtn-img"  data-act="img-bg" title="Set this block's background image">
-          <span class="kbtn-icon">⬚</span>
-          <span class="kbtn-text">Bg</span>
-        </button>
-        <button class="kbtn kbtn-img"  data-act="img-replace" title="Replace selected image">
-          <span class="kbtn-icon">🖼⟳</span>
-          <span class="kbtn-text">Replace</span>
-        </button>
-        <button class="kbtn kbtn-img"  data-act="img-del" title="Delete image">
-          <span class="kbtn-icon">🗑</span>
-          <span class="kbtn-text">Remove</span>
-        </button>
-        <button class="kbtn kbtn-img"  data-act="img-alt" title="Edit ALT text for accessibility">
-          <span class="kbtn-icon">ALT</span>
-          <span class="kbtn-text">Text</span>
-        </button>
-        <button class="kbtn kbtn-img"  data-act="img-front" title="Bring image forward">
-          <span class="kbtn-icon">⬆</span>
-          <span class="kbtn-text">Front</span>
-        </button>
-        <button class="kbtn kbtn-img"  data-act="img-back" title="Send image backward">
-          <span class="kbtn-icon">⬇</span>
-          <span class="kbtn-text">Back</span>
-        </button>
-        <button class="kbtn kbtn-img"  data-act="img-grow" title="Increase image size">
-          <span class="kbtn-icon">＋</span>
-          <span class="kbtn-text">Bigger</span>
-        </button>
-        <button class="kbtn kbtn-img"  data-act="img-shrink" title="Decrease image size">
-          <span class="kbtn-icon">－</span>
-          <span class="kbtn-text">Smaller</span>
-        </button>
-      </div>
-
-      <div class="kgroup kgroup-link" data-group="link">
-        <span class="kgroup-label">Link</span>
-        <button class="kbtn kbtn-link"  data-act="link" title="Edit link URL">
-          <span class="kbtn-icon">🔗</span>
-          <span class="kbtn-text">URL</span>
-        </button>
-      </div>
-    `;
-    doc.body.appendChild(toolbar);
-
-    let selected: HTMLElement | null = null;
-
-    function serializeClean(): string {
-        const docClone = doc.documentElement.cloneNode(true) as HTMLElement;
-        const htmlEl = docClone as HTMLHtmlElement;
-        const head = htmlEl.querySelector("head");
-        const body = htmlEl.querySelector("body")!;
-
-        // Remove overlay UI and helpers from body
-        body
-            .querySelectorAll(
-                ".kloner-toolbar, .kloner-style-panel, .khint, [data-kloner-upload-input]"
-            )
-            .forEach((n) => n.remove());
-
-        // Strip selection + edit attributes
-        body.querySelectorAll("[data-kloner-sel]").forEach((n) =>
-            (n as HTMLElement).removeAttribute("data-kloner-sel")
-        );
-        body.querySelectorAll("[contenteditable]").forEach((n) =>
-            (n as HTMLElement).removeAttribute("contenteditable")
-        );
-
-        // Remove injected style block(s) for the editor from head
-        if (head) {
-            head.querySelectorAll("[data-kloner-style]").forEach((n) => n.remove());
-
-            // Safety net: if any generic <style> contains .kloner-toolbar, remove it
-            head.querySelectorAll("style").forEach((s) => {
-                if (s.textContent && s.textContent.includes(".kloner-toolbar")) {
-                    s.remove();
-                }
-            });
-        }
-
-        return "<!doctype html>\n" + (docClone as any).outerHTML;
-    }
-
-    let hist: string[] = [];
-    let idx = -1;
-    function updateUndoRedoState() {
-        // reserved for future undo/redo UI
-    }
-
-    function saveHistory() {
-        const snap = serializeClean();
-        if (idx >= 0 && hist[idx] === snap) return;
-        hist = hist.slice(0, idx + 1);
-        hist.push(snap);
-        idx = hist.length - 1;
-        updateUndoRedoState();
-    }
-    function restoreHistory(nextIndex: number) {
-        if (nextIndex < 0 || nextIndex >= hist.length) return;
-        idx = nextIndex;
-        const parser = new DOMParser();
-        const doc2 = parser.parseFromString(hist[idx], "text/html");
-
-        // Replace body with clean snapshot
-        const newBody = doc2.body;
-        doc.body.replaceWith(doc.importNode(newBody, true));
-
-        // Re-attach toolbar + hint + file input to live doc
-        doc.body.appendChild(toolbar);
-        doc.body.appendChild(hint);
-        doc.body.appendChild(fileInput);
-
-        markEditable(doc.body);
-        // re-ensure buttons/links are never empty after restore
-        doc.querySelectorAll<HTMLElement>("button[contenteditable], a[contenteditable]").forEach((el) => {
-            ensureButtonHasContent(el);
-        });
-
-        select(null);
-        updateUndoRedoState();
-        notify();
-    }
-    function undo() {
-        restoreHistory(idx - 1);
-    }
-    function redo() {
-        restoreHistory(idx + 1);
-    }
-
-    const notify = (() => {
-        let t = 0 as unknown as number;
-        let raf = 0 as unknown as number;
-        return () => {
-            clearTimeout(t as any);
-            if (raf) cancelAnimationFrame(raf as any);
-            t = window.setTimeout(() => {
-                raf = requestAnimationFrame(() => {
-                    saveHistory();
-                    onChange(serializeClean());
-                });
-            }, 250);
-        };
-    })();
-
-    saveHistory();
-
-    function publishSelection() {
-        const payload = selected
-            ? {
-                has: true,
-                tagName: selected.tagName,
-            }
-            : { has: false };
-        doc.defaultView?.parent?.postMessage(
-            { type: "kloner:selection", meta: payload },
-            "*"
-        );
-    }
-
-    function placeToolbar(target: HTMLElement) {
-        const r = target.getBoundingClientRect();
-        toolbar.style.display = "flex";
-        toolbar.style.visibility = "hidden";
-        toolbar.style.left = "0px";
-        toolbar.style.top = "0px";
-
-        const tbRect = toolbar.getBoundingClientRect();
-        const vw = doc.defaultView!.innerWidth;
-        const vh = doc.defaultView!.innerHeight;
-
-        let x = Math.min(Math.max(8, r.left), vw - tbRect.width - 8);
-        if (x < 8) x = 8;
-
-        const spaceAbove = r.top;
-        const spaceBelow = vh - r.bottom;
-        let y: number;
-
-        if (spaceAbove >= tbRect.height + 8) {
-            y = r.top - tbRect.height - 8;
-        } else if (spaceBelow >= tbRect.height + 8) {
-            y = r.bottom + 8;
-        } else {
-            y = Math.max(8, r.bottom + 8);
-            if (y + tbRect.height > vh) y = vh - tbRect.height - 8;
-        }
-
-        toolbar.style.left = `${x}px`;
-        toolbar.style.top = `${y}px`;
-        toolbar.style.visibility = "visible";
-    }
-
-    function select(el: HTMLElement | null) {
-        if (selected) selected.removeAttribute("data-kloner-sel");
-        selected = el;
-        if (selected) {
-            selected.setAttribute("data-kloner-sel", "1");
-            placeToolbar(selected);
-        } else {
-            toolbar.style.display = "none";
-        }
-        publishSelection();
-    }
-
-    function applyStyleCommand(cmd: any) {
-        if (!selected || !cmd || typeof cmd.kind !== "string") return;
-
-        if (cmd.kind === "fontFamily" && typeof cmd.value === "string") {
-            selected.style.fontFamily = cmd.value;
-        } else if (cmd.kind === "fontSizePx" && typeof cmd.value === "number") {
-            selected.style.fontSize = `${cmd.value}px`;
-        } else if (cmd.kind === "align") {
-            if (
-                cmd.value === "left" ||
-                cmd.value === "center" ||
-                cmd.value === "right"
-            ) {
-                selected.style.textAlign = cmd.value;
-            }
-        } else if (cmd.kind === "textColor" && typeof cmd.value === "string") {
-            selected.style.color = cmd.value;
-        } else if (cmd.kind === "bgColor" && typeof cmd.value === "string") {
-            selected.style.backgroundColor = cmd.value;
-        } else if (cmd.kind === "transform") {
-            if (cmd.value === "uppercase") {
-                selected.style.textTransform = "uppercase";
-            } else if (cmd.value === "none") {
-                selected.style.textTransform = "none";
-            }
-        } else if (cmd.kind === "weight") {
-            if (
-                typeof cmd.value === "string" ||
-                typeof cmd.value === "number"
-            ) {
-                (selected.style as any).fontWeight = String(cmd.value);
-            }
-        } else if (cmd.kind === "letterSpacing" && typeof cmd.value === "string") {
-            (selected.style as any).letterSpacing = cmd.value;
-        } else {
-            return;
-        }
-
-        saveHistory();
-        notify();
-        publishSelection();
-    }
-
-    const api: any = (doc.defaultView as any).__klonerApi || {};
-    api.clear = () => {
-        select(null);
-        (doc.activeElement as HTMLElement | null)?.blur?.();
-    };
-    api.style = (cmd: any) => applyStyleCommand(cmd);
-    (doc.defaultView as any).__klonerApi = api;
-
-    doc.addEventListener(
-        "click",
-        (e) => {
-            const t = e.target as HTMLElement;
-            if (toolbar.contains(t)) return;
-            const block = t.closest(
-                "section, article, header, footer, main, button, a, div, li, p, h1, h2, h3, h4, h5"
-            ) as HTMLElement | null;
-            if (block) select(block);
-            else select(null);
-        },
-        true
-    );
-
-    async function requestParentUpload(
-        file: File
-    ): Promise<{ url: string; path?: string }> {
-        const id = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        const buf = await file.arrayBuffer();
-        return new Promise((resolve, reject) => {
-            const onMsg = (ev: MessageEvent) => {
-                const d = ev.data || {};
-                if (d?.type !== "kloner:upload:done" || d?.id !== id) return;
-                doc.defaultView?.removeEventListener("message", onMsg as any);
-                if (d.ok) {
-                    resolve({
-                        url: d.url as string,
-                        path:
-                            typeof d.path === "string"
-                                ? (d.path as string)
-                                : undefined,
-                    });
-                } else {
-                    reject(
-                        new Error(String(d.error || "upload_failed"))
-                    );
-                }
-            };
-            doc.defaultView?.addEventListener("message", onMsg as any);
-            doc.defaultView?.parent?.postMessage(
-                {
-                    type: "kloner:upload",
-                    id,
-                    filename: file.name,
-                    contentType: file.type,
-                    buffer: buf,
-                },
-                "*"
-            );
-        });
-    }
-
-    async function pickFileAndUpload(
-        anchor: HTMLElement
-    ): Promise<{ url: string; path?: string; file: File }> {
-        return new Promise((resolve, reject) => {
-            fileInput.onchange = async () => {
-                const f = (fileInput.files && fileInput.files[0]) || null;
-                fileInput.value = "";
-                if (!f) return reject(new Error("no_file"));
-                if (f.size > 8 * 1024 * 1024) {
-                    showHint("Image too large (8MB max).", anchor);
-                    return reject(new Error("too_large"));
-                }
-                if (!/^image\//.test(f.type)) {
-                    showHint("Unsupported type.", anchor);
-                    return reject(new Error("bad_type"));
-                }
-                try {
-                    const { url, path } = await requestParentUpload(f);
-                    resolve({ url, path, file: f });
-                } catch (e) {
-                    showHint("Upload failed.", anchor);
-                    reject(e as any);
-                }
-            };
-            fileInput.click();
-        });
-    }
-
-    function deleteAssetsForElement(root: HTMLElement) {
-        const paths = new Set<string>();
-
-        if (root.tagName === "IMG") {
-            const p = (root as HTMLImageElement).getAttribute("data-kloner-path");
-            if (p) paths.add(p);
-        }
-
-        if (root.hasAttribute("data-kloner-bg-path")) {
-            const p = root.getAttribute("data-kloner-bg-path");
-            if (p) paths.add(p);
-        }
-
-        root.querySelectorAll("img[data-kloner-path]").forEach((img) => {
-            const p = img.getAttribute("data-kloner-path");
-            if (p) paths.add(p);
-        });
-
-        root.querySelectorAll<HTMLElement>("[data-kloner-bg-path]").forEach((el) => {
-            const p = el.getAttribute("data-kloner-bg-path");
-            if (p) paths.add(p);
-        });
-
-        if (paths.size > 0) {
-            doc.defaultView?.parent?.postMessage(
-                {
-                    type: "kloner:delete-assets",
-                    paths: Array.from(paths),
-                },
-                "*"
-            );
-        }
-    }
-
-    const pendingImagePaths: Set<string> = new Set();
-
-    function deleteAssetsByPaths(paths: string[]) {
-        if (!paths.length) return;
-
-        for (const p of paths) {
-            pendingImagePaths.delete(p);
-        }
-
-        doc.defaultView?.parent?.postMessage(
-            {
-                type: "kloner:delete-assets",
-                paths,
-            },
-            "*"
-        );
-    }
-
-    function deleteImageOnBlock(block: HTMLElement) {
-        const img =
-            (block.tagName === "IMG"
-                ? (block as HTMLImageElement)
-                : (block.querySelector("img") as HTMLImageElement | null)) ?? null;
-
-        if (!img) {
-            showHint("Select a block with an <img> to delete.", block);
-            return;
-        }
-
-        const path = img.getAttribute("data-kloner-path");
-        if (path) {
-            try {
-                deleteAssetsByPaths([path]);
-            } catch (err) {
-                console.warn(
-                    "[deleteImageOnBlock] deleteAssetsByPaths threw synchronously",
-                    { path },
-                    err
-                );
-            }
-        }
-
-        if (img.hasAttribute("data-kloner-old-path")) {
-            img.removeAttribute("data-kloner-old-path");
-        }
-
-        if (img.dataset.localImageId) {
-            const tempUrl = img.src;
-            try {
-                URL.revokeObjectURL(tempUrl);
-            } catch {
-                // ignore
-            }
-            img.removeAttribute("data-local-image-id");
-            img.removeAttribute("data-local-filename");
-        }
-
-        img.remove();
-        saveHistory();
-        notify();
-        showHint("Image deleted.", block);
-    }
-
-    function pickLocalFile(): Promise<File | null> {
-        return new Promise((resolve) => {
-            const input = doc.createElement("input");
-            input.type = "file";
-            input.accept = "image/*";
-
-            input.onchange = () => {
-                const file = input.files?.[0] || null;
-                resolve(file);
-            };
-
-            input.click();
-        });
-    }
-
-    async function insertImageIntoBlock(block: HTMLElement) {
-        const file = await pickLocalFile();
-        if (!file) return;
-
-        const tempUrl = URL.createObjectURL(file);
-        const img = doc.createElement("img");
-        const localId = crypto.randomUUID();
-
-        img.src = tempUrl;
-        img.alt = "";
-        img.style.display = "block";
-
-        img.style.maxWidth = "100%";
-        img.style.height = "auto";
-        img.removeAttribute("height");
-
-        img.dataset.localImageId = localId;
-        img.dataset.localFilename = file.name || "image";
-
-        const box = cssBox(block);
-        if (box.w > 4) {
-            img.style.width = `${Math.round(box.w)}px`;
-            img.setAttribute("width", String(Math.round(box.w)));
-        }
-
-        if (block.firstChild) block.insertBefore(img, block.firstChild);
-        else block.appendChild(img);
-
-        saveHistory();
-        notify();
-        showHint("Image inserted (pending upload).", block);
-    }
-
-    async function replaceImage(el: HTMLImageElement) {
-        const file = await pickLocalFile();
-        if (!file) return;
-
-        const box = cssBox(el);
-        const oldPath = el.getAttribute("data-kloner-path") || undefined;
-
-        const tempUrl = URL.createObjectURL(file);
-        const localId = crypto.randomUUID();
-
-        el.src = tempUrl;
-        el.dataset.localImageId = localId;
-        el.dataset.localFilename = file.name || "image";
-
-        if (oldPath) {
-            el.setAttribute("data-kloner-old-path", oldPath);
-            el.removeAttribute("data-kloner-path");
-        }
-
-        if (!el.style.width && !el.getAttribute("width") && box.w > 4) {
-            el.style.width = `${Math.round(box.w)}px`;
-            el.setAttribute("width", String(Math.round(box.w)));
-        }
-
-        el.style.maxWidth = "100%";
-        el.style.height = "auto";
-        el.removeAttribute("height");
-
-        saveHistory();
-        notify();
-        showHint("Image replaced (pending upload).", el);
-    }
-
-    async function setBlockBackgroundImage(block: HTMLElement) {
-        const file = await pickLocalFile();
-        if (!file) return;
-
-        const tempUrl = URL.createObjectURL(file);
-
-        const oldPath = block.getAttribute("data-kloner-bg-path") || undefined;
-        if (oldPath) {
-            block.setAttribute("data-kloner-bg-old-path", oldPath);
-            block.removeAttribute("data-kloner-bg-path");
-        }
-
-        const cs = doc.defaultView!.getComputedStyle(block);
-        if (cs.position === "static") {
-            block.style.position = "relative";
-        }
-
-        block.style.backgroundImage = `url("${tempUrl}")`;
-        block.style.backgroundSize = "cover";
-        block.style.backgroundPosition = "center center";
-        block.style.backgroundRepeat = "no-repeat";
-
-        const localId =
-            typeof crypto !== "undefined" && crypto.randomUUID
-                ? crypto.randomUUID()
-                : String(Date.now());
-
-        // use the same dataset keys as insertImageIntoBlock
-        (block.dataset as any).localImageId = localId;
-        (block.dataset as any).localFilename = file.name || "background";
-
-        saveHistory();
-        notify();
-        showHint("Background image set (pending upload).", block);
-    }
-
-    function adjustBlockPadding(block: HTMLElement, deltaPx: number) {
-        const cs = doc.defaultView!.getComputedStyle(block);
-        const current = parseFloat(cs.paddingTop || "0") || 0;
-        let next = current + deltaPx;
-
-        if (next < 0) next = 0;
-        if (next > 160) next = 160; // hard cap so users don't blow up layout
-
-        const rounded = Math.round(next);
-        block.style.padding = `${rounded}px`;
-
-        saveHistory();
-        notify();
-        showHint(`Padding set to ${rounded}px.`, block);
-    }
-
-    function moveBlock(
-        block: HTMLElement,
-        direction: "up" | "down" | "left" | "right"
-    ) {
-        const parent = block.parentElement;
-        if (!parent) return;
-
-        const children = Array.from(parent.children) as HTMLElement[];
-        const index = children.indexOf(block);
-        if (index === -1) return;
-
-        const isBackward = direction === "up" || direction === "left";
-        const isForward = direction === "down" || direction === "right";
-
-        if (isBackward && index === 0) {
-            showHint("This block is already at the start of its group.", block);
-            return;
-        }
-        if (isForward && index === children.length - 1) {
-            showHint("This block is already at the end of its group.", block);
-            return;
-        }
-
-        let targetIndex = index;
-        if (isBackward) targetIndex = index - 1;
-        if (isForward) targetIndex = index + 1;
-
-        const target = children[targetIndex];
-        if (!target) return;
-
-        if (isBackward) {
-            parent.insertBefore(block, target);
-        } else {
-            target.after(block);
-        }
-
-        saveHistory();
-        notify();
-        showHint("Block moved in the layout.", block);
-    }
-
-    function editLink(target: HTMLElement) {
-        let linkEl: HTMLAnchorElement | null = null;
-        if (target.tagName === "A") {
-            linkEl = target as HTMLAnchorElement;
-        } else {
-            linkEl = target.closest("a") as HTMLAnchorElement | null;
-        }
-        if (!linkEl) {
-            showHint("No link found here.", target);
-            return;
-        }
-        const current = linkEl.getAttribute("href") || "";
-        const next = prompt("Link URL (href):", current);
-        if (next === null) return;
-        if (next.trim() === "") {
-            linkEl.removeAttribute("href");
-            showHint("Link cleared.", linkEl);
-        } else {
-            linkEl.setAttribute("href", next.trim());
-            showHint("Link updated.", linkEl);
-        }
-        saveHistory();
-        notify();
-    }
-
-    function getImageFromSelection(sel: HTMLElement | null): HTMLImageElement | null {
-        if (!sel) return null;
-        if (sel.tagName === "IMG") return sel as HTMLImageElement;
-        return (sel.querySelector("img") as HTMLImageElement | null) ?? null;
-    }
-
-    function moveImageLayer(img: HTMLImageElement, direction: "forward" | "backward") {
-        const parent = img.parentElement;
-        if (!parent) return;
-
-        const siblings = Array.from(parent.children) as HTMLElement[];
-        const index = siblings.indexOf(img);
-        if (index === -1) return;
-
-        if (direction === "forward") {
-            if (index === siblings.length - 1) return;
-            const next = siblings[index + 1];
-            next.after(img);
-        } else {
-            if (index === 0) return;
-            const prev = siblings[index - 1];
-            parent.insertBefore(img, prev);
-        }
-    }
-
-    function resizeImage(target: HTMLElement, factor: number) {
-        const img =
-            (target.tagName === "IMG"
-                ? (target as HTMLImageElement)
-                : (target.querySelector("img") as HTMLImageElement | null)) ?? null;
-
-        if (!img) {
-            showHint("Select a block with an <img> to resize.", target);
-            return;
-        }
-
-        const naturalW =
-            Number(img.dataset.klonerBaseWidth) ||
-            img.naturalWidth ||
-            parseInt(img.getAttribute("width") || "0", 10) ||
-            0;
-        const naturalH =
-            Number(img.dataset.klonerBaseHeight) ||
-            img.naturalHeight ||
-            parseInt(img.getAttribute("height") || "0", 10) ||
-            0;
-
-        if (!naturalW || !naturalH) {
-            showHint("Can't determine image size.", img);
-            return;
-        }
-
-        if (!img.dataset.klonerBaseWidth) {
-            img.dataset.klonerBaseWidth = String(naturalW);
-            img.dataset.klonerBaseHeight = String(naturalH);
-        }
-
-        const currentW =
-            parseInt(
-                (img.style.width && img.style.width.endsWith("px")
-                    ? img.style.width.slice(0, -2)
-                    : img.getAttribute("width") || "") || "0",
-                10
-            ) || naturalW;
-
-        let nextW = Math.round(currentW * factor);
-        const minW = Math.max(80, Math.round(naturalW * 0.25));
-        const maxW = Math.round(naturalW * 2.5);
-
-        if (nextW < minW) nextW = minW;
-        if (nextW > maxW) nextW = maxW;
-
-        img.style.width = `${nextW}px`;
-        img.setAttribute("width", String(nextW));
-        img.style.maxWidth = "100%";
-        img.style.height = "auto";
-        img.removeAttribute("height");
-
-        saveHistory();
-        notify();
-        showHint("Image resized.", img);
-    }
-
-    function createTextBox(anchor: HTMLElement) {
-        let container: HTMLElement = anchor;
-        if (anchor.tagName === "IMG" && anchor.parentElement) {
-            container = anchor.parentElement as HTMLElement;
-        }
-
-        const cs = doc.defaultView!.getComputedStyle(container);
-        if (cs.position === "static") {
-            container.style.position = "relative";
-        }
-
-        const box = doc.createElement("div");
-        box.setAttribute("data-kloner-textbox", "1");
-        box.contentEditable = "true";
-        box.textContent = "Edit text";
-
-        box.style.position = "absolute";
-        box.style.left = "50%";
-        box.style.top = "50%";
-        box.style.transform = "translate(-50%, -50%)";
-
-        box.style.minWidth = "140px";
-        box.style.minHeight = "40px";
-        box.style.padding = "10px 12px";
-        box.style.borderRadius = "8px";
-        box.style.background = "rgba(15,23,42,0.78)";
-        box.style.color = "#f9fafb";
-        box.style.fontSize = "16px";
-        box.style.lineHeight = "1.4";
-        box.style.boxShadow = "0 12px 25px rgba(15,23,42,0.35)";
-        box.style.resize = "both";
-        box.style.overflow = "auto";
-        box.style.zIndex = "20";
-
-        container.appendChild(box);
-        markEditable(box);
-
-        select(box);
-        saveHistory();
-        notify();
-        showHint("Text box added. Click to edit, drag corner to resize.", box);
-    }
-
-    function handleAction(act: string | null, sourceEl: HTMLElement) {
-        if (!act) return;
-
-        if (act === "close") {
-            (doc.defaultView as any).__klonerApi?.clear();
-            return;
-        }
-        if (!selected && act !== "img-insert" && act !== "img-bg") return;
-
-        if (act === "del") {
-            if (!selected) return;
-            deleteAssetsForElement(selected);
-
-            const parent = selected.parentElement;
-            selected.remove();
-            select(null);
-            parent?.focus?.();
-            saveHistory();
-            notify();
-            return;
-        }
-
-        if (act === "dup") {
-            if (!selected) return;
-            const clone = selected.cloneNode(true) as HTMLElement;
-            selected.insertAdjacentElement("afterend", clone);
-            markEditable(clone);
-            select(clone);
-            saveHistory();
-            notify();
-            return;
-        }
-
-        if (act === "box-add") {
-            if (!selected) return;
-            createTextBox(selected);
-            return;
-        }
-
-        if (
-            act === "block-up" ||
-            act === "block-down" ||
-            act === "block-left" ||
-            act === "block-right"
-        ) {
-            if (!selected) return;
-
-            if (act === "block-up") {
-                moveBlock(selected, "up");
-            } else if (act === "block-down") {
-                moveBlock(selected, "down");
-            } else if (act === "block-left") {
-                moveBlock(selected, "left");
-            } else if (act === "block-right") {
-                moveBlock(selected, "right");
-            }
-            return;
-        }
-
-        if (act === "pad-more") {
-            if (!selected) return;
-            adjustBlockPadding(selected, 8);
-            return;
-        }
-        if (act === "pad-less") {
-            if (!selected) return;
-            adjustBlockPadding(selected, -8);
-            return;
-        }
-
-        if (act === "img-insert") {
-            if (!selected) return;
-            insertImageIntoBlock(selected).catch(() => { });
-            return;
-        }
-
-        if (act === "img-bg") {
-            if (!selected) return;
-            setBlockBackgroundImage(selected).catch(() => { });
-            return;
-        }
-
-        if (act === "img-replace") {
-            const img = getImageFromSelection(selected);
-            if (!img) {
-                showHint("No <img> here. Use Insert image.", selected!);
-                return;
-            }
-            replaceImage(img);
-            return;
-        }
-
-        if (act === "img-del") {
-            if (!selected) return;
-            deleteImageOnBlock(selected);
-            return;
-        }
-
-        if (act === "img-alt") {
-            const img = getImageFromSelection(selected);
-            if (!img) {
-                showHint("Select a block with an <img>.", selected!);
-                return;
-            }
-            const next = prompt("Alt text:", img.getAttribute("alt") || "");
-            if (next !== null) {
-                img.setAttribute("alt", next);
-                saveHistory();
-                notify();
-                showHint("ALT updated.", img);
-            }
-            return;
-        }
-
-        if (act === "img-front") {
-            const img = getImageFromSelection(selected);
-            if (!img) {
-                showHint("Select a block with an <img> to bring forward.", selected!);
-                return;
-            }
-            moveImageLayer(img, "forward");
-            saveHistory();
-            notify();
-            return;
-        }
-
-        if (act === "img-back") {
-            const img = getImageFromSelection(selected);
-            if (!img) {
-                showHint("Select a block with an <img> to send backward.", selected!);
-                return;
-            }
-            moveImageLayer(img, "backward");
-            saveHistory();
-            notify();
-            return;
-        }
-
-        if (act === "img-grow") {
-            if (!selected) return;
-            const img = getImageFromSelection(selected);
-            if (!img) {
-                showHint("Select a block with an <img> to resize.", selected);
-                return;
-            }
-            resizeImage(selected, 1.1);
-            return;
-        }
-
-        if (act === "img-shrink") {
-            if (!selected) return;
-            const img = getImageFromSelection(selected);
-            if (!img) {
-                showHint("Select a block with an <img> to resize.", selected);
-                return;
-            }
-            resizeImage(selected, 0.9);
-            return;
-        }
-
-        if (act === "link") {
-            if (!selected) return;
-            editLink(selected);
-            return;
-        }
-    }
-
-    const actionListener = (e: Event) => {
-        const target = e.target as HTMLElement;
-        const btn = target.closest("[data-act]") as HTMLElement | null;
-        if (!btn) return;
-        const act = btn.getAttribute("data-act");
-        e.preventDefault();
-        e.stopPropagation();
-        handleAction(act, btn);
-    };
-
-    toolbar.addEventListener("click", actionListener);
-
-    const mo = new MutationObserver(() => notify());
-    mo.observe(doc.body, {
-        subtree: true,
-        childList: true,
-        characterData: true,
-        attributes: true,
-    });
-
-    // input handler that also protects buttons/links from becoming visually empty
-    doc.addEventListener(
-        "input",
-        (e) => {
-            const target = e.target as HTMLElement | null;
-            ensureButtonHasContent(target || null);
-            notify();
-        },
-        true
-    );
-
-    doc.addEventListener("keydown", (e) => {
-        const key = e.key.toLowerCase();
-        const mod = e.metaKey || e.ctrlKey;
-        if (mod && key === "z") {
-            e.preventDefault();
-            if (e.shiftKey) redo();
-            else undo();
-            return;
-        }
-        if (e.key === "Escape")
-            (doc.defaultView as any).__klonerApi?.clear();
-        if ((key === "backspace" || key === "delete") && selected) {
-            const active = doc.activeElement as HTMLElement | null;
-            if (
-                !active?.isContentEditable &&
-                active?.tagName !== "INPUT" &&
-                active?.tagName !== "TEXTAREA"
-            ) {
-                e.preventDefault();
-                const parent = selected.parentElement;
-                selected.remove();
-                (doc.defaultView as any).__klonerApi?.clear();
-                parent?.focus?.();
-                saveHistory();
-                notify();
-            }
-        }
-    });
-
-    updateUndoRedoState();
-    publishSelection();
 }

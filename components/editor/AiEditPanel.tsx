@@ -1,5 +1,6 @@
 "use client";
 
+import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 import { useEffect, useState } from "react";
 
 export interface AiEditSuggestion {
@@ -22,13 +23,13 @@ interface AiEditPanelProps {
     renderId: string;
     getSelectedBlockHtml: () => string | null;
     selectionMeta?: SelectionMeta;
-
-    // now also receives the targetPath
     onApplyBlockHtml: (blockHtml: string, targetPath?: string | null) => void;
-
-    // optional hook so PreviewEditor can show loading on the block
     onAiEditingStateChange?: (isEditing: boolean, targetPath?: string | null) => void;
+
+    // NEW: push the full AI history up whenever it changes
+    onAiHistoryChange?: (items: AiEditSuggestion[]) => void;
 }
+
 
 const PLACEHOLDERS = [
     "Soften the hero headline.",
@@ -71,6 +72,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
         selectionMeta,
         onApplyBlockHtml,
         onAiEditingStateChange,
+        onAiHistoryChange,
     } = props;
 
     const [prompt, setPrompt] = useState("");
@@ -84,6 +86,10 @@ export default function AiEditPanel(props: AiEditPanelProps) {
     const [creditsRemaining, setCreditsRemaining] = useState<number | null>(null);
     const [creditsLimit, setCreditsLimit] = useState<number | null>(null);
     const [tier, setTier] = useState<string | undefined>(undefined);
+
+    useEffect(() => {
+        if (onAiHistoryChange) onAiHistoryChange(suggestions);
+    }, [suggestions, onAiHistoryChange]);
 
     // Single source of truth: “scoped” means selectionMeta.has is true
     const hasScopedBlock = !!selectionMeta?.has;
@@ -181,11 +187,15 @@ export default function AiEditPanel(props: AiEditPanelProps) {
         }
 
         try {
+            const csrf = await ensureSessionAndCsrf();
+
             const res = await fetch("/api/ai-edit", {
                 method: "POST",
                 credentials: "include",
                 headers: {
                     "content-type": "application/json",
+                    // adapt header name to whatever your guard expects
+                    "x-kloner-csrf": csrf ?? "",
                 },
                 body: JSON.stringify({
                     renderId,
@@ -245,7 +255,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
 
     const creditsText =
         typeof creditsLimit === "number" && creditsLimit > 0
-            ? `Remaining this month: ${Math.max(creditsRemaining ?? 0, 0)} / ${creditsLimit}`
+            ? `Remaining credits: ${Math.max(creditsRemaining ?? 0, 0)} / ${creditsLimit}`
             : creditsLimit === 0
                 ? "Your plan includes unlimited AI edits this month."
                 : null;
@@ -274,160 +284,103 @@ export default function AiEditPanel(props: AiEditPanelProps) {
 
 
                     {/* NEW: credits indicator under the input */}
-                    <div className="mt-1 px-2 min-h-[16px] text-[11px] text-neutral-400">
+                    <div className="mt-1 px-2 min-h-[16px] text-[13px] text-neutral-800">
                         {creditsText
-                            ? <>Each AI edit uses 5 credits. {creditsText}</>
+                            ? <>{creditsText}</>
                             : null}
                     </div>
 
-                    <div className="flex items-center gap-1 rounded-full bg-neutral-900 px-3 py-2.5 shadow-[0_10px_26px_rgba(0,0,0,0.35)] mt-2">
-                        <input
-                            type="text"
-                            value={prompt}
-                            onChange={(e) => {
-                                const value = e.target.value.slice(0, MAX_PROMPT_CHARS);
-                                setPrompt(value);
-                                if (error) setError(null);
-                            }}
-                            maxLength={MAX_PROMPT_CHARS}
-                            placeholder={placeholder}
-                            className="px-2 h-[48px] w-full max-w-[820px] bg-transparent text-[16px] leading-[1.2] text-neutral-50 placeholder:text-neutral-400 focus:outline-none"
-                            disabled={loading}
-                        />
+                    {/* AI edit input bar */}
+                    <div className="flex justify-center">
+                        <div className="relative w-full max-w-[860px]">
+                            {/* subtle accent glow */}
+                            <div
+                                aria-hidden="true"
+                                className="pointer-events-none absolute inset-0 -z-10 rounded-[999px] opacity-60 blur-xl"
+                                style={{
+                                    background:
+                                        "radial-gradient(circle at 0% 0%, rgba(245,95,42,0.35), transparent 55%), radial-gradient(circle at 100% 100%, rgba(245,95,42,0.25), transparent 55%)",
+                                }}
+                            />
 
-                        <button
-                            type="button"
-                            onClick={handleRun}
-                            disabled={generateDisabled}
-                            className={`inline-flex h-12 items-center whitespace-nowrap justify-center rounded-full px-3 text-[16px] font-semibold transition ${generateDisabled
-                                ? "cursor-not-allowed bg-neutral-700 text-neutral-400"
-                                : "bg-[var(--accent,#f55f2a)] text-white hover:brightness-110"
-                                }`}
-                        >
-                            {loading ? "Generating…" : "Create"}
-                        </button>
-                    </div>
+                            {/* header row above input */}
+                            <div className="mb-2 flex items-center justify-between px-1">
+                                {/* <div className="inline-flex items-center gap-2 rounded-full bg-[color-mix(in_srgb,var(--accent,#f55f2a)_15%,#020617)] px-3 py-1">
+                                    <span className="h-2 w-2 rounded-full bg-[var(--accent,#f55f2a)] shadow-[0_0_0_3px_rgba(245,95,42,0.45)]" />
+                                    <span className="text-[13px] font-semibold uppercase tracking-[0.12em] text-neutral-100">
+                                        AI Edit Assistant
+                                    </span>
+                                </div> */}
 
-                    <div className="ml-4">
-                        {atMaxChars ? (
-                            <p className="mt-2 px-1 text-[14px] text-red-600">
-                                Max {MAX_PROMPT_CHARS} characters reached.
-                            </p>
-                        ) : (
-                            <div className="mt-4 px-1 min-h-[22px] text-[14px]">
-                                {(!hasScopedBlock && prompt.length > 0) && (
-                                    <p className="text-amber-600">
-                                        No section is selected. Click a block in the preview
-                                        before asking for a change.
-                                    </p>
-                                )}
-
-                                {(hasScopedBlock && prompt.length > 0) && (
-                                    <p className="text-emerald-600">
-                                        Changes will only take affect on your selection below.
-                                    </p>
+                                {loading && (
+                                    <span className="text-[11px] text-neutral-400">Generating an edit…</span>
                                 )}
                             </div>
-                        )}
+
+                            {/* main input pill */}
+                            <div className="mt-2 flex items-center gap-2 rounded-[999px] border border-[color-mix(in_srgb,var(--accent,#f55f2a)_65%,#020617)] bg-[rgba(3,7,18,0.96)] px-3 py-2.5 ">
+                                {/* left icon chip */}
+                                <div className="hidden sm:flex h-9 w-11 items-center justify-center rounded-full border-2 border-[color-mix(in_srgb,var(--accent,#f55f2a)_70%,#0b1120)] bg-[radial-gradient(circle_at_30%_0%,rgba(255,255,255,0.15),transparent_55%),var(--accent,#f55f2a)] text-[12px] font-semibold text-white shadow-[0_0_0_1px_rgba(15,23,42,0.7)]">
+                                    AI
+                                </div>
+
+                                <input
+                                    type="text"
+                                    value={prompt}
+                                    onChange={(e) => {
+                                        const value = e.target.value.slice(0, MAX_PROMPT_CHARS);
+                                        setPrompt(value);
+                                        if (error) setError(null);
+                                    }}
+                                    maxLength={MAX_PROMPT_CHARS}
+                                    placeholder={placeholder || "Describe a small change to this block…"}
+                                    className="h-[46px] w-full max-w-[820px] bg-transparent text-[15px] leading-[1.2] text-neutral-50 placeholder:text-neutral-500 focus:outline-none"
+                                    disabled={loading}
+                                />
+
+                                <button
+                                    type="button"
+                                    onClick={handleRun}
+                                    disabled={generateDisabled}
+                                    className={`inline-flex h-10 items-center justify-center whitespace-nowrap rounded-full px-4 text-[14px] font-semibold tracking-wide transition ${generateDisabled
+                                        ? "cursor-not-allowed bg-neutral-800 text-neutral-500"
+                                        : "bg-[var(--accent,#f55f2a)] text-white shadow-[0_0_0_1px_rgba(15,23,42,0.8),0_12px_30px_rgba(245,95,42,0.35)] hover:brightness-110 active:brightness-95"
+                                        }`}
+                                >
+                                    {loading ? "Applying…" : "Apply edit"}
+                                </button>
+                            </div>
+
+                            {/* helper + char counter */}
+                            <div className="mt-2 flex items-center justify-between px-1 text-[14px]">
+                                <div className="min-h-[22px]">
+                                    {atMaxChars ? (
+                                        <span className="text-red-500">
+                                            Max {MAX_PROMPT_CHARS} characters reached.
+                                        </span>
+                                    ) : !hasScopedBlock && prompt.length > 0 ? (
+                                        <span className="text-amber-500">
+                                            No block is selected. Click a section in the preview, then describe the change.
+                                        </span>
+                                    ) : hasScopedBlock && prompt.length > 0 ? (
+                                        <span className="text-emerald-700">
+                                            This edit will only affect your selected block in the preview.
+                                        </span>
+                                    ) : (
+                                        <span className="text-neutral-500">
+                                            Keep requests specific for the best results.
+                                        </span>
+                                    )}
+                                </div>
+
+                                <span className="text-[11px] text-neutral-500">
+                                    {prompt.length}/{MAX_PROMPT_CHARS}
+                                </span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
-
-            {suggestions.length > 0 && (
-                <>
-                    {/* history rail / dropdown on the right */}
-                    <aside className="pointer-events-none fixed top-10 ml-4 hidden w-72 lg:flex">
-                        {collapsed ? (
-                            // collapsed: small dropdown-style pill
-                            <button
-                                type="button"
-                                onClick={() => setCollapsed(false)}
-                                className="pointer-events-auto inline-flex items-center justify-center gap-1 rounded-full border border-neutral-300 bg-white/95 px-3 py-1.5 text-[12px] font-medium text-neutral-700 shadow-md"
-                            >
-                                <span className="leading-none">Show AI history</span>
-                                <span className="text-[11px] text-neutral-500 leading-none translate-y-[0.5px]">
-                                    ▼
-                                </span>
-                            </button>
-
-                        ) : (
-                            // expanded: full aside panel
-                            <div className="pointer-events-auto flex max-h-64 w-full flex-col rounded-xl border border-neutral-200 bg-white/95 px-3 py-3 text-[16px] shadow-md">
-                                <div className="mb-2 flex items-center justify-between">
-                                    <div className="flex flex-col">
-                                        <span className="font-semibold text-neutral-800">
-                                            Recent AI Changes (5)
-                                        </span>
-
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => setCollapsed(true)}
-                                        className="ml-4 rounded-full bg-accent px-2 py-0.5 text-[12px] text-white"
-                                    >
-                                        Hide
-                                    </button>
-                                </div>
-
-                                <p className="mb-2 text-[11px] text-neutral-500">
-                                    History is for reference only.
-                                </p>
-
-                                <div className="flex-1 space-y-2 overflow-y-auto">
-                                    {suggestions.length === 0 && (
-                                        <div className="rounded-md border border-dashed border-neutral-300 bg-neutral-50 px-2 py-2 text-[11px] text-neutral-400">
-                                            No suggestions yet.
-                                        </div>
-                                    )}
-
-                                    {suggestions.slice(0, 5).map((s) => {
-                                        const active = activePreviewId === s.id;
-                                        const createdLabel = formatCreatedAt(s.createdAt);
-
-                                        return (
-                                            <div
-                                                key={s.id}
-                                                className={`flex flex-col gap-1 rounded-md border bg-white px-2 py-1.5 text-[11px] transition ${active
-                                                    ? "border-[rgba(245,95,42,0.8)] bg-[rgba(245,95,42,0.02)]"
-                                                    : "border-neutral-200 hover:border-neutral-300"
-                                                    }`}
-                                            >
-                                                <div className="flex items-start justify-between gap-2">
-                                                    <div className="min-w-0 flex-1">
-                                                        <div className="truncate font-medium text-neutral-900">
-                                                            {s.summary || "Minimal edit"}
-                                                        </div>
-                                                        <div className="line-clamp-2 text-[11px] text-neutral-500">
-                                                            {s.prompt}
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <div className="mt-1 flex items-center justify-between">
-                                                    {createdLabel ? (
-                                                        <span className="text-[11px] text-neutral-400">
-                                                            {createdLabel}
-                                                        </span>
-                                                    ) : (
-                                                        <span />
-                                                    )}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleDismiss(s.id)}
-                                                        className="rounded-full bg-accent px-2 py-0.5 text-[11px] font-medium text-white"
-                                                    >
-                                                        Dismiss
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
-                    </aside>
-                </>
-            )}
         </>
     );
 }

@@ -44,3 +44,202 @@ export function sanitizeImageName(name: string) {
     const base = name.toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
     return base.slice(-64) || "image";
 }
+
+// Derive archived routes for this render from Firestore shape
+export function getArchivedRoutesForRender(
+    renderId: string | null,
+    renders: any[],
+): string[] {
+    if (!renderId) return [];
+
+    const target = renders.find((r) => r.id === renderId);
+    if (!target) return [];
+
+    const out = new Set<string>();
+
+    const topLevel = (target as any).archivedPageIds;
+    if (Array.isArray(topLevel)) {
+        for (const v of topLevel) {
+            if (typeof v === "string" && v.trim()) {
+                out.add(v.trim());
+            }
+        }
+    }
+
+    const meta = (target as any).meta;
+    if (meta && Array.isArray((meta as any).archivedPageIds)) {
+        for (const v of (meta as any).archivedPageIds) {
+            if (typeof v === "string" && v.trim()) {
+                out.add(v.trim());
+            }
+        }
+    }
+
+    return Array.from(out);
+}
+
+export function scrubArchivedRoutes(html: string, archivedRoutes: string[]): string {
+    if (!archivedRoutes || archivedRoutes.length === 0) return html;
+
+    try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, "text/html");
+
+        const normalized = new Set(
+            archivedRoutes
+                .filter(Boolean)
+                .map((r) => {
+                    let path = r.trim();
+                    if (!path.startsWith("/")) path = "/" + path;
+                    if (path.length > 1 && path.endsWith("/")) {
+                        path = path.slice(0, -1);
+                    }
+                    return path;
+                })
+        );
+
+        doc.querySelectorAll("main.page-root[data-route]").forEach((el) => {
+            const raw = (el.getAttribute("data-route") || "").trim();
+            let route = raw;
+            if (!route.startsWith("/")) route = "/" + route;
+            if (route.length > 1 && route.endsWith("/")) {
+                route = route.slice(0, -1);
+            }
+            if (normalized.has(route)) {
+                el.remove();
+            }
+        });
+
+        return doc.documentElement.outerHTML;
+    } catch {
+        return html;
+    }
+}
+
+
+
+export function extractArchivedPageIdsFromRender(render: any): string[] {
+
+    console.log("renderId: ", render)
+    if (!render) return [];
+
+    const root = render as any;
+    const meta = (root.meta ?? {}) as any;
+
+    const candidate =
+        root.archivedPageIds ??
+        meta.archivedPageIds ??
+        [];
+
+    if (!Array.isArray(candidate)) return [];
+
+    let result = candidate.filter(
+        (v) => typeof v === "string" && v.trim().length > 0
+    );
+
+    console.log("result: ", result)
+
+
+    return result;
+}
+
+
+// src/lib/helpers/archiveHelpers.ts
+import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+
+export interface RenderLike {
+    id: string;
+    archivedPageIds?: string[];
+    meta?: {
+        archivedPageIds?: string[];
+        archived?: boolean;
+        [key: string]: any;
+    };
+    [key: string]: any;
+}
+
+export async function persistArchivedPageIds(opts: {
+    userId: string;
+    renderId: string;
+    ids: string[];
+}) {
+    const { userId, renderId, ids } = opts;
+
+    const dref = doc(db, "kloner_users", userId, "kloner_renders", renderId);
+
+    await updateDoc(dref, {
+        archivedPageIds: ids,
+        "meta.archivedPageIds": ids,
+        archived: ids.length > 0,
+        "meta.archived": ids.length > 0,
+        updatedAt: serverTimestamp(),
+    });
+}
+
+export function withArchivedPageIds<T extends RenderLike>(
+    renders: T[],
+    renderId: string,
+    ids: string[]
+): T[] {
+    return renders.map((r) =>
+        r.id === renderId
+            ? {
+                ...r,
+                archivedPageIds: ids,
+                meta: {
+                    ...(r.meta || {}),
+                    archivedPageIds: ids,
+                    archived: ids.length > 0,
+                },
+            }
+            : r
+    );
+}
+
+export function normalizeKlonerPaddingForExport(html: string): string {
+    if (typeof window === "undefined" || !html) return html;
+
+    try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, "text/html");
+
+        // 1) editor-only attribute: drop it so we don't lock the live site to "desktop"
+        if (doc.documentElement.hasAttribute("data-kl-device")) {
+            doc.documentElement.removeAttribute("data-kl-device");
+        }
+
+        // 2) inject a single responsive rule that maps the per-device vars to real breakpoints
+        //    id is stable so we never duplicate on re-exports
+        let styleEl = doc.getElementById("kloner-responsive-pad") as HTMLStyleElement | null;
+
+        if (!styleEl) {
+            styleEl = doc.createElement("style");
+            styleEl.id = "kloner-responsive-pad";
+            styleEl.textContent = `
+/* Kloner responsive padding – uses per-device vars written by the editor */
+[data-kl-pad] {
+  padding: var(--kl-pad-desktop, 0px);
+}
+
+@media (max-width: 1023px) {
+  [data-kl-pad] {
+    padding: var(--kl-pad-tablet, var(--kl-pad-desktop, 0px));
+  }
+}
+
+@media (max-width: 767px) {
+  [data-kl-pad] {
+    padding: var(--kl-pad-mobile, var(--kl-pad-tablet, var(--kl-pad-desktop, 0px)));
+  }
+}
+            `.trim();
+            doc.head.appendChild(styleEl);
+        }
+
+        return "<!DOCTYPE html>\n" + doc.documentElement.outerHTML;
+    } catch {
+        // if DOMParser explodes for any reason, fall back to original HTML
+        return html;
+    }
+}

@@ -8,33 +8,30 @@ import { useAuth } from "@/src/hooks/useAuth";
 
 const steps: Step[] = [
     {
-        target: "#kloner-device-toggle",
-        content: "Switch between desktop, tablet, and mobile views of your cloned page.",
+        target: "#kloner-home",
+        content:
+            "Welcome to your new website. The area below is your live editable preview. Click Next to continue.",
         disableBeacon: true,
     },
+
     {
         target: "#kloner-page-switcher",
-        content: "Use the page switcher to jump between different pages like Home, Pricing, and About.",
+        content: "Use the page switcher to jump between different pages like Home, Pricing, and About. Press Enter to continue.",
         disableBeacon: true,
     },
     {
-        target: "#kloner-style-panel",
-        content: "Adjust typography, spacing, colors, and layout for the currently selected block here.",
+        target: "#kloner-undo",
+        content: "Undo your most recent edit directly in the editor.",
+        disableBeacon: true,
+    },
+      {
+        target: "#kloner-history",
+        content: "You can also revert to older versions by clicking tabs in the history section.",
         disableBeacon: true,
     },
     {
         target: "#kloner-ai-edit-panel",
-        content: "Use AI Edit to rewrite or refine copy and layout for the selected block.",
-        disableBeacon: true,
-    },
-    {
-        target: "#kloner-meta-settings",
-        content: "Set SEO titles, descriptions, and social preview tags for the current page.",
-        disableBeacon: true,
-    },
-    {
-        target: "#kloner-selection-style",
-        content: "Fine-tune typography, spacing, alignment, and colors for the currently selected block here.",
+        content: "Use AI Edit to rewrite, generate pictures, or refine copy and layout for the selected block.",
         disableBeacon: true,
     },
     {
@@ -43,13 +40,14 @@ const steps: Step[] = [
         disableBeacon: true,
     },
     {
-        target: "#kloner-undo",
-        content: "Undo your most recent edit directly in the editor.",
+        target: "#kloner-device-toggle",
+        content: "Switch between desktop, tablet, and mobile views of your cloned page.",
         disableBeacon: true,
     },
+
     {
-        target: "#kloner-history",
-        content: "View and restore previous versions of your page from the edit history.",
+        target: "#kloner-selection-style",
+        content: "Fine-tune typography, spacing, alignment, and colors for the currently selected block here.",
         disableBeacon: true,
     },
 
@@ -57,7 +55,7 @@ const steps: Step[] = [
         target: "#kloner-actions-row",
         content: "When your edits are ready, use this to deploy changes to a live website.",
         disableBeacon: true,
-    }
+    },
 ];
 
 const LOCAL_KEY = "kloner_preview_tour_done";
@@ -137,7 +135,7 @@ export function PreviewEditorTour() {
                 back: "Back",
                 close: "Close",
                 last: "Done",
-                next: "Next",
+                next: "Next (Press Enter)",
                 skip: "Skip",
             }}
         />

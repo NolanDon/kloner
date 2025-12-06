@@ -31,9 +31,21 @@ import {
     Loader2,
     BrushIcon,
 } from "lucide-react";
-import PreviewEditor, { SeoMeta } from "@/components/PreviewEditor";
+import PreviewEditor, {
+    Device,
+    SeoMeta,
+    ViewMode,
+} from "@/components/PreviewEditor";
 import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 import { RenderDoc } from "../view/page";
+import {
+    extractArchivedPageIdsFromRender,
+    getArchivedRoutesForRender,
+    normalizeKlonerPaddingForExport,
+    persistArchivedPageIds,
+    scrubArchivedRoutes,
+    withArchivedPageIds,
+} from "@/components/helpers";
 
 const ACCENT = "#f55f2a";
 
@@ -193,13 +205,16 @@ export default function DeploymentsPage(): JSX.Element {
     const [loading, setLoading] = useState(true);
     const [items, setItems] = useState<Array<{ id: string } & DeploymentDoc>>([]);
     const [showDeployHint, setShowDeployHint] = useState(false);
-    const [activeRenderId, setActiveRenderId] = useState<string | undefined>(undefined);
+    const [activeRenderId, setActiveRenderId] = useState<string | undefined>(
+        undefined
+    );
+    const [activeArchivedPageIds, setActiveArchivedPageIds] = useState<string[]>(
+        []
+    );
     const [activeSeoMetaByPage, setActiveSeoMetaByPage] = useState<
         Record<string, SeoMeta> | null
     >(null);
-    const [renders, setRenders] = useState<
-        Array<{ id: string } & RenderDoc>
-    >([]);
+    const [renders, setRenders] = useState<Array<{ id: string } & RenderDoc>>([]);
     const [hasNewFlag, setHasNewFlag] = useState(false);
     const [hasNewMeta, setHasNewMeta] = useState<{
         url?: string;
@@ -211,21 +226,39 @@ export default function DeploymentsPage(): JSX.Element {
 
     const [editorOpen, setEditorOpen] = useState(false);
     const [editorHtml, setEditorHtml] = useState<string>("");
-    const [editorRefImg, setEditorRefImg] = useState<string | undefined>(undefined);
+    const [editorRefImg, setEditorRefImg] = useState<string | undefined>(
+        undefined
+    );
     const [editorDraftId, setEditorDraftId] = useState<string | null>(null);
     const [activeDeployment, setActiveDeployment] =
         useState<({ id: string } & DeploymentDoc) | null>(null);
     const [editorLoadingId, setEditorLoadingId] = useState<string | null>(null);
 
+    // keeps latest HTML coming from PreviewEditor (visual export) per renderId
     const [htmlDrafts, setHtmlDrafts] = useState<Record<string, string>>({});
 
     const BUILDING_STATES = ["building", "queued", "pending"];
 
-    const [selectedProjectKey, setSelectedProjectKey] = useState<string>("all");
+    const [selectedProjectKey, setSelectedProjectKey] =
+        useState<string>("all");
 
     const [refreshing, setRefreshing] = useState(false);
     const [lastGlobalCheck, setLastGlobalCheck] = useState<Date | null>(null);
     const [refreshError, setRefreshError] = useState<string | null>(null);
+
+    const handleArchivedPageIdsChange = async (ids: string[]) => {
+        setActiveArchivedPageIds(ids);
+
+        if (!user || !activeRenderId) return;
+
+        await persistArchivedPageIds({
+            userId: user.uid,
+            renderId: activeRenderId,
+            ids,
+        });
+
+        setRenders((prev) => withArchivedPageIds(prev, activeRenderId, ids));
+    };
 
     useEffect(() => {
         if (!showDeployHint) return;
@@ -352,7 +385,9 @@ export default function DeploymentsPage(): JSX.Element {
             return;
         }
         if (selectedProjectKey === "all") return;
-        const stillExists = projectGroups.some((g) => g.key === selectedProjectKey);
+        const stillExists = projectGroups.some(
+            (g) => g.key === selectedProjectKey
+        );
         if (!stillExists) {
             setSelectedProjectKey("all");
         }
@@ -443,8 +478,10 @@ export default function DeploymentsPage(): JSX.Element {
         return (
             scopedItems.find(
                 (d) =>
-                    (hasNewMeta.projectId && d.vercelProjectId === hasNewMeta.projectId) ||
-                    (hasNewMeta.projectName && d.vercelProjectName === hasNewMeta.projectName)
+                    (hasNewMeta.projectId &&
+                        d.vercelProjectId === hasNewMeta.projectId) ||
+                    (hasNewMeta.projectName &&
+                        d.vercelProjectName === hasNewMeta.projectName)
             ) || null
         );
     }, [hasNewMeta, scopedItems]);
@@ -516,7 +553,8 @@ export default function DeploymentsPage(): JSX.Element {
                         ts: Date.now(),
                         url: json.url || null,
                         projectId: json.projectId || d.vercelProjectId || null,
-                        projectName: json.projectName || d.vercelProjectName || null,
+                        projectName:
+                            json.projectName || d.vercelProjectName || null,
                     })
                 );
             }
@@ -540,7 +578,8 @@ export default function DeploymentsPage(): JSX.Element {
         snap.forEach((docSnap) => {
             const data = docSnap.data() as any;
             const ts =
-                (data.lastExportedAt && toDate(data.lastExportedAt)?.getTime()) ||
+                (data.lastExportedAt &&
+                    toDate(data.lastExportedAt)?.getTime()) ||
                 (data.updatedAt && toDate(data.updatedAt)?.getTime()) ||
                 (data.createdAt && toDate(data.createdAt)?.getTime()) ||
                 0;
@@ -562,11 +601,14 @@ export default function DeploymentsPage(): JSX.Element {
         html: string;
         referenceImage?: string;
         seoMetaByPage?: Record<string, SeoMeta> | null;
+        archivedPageIds: string[];
     }> {
         const { uid, deployment } = opts;
         const colRef = collection(db, "kloner_users", uid, "kloner_renders");
 
-        const tryQueries: Array<() => Promise<QueryDocumentSnapshot<DocumentData> | null>> = [];
+        const tryQueries: Array<
+            () => Promise<QueryDocumentSnapshot<DocumentData> | null>
+        > = [];
 
         if (deployment.vercelProjectId) {
             const projectId = deployment.vercelProjectId;
@@ -580,7 +622,10 @@ export default function DeploymentsPage(): JSX.Element {
         if (deployment.vercelProjectName) {
             const projectName = deployment.vercelProjectName;
             tryQueries.push(async () => {
-                const qy = query(colRef, where("vercelProjectName", "==", projectName));
+                const qy = query(
+                    colRef,
+                    where("vercelProjectName", "==", projectName)
+                );
                 const snap = await getDocs(qy);
                 return pickNewest(snap);
             });
@@ -595,7 +640,7 @@ export default function DeploymentsPage(): JSX.Element {
             });
         }
 
-        // as an absolute last resort: match by base url used in the render
+        // last resort: match by base URL used in the render
         tryQueries.push(async () => {
             const baseUrl = deployment.vercelUrl?.split("?")[0] || null;
             if (!baseUrl) return null;
@@ -610,7 +655,8 @@ export default function DeploymentsPage(): JSX.Element {
 
             const data = docSnap.data() as any;
 
-            const rawHtml = typeof data.html === "string" ? data.html.trim() : "";
+            const rawHtml =
+                typeof data.html === "string" ? data.html.trim() : "";
             if (!rawHtml) {
                 throw new Error(
                     "Reference render exists but has no HTML. Open this URL in the Preview Builder and re-export."
@@ -618,7 +664,8 @@ export default function DeploymentsPage(): JSX.Element {
             }
 
             const refImg =
-                typeof data.referenceImage === "string" && data.referenceImage.trim().length > 0
+                typeof data.referenceImage === "string" &&
+                    data.referenceImage.trim().length > 0
                     ? data.referenceImage
                     : undefined;
 
@@ -627,11 +674,14 @@ export default function DeploymentsPage(): JSX.Element {
                     ? (data.seoMetaByPage as Record<string, SeoMeta>)
                     : null;
 
+            const archivedPageIds = extractArchivedPageIdsFromRender(data);
+
             return {
                 id: docSnap.id,
                 html: rawHtml,
                 referenceImage: refImg,
                 seoMetaByPage,
+                archivedPageIds,
             };
         }
 
@@ -639,7 +689,6 @@ export default function DeploymentsPage(): JSX.Element {
             "No reference render found for this deployment. Open this site in the Preview Builder and export at least one render."
         );
     }
-
 
     async function openEditorForDeployment(d: { id: string } & DeploymentDoc) {
         if (!user) return;
@@ -660,19 +709,44 @@ export default function DeploymentsPage(): JSX.Element {
             const draftId = render.id;
             const seoMap = render.seoMetaByPage ?? null;
 
-            // HTML draft cache
+            // NEW: push archived ids into local state used by PreviewEditor
+            setActiveArchivedPageIds(
+                render.archivedPageIds?.filter(
+                    (v) => typeof v === "string" && v.trim().length > 0
+                ) ?? []
+            );
+
+            // keep renders cache in sync if you want it elsewhere
+            setRenders((prev) => {
+                const existing = prev.find((r) => r.id === draftId);
+                const merged: { id: string } & RenderDoc = {
+                    ...(existing || ({} as any)),
+                    id: draftId,
+                    html: initialHtml,
+                    referenceImage: refImg ?? existing?.referenceImage ?? null,
+                    seoMetaByPage: seoMap ?? existing?.seoMetaByPage ?? null,
+                    archivedPageIds:
+                        render.archivedPageIds ??
+                        (existing as any)?.archivedPageIds ??
+                        [],
+                };
+                if (existing) {
+                    return prev.map((r) => (r.id === draftId ? merged : r));
+                }
+                return [...prev, merged];
+            });
+
+            // HTML draft cache (visual-export version)
             setHtmlDrafts((prev) => ({
                 ...prev,
                 [draftId]: initialHtml,
             }));
 
-            // Wire up deployment + render IDs
             setActiveDeployment(d);
             setEditorHtml(initialHtml);
             setEditorRefImg(refImg);
             setEditorDraftId(draftId);
 
-            // IMPORTANT: these were never set, so meta + saves had no ID + no map
             setActiveRenderId(draftId);
             setActiveSeoMetaByPage(seoMap);
 
@@ -691,11 +765,11 @@ export default function DeploymentsPage(): JSX.Element {
             setEditorRefImg(undefined);
             setActiveRenderId(undefined);
             setActiveSeoMetaByPage(null);
+            setActiveArchivedPageIds([]);
         } finally {
             setEditorLoadingId(null);
         }
     }
-
 
     async function exportToVercel(opts: {
         html: string;
@@ -711,6 +785,16 @@ export default function DeploymentsPage(): JSX.Element {
             activeDeployment.vercelProjectId ||
             "kloner-site";
 
+        // resolve the render id this export is tied to
+        const resolvedRenderId = (opts.renderId ?? editorDraftId) ?? null;
+
+        // derive archived routes for this render and scrub them out of the HTML
+        const archivedRoutes = getArchivedRoutesForRender(resolvedRenderId, renders);
+        const scrubbedHtml = scrubArchivedRoutes(opts.html, archivedRoutes);
+
+        // NEW: normalize device-specific padding for the live, responsive version
+        const normalizedHtml = normalizeKlonerPaddingForExport(scrubbedHtml);
+
         updateActionState(key, { customLoading: true, customError: null });
 
         const csrf = await ensureSessionAndCsrf();
@@ -723,9 +807,9 @@ export default function DeploymentsPage(): JSX.Element {
                     ...(csrf ? { "x-csrf": csrf } : {}),
                 },
                 body: JSON.stringify({
-                    html: opts.html,
+                    html: normalizedHtml,
                     projectName,
-                    renderId: editorDraftId ?? null,
+                    renderId: resolvedRenderId,
                     vercelProjectId: activeDeployment.vercelProjectId ?? null,
                     vercelProjectName: activeDeployment.vercelProjectName ?? null,
                 }),
@@ -742,16 +826,19 @@ export default function DeploymentsPage(): JSX.Element {
                     JSON.stringify({
                         ts: Date.now(),
                         url: json.url || null,
-                        projectId: json.projectId || activeDeployment.vercelProjectId || null,
+                        projectId:
+                            json.projectId ||
+                            activeDeployment.vercelProjectId ||
+                            null,
                         projectName:
                             json.projectName ||
                             activeDeployment.vercelProjectName ||
                             projectName,
-                    })
+                    }),
                 );
             }
 
-            setEditorOpen(false);
+            setEditorOpen(true);
             setActiveDeployment(null);
             setEditorHtml("");
             setEditorDraftId(null);
@@ -765,10 +852,11 @@ export default function DeploymentsPage(): JSX.Element {
         }
     }
 
+
     const handleSaveDraft = async (payload: {
         draftId?: string;
         html: string;
-        meta?: { nameHint?: string; device: any; mode: any };
+        meta?: { nameHint?: string; device: Device; mode: ViewMode };
         version: number;
     }) => {
         if (!user) return;
@@ -776,19 +864,26 @@ export default function DeploymentsPage(): JSX.Element {
         const rid = payload.draftId || editorDraftId;
         if (!rid) return;
 
+        const trimmedNameHint =
+            typeof payload.meta?.nameHint === "string"
+                ? payload.meta.nameHint.trim()
+                : "";
+
         try {
             await setDoc(
                 doc(db, "kloner_users", user.uid, "kloner_renders", rid),
                 {
                     html: payload.html,
                     referenceImage: editorRefImg || null,
-                    nameHint: payload.meta?.nameHint || null,
+                    nameHint: trimmedNameHint || null,
                     version: payload.version || 1,
                     updatedAt: serverTimestamp(),
+                    // do not touch archived or archivedPageIds here
                 },
                 { merge: true }
             );
 
+            // persist visual HTML into local draft cache
             setHtmlDrafts((prev) => ({
                 ...prev,
                 [rid]: payload.html,
@@ -827,11 +922,15 @@ export default function DeploymentsPage(): JSX.Element {
             });
             if (!res.ok) {
                 const json = await res.json().catch(() => ({} as any));
-                throw new Error(json?.error || "Failed to refresh from Vercel");
+                throw new Error(
+                    json?.error || "Failed to refresh from Vercel"
+                );
             }
             setLastGlobalCheck(new Date());
         } catch (e: any) {
-            setRefreshError(e?.message || "Failed to refresh from Vercel");
+            setRefreshError(
+                e?.message || "Failed to refresh from Vercel"
+            );
         } finally {
             setRefreshing(false);
         }
@@ -839,7 +938,6 @@ export default function DeploymentsPage(): JSX.Element {
 
     const latestDeployment = scopedItems[0] || null;
     const history = scopedItems.slice(1);
-
 
     return (
         <main className="min-h-screen bg-white">
@@ -875,7 +973,8 @@ export default function DeploymentsPage(): JSX.Element {
                                             <div className="font-semibold mb-1">
                                                 {bannerVariant === "error"
                                                     ? "Deployment failed"
-                                                    : bannerVariant === "success"
+                                                    : bannerVariant ===
+                                                        "success"
                                                         ? "Deployment finished"
                                                         : "Deployment started from Preview Builder"}
                                             </div>
@@ -883,7 +982,8 @@ export default function DeploymentsPage(): JSX.Element {
                                             <p className="leading-relaxed">
                                                 {bannerVariant === "error"
                                                     ? "Kloner tried to deploy your preview, but Vercel reported an error. Check the deployment in Vercel to inspect the build logs and fix the issue."
-                                                    : bannerVariant === "success"
+                                                    : bannerVariant ===
+                                                        "success"
                                                         ? "Your preview finished building on Vercel. You can open the live site or review its history below."
                                                         : "A deployment was just triggered from the Preview Builder. Kloner will query the Vercel API periodically or when you manually refresh to keep this status in sync."}
                                             </p>
@@ -893,8 +993,9 @@ export default function DeploymentsPage(): JSX.Element {
                             )}
 
                             <p className="text-xs sm:text-sm text-neutral-500 max-w-xl">
-                                Every time Kloner deploys to your Vercel account, we record the deployment here.
-                                Status is refreshed automatically.
+                                Every time Kloner deploys to your Vercel
+                                account, we record the deployment here. Status
+                                is refreshed automatically.
                             </p>
                         </div>
                     </div>
@@ -907,7 +1008,9 @@ export default function DeploymentsPage(): JSX.Element {
                                 </label>
                                 <select
                                     value={selectedProjectKey}
-                                    onChange={(e) => setSelectedProjectKey(e.target.value)}
+                                    onChange={(e) =>
+                                        setSelectedProjectKey(e.target.value)
+                                    }
                                     className="w-full rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm sm:text-xs text-neutral-800 shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400"
                                 >
                                     <option value="all">
@@ -917,7 +1020,10 @@ export default function DeploymentsPage(): JSX.Element {
                                     {projectGroups.map((g) => (
                                         <option key={g.key} value={g.key}>
                                             {g.projectName}
-                                            {g.sampleUrl ? ` · ${g.sampleUrl}` : ""} ({g.count})
+                                            {g.sampleUrl
+                                                ? ` · ${g.sampleUrl}`
+                                                : ""}{" "}
+                                            ({g.count})
                                         </option>
                                     ))}
                                 </select>
@@ -928,7 +1034,8 @@ export default function DeploymentsPage(): JSX.Element {
                             <div className="inline-flex items-center gap-2 text-xs text-neutral-600">
                                 <Rocket className="h-3.5 w-3.5 text-neutral-500" />
                                 <span>
-                                    {total} deployment{total === 1 ? "" : "s"} in view
+                                    {total} deployment
+                                    {total === 1 ? "" : "s"} in view
                                 </span>
                             </div>
                             <div className="inline-flex items-center gap-2 text-xs text-neutral-600">
@@ -939,7 +1046,9 @@ export default function DeploymentsPage(): JSX.Element {
                             <div className="mt-2 flex flex-col items-end gap-1">
                                 <button
                                     type="button"
-                                    disabled={refreshing || scopedItems.length === 0}
+                                    disabled={
+                                        refreshing || scopedItems.length === 0
+                                    }
                                     onClick={refreshFromVercel}
                                     className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-xs text-neutral-800 hover:bg-neutral-50 disabled:opacity-60 disabled:cursor-default"
                                 >
@@ -952,7 +1061,9 @@ export default function DeploymentsPage(): JSX.Element {
                                 </button>
                                 <div className="text-[10px] text-neutral-400">
                                     {lastGlobalCheck
-                                        ? `Last checked ${formatDate(lastGlobalCheck)}`
+                                        ? `Last checked ${formatDate(
+                                            lastGlobalCheck
+                                        )}`
                                         : "Not checked yet"}
                                 </div>
                                 {refreshError && (
@@ -977,8 +1088,9 @@ export default function DeploymentsPage(): JSX.Element {
                             <span>No deployments in this scope yet</span>
                         </div>
                         <p className="text-xs text-neutral-600">
-                            Trigger a deployment from the Preview Builder. Kloner will use the Vercel API to pull in
-                            status and history for the selected project / URL.
+                            Trigger a deployment from the Preview Builder.
+                            Kloner will use the Vercel API to pull in status
+                            and history for the selected project / URL.
                         </p>
                     </div>
                 ) : (
@@ -988,18 +1100,29 @@ export default function DeploymentsPage(): JSX.Element {
                             (() => {
                                 const d = latestDeployment;
                                 const created = formatDate(d.createdAt);
-                                const updated = formatDate(d.updatedAt || d.lastEventAt);
-                                const state = toUiState(d, latestReadyByProject);
+                                const updated = formatDate(
+                                    d.updatedAt || d.lastEventAt
+                                );
+                                const state = toUiState(
+                                    d,
+                                    latestReadyByProject
+                                );
                                 const stateStyles = stateColor(state);
                                 const projectName =
-                                    d.vercelProjectName || d.vercelProjectId || "Untitled project";
-                                const key = d.vercelDeploymentId || d.id;
+                                    d.vercelProjectName ||
+                                    d.vercelProjectId ||
+                                    "Untitled project";
+                                const key =
+                                    d.vercelDeploymentId || d.id;
                                 const act = actionState[key] || {};
                                 const isCustomLoading = !!act.customLoading;
-                                const isEditorLoading = editorLoadingId === key;
+                                const isEditorLoading =
+                                    editorLoadingId === key;
                                 const displayUrl =
                                     d.publicUrl ||
-                                    (d.publicDomain ? `https://${d.publicDomain}` : null) ||
+                                    (d.publicDomain
+                                        ? `https://${d.publicDomain}`
+                                        : null) ||
                                     d.vercelUrl ||
                                     null;
 
@@ -1015,12 +1138,10 @@ export default function DeploymentsPage(): JSX.Element {
                                                         <div className="text-lg font-semibold text-neutral-900 truncate mb-2">
                                                             {projectName}
                                                         </div>
-                                                        {/* <span className="text-sm text-neutral-400 truncate">
-                                                            {d.vercelDeploymentId?.slice(0, 10)}…
-                                                        </span> */}
                                                     </div>
                                                     <div className="mt-1 text-xs text-neutral-500 break-all">
-                                                        {displayUrl || "URL pending"}
+                                                        {displayUrl ||
+                                                            "URL pending"}
                                                     </div>
                                                 </div>
 
@@ -1028,7 +1149,9 @@ export default function DeploymentsPage(): JSX.Element {
                                                     className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs  ${stateStyles}`}
                                                 >
                                                     <span className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
-                                                    <span className="capitalize">{state}</span>
+                                                    <span className="capitalize">
+                                                        {state}
+                                                    </span>
                                                 </div>
                                             </div>
 
@@ -1036,10 +1159,12 @@ export default function DeploymentsPage(): JSX.Element {
                                                 <div className="inline-flex items-center gap-1.5">
                                                     <Clock className="h-3 w-3" />
                                                     <span>
-                                                        Created {created || "–"}
+                                                        Created{" "}
+                                                        {created || "–"}
                                                         {updated && (
                                                             <span className="ml-1 text-neutral-400">
-                                                                · Updated {updated}
+                                                                · Updated{" "}
+                                                                {updated}
                                                             </span>
                                                         )}
                                                     </span>
@@ -1050,7 +1175,9 @@ export default function DeploymentsPage(): JSX.Element {
                                                         <span>
                                                             Last event:{" "}
                                                             <span className=" text-neutral-700">
-                                                                {d.lastEventType}
+                                                                {
+                                                                    d.lastEventType
+                                                                }
                                                             </span>
                                                         </span>
                                                     </span>
@@ -1061,7 +1188,10 @@ export default function DeploymentsPage(): JSX.Element {
                                                 {state === "error" && (
                                                     <div className="inline-flex items-center gap-1 text-sm text-red-600">
                                                         <AlertTriangle className="h-3 w-3" />
-                                                        <span>Check build logs in Vercel</span>
+                                                        <span>
+                                                            Check build logs in
+                                                            Vercel
+                                                        </span>
                                                     </div>
                                                 )}
                                             </div>
@@ -1069,28 +1199,49 @@ export default function DeploymentsPage(): JSX.Element {
                                             <div className="border-t border-neutral-100 pt-3">
                                                 <div className="mt-1 space-y-3 rounded-lg border border-neutral-200 bg-neutral-50/80 p-3">
                                                     <div className="flex flex-wrap items-center gap-2">
-
                                                         <button
                                                             type="button"
-                                                            onClick={() => openEditorForDeployment(d)}
-                                                            disabled={isEditorLoading}
+                                                            onClick={() =>
+                                                                openEditorForDeployment(
+                                                                    d
+                                                                )
+                                                            }
+                                                            disabled={
+                                                                isEditorLoading
+                                                            }
                                                             className="group inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-semibold text-white"
                                                             style={{
-                                                                backgroundColor: ACCENT,
+                                                                backgroundColor:
+                                                                    ACCENT,
                                                                 boxShadow:
                                                                     "0 5px 15px rgba(245,95,42,0.40)",
                                                             }}
                                                         >
-                                                            <span>Customize</span>
+                                                            <span>
+                                                                Customize
+                                                            </span>
                                                             <BrushIcon className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
                                                         </button>
                                                         <a
-                                                            href={displayUrl || "#"}
-                                                            target={displayUrl ? "_blank" : undefined}
-                                                            rel={displayUrl ? "noreferrer" : undefined}
+                                                            href={
+                                                                displayUrl ||
+                                                                "#"
+                                                            }
+                                                            target={
+                                                                displayUrl
+                                                                    ? "_blank"
+                                                                    : undefined
+                                                            }
+                                                            rel={
+                                                                displayUrl
+                                                                    ? "noreferrer"
+                                                                    : undefined
+                                                            }
                                                             className="group inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm  text-neutral-800 hover:bg-neutral-50"
                                                         >
-                                                            <span>Open site</span>
+                                                            <span>
+                                                                Open site
+                                                            </span>
                                                             <ArrowUpRight className="h-3 w-3 transform transition-transform duration-150" />
                                                         </a>
                                                     </div>
@@ -1098,7 +1249,8 @@ export default function DeploymentsPage(): JSX.Element {
                                                     {showDeployHint && (
                                                         <div className="mt-2 max-w-xs rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 shadow-sm">
                                                             <p className="mb-2">
-                                                                To deploy edited HTML:
+                                                                To deploy edited
+                                                                HTML:
                                                             </p>
 
                                                             <div className="flex flex-col gap-2">
@@ -1112,7 +1264,8 @@ export default function DeploymentsPage(): JSX.Element {
                                                                         <a
                                                                             className="mx-2 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm  text-white cursor-not-allowed"
                                                                             style={{
-                                                                                backgroundColor: ACCENT,
+                                                                                backgroundColor:
+                                                                                    ACCENT,
                                                                                 boxShadow:
                                                                                     "0 10px 30px rgba(245,95,42,0.40)",
                                                                             }}
@@ -1122,7 +1275,10 @@ export default function DeploymentsPage(): JSX.Element {
                                                                             ) : (
                                                                                 <Code2 className="h-3.5 w-3.5" />
                                                                             )}
-                                                                            Open in Preview Editor
+                                                                            Open
+                                                                            in
+                                                                            Preview
+                                                                            Editor
                                                                         </a>
                                                                     </span>
                                                                 </button>
@@ -1138,28 +1294,38 @@ export default function DeploymentsPage(): JSX.Element {
                                                                             className={
                                                                                 "ml-1 inline-flex items-center gap-2 transition focus:outline-none focus:ring-2 focus:ring-neutral-300 cursor-not-allowed text-sm rounded-md px-3 py-1.5 font-semibold text-white shadow-sm"
                                                                             }
-                                                                            style={{ backgroundColor: ACCENT }}
+                                                                            style={{
+                                                                                backgroundColor:
+                                                                                    ACCENT,
+                                                                            }}
                                                                         >
-                                                                            Export to Vercel
+                                                                            Export
+                                                                            to
+                                                                            Vercel
                                                                         </a>{" "}
-                                                                        inside the editor
+                                                                        inside
+                                                                        the
+                                                                        editor
                                                                     </span>
                                                                 </button>
                                                             </div>
                                                         </div>
                                                     )}
 
-                                                    {(act.customError || act.redeployError) && (
-                                                        <p className="mt-1 text-[10px] text-red-600">
-                                                            {act.customError || act.redeployError}
-                                                        </p>
-                                                    )}
+                                                    {(act.customError ||
+                                                        act.redeployError) && (
+                                                            <p className="mt-1 text-[10px] text-red-600">
+                                                                {act.customError ||
+                                                                    act.redeployError}
+                                                            </p>
+                                                        )}
 
                                                     {isCustomLoading && (
                                                         <p className="mt-1 text-[10px] text-neutral-500 inline-flex items-center gap-1">
                                                             <Loader2 className="h-3 w-3 animate-spin" />
                                                             <span>
-                                                                Pushing custom HTML to Vercel…
+                                                                Pushing custom
+                                                                HTML to Vercel…
                                                             </span>
                                                         </p>
                                                     )}
@@ -1184,24 +1350,41 @@ export default function DeploymentsPage(): JSX.Element {
                                 </div>
 
                                 <p className="text-xs my-3 text-neutral-600">
-                                    Your previous deployments will show in the list below. Use the Vercel API check
-                                    above any time you want to force a fresh status sync.
+                                    Your previous deployments will show in the
+                                    list below. Use the Vercel API check above
+                                    any time you want to force a fresh status
+                                    sync.
                                 </p>
                                 <div className="rounded-2xl border border-neutral-200 bg-white shadow-sm">
                                     <div className="px-4 py-2 flex items-center text-sm text-neutral-500 border-b border-neutral-100">
-                                        <div className="w-[120px]">Status</div>
-                                        <div className="flex-1 min-w-0">URL</div>
-                                        <div className="w-[150px] hidden sm:block">Created</div>
-                                        <div className="w-[160px] hidden md:block">Last event</div>
+                                        <div className="w-[120px]">
+                                            Status
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            URL
+                                        </div>
+                                        <div className="w-[150px] hidden sm:block">
+                                            Created
+                                        </div>
+                                        <div className="w-[160px] hidden md:block">
+                                            Last event
+                                        </div>
                                         <div className="w-[90px]" />
                                     </div>
 
                                     <div className="max-h-72 overflow-y-auto">
                                         {history.map((d) => {
-                                            const state = toUiState(d, latestReadyByProject);
-                                            const stateStyles = stateColor(state);
-                                            const created = formatDate(d.createdAt);
-                                            const lastEvt = d.lastEventType || "–";
+                                            const state = toUiState(
+                                                d,
+                                                latestReadyByProject
+                                            );
+                                            const stateStyles =
+                                                stateColor(state);
+                                            const created = formatDate(
+                                                d.createdAt
+                                            );
+                                            const lastEvt =
+                                                d.lastEventType || "–";
                                             const displayUrl =
                                                 d.publicUrl ||
                                                 (d.publicDomain
@@ -1228,10 +1411,12 @@ export default function DeploymentsPage(): JSX.Element {
 
                                                     <div className="flex-1 min-w-0 pr-2">
                                                         <div className="truncate text-neutral-800">
-                                                            {displayUrl || "URL pending"}
+                                                            {displayUrl ||
+                                                                "URL pending"}
                                                         </div>
                                                         <div className="sm:hidden text-[10px] text-neutral-400">
-                                                            {created || "–"} · {lastEvt}
+                                                            {created || "–"} ·{" "}
+                                                            {lastEvt}
                                                         </div>
                                                     </div>
 
@@ -1245,9 +1430,20 @@ export default function DeploymentsPage(): JSX.Element {
 
                                                     <div className="w-[90px] flex justify-end">
                                                         <a
-                                                            href={displayUrl || "#"}
-                                                            target={displayUrl ? "_blank" : undefined}
-                                                            rel={displayUrl ? "noreferrer" : undefined}
+                                                            href={
+                                                                displayUrl ||
+                                                                "#"
+                                                            }
+                                                            target={
+                                                                displayUrl
+                                                                    ? "_blank"
+                                                                    : undefined
+                                                            }
+                                                            rel={
+                                                                displayUrl
+                                                                    ? "noreferrer"
+                                                                    : undefined
+                                                            }
                                                             className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px]  ${displayUrl
                                                                 ? "border-neutral-200 text-neutral-800 hover:bg-neutral-50"
                                                                 : "border-neutral-200 text-neutral-400 cursor-default"
@@ -1270,11 +1466,18 @@ export default function DeploymentsPage(): JSX.Element {
                     <PreviewEditor
                         initialHtml={editorHtml}
                         sourceImage={editorRefImg}
-                        initialSeoMetaByPage={activeSeoMetaByPage || undefined}
+                        initialSeoMetaByPage={
+                            activeSeoMetaByPage || undefined
+                        }
+                        initialArchivedPageIds={activeArchivedPageIds}
+                        onArchivedPageIdsChange={
+                            handleArchivedPageIdsChange
+                        }
                         onClose={() => {
                             setEditorOpen(false);
                             setActiveRenderId(undefined);
                             setActiveSeoMetaByPage(null);
+                            setActiveArchivedPageIds([]);
                         }}
                         onExport={(html, name) =>
                             exportToVercel({
@@ -1287,36 +1490,55 @@ export default function DeploymentsPage(): JSX.Element {
                         saveDraft={handleSaveDraft}
                         onLiveHtml={(html) => {
                             if (!activeRenderId) return;
+
+                            // keep in renders cache
                             setRenders((prev) =>
                                 prev.map((r) =>
-                                    r.id === activeRenderId ? { ...r, html } : r,
-                                ),
+                                    r.id === activeRenderId
+                                        ? { ...r, html }
+                                        : r
+                                )
                             );
+
+                            // feed latest visual HTML into draft cache used by export
+                            setHtmlDrafts((prev) => ({
+                                ...prev,
+                                [activeRenderId]: html,
+                            }));
+
+                            // keep local editorHtml in sync so re-open uses latest
+                            if (editorDraftId === activeRenderId) {
+                                setEditorHtml(html);
+                            }
                         }}
-                        onSaveMeta={async (pageId, meta, fullMap) => {
+                        onSaveMeta={async (
+                            pageId,
+                            meta,
+                            fullMap
+                        ) => {
                             if (!user || !activeRenderId) return;
 
-                            // 1) persist in Firestore
                             const dref = doc(
                                 db,
                                 "kloner_users",
                                 user.uid,
                                 "kloner_renders",
-                                activeRenderId,
+                                activeRenderId
                             );
+
                             await updateDoc(dref, {
                                 seoMetaByPage: fullMap,
                                 updatedAt: serverTimestamp(),
                             });
 
-                            // 2) keep local render list in sync
                             setRenders((prev) =>
                                 prev.map((r) =>
-                                    r.id === activeRenderId ? { ...r, seoMetaByPage: fullMap } : r,
-                                ),
+                                    r.id === activeRenderId
+                                        ? { ...r, seoMetaByPage: fullMap }
+                                        : r
+                                )
                             );
 
-                            // 3) keep active map in sync (so Meta tab shows correct data)
                             setActiveSeoMetaByPage(fullMap);
                         }}
                     />
