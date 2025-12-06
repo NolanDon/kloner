@@ -648,7 +648,7 @@ function RenderCardInner({
 
                                             <button
                                                 onClick={handleArchiveClick}
-                                                disabled={isDeleting || isDeploying}
+                                                disabled={disableOpen || isDeleting || isDeploying || !r.html}
                                                 className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] shadow-sm ${isArchivedFlag
                                                     ? "border-amber-500 bg-amber-50 text-amber-900 hover:bg-amber-100"
                                                     : "border-neutral-300 bg-white/60 text-neutral-700 hover:border-neutral-400"

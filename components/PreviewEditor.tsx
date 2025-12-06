@@ -3055,13 +3055,13 @@ export default function PreviewEditor({
                             {/* All existing controls – only hidden when collapsed */}
                             {!controlsCollapsed && sidePanelMode === "style" && (
                                 <>
-                                    <UiBtn
+                                    {/* <UiBtn
                                         pressed={mode === "code"}
                                         onClick={() => handleModeClick((mode === "code") ? "preview" : "code")}
                                         disabled={closing}
                                     >
                                         {`${mode == "code" ? "show preview" : "show code"}`}
-                                    </UiBtn>
+                                    </UiBtn> */}
 
                                     {/* <div className="mb-3">
                                         <div className="text-md font-semibold text-neutral-500 mb-1">
@@ -3956,7 +3956,7 @@ export default function PreviewEditor({
                                         </div>
                                     </div>
 
-                                    {mode === "code" && (
+                                    {/* {mode === "code" && (
                                         <div className="min-h-0 flex-1">
                                             <textarea
                                                 className="h-full w-full border rounded p-2 font-mono text-md leading-5 outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-60"
@@ -3966,7 +3966,7 @@ export default function PreviewEditor({
                                                 disabled={closing}
                                             />
                                         </div>
-                                    )}
+                                    )} */}
 
                                     {/* Revert / undo overlay sitting on top of the frame */}
 
