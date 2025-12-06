@@ -4300,7 +4300,7 @@ export default function PreviewEditor({
                                 className="hidden lg:flex absolute gap-2 top-20 right-3 z-[70] items-center rounded-full px-3 py-1 text-[12px] font-semibold shadow-sm hover:brightness-95"
                                 title="Show edit history"
                             >
-                                <div className="text-[14px] font-semibold uppercase tracking-wide text-neutral-500">
+                                <div className="text-[14px] font-semibold capitalize tracking-wide text-neutral-500">
                                     Show History
                                 </div>
                                 <span className="text-[12px] text-neutral-500 leading-none translate-y-[0.5px]">

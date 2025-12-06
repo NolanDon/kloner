@@ -69,7 +69,6 @@ function computeCreditPeriodEnd(stripeData?: {
     return new Date(firstNextMonth.getTime() - 1);
 }
 
-/** Update Firestore and customClaims and reset credits when tier changes. */
 export async function setUserTierFromStripe(
     uid: string,
     tier: Tier,
@@ -83,6 +82,31 @@ export async function setUserTierFromStripe(
     }
 ): Promise<void> {
     const userRef = db.collection("kloner_users").doc(uid);
+
+    // Read existing to decide whether to reset credits
+    const existingSnap = await userRef.get();
+    const existingData = existingSnap.exists ? (existingSnap.data() as any) : {};
+
+    const previousTier: Tier | undefined = existingData.tier;
+    const previousStripePeriodEnd: number | undefined =
+        typeof existingData.stripeCurrentPeriodEnd === "number"
+            ? existingData.stripeCurrentPeriodEnd
+            : undefined;
+
+    const newStripePeriodEnd: number | undefined =
+        stripeData && typeof stripeData.currentPeriodEnd === "number"
+            ? stripeData.currentPeriodEnd
+            : undefined;
+
+    // Only reset credits when:
+    //  - first time (no doc), OR
+    //  - tier changed, OR
+    //  - Stripe period boundary changed (new billing cycle)
+    const shouldResetCredits =
+        !existingSnap.exists ||
+        previousTier !== tier ||
+        (newStripePeriodEnd &&
+            newStripePeriodEnd !== previousStripePeriodEnd);
 
     const payload: Record<string, unknown> = {
         tier,
@@ -102,62 +126,58 @@ export async function setUserTierFromStripe(
             payload.stripeCancelAtPeriodEnd = stripeData.cancelAtPeriodEnd;
     }
 
-    // Compute new limits for this tier from central credit config
-    const previewLimit = monthlyLimitFor(tier, "preview" as CoreCreditKind);
-    const screenshotLimit = monthlyLimitFor(tier, "screenshot" as CoreCreditKind);
+    const update: Record<string, unknown> = { ...payload };
 
-    // Decide what period end to attach to reset credits
-    const periodEndDate = computeCreditPeriodEnd(stripeData);
-    const periodEndTs = admin.firestore.Timestamp.fromDate(periodEndDate);
+    if (shouldResetCredits) {
+        // Compute new limits for this tier from central credit config
+        const previewLimit = monthlyLimitFor(tier, "preview" as CoreCreditKind);
+        const screenshotLimit = monthlyLimitFor(
+            tier,
+            "screenshot" as CoreCreditKind
+        );
 
-    // Build partial updates for credits buckets so we do not overwrite the whole map
-    const creditsUpdate: Record<string, unknown> = {};
+        // Decide what period end to attach to reset credits
+        const periodEndDate = computeCreditPeriodEnd(stripeData);
+        const periodEndTs = admin.firestore.Timestamp.fromDate(periodEndDate);
 
-    if (previewLimit !== undefined && previewLimit !== null) {
-        creditsUpdate["credits.preview"] =
-            previewLimit === 0
-                ? {
-                    monthlyLimit: 0,
-                    remaining: null,
-                    periodEnd: periodEndTs,
-                }
-                : {
-                    monthlyLimit: previewLimit,
-                    remaining: previewLimit,
-                    periodEnd: periodEndTs,
-                };
+        if (previewLimit !== undefined && previewLimit !== null) {
+            update["credits.preview"] =
+                previewLimit === 0
+                    ? {
+                        monthlyLimit: 0,
+                        remaining: null,
+                        periodEnd: periodEndTs,
+                    }
+                    : {
+                        monthlyLimit: previewLimit,
+                        remaining: previewLimit,
+                        periodEnd: periodEndTs,
+                    };
+        }
+
+        if (screenshotLimit !== undefined && screenshotLimit !== null) {
+            update["credits.snapshot"] =
+                screenshotLimit === 0
+                    ? {
+                        monthlyLimit: 0,
+                        remaining: null,
+                        periodEnd: periodEndTs,
+                    }
+                    : {
+                        monthlyLimit: screenshotLimit,
+                        remaining: screenshotLimit,
+                        periodEnd: periodEndTs,
+                    };
+        }
     }
 
-    if (screenshotLimit !== undefined && screenshotLimit !== null) {
-        creditsUpdate["credits.snapshot"] =
-            screenshotLimit === 0
-                ? {
-                    monthlyLimit: 0,
-                    remaining: null,
-                    periodEnd: periodEndTs,
-                }
-                : {
-                    monthlyLimit: screenshotLimit,
-                    remaining: screenshotLimit,
-                    periodEnd: periodEndTs,
-                };
-    }
-
-    // Apply tier metadata and credit reset in one write
-    // and nuke any legacy root-level preview/snapshot fields.
-    await userRef.set(
-        {
-            ...payload,
-            ...creditsUpdate,
-        },
-        { merge: true }
-    );
+    // Apply tier metadata (and optional credit reset) in one write
+    await userRef.set(update, { merge: true });
 
     // Update custom claims without clearing existing ones
     const user = await admin.auth().getUser(uid);
     const existingClaims = user.customClaims || {};
 
-    // Keep both keys to stay compatible with existing client code
     const newClaims = {
         ...existingClaims,
         tier,
@@ -166,6 +186,7 @@ export async function setUserTierFromStripe(
 
     await admin.auth().setCustomUserClaims(uid, newClaims);
 }
+
 
 /** Helper: lookup uid for a Stripe customer */
 export async function getUidForStripeCustomer(

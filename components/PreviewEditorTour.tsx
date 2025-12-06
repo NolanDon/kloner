@@ -10,10 +10,9 @@ const steps: Step[] = [
     {
         target: "#kloner-home",
         content:
-            "Welcome to your new website. The area below is your live editable preview, this 1-min tour will guide you through our editing tools all the way to deployment.",
+            "This is your live editable preview. In 1 minute, we’ll show you how to edit it and deploy.",
         disableBeacon: true,
     },
-
     {
         target: "#kloner-page-switcher",
         content: "Use the page switcher to jump between different pages like Home, Pricing, and About. Press Enter to continue.",
