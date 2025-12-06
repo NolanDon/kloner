@@ -120,7 +120,6 @@ export function scrubArchivedRoutes(html: string, archivedRoutes: string[]): str
 
 export function extractArchivedPageIdsFromRender(render: any): string[] {
 
-    console.log("renderId: ", render)
     if (!render) return [];
 
     const root = render as any;
@@ -136,9 +135,6 @@ export function extractArchivedPageIdsFromRender(render: any): string[] {
     let result = candidate.filter(
         (v) => typeof v === "string" && v.trim().length > 0
     );
-
-    console.log("result: ", result)
-
 
     return result;
 }
