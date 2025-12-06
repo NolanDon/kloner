@@ -10,7 +10,7 @@ const steps: Step[] = [
     {
         target: "#kloner-home",
         content:
-            "Welcome to your new website. The area below is your live editable preview. Click Next to continue.",
+            "Welcome to your new website. The area below is your live editable preview, this 1-min tour will guide you through our editing tools all the way to deployment.",
         disableBeacon: true,
     },
 
@@ -24,7 +24,7 @@ const steps: Step[] = [
         content: "Undo your most recent edit directly in the editor.",
         disableBeacon: true,
     },
-      {
+    {
         target: "#kloner-history",
         content: "You can also revert to older versions by clicking tabs in the history section.",
         disableBeacon: true,

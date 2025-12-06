@@ -1,6 +1,7 @@
 // app/dashboard/view/page.helpers.ts
 import { useCallback, useEffect, useState } from "react";
 import type { Timestamp } from "firebase/firestore";
+import { RenderDoc } from "./page";
 
 export function isHttpUrl(s?: string): s is string {
     if (!s) return false;
@@ -85,21 +86,35 @@ export function shortVersionFromShotPath(
 }
 
 
-export function rendersEqual(
-    a: Array<{ id: string; status: string; html?: string | null; key?: string | null; nameHint?: string | null }>,
-    b: Array<{ id: string; status: string; html?: string | null; key?: string | null; nameHint?: string | null }>,
-): boolean {
+type RenderWithId = RenderDoc & { id: string };
+
+export function rendersEqual(a: RenderWithId[], b: RenderWithId[]): boolean {
     if (a === b) return true;
+    if (!a || !b) return false;
     if (a.length !== b.length) return false;
+
     for (let i = 0; i < a.length; i++) {
-        const x = a[i];
-        const y = b[i];
-        if (x.id !== y.id) return false;
-        if (x.status !== y.status) return false;
-        if ((x.html || "") !== (y.html || "")) return false;
-        if ((x.key || "") !== (y.key || "")) return false;
-        if ((x.nameHint || "") !== (y.nameHint || "")) return false;
+        const ra = a[i];
+        const rb = b[i];
+
+        if (!ra || !rb) return false;
+        if (ra.id !== rb.id) return false;
+        if (ra.status !== rb.status) return false;
+        if (ra.archived !== rb.archived) return false;
+        if ((ra.key || null) !== (rb.key || null)) return false;
+        if ((ra.lastDeployUrl || null) !== (rb.lastDeployUrl || null)) return false;
+        if ((ra.vercelProjectId || null) !== (rb.vercelProjectId || null)) return false;
+        if ((ra.vercelProjectName || null) !== (rb.vercelProjectName || null)) return false;
+
+        // 🔴 The missing piece – ensure progress is compared
+        const pa = (ra as any).progress ?? null;
+        const pb = (rb as any).progress ?? null;
+        if (pa !== pb) return false;
+
+        // add any other fields you need to drive UI that should update live
+        // e.g. controllerVersion, nameHint, etc., if you rely on them visually
     }
+
     return true;
 }
 

@@ -134,8 +134,10 @@ const RenderCard = memo(
             (a.lastExportedAt || "") === (b.lastExportedAt || "") &&
             (a.siteConfigId || "") === (b.siteConfigId || "") &&
             (a.controllerVersion || "") === (b.controllerVersion || "") &&
+            // progress
             (a.progressLabel || "") === (b.progressLabel || "") &&
             (a.progressPercent || null) === (b.progressPercent || null) &&
+            (a.progress || null) === (b.progress || null) &&
             prev.isDeleting === next.isDeleting &&
             prev.isOpening === next.isOpening &&
             prev.hardLocked === next.hardLocked &&
@@ -153,7 +155,7 @@ export type RenderDoc = {
     referenceImage?: string | null;
     html?: string;
     nameHint?: string | null;
-    status: "ready" | "queued" | "failed";
+    status: "ready" | "queued" | "failed" | "processing";
     archived?: boolean;
     createdAt?: any;
     updatedAt?: any;
@@ -167,9 +169,7 @@ export type RenderDoc = {
     lastDeployUrl?: string | null;
     seoMetaByPage?: SeoMetaByPage | null;
 
-    // PROGRESS (matches backend progress implementation)
-    progressLabel?: string | null;
-    progressPercent?: number | null;
+    progress?: number | null;
 };
 
 type ToastMsg = {
@@ -213,32 +213,23 @@ function RenderCardInner({
 }: RenderCardProps) {
     const router = useRouter();
 
-    const isQueued = r.status === "queued";
+    const isQueued = r.status === "queued" || r.status === "processing";
     const isFailed = r.status === "failed";
     const isDeployed = !!r.lastExportedAt;
     const isArchived = !!r.archived;
 
-    const disableOpen =
-        isOpening || isQueued || isFailed || hardLocked || isDeploying || isArchived;
+    // progress normalization: prefer explicit percent, then raw `progress`
+    const rawPercent =
+        typeof (r as any).progress === "number"
+            ? (r as any).progress
+            : null;
 
-    const { src: refImgUrl, onError: refImgErr } = useResolvedImg(r.key || "");
-
-    const versionLabel = shortVersionFromShotPath(
-        r.key ?? "",
-        (urlHash as string | undefined) ?? null,
-    );
-
-    const controllerVersion =
-        typeof r.controllerVersion === "string" ? r.controllerVersion : "";
-
-    // PROGRESS: normalize backend values
     const normalizedProgressPercent =
-        typeof r.progressPercent === "number" && !Number.isNaN(r.progressPercent)
-            ? Math.min(100, Math.max(0, r.progressPercent))
+        typeof rawPercent === "number" && !Number.isNaN(rawPercent)
+            ? Math.min(100, Math.max(0, rawPercent))
             : null;
 
     const normalizedProgressLabel =
-        r.progressLabel ||
         (isDeploying
             ? "Deploying…"
             : isQueued
@@ -250,6 +241,28 @@ function RenderCardInner({
     const hasProgressInfo =
         !!normalizedProgressLabel || normalizedProgressPercent !== null;
 
+    const isBuilding =
+        normalizedProgressPercent !== null && normalizedProgressPercent < 100;
+
+    const disableOpen =
+        isOpening ||
+        isQueued ||
+        isFailed ||
+        hardLocked ||
+        isDeploying ||
+        isArchived ||
+        isBuilding;
+
+    const { src: refImgUrl, onError: refImgErr } = useResolvedImg(r.key || "");
+
+    const versionLabel = shortVersionFromShotPath(
+        r.key ?? "",
+        (urlHash as string | undefined) ?? null,
+    );
+
+    const controllerVersion =
+        typeof r.controllerVersion === "string" ? r.controllerVersion : "";
+
     const [shareOpen, setShareOpen] = useState(false);
     const [shareRemixable, setShareRemixable] = useState(true);
     const [shareBusy, setShareBusy] = useState(false);
@@ -257,9 +270,7 @@ function RenderCardInner({
     const [checkingShared, setCheckingShared] = useState(false);
     const [shareError, setShareError] = useState<string | null>(null);
 
-    // Community share name (separate)
     const [shareProjectName, setShareProjectName] = useState("");
-
     const hasEditedShareNameRef = useRef(false);
 
     const srcDoc = useMemo(() => {
@@ -333,18 +344,14 @@ function RenderCardInner({
 
         const raw = (shareProjectName ?? "").trim();
 
-        // hard require a user-entered name
         if (!raw) {
             setShareError("Add a name for this build before sharing.");
             return;
         }
 
-        if (shareError) {
-            // don't submit if current input is invalid
-            return;
-        }
+        if (shareError) return;
 
-        const finalName = raw; // no fallback
+        const finalName = raw;
 
         setShareBusy(true);
         setShareError(null);
@@ -444,8 +451,8 @@ function RenderCardInner({
     return (
         <div
             className={`relative flex flex-col overflow-visible rounded-xl border bg-white shadow-sm ${isArchivedFlag
-                    ? "border-amber-300/70 bg-amber-50/50"
-                    : "border-neutral-200"
+                ? "border-amber-300/70 bg-amber-50/50"
+                : "border-neutral-200"
                 }`}
         >
             {isArchivedFlag && (
@@ -463,7 +470,7 @@ function RenderCardInner({
                     disabled={isDeleting}
                     aria-label="Discard preview"
                     title="Delete this editable preview"
-                    className="absolute rounded-full right-1 top-1 pb-1 z-40 inline-flex h-7 w-7 items-center justify-center border border-red-200 bg-white/95 text-[18px] font-bold leading-none text-red-600 shadow-sm hover:bg-red-600 hover:text-white hover:border-red-500 disabled:opacity-60"
+                    className="absolute right-1 top-1 z-40 inline-flex h-7 w-7 items-center justify-center rounded-full border border-red-200 bg-white/95 pb-1 text-[18px] font-bold leading-none text-red-600 shadow-sm hover:border-red-500 hover:bg-red-600 hover:text-white disabled:opacity-60"
                 >
                     ×
                 </button>
@@ -490,7 +497,7 @@ function RenderCardInner({
                 )}
 
                 <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
-                    <div className="pointer-events-auto flex max-w-xs flex-col items-stretch gap-2 rounded-xl border border-neutral-200 bg-white/80 p-3 shadow-lg backdrop-blur-sm md:max-w-sm text-xs">
+                    <div className="pointer-events-auto flex max-w-xs flex-col items-stretch gap-2 rounded-xl border border-neutral-200 bg-white/80 p-3 text-xs shadow-lg backdrop-blur-sm md:max-w-sm">
                         {/* top row: deploy / customize */}
                         <div className="flex w-full flex-col gap-2 sm:flex-row">
                             <button
@@ -508,9 +515,9 @@ function RenderCardInner({
                                     isQueued ||
                                     isDeploying
                                 }
-                                className={`group flex-1 inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-xs ${isArchivedFlag
-                                        ? "cursor-not-allowed border border-neutral-300 bg-neutral-50 text-neutral-400"
-                                        : "border border-neutral-300 bg-accent text-white shadow-sm hover:bg-accent/90 disabled:opacity-60"
+                                className={`group inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium ${isArchivedFlag
+                                    ? "cursor-not-allowed border border-neutral-300 bg-neutral-50 text-neutral-400"
+                                    : "border border-neutral-300 bg-accent text-white shadow-sm hover:bg-accent/90 disabled:opacity-60"
                                     }`}
                                 title={
                                     isArchivedFlag
@@ -543,20 +550,20 @@ function RenderCardInner({
                             {!isDeployedFlag && (
                                 <button
                                     onClick={() => continueRender(r.id)}
-                                    disabled={disableOpen || isDeleting}
-                                    className="group flex-1 inline-flex items-center justify-center gap-2 rounded-md border border-neutral-800 px-3 py-1.5 font-medium text-neutral-800 shadow-sm disabled:opacity-60"
+                                    disabled={disableOpen || isDeleting || !r.html}
+                                    className="group inline-flex flex-1 items-center justify-center gap-2 rounded-md border border-neutral-800 px-3 py-1.5 font-medium text-neutral-800 shadow-sm disabled:opacity-60"
                                     title={
                                         isArchivedFlag
                                             ? "Unarchive to customize this preview"
-                                            : isQueued
+                                            : isBuilding || isQueued
                                                 ? "Still building preview"
                                                 : isFailed
                                                     ? "Open editor to fix"
                                                     : "Open editor to customize"
                                     }
                                 >
-                                    {isQueued
-                                        ? "Queued"
+                                    {isBuilding || isQueued
+                                        ? "Building…"
                                         : isFailed
                                             ? "Customize (fix)"
                                             : "Customize"}
@@ -565,11 +572,11 @@ function RenderCardInner({
                             )}
                         </div>
 
-                        {/* PROGRESS BAR / STATUS BLOCK – replaces generic “Locked…” when data exists */}
+                        {/* progress bar / status */}
                         {hasProgressInfo && (
                             <div className="mt-1 w-full">
                                 <div className="mb-1 flex items-center justify-between text-[10px] text-neutral-600">
-                                    <span className="truncate max-w-[70%]">
+                                    <span className="max-w-[70%] truncate">
                                         {normalizedProgressLabel}
                                     </span>
                                     {normalizedProgressPercent !== null && (
@@ -643,8 +650,8 @@ function RenderCardInner({
                                                 onClick={handleArchiveClick}
                                                 disabled={isDeleting || isDeploying}
                                                 className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] shadow-sm ${isArchivedFlag
-                                                        ? "border-amber-500 bg-amber-50 text-amber-900 hover:bg-amber-100"
-                                                        : "border-neutral-300 bg-white/60 text-neutral-700 hover:border-neutral-400"
+                                                    ? "border-amber-500 bg-amber-50 text-amber-900 hover:bg-amber-100"
+                                                    : "border-neutral-300 bg-white/60 text-neutral-700 hover:border-neutral-400"
                                                     }`}
                                                 title={
                                                     isArchivedFlag
@@ -653,9 +660,7 @@ function RenderCardInner({
                                                 }
                                             >
                                                 <span>
-                                                    {isArchivedFlag
-                                                        ? "Unarchive"
-                                                        : "Archive"}
+                                                    {isArchivedFlag ? "Unarchive" : "Archive"}
                                                 </span>
                                                 <Archive className="h-3.5 w-3.5" />
                                             </button>
@@ -714,12 +719,12 @@ function RenderCardInner({
                                                 }}
                                                 placeholder="e.g. cookie gift landing, portfolio v2"
                                                 className={`w-full rounded-md border px-2 py-1 text-[10px] bg-white text-neutral-800 placeholder:text-neutral-400 focus:outline-none focus:ring-1 ${shareError
-                                                        ? "border-red-500 focus:ring-red-500"
-                                                        : "border-neutral-300 focus:ring-accent"
+                                                    ? "border-red-500 focus:ring-red-500"
+                                                    : "border-neutral-300 focus:ring-accent"
                                                     }`}
                                             />
 
-                                            <div className="min-h-[14px] mt-0.5">
+                                            <div className="mt-0.5 min-h-[14px]">
                                                 {shareError && (
                                                     <p className="text-[10px] text-red-600">
                                                         {shareError}
@@ -796,6 +801,7 @@ function RenderCardInner({
         </div>
     );
 }
+
 
 
 /* ───────── toasts ───────── */
@@ -1754,6 +1760,50 @@ export default function PreviewPage(): JSX.Element {
 
     /* ───────── renders (editable previews) ───────── */
 
+    function mapRenderDoc(
+        d: QueryDocumentSnapshot<DocumentData>
+    ): { id: string } & RenderDoc {
+        const data = d.data() as any;
+
+        const progressFromBackend =
+            typeof data.progressPercent === "number"
+                ? data.progressPercent
+                : typeof data.progress === "number"
+                    ? data.progress
+                    : null;
+
+        return {
+            id: d.id,
+            // base fields
+            url: data.url ?? null,
+            urlHash: data.urlHash ?? null,
+            key: data.key ?? data.referenceImage ?? null,
+            referenceImage: data.referenceImage ?? null,
+            html: data.html ?? "",
+            nameHint: data.nameHint ?? null,
+            status: (data.status as any) ?? "ready",
+            archived: data.archived ?? false,
+            createdAt: data.createdAt,
+            updatedAt: data.updatedAt,
+            siteConfigId: data.siteConfigId ?? null,
+            model: data.model ?? null,
+            version: data.version ?? null,
+            controllerVersion: data.controllerVersion ?? null,
+            lastExportedAt: data.lastExportedAt ?? null,
+            vercelProjectId: data.vercelProjectId ?? null,
+            vercelProjectName: data.vercelProjectName ?? null,
+            lastDeployUrl: data.lastDeployUrl ?? null,
+            seoMetaByPage: data.seoMetaByPage ?? null,
+
+            // progress wiring
+            progress:
+                typeof data.progress === "number"
+                    ? data.progress
+                    : progressFromBackend,
+        };
+    }
+
+
     const refreshRenders = useCallback(
         async () => {
             if (!user) return;
@@ -1779,10 +1829,8 @@ export default function PreviewPage(): JSX.Element {
                     limit(100)
                 );
                 const snap = await getDocs(qs);
-                const all = snap.docs.map((d) => ({
-                    id: d.id,
-                    ...(d.data() as RenderDoc),
-                }));
+
+                const all = snap.docs.map(mapRenderDoc);
 
                 const filtered = all.filter((r) => {
                     const byUrl = (r.url || "") === targetUrl;
@@ -1918,10 +1966,8 @@ export default function PreviewPage(): JSX.Element {
         );
 
         const unsub = onSnapshot(qs, (snap) => {
-            const all = snap.docs.map((d) => ({
-                id: d.id,
-                ...(d.data() as RenderDoc),
-            }));
+            const all = snap.docs.map(mapRenderDoc);
+
 
             const filtered = all.filter((r) => {
                 const byUrl = (r.url || "") === targetUrl;

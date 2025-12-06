@@ -1619,21 +1619,30 @@ export default function PreviewEditor({
     const currentSeoMeta: SeoMeta = useMemo(() => {
         const base = seoMetaByPage[currentPageKey] ?? emptyMeta;
 
-        // If this page already has a favicon, use it as-is.
-        if (base.faviconUrl) return base;
+        // If this page already has a non-empty favicon, use it as-is.
+        if (typeof base.faviconUrl === "string" && base.faviconUrl.trim() !== "") {
+            return base;
+        }
 
-        // Otherwise, fall back to ANY favicon in the map (global favicon).
+        // Otherwise, fall back to ANY valid favicon in the map (global favicon).
         const anyFavicon = Object.values(seoMetaByPage).find(
-            (m) => m.faviconUrl && m.faviconUrl.trim() !== "",
+            (m): m is SeoMeta => {
+                if (!m || typeof m !== "object") return false;
+                const v = (m as SeoMeta).faviconUrl;
+                return typeof v === "string" && v.trim() !== "";
+            },
         );
 
-        if (!anyFavicon) return base;
+        if (!anyFavicon || !anyFavicon.faviconUrl) {
+            return base;
+        }
 
         return {
             ...base,
             faviconUrl: anyFavicon.faviconUrl,
         };
     }, [seoMetaByPage, currentPageKey]);
+
 
     // pick a single renderId to use for Firestore writes / reads
     const resolvedRenderId = draftId ?? null;
