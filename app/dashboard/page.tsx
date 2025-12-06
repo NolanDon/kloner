@@ -327,7 +327,6 @@ function UrlRowSkeleton() {
     );
 }
 
-/* row */
 function UrlRow({ uid, r }: UrlRowProps) {
     const [busy, setBusy] = useState<boolean>(false);
     const [err, setErr] = useState<string>("");
@@ -340,6 +339,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
 
     const locked = uiStatus === "processing";
     const isStale = uiStatus === "stale";
+    const isReady = uiStatus === "ready";
 
     const [thumbUrl, setThumbUrl] = useState<string | null>(null);
     useEffect(() => {
@@ -503,7 +503,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
                 disabled={busy || locked}
                 aria-label="Delete tracked URL"
                 title="Delete this tracked URL"
-                className="absolute rounded-full right-1 top-1 pb-1 z-40 inline-flex h-7 w-7 items-center justify-center border border-red-200 bg-white/95 text-[18px] font-bold leading-none text-red-600 shadow-sm hover:bg-red-600 hover:text-white hover:border-red-500 disabled:opacity-60"
+                className="absolute -right-3 -top-3 z-40 pb-1 inline-flex h-5 w-5 items-center justify-center rounded-full border border-red-200 bg-white/95 text-[12px] font-bold leading-none text-red-600 shadow-sm hover:bg-red-600 hover:text-white hover:border-red-500 disabled:opacity-60"
             >
                 ×
             </button>
@@ -529,7 +529,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
 
                 <div className="min-w-0 flex-1 flex flex-col gap-2">
                     {/* top row: URL only */}
-                    <div className="flex flex-wrap items-center gap-2 justify-between">
+                    <div className="flex flex-wrap items-center gap-5 justify-between">
                         <a
                             href={locked ? undefined : r.url}
                             target={locked ? undefined : "_blank"}
@@ -543,6 +543,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
                         >
                             {r.url}
                         </a>
+                        <StatusBadge status={uiStatus} />
                     </div>
 
                     {r.lastError && (uiStatus === "stale" || uiStatus === "error") ? (
@@ -553,33 +554,42 @@ function UrlRow({ uid, r }: UrlRowProps) {
                     {err ? <div className="text-xs text-red-600">{err}</div> : null}
 
                     <div className="mt-1 flex flex-wrap gap-2 justify-end sm:justify-start">
-                        <button
-                            onClick={() => void handleRescanClick()}
-                            disabled={busy || locked}
-                            className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
-                        >
-                            {busy
-                                ? "Working…"
-                                : isStale
-                                    ? "Retry screenshots"
-                                    : "Rescan"}
-                        </button>
+                        {isStale && (
+                            <button
+                                onClick={() => void handleRescanClick()}
+                                disabled={busy || locked}
+                                className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                            >
+                                {busy ? "Working…" : "Retry"}
+                            </button>
+                        )}
 
-                        <a
-                            href={
-                                locked
-                                    ? undefined
-                                    : `/dashboard/view?u=${encodeURIComponent(r.url)}`
-                            }
-                            className={`rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs ${locked
-                                ? "text-neutral-400 pointer-events-none"
-                                : "text-neutral-700 hover:bg-neutral-50"
-                                }`}
-                            aria-disabled={locked}
-                            tabIndex={locked ? -1 : 0}
-                        >
-                            Open Builder
-                        </a>
+                        {isReady && (
+                            <>
+                                <div className="text-[11px] text-zinc-500 w-full">
+                                    <p>
+                                        Initial scan complete. Your site is ready to build. Click below to begin.
+                                    </p>
+                                </div>
+                                <a
+                                    href={
+                                        locked
+                                            ? undefined
+                                            : `/dashboard/view?u=${encodeURIComponent(
+                                                r.url
+                                            )}`
+                                    }
+                                    className={`rounded-lg bg-accent text-white px-3 py-1.5 text-xs text-white font-medium ${locked
+                                        ? "pointer-events-none"
+                                        : ""
+                                        }`}
+                                    aria-disabled={locked}
+                                    tabIndex={locked ? -1 : 0}
+                                >
+                                    Generate Website
+                                </a>
+                            </>
+                        )}
                     </div>
 
                     {locked && (
@@ -591,11 +601,6 @@ function UrlRow({ uid, r }: UrlRowProps) {
                             </span>
                         </div>
                     )}
-
-                    {/* status badge bottom-right */}
-                    <div className="mt-3 flex justify-start">
-                        <StatusBadge status={uiStatus} />
-                    </div>
                 </div>
             </div>
 
@@ -603,6 +608,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
         </div>
     );
 }
+
 
 /* main page */
 export default function DashboardPage() {
