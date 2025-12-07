@@ -3117,6 +3117,7 @@ export default function PreviewEditor({
                             {/* Meta */}
                             <button
                                 type="button"
+                                id="kloner-meta-toggle"
                                 onClick={() => {
                                     const isActive = !sidebarHidden && sidePanelMode === "meta";
                                     if (isActive) {

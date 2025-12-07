@@ -49,7 +49,12 @@ const steps: Step[] = [
         content: "Fine-tune typography, spacing, alignment, and colors for the currently selected block here.",
         disableBeacon: true,
     },
-
+    {
+        target: "#kloner-meta-toggle",
+        content:
+            "Control page-level SEO here: update titles and descriptions, upload a favicon, and edit advanced JSON-LD for each page.",
+        disableBeacon: true,
+    },
     {
         target: "#kloner-actions-row",
         content: "When your edits are ready, use this to deploy changes to a live website.",

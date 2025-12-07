@@ -18,8 +18,8 @@ export const CREDIT_LIMITS: Record<
     { screenshotMonthly: number; previewMonthly: number; editMonthly: number }
 > = {
     free: {
-        screenshotMonthly: 100,
-        previewMonthly: 100,
+        screenshotMonthly: 50,
+        previewMonthly: 60,
         editMonthly: 100, // 10 edits @ 5 credits each
     },
     pro: {
