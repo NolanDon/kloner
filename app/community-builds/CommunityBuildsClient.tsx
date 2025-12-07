@@ -5,6 +5,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import KlonerLoader from "@/components/KlonerLoader";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 type DerivedPage = {
     id: string;
@@ -37,8 +38,22 @@ function stripScripts(html: string): string {
     return html.replace(/<script[\s\S]*?<\/script>/gi, "");
 }
 
+/**
+ * Remove editor-only artifacts that break standalone page previews,
+ * specifically the kloner-active-route style that hides all but "/".
+ */
 function stripEditorArtifacts(html: string): string {
-    return html;
+    if (!html) return html;
+
+    let out = html;
+
+    // Remove route-hiding style so non-root pages are visible in isolated previews
+    out = out.replace(
+        /<style[^>]+id=["']kloner-active-route["'][\s\S]*?<\/style>/i,
+        ""
+    );
+
+    return out;
 }
 
 function labelFromRoute(route: string): string {
@@ -176,9 +191,7 @@ export default function CommunityBuildsClient() {
     const totalPages = derivedPages.length || 1;
 
     if (state.status === "loading" || state.status === "idle") {
-        return (
-            <KlonerLoader />
-        );
+        return <KlonerLoader />;
     }
 
     if (state.status === "error") {
@@ -300,8 +313,6 @@ export default function CommunityBuildsClient() {
                                     </div>
 
                                     <div className="flex flex-col items-end gap-2 text-right text-[11px] text-black/55">
-
-
                                         <button
                                             type="button"
                                             onClick={() => handleRemix(item)}
@@ -384,45 +395,45 @@ export default function CommunityBuildsClient() {
                                             <style>
                                                 * { cursor: default !important; }
                                                 a, button, input, select, textarea {
-                                                pointer-events: none !important;
+                                                  pointer-events: none !important;
                                                 }
                                                 [role="link"], [onclick], [data-clickable] {
-                                                pointer-events: none !important;
+                                                  pointer-events: none !important;
                                                 }
                                             </style>
-                                            `}
+                                        `}
                                         className="h-full w-full overflow-auto"
                                         sandbox="allow-same-origin"
                                     />
 
                                     {totalPages > 1 && (
                                         <>
+                                            {/* LEFT ARROW */}
                                             <button
                                                 type="button"
                                                 aria-label="Previous page"
-                                                onClick={() =>
-                                                    setPreviewPageIndex((idx) =>
-                                                        Math.max(0, idx - 1)
-                                                    )
-                                                }
+                                                onClick={() => setPreviewPageIndex(i => Math.max(0, i - 1))}
                                                 disabled={previewPageIndex === 0}
-                                                className="absolute left-4 top-1/2 z-10 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full border border-[rgba(245,95,42,0.6)] bg-white/95 text-2xl font-semibold text-[rgba(245,95,42,1)] shadow-md backdrop-blur transition hover:bg-[rgba(245,95,42,0.06)] hover:border-[rgba(245,95,42,0.95)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(245,95,42,0.9)] disabled:opacity-35 disabled:hover:bg-white"
+                                                className="absolute left-6 top-1/2 z-10 flex h-16 w-16 -translate-y-1/2 items-center justify-center
+                                                    rounded-full bg-[rgba(245,95,42,1)] text-white shadow-lg
+                                                    hover:bg-[rgba(215,75,22,1)] disabled:opacity-40"
                                             >
-                                                {"<"}
+                                                <ChevronLeft className="h-10 w-10" strokeWidth={2.5} />
                                             </button>
+
+                                            {/* RIGHT ARROW */}
                                             <button
                                                 type="button"
                                                 aria-label="Next page"
-                                                onClick={() =>
-                                                    setPreviewPageIndex((idx) =>
-                                                        Math.min(totalPages - 1, idx + 1)
-                                                    )
-                                                }
+                                                onClick={() => setPreviewPageIndex(i => Math.min(totalPages - 1, i + 1))}
                                                 disabled={previewPageIndex === totalPages - 1}
-                                                className="absolute right-4 top-1/2 z-10 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full border border-[rgba(245,95,42,0.6)] bg-white/95 text-2xl font-semibold text-[rgba(245,95,42,1)] shadow-md backdrop-blur transition hover:bg-[rgba(245,95,42,0.06)] hover:border-[rgba(245,95,42,0.95)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(245,95,42,0.9)] disabled:opacity-35 disabled:hover:bg-white"
+                                                className="absolute right-7 top-1/2 z-10 flex h-16 w-16 -translate-y-1/2 items-center justify-center
+                                                    rounded-full bg-[rgba(245,95,42,1)] text-white shadow-lg
+                                                    hover:bg-[rgba(215,75,22,1)] disabled:opacity-40"
                                             >
-                                                {">"}
+                                                <ChevronRight className="h-10 w-10" strokeWidth={2.5} />
                                             </button>
+
 
                                             <div className="pointer-events-none absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full bg-black/70 px-3 py-1.5 text-[11px] text-white">
                                                 Page {previewPageIndex + 1} of {totalPages}

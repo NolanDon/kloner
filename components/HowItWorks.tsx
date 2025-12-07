@@ -1,22 +1,24 @@
 // components/HowItWorks.tsx
-'use client';
+"use client";
 
-import { motion, useScroll, useTransform, MotionValue } from 'framer-motion';
-import React, { useRef, useState } from 'react';
-import { CheckCircle2 } from 'lucide-react';
+import { motion, useScroll, useTransform, MotionValue } from "framer-motion";
+import React, { useRef, useState, useEffect } from "react";
+import { CheckCircle2, ChevronDown } from "lucide-react";
 
 /* ----------------------------- Mini “modals” ----------------------------- */
 
 function UrlInputModal() {
   return (
-    <div className="w-full h-40 md:h-56 rounded-2xl border border-black/10 bg-white shadow-md p-4 md:p-5 min-h-60 ">
+    <div className="w-full h-40 md:h-56 rounded-2xl border border-black/10 bg-white shadow-md p-4 md:p-5 min-h-60">
       <div className="text-xs text-neutral-500 mb-2 flex items-center gap-2">
         <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500" />
         <span>Paste a URL</span>
       </div>
       <div className="rounded-xl ring-1 ring-neutral-200 bg-neutral-50 px-3 py-3 text-sm text-neutral-700 flex items-center gap-2">
         <span className="text-neutral-400">URL:</span>
-        <span className="font-medium text-neutral-800 truncate">https://example.com</span>
+        <span className="font-medium text-neutral-800 truncate">
+          https://example.com
+        </span>
       </div>
       <div className="mt-3 flex gap-2">
         <button
@@ -36,15 +38,11 @@ function UrlInputModal() {
   );
 }
 
-const pages = [
-  { name: "Home" },
-  { name: "Services" },
-  { name: "About" },
-];
+const pages = [{ name: "Home" }, { name: "Services" }, { name: "About" }];
 
 function PreviewGridModal() {
   return (
-    <div className="w-full h-40 md:h-56 rounded-2xl border border-black/10 bg-white shadow-md p-4 md:p-5 min-h-60 ">
+    <div className="w-full h-40 md:h-56 rounded-2xl border border-black/10 bg-white shadow-md p-4 md:p-5 min-h-60">
       <div className="text-xs text-neutral-500 mb-3">Preview pages</div>
       <div className="grid grid-cols-3 gap-2">
         {pages.map((page) => (
@@ -93,21 +91,35 @@ function DeployModal({
   doneAt?: number;
 }) {
   const start = Math.max(0, doneAt - 0.02);
-  const doneOpacity = useTransform(progress, [start, doneAt] as const, [0, 1] as const);
-  const spinOpacity = useTransform(progress, [start, doneAt] as const, [1, 0] as const);
+  const doneOpacity = useTransform(
+    progress,
+    [start, doneAt] as const,
+    [0, 1] as const
+  );
+  const spinOpacity = useTransform(
+    progress,
+    [start, doneAt] as const,
+    [1, 0] as const
+  );
 
   return (
     <div className="w-full rounded-2xl border border-black/10 bg-white shadow-md p-4 md:p-5 grid place-items-center min-h-60">
       <div className="relative w-full h-full grid place-items-center">
         <motion.div style={{ opacity: spinOpacity }} className="text-center absolute">
           <div className="mx-auto mb-3 h-8 w-8 rounded-full border-2 border-neutral-200 border-t-neutral-900 animate-spin" />
-          <div className="text-sm font-medium text-neutral-800">Deploying to Vercel…</div>
-          <div className="text-xs text-neutral-500 mt-1">Building, optimizing, shipping</div>
+          <div className="text-sm font-medium text-neutral-800">
+            Deploying to Vercel…
+          </div>
+          <div className="text-xs text-neutral-500 mt-1">
+            Building, optimizing, shipping
+          </div>
         </motion.div>
         <motion.div style={{ opacity: doneOpacity }} className="text-center absolute">
           <CheckCircle2 className="h-8 w-8 text-emerald-600 mx-auto mb-2" />
           <div className="text-sm font-medium text-neutral-800">Deployed</div>
-          <div className="text-xs text-neutral-500 mt-1">Your project is live</div>
+          <div className="text-xs text-neutral-500 mt-1">
+            Your project is live
+          </div>
         </motion.div>
       </div>
     </div>
@@ -118,9 +130,8 @@ function DeployModal({
 
 function EditBlocksModal() {
   return (
-    <div className="w-full min-w-[250px] rounded-2xl border border-black/10 bg-white shadow-md p-4 md:p-5 min-h-60 ">
+    <div className="w-full min-w-[250px] rounded-2xl border border-black/10 bg-white shadow-md p-4 md:p-5 min-h-60">
       <div className="flex items-center justify-between mb-3">
-        {/* <div className="text-xs text-neutral-500">Editor</div> */}
         <div className="inline-flex items-center gap-1 text-emerald-700 text-xs font-medium">
           <CheckCircle2 className="h-4 w-4" />
           Changes saved
@@ -129,7 +140,10 @@ function EditBlocksModal() {
 
       <div>
         {[0].map((i) => (
-          <div key={i} className="rounded-xl border border-neutral-200 bg-neutral-50 p-2 mb-6">
+          <div
+            key={i}
+            className="rounded-xl border border-neutral-200 bg-neutral-50 p-2 mb-6"
+          >
             <div className="h-4 w-5/6 rounded-md bg-neutral-200 mb-2" />
             <div className="grid grid-cols-2 gap-1">
               <div className="h-8 rounded-md bg-neutral-200" />
@@ -156,8 +170,7 @@ function EditBlocksModal() {
         </div>
       </div>
 
-      <div className="mt-3 flex items-center justify-between">
-      </div>
+      <div className="mt-3 flex items-center justify-between" />
     </div>
   );
 }
@@ -169,29 +182,29 @@ type ModalPlain = React.ComponentType;
 
 const items = [
   {
-    title: 'Paste a URL',
-    text: 'Point us at any site. We\'ll fetch up to 10 pages of structure and begin creating a snapshot collection.',
+    title: "Paste a URL",
+    text: "Point us at any site. We'll fetch up to 10 pages of structure and begin creating a snapshot collection.",
     step: 1,
     Modal: UrlInputModal as ModalPlain,
     needsProgress: false,
   },
   {
-    title: 'Preview',
-    text: 'Once complete, begin generating previews from the collection we capture.',
+    title: "Preview",
+    text: "Once complete, begin generating previews from the collection we capture.",
     step: 2,
     Modal: PreviewGridModal as ModalPlain,
     needsProgress: false,
   },
   {
-    title: 'Customize',
-    text: 'After choosing a final preview, open it in our editor to modify images, metadata, blocks, or remove assets.',
+    title: "Customize",
+    text: "After choosing a final preview, open it in our editor to modify images, metadata, blocks, or remove assets.",
     step: 3,
     Modal: EditBlocksModal as ModalPlain,
     needsProgress: false,
   },
   {
-    title: 'Deploy',
-    text: 'Finally, name and deploy your website with just a few clicks to Vercel and view your live project within minutes.',
+    title: "Deploy",
+    text: "Finally, name and deploy your website with just a few clicks to Vercel and view your live project within minutes.",
     step: 4,
     Modal: DeployModal as ModalWithProgress,
     needsProgress: true,
@@ -220,12 +233,17 @@ function Card({
   needsProgress: boolean;
 }) {
   return (
-    <motion.div style={{ opacity, scale }} className="w-full max-w-[520px] space-y-4">
+    <motion.div
+      style={{ opacity, scale }}
+      className="w-full max-w-[520px] space-y-4"
+    >
       <div className="flex items-center gap-3 mt-5">
         <span className="inline-flex sm:flex-col items-center lg:text-center rounded-full px-2.5 py-1 text-[11px] font-semibold border border-black/15 text-black/70">
           {step}
         </span>
-        <h3 className="text-2xl md:text-3xl whitespace-nowrap text-black my-5">{title}</h3>
+        <h3 className="text-2xl md:text-3xl whitespace-nowrap text-black my-5">
+          {title}
+        </h3>
       </div>
       <p className="text-black/70 text-sm h-20 leading-relaxed">{text}</p>
       {/* @ts-expect-error conditional prop forwarding */}
@@ -238,11 +256,31 @@ function Card({
 
 export default function HowItWorks() {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [inView, setInView] = useState(false);
 
   const { scrollYProgress } = useScroll({
     target: containerRef,
-    offset: ['start start', 'end end'],
+    offset: ["start start", "end end"],
   });
+
+  // Intersection tracking to gate the scroll hint
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        setInView(entry.isIntersecting);
+      },
+      {
+        threshold: 0.1,
+      }
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const T1 = 0.0;
   const T2 = 0.25;
@@ -251,28 +289,96 @@ export default function HowItWorks() {
   const ε = 0.02;
 
   const c1Opacity = useTransform(scrollYProgress, [0, T1, 1], [1, 1, 1]);
-  const c2Opacity = useTransform(scrollYProgress, [0, T2 - ε, T2, 1], [0, 0, 1, 1]);
-  const c3Opacity = useTransform(scrollYProgress, [0, T3 - ε, T3, 1], [0, 0, 1, 1]);
-  const c4Opacity = useTransform(scrollYProgress, [0, T4 - ε, T4, 1], [0, 0, 1, 1]);
+  const c2Opacity = useTransform(
+    scrollYProgress,
+    [0, T2 - ε, T2, 1],
+    [0, 0, 1, 1]
+  );
+  const c3Opacity = useTransform(
+    scrollYProgress,
+    [0, T3 - ε, T3, 1],
+    [0, 0, 1, 1]
+  );
+  const c4Opacity = useTransform(
+    scrollYProgress,
+    [0, T4 - ε, T4, 1],
+    [0, 0, 1, 1]
+  );
 
   const c1Scale = useTransform(scrollYProgress, [0, T1, T1 + ε], [1, 1, 1]);
-  const c2Scale = useTransform(scrollYProgress, [0, T2 - ε, T2], [0.96, 0.96, 1]);
-  const c3Scale = useTransform(scrollYProgress, [0, T3 - ε, T3], [0.96, 0.96, 1]);
-  const c4Scale = useTransform(scrollYProgress, [0, T4 - ε, T4], [0.96, 0.96, 1]);
+  const c2Scale = useTransform(
+    scrollYProgress,
+    [0, T2 - ε, T2],
+    [0.96, 0.96, 1]
+  );
+  const c3Scale = useTransform(
+    scrollYProgress,
+    [0, T3 - ε, T3],
+    [0.96, 0.96, 1]
+  );
+  const c4Scale = useTransform(
+    scrollYProgress,
+    [0, T4 - ε, T4],
+    [0.96, 0.96, 1]
+  );
 
-  const fill = useTransform(scrollYProgress, [0, 1], ['0%', '100%']);
+  const fill = useTransform(scrollYProgress, [0, 1], ["0%", "100%"]);
 
   const s1 = useTransform(scrollYProgress, [0, T1, 1], [1, 1, 1]);
-  const s2 = useTransform(scrollYProgress, [0, T2 - ε, T2, 1], [0.35, 0.35, 1, 1]);
-  const s3 = useTransform(scrollYProgress, [0, T3 - ε, T3, 1], [0.35, 0.35, 1, 1]);
-  const s4 = useTransform(scrollYProgress, [0, T4 - ε, T4, 1], [0.35, 0.35, 1, 1]);
+  const s2 = useTransform(
+    scrollYProgress,
+    [0, T2 - ε, T2, 1],
+    [0.35, 0.35, 1, 1]
+  );
+  const s3 = useTransform(
+    scrollYProgress,
+    [0, T3 - ε, T3, 1],
+    [0.35, 0.35, 1, 1]
+  );
+  const s4 = useTransform(
+    scrollYProgress,
+    [0, T4 - ε, T4, 1],
+    [0.35, 0.35, 1, 1]
+  );
+
+  // Scroll hint opacity: only when section is in view, fades near end
+  const hintOpacity = useTransform(scrollYProgress, (v) => {
+    if (!inView) return 0;
+    if (v <= 0.1) return 1;
+    if (v >= 0.9) return 0;
+    // simple linear fade between 0.1 and 0.9
+    const t = (v - 0.1) / 0.8; // 0 → 1
+    return 1 - t; // 1 → 0
+  });
 
   return (
     <section id="how" className="bg-white text-black">
       <div className="container-soft">
         <div ref={containerRef} className="relative h-[220vh]">
+          {/* Scroll-to-continue bouncer */}
+          <motion.div
+            style={{ opacity: hintOpacity }}
+            className="pointer-events-none fixed inset-x-0 bottom-6 z-40 hidden md:flex justify-center"
+          >
+            <div className="pointer-events-auto inline-flex items-center gap-1 border border-neutral-700 rounded-full px-3 py-2 text-xs text-neutral-800 shadow-lg sm:text-sm">
+              <span>Scroll to continue</span>
+              <motion.div
+                animate={{ y: [0, 6, 0] }}
+                transition={{
+                  duration: 1.1,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                }}
+              >
+                <ChevronDown className="h-4 w-4 sm:h-5 sm:w-5" />
+              </motion.div>
+            </div>
+          </motion.div>
+
           <div className="sticky top-44">
-            <h2 className="text-4xl md:text-6xl mb-10 text-black/80">How it works</h2>
+            <h2 className="text-4xl md:text-6xl mb-10 text-black/80">
+              How it works
+            </h2>
 
             <div className="relative">
               <div className="flex flex-col xl:flex-row w-full max-w-6xl md:mx-auto items-stretch xl:items-start justify-start xl:justify-between gap-8">
@@ -322,7 +428,10 @@ export default function HowItWorks() {
             <div className="hidden md:block mt-10">
               <div className="relative mx-auto max-w-5xl">
                 <div className="h-[3px] rounded bg-black/10" />
-                <motion.div className="absolute inset-y-0 left-0 rounded bg-accent" style={{ width: fill }} />
+                <motion.div
+                  className="absolute inset-y-0 left-0 rounded bg-accent"
+                  style={{ width: fill }}
+                />
                 <div className="absolute -top-3 left-0 right-0 flex justify-between">
                   <motion.span
                     style={{ opacity: s1 }}

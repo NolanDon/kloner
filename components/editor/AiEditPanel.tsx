@@ -318,9 +318,9 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                             </div>
 
                             {/* main input pill */}
-                            <div className="mt-2 flex items-center gap-2 rounded-[999px] border border-[color-mix(in_srgb,var(--accent,#f55f2a)_65%,#020617)] bg-[rgba(3,7,18,0.96)] px-3 py-2.5 ">
+                            <div className="mt-2 flex items-center gap-2 rounded-[999px] bg-[rgba(3,7,18,0.96)] px-3 py-2.5 ">
                                 {/* left icon chip */}
-                                <div className="hidden sm:flex h-9 w-11 items-center justify-center rounded-full border-2 border-[color-mix(in_srgb,var(--accent,#f55f2a)_70%,#0b1120)] bg-[radial-gradient(circle_at_30%_0%,rgba(255,255,255,0.15),transparent_55%),var(--accent,#f55f2a)] text-[12px] font-semibold text-white shadow-[0_0_0_1px_rgba(15,23,42,0.7)]">
+                                <div className="hidden sm:flex h-9 w-11 items-center justify-center rounded-full bg-accent text-[12px] font-semibold text-white shadow-[0_0_0_1px_rgba(15,23,42,0.7)]">
                                     AI
                                 </div>
 
@@ -352,7 +352,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                             </div>
 
                             {/* helper + char counter */}
-                            <div className="mt-2 flex items-center justify-between px-1 text-[14px]">
+                            <div className="mt-2 flex items-center justify-between px-1 text-[13px]">
                                 <div className="min-h-[22px]">
                                     {atMaxChars ? (
                                         <span className="text-red-500">
@@ -367,15 +367,17 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                                             This edit will only affect your selected block in the preview.
                                         </span>
                                     ) : (
-                                        <span className="text-neutral-500">
-                                            Keep requests specific for the best results.
+                                        <span className="text-neutral-800">
+                                            Tell our AI what you want changed. Be specific for better results.
                                         </span>
                                     )}
                                 </div>
 
-                                <span className="text-[11px] text-neutral-500">
-                                    {prompt.length}/{MAX_PROMPT_CHARS}
-                                </span>
+                                {prompt.length > 0 && (
+                                    <span className="text-[11px] text-neutral-500">
+                                        {prompt.length}/{MAX_PROMPT_CHARS}
+                                    </span>
+                                )}
                             </div>
                         </div>
                     </div>

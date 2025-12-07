@@ -1,6 +1,23 @@
 "use client";
 
 import React from "react";
+import {
+    Square,
+    Copy,
+    Trash2,
+    ArrowUp,
+    ArrowDown,
+    ArrowLeft,
+    ArrowRight,
+    Plus,
+    Minus,
+    Type as TypeIcon,
+    Link2,
+    Image as ImageIcon,
+    Layers as LayersIcon,
+    Undo2,
+    Redo2,
+} from "lucide-react";
 import type { SelectionMeta } from "@/components/PreviewEditor";
 
 type FloatingBlockToolbarProps = {
@@ -20,225 +37,276 @@ function BlockToolbar({
     return (
         <div
             style={style}
-            className="flex items-center gap-1 rounded-full border border-slate-800 bg-black/90 px-2 py-1
-                       text-[11px] shadow-xl bg-white/90 text-slate-800"
+            className="flex items-center gap-1.5 rounded-full border border-slate-300 bg-white/95 px-2 py-1 text-[13px] text-slate-800 shadow-xl"
         >
-            {/* Whole page select */}
-            <button
-                type="button"
-                onClick={() => callApi("selectAll")}
-                className="px-1.5 py-0.5 rounded-full hover:bg-slate-800 text-[11px] font-medium"
-                title="Select entire page"
-            >
-                All
-            </button>
+            {/* Selection / core actions */}
+            <div className="flex items-center gap-0.5">
+                {/* Whole page select */}
+                <button
+                    type="button"
+                    onClick={() => callApi("selectAll")}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
+                    title="Select entire page"
+                >
+                    <Square className="h-3.5 w-3.5" />
+                    <span className="sr-only">Select entire page</span>
+                </button>
 
-            {/* Core selection actions */}
-            <button
-                type="button"
-                onClick={() => callApi("clear")}
-                className="px-1.5 py-0.5 rounded-full hover:bg-slate-800 text-[11px] font-medium"
-            >
-                Clear
-            </button>
-            <button
-                type="button"
-                onClick={() => callApi("blockDuplicate")}
-                className="px-1.5 py-0.5 rounded-full hover:bg-slate-800 text-[11px] font-medium"
-            >
-                Dup
-            </button>
-            <button
-                type="button"
-                onClick={() => callApi("blockDelete")}
-                className="px-1.5 py-0.5 rounded-full hover:bg-red-900/70 text-[11px] font-medium text-red-200"
-            >
-                Delete
-            </button>
+                {/* Duplicate block */}
+                <button
+                    type="button"
+                    onClick={() => callApi("blockDuplicate")}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
+                    title="Duplicate block"
+                >
+                    <Copy className="h-3.5 w-3.5" />
+                    <span className="sr-only">Duplicate block</span>
+                </button>
+
+                {/* Clear selection */}
+                <button
+                    type="button"
+                    onClick={() => callApi("clear")}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
+                    title="Clear selection"
+                >
+                    <span className="text-[10px] font-semibold">CL</span>
+                    <span className="sr-only">Clear selection</span>
+                </button>
+
+                {/* Delete block */}
+                <button
+                    type="button"
+                    onClick={() => callApi("blockDelete")}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-red-50 text-red-600 hover:bg-red-100"
+                    title="Delete block"
+                >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    <span className="sr-only">Delete block</span>
+                </button>
+            </div>
 
             {/* Layout movement: up / down / left / right */}
-            <div className="flex gap-0.5 pl-1 border-l border-slate-700/70 ml-1">
+            <div className="ml-1 flex items-center gap-0.5 border-l border-slate-200 pl-1">
                 <button
                     type="button"
                     onClick={() => callApi("blockMoveUp")}
-                    className="px-1 py-0.5 rounded-full hover:bg-slate-800 text-[20px]"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Move block up"
                 >
-                    ↑
+                    <ArrowUp className="h-3.5 w-3.5" />
+                    <span className="sr-only">Move block up</span>
                 </button>
                 <button
                     type="button"
                     onClick={() => callApi("blockMoveDown")}
-                    className="px-1 py-0.5 rounded-full hover:bg-slate-800 text-[20px]"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Move block down"
                 >
-                    ↓
+                    <ArrowDown className="h-3.5 w-3.5" />
+                    <span className="sr-only">Move block down</span>
                 </button>
                 <button
                     type="button"
                     onClick={() => callApi("blockMoveLeft")}
-                    className="px-1 py-0.5 rounded-full hover:bg-slate-800 text-[20px]"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Move block left"
                 >
-                    ←
+                    <ArrowLeft className="h-3.5 w-3.5" />
+                    <span className="sr-only">Move block left</span>
                 </button>
                 <button
                     type="button"
                     onClick={() => callApi("blockMoveRight")}
-                    className="px-1 py-0.5 rounded-full hover:bg-slate-800 text-[20px]"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Move block right"
                 >
-                    →
+                    <ArrowRight className="h-3.5 w-3.5" />
+                    <span className="sr-only">Move block right</span>
                 </button>
             </div>
 
-            {/* Padding controls */}
-            <div className="flex gap-0.5 pl-1 border-l border-slate-700/70 ml-1">
+            {/* Padding: Pad | − / + */}
+            <div className="ml-1 flex items-center gap-0.5 border-l border-slate-200 pl-1">
+                <span className="rounded-full bg-slate-900/90 px-1 text-[9px] font-semibold uppercase tracking-wide text-slate-100">
+                    Pad
+                </span>
                 <button
                     type="button"
                     onClick={() => callApi("padLess")}
-                    className="px-1 py-0.5 rounded-full hover:bg-slate-800 text-[11px]"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Reduce padding"
                 >
-                    Pad –
+                    <Minus className="h-3.5 w-3.5" />
+                    <span className="sr-only">Reduce padding</span>
                 </button>
                 <button
                     type="button"
                     onClick={() => callApi("padMore")}
-                    className="px-1 py-0.5 rounded-full hover:bg-slate-800 text-[11px]"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Increase padding"
                 >
-                    Pad +
+                    <Plus className="h-3.5 w-3.5" />
+                    <span className="sr-only">Increase padding</span>
                 </button>
             </div>
 
-            {/* Block size (grow / shrink) */}
-            <div className="flex gap-0.5 pl-1 border-l border-slate-700/70 ml-1">
+            {/* Block size: Size | − / + */}
+            <div className="ml-1 flex items-center gap-0.5 border-l border-slate-200 pl-1">
+                <span className="rounded-full bg-slate-900/90 px-1 text-[9px] font-semibold uppercase tracking-wide text-slate-100">
+                    Size
+                </span>
                 <button
                     type="button"
                     onClick={() => callApi("blockShrink")}
-                    className="px-1 py-0.5 rounded-full hover:bg-slate-800 text-[11px]"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Shrink block"
                 >
-                    Size –
+                    <Minus className="h-3.5 w-3.5" />
+                    <span className="sr-only">Shrink block</span>
                 </button>
                 <button
                     type="button"
                     onClick={() => callApi("blockGrow")}
-                    className="px-1 py-0.5 rounded-full hover:bg-slate-800 text-[11px]"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Grow block"
                 >
-                    Size +
+                    <Plus className="h-3.5 w-3.5" />
+                    <span className="sr-only">Grow block</span>
                 </button>
             </div>
 
-            {/* Text / link helpers */}
-            <div className="flex gap-0.5 pl-1 border-l border-slate-700/70 ml-1">
+            {/* Text / link helpers: Txt | + , Link */}
+            <div className="ml-1 flex items-center gap-0.5 border-l border-slate-200 pl-1">
+                <span className="rounded-full bg-slate-900/90 px-1 text-[9px] font-semibold uppercase tracking-wide text-slate-100">
+                    Txt
+                </span>
                 <button
                     type="button"
                     onClick={() => callApi("textboxAdd")}
-                    className="px-1 py-0.5 rounded-full hover:bg-slate-800 text-[11px]"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Add overlay text box"
                 >
-                    Txt +
+                    <TypeIcon className="h-3.5 w-3.5" />
+                    <span className="sr-only">Add text box</span>
                 </button>
                 <button
                     type="button"
                     onClick={() => callApi("linkEdit")}
-                    className="px-1 py-0.5 rounded-full hover:bg-slate-800 text-[11px]"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Edit link"
                 >
-                    Link
+                    <Link2 className="h-3.5 w-3.5" />
+                    <span className="sr-only">Edit link</span>
                 </button>
             </div>
 
-            {/* Image actions */}
-            <div className="flex gap-0.5 pl-1 border-l border-slate-700/70 ml-1">
+            {/* Image group: Img | + / BG / × / − / + */}
+            <div className="ml-1 flex items-center gap-0.5 border-l border-slate-200 pl-1">
+                <span className="rounded-full bg-slate-900/90 px-1 text-[9px] font-semibold uppercase tracking-wide text-slate-100">
+                    Img
+                </span>
+
+                {/* Insert image */}
                 <button
                     type="button"
                     onClick={() => callApi("imgInsert")}
-                    className="px-1 py-0.5 rounded-full hover:bg-slate-800 text-[11px]"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Insert image"
                 >
-                    Img +
+                    <ImageIcon className="h-3.5 w-3.5" />
+                    <span className="sr-only">Insert image</span>
                 </button>
-                <button
-                    type="button"
-                    onClick={() => callApi("imgDelete")}
-                    className="px-1 py-0.5 rounded-full hover:bg-slate-800 text-[11px]"
-                    title="Delete image"
-                >
-                    Img ×
-                </button>
+
+                {/* Background image */}
                 <button
                     type="button"
                     onClick={() => callApi("imgBg")}
-                    className="px-1 py-0.5 rounded-full hover:bg-slate-800 text-[11px]"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Set block background image"
                 >
-                    BG
+                    <LayersIcon className="h-3.5 w-3.5" />
+                    <span className="sr-only">Set background image</span>
                 </button>
+
+                {/* Delete image */}
+                <button
+                    type="button"
+                    onClick={() => callApi("imgDelete")}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-red-50 text-red-600 hover:bg-red-100"
+                    title="Delete image"
+                >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    <span className="sr-only">Delete image</span>
+                </button>
+
+                {/* Image size − / + */}
                 <button
                     type="button"
                     onClick={() => callApi("imgShrink")}
-                    className="px-1 py-0.5 rounded-full hover:bg-slate-800 text-[11px]"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Shrink image"
                 >
-                    Img –
+                    <Minus className="h-3.5 w-3.5" />
+                    <span className="sr-only">Shrink image</span>
                 </button>
                 <button
                     type="button"
                     onClick={() => callApi("imgGrow")}
-                    className="px-1 py-0.5 rounded-full hover:bg-slate-800 text-[11px]"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Grow image"
                 >
-                    Img +
+                    <Plus className="h-3.5 w-3.5" />
+                    <span className="sr-only">Grow image</span>
                 </button>
             </div>
 
-            {/* Image z-index layering */}
-            <div className="flex gap-0.5 pl-1 border-l border-slate-700/70 ml-1">
+            {/* Image z-index layering: Fwd / Back */}
+            <div className="ml-1 flex items-center gap-0.5 border-l border-slate-200 pl-1">
                 <button
                     type="button"
                     onClick={() => callApi("bringImageForward")}
-                    className="px-1 py-0.5 rounded-full hover:bg-slate-800 text-[11px]"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Bring image forward"
                 >
-                    Fwd
+                    <ArrowUp className="h-3.5 w-3.5" />
+                    <span className="sr-only">Bring image forward</span>
                 </button>
                 <button
                     type="button"
                     onClick={() => callApi("sendImageBackward")}
-                    className="px-1 py-0.5 rounded-full hover:bg-slate-800 text-[11px]"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Send image backward"
                 >
-                    Back
+                    <ArrowDown className="h-3.5 w-3.5" />
+                    <span className="sr-only">Send image backward</span>
                 </button>
             </div>
 
-            {/* History */}
-            <div className="flex gap-0.5 pl-1 border-l border-slate-700/70 ml-1">
+            {/* History: undo / redo */}
+            <div className="ml-1 flex items-center gap-0.5 border-l border-slate-200 pl-1">
                 <button
                     type="button"
                     onClick={() => callApi("historyUndo")}
-                    className="px-1 py-0.5 rounded-full hover:bg-slate-800 text-[20px]"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Undo"
                 >
-                    ⤺
+                    <Undo2 className="h-3.5 w-3.5" />
+                    <span className="sr-only">Undo</span>
                 </button>
                 <button
                     type="button"
                     onClick={() => callApi("historyRedo")}
-                    className="px-1 py-0.5 rounded-full hover:bg-slate-800 text-[20px]"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Redo"
                 >
-                    ⤼
+                    <Redo2 className="h-3.5 w-3.5" />
+                    <span className="sr-only">Redo</span>
                 </button>
             </div>
         </div>
     );
 }
-
 
 export function FloatingBlockToolbar({
     iframeRef,
@@ -257,7 +325,7 @@ export function FloatingBlockToolbar({
         left: number;
         width: number;
         height: number;
-        bottom: number; // use bottom from iframe meta
+        bottom: number;
     };
     const scale = uiScale || 1;
 

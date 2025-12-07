@@ -586,7 +586,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
                                     aria-disabled={locked}
                                     tabIndex={locked ? -1 : 0}
                                 >
-                                    Generate Website
+                                    Go to Builder 
                                 </a>
                             </>
                         )}

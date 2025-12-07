@@ -918,23 +918,13 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     onClick: () => void;
     compact?: boolean;
 }) {
-    const [justClicked, setJustClicked] = React.useState(false);
-
-    // Local cooldown + external lock
-    const effectiveLocked = locked || justClicked;
+    // Drive everything from the parent `locked` prop.
+    const effectiveLocked = locked;
 
     const handleClick = () => {
         if (effectiveLocked) return;
-        setJustClicked(true);
         onClick();
     };
-
-    // Simple cooldown window so the card stays disabled briefly
-    React.useEffect(() => {
-        if (!justClicked) return;
-        const timer = setTimeout(() => setJustClicked(false), 2000); // ~2s cool-down
-        return () => clearTimeout(timer);
-    }, [justClicked]);
 
     const title = effectiveLocked ? "Generating preview…" : "Generate preview";
     const subtitle = effectiveLocked
@@ -980,8 +970,8 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                 disabled={effectiveLocked}
                 aria-busy={effectiveLocked}
                 className={`group relative flex ${sizeMinH} ${sizeMinW} ${sizeMaxW} items-center justify-center rounded-xl border-2 border-dashed bg-white text-center transition ${effectiveLocked
-                        ? "opacity-70 cursor-wait"
-                        : "hover:border-neutral-400"
+                    ? "opacity-70 cursor-wait"
+                    : "hover:border-neutral-400"
                     }`}
                 title={title}
                 aria-disabled={effectiveLocked}
@@ -992,8 +982,8 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                     >
                         <Hammer
                             className={`h-7 w-7 text-neutral-600 ${effectiveLocked
-                                    ? "ghost-hammer-swing"
-                                    : "transition-transform group-hover:-rotate-6"
+                                ? "ghost-hammer-swing"
+                                : "transition-transform group-hover:-rotate-6"
                                 }`}
                             aria-hidden
                         />
@@ -1011,7 +1001,6 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
         </>
     );
 });
-
 
 
 // ---------------------------------------------------------------------
@@ -3378,7 +3367,7 @@ export default function PreviewPage(): JSX.Element {
                             </div>
 
                             <p className="text-sm text-neutral-500">
-                                Choose which site Kloner should capture and generate from.
+                                Choose which site to generate previews from.
                             </p>
                         </div>
                     </div>

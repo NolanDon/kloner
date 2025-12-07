@@ -69,32 +69,29 @@ export default function DocsPage() {
                 <section id="features" className="mt-[100px] mb-[100px]">
                     <SectionHeader
                         eyebrow="Core workflow"
-                        title="From someone else’s site to your own version"
+                        title="From concept to your own version"
                         description="Kloner is built around a simple, guided flow: capture, preview, edit, and publish. Each step is designed to be visual, safe, and repeatable."
                     />
 
                     <div className="mt-6 grid gap-5 md:grid-cols-2">
                         <FeatureCard
                             icon={<Camera className="h-5 w-5" />}
-                            title="1. Capture a clean snapshot"
+                            title="1. Enter a URL into the Kloner search bar"
                             badge="Step 1"
                             items={[
-                                "Paste any public URL you want to explore.",
-                                "Kloner creates a visual snapshot of the page for you.",
-                                "You can keep multiple snapshots for the same project and label them however you like.",
+                                "Kloner captures a visual layout of the page for you.",
                             ]}
-                            demo={<DemoScreenshotTile />}
+                            // demo={<DemoScreenshotTile />}
                         />
                         <FeatureCard
                             icon={<Sparkles className="h-5 w-5" />}
                             title="2. Generate an editable preview"
                             badge="Step 2"
                             items={[
-                                "Pick any snapshot and tell Kloner to create a preview.",
                                 "The preview looks like the original but is now editable inside your workspace.",
                                 "You can revisit and regenerate previews as your ideas evolve.",
                             ]}
-                            demo={<DemoPreviewTile />}
+                            // demo={<DemoPreviewTile />}
                         />
                         <FeatureCard
                             icon={<CheckCircle2 className="h-5 w-5" />}
@@ -103,9 +100,8 @@ export default function DocsPage() {
                             items={[
                                 "Change copy, swap sections, adjust layouts, and tailor the design to your brand.",
                                 "You stay in one focused editor instead of juggling multiple tools.",
-                                "Experiment freely: your original snapshot is always preserved as a reference.",
                             ]}
-                            demo={<DemoEditorHint />}
+                            // demo={<DemoEditorHint />}
                         />
                         <FeatureCard
                             icon={<Rocket className="h-5 w-5" />}
@@ -113,13 +109,13 @@ export default function DocsPage() {
                             badge="Step 4"
                             items={[
                                 "Once you’re happy with the preview, export or connect it to your deployment flow.",
-                                "Paid plans unlock direct handoff into supported hosting providers for a smoother launch.",
                                 "You can revisit, duplicate, and evolve previous versions without losing your work.",
                             ]}
-                            demo={<DemoDeployCTA />}
+                            // demo={}
                         />
                     </div>
                 </section>
+                {/* <DemoDeployCTA /> */}
 
                 {/* Credits */}
                 <section id="credits" className="mt-[100px] mb-[100px] scroll-mt-[150px]">
