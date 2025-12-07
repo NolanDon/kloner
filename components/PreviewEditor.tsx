@@ -24,6 +24,58 @@ export interface SeoMeta {
 }
 
 
+
+// const steps: Step[] = [
+//     {
+//         target: "#kloner-home",
+//         content:
+//             "This is your live editable preview. In 1 minute, we’ll show you how to edit it and deploy.",
+//         disableBeacon: true,
+//     },
+//     {
+//         target: "#kloner-page-switcher",
+//         content: "Use the page switcher to jump between different pages like Home, Pricing, and About. Press Enter to continue.",
+//         disableBeacon: true,
+//     },
+//     {
+//         target: "#kloner-undo",
+//         content: "Undo your most recent edit directly in the editor.",
+//         disableBeacon: true,
+//     },
+//     {
+//         target: "#kloner-history",
+//         content: "You can also revert to older versions by clicking tabs in the history section.",
+//         disableBeacon: true,
+//     },
+//     {
+//         target: "#kloner-ai-edit-panel",
+//         content: "Use AI Edit to rewrite, generate pictures, or refine copy and layout for the selected block.",
+//         disableBeacon: true,
+//     },
+//     {
+//         target: "#kloner-apply-changes",
+//         content: "Apply your changes to update the live preview.",
+//         disableBeacon: true,
+//     },
+//     {
+//         target: "#kloner-device-toggle",
+//         content: "Switch between desktop, tablet, and mobile views of your cloned page.",
+//         disableBeacon: true,
+//     },
+
+//     {
+//         target: "#kloner-selection-style",
+//         content: "Fine-tune typography, spacing, alignment, and colors for the currently selected block here.",
+//         disableBeacon: true,
+//     },
+
+//     {
+//         target: "#kloner-actions-row",
+//         content: "When your edits are ready, use this to deploy changes to a live website.",
+//         disableBeacon: true,
+//     },
+// ];
+
 // Fire-and-forget request to delete assets by their storage paths.
 // The dashboard host listens for "kloner:delete-assets" messages.
 function requestDeleteAssetsByPaths(paths: string[]) {
@@ -648,7 +700,7 @@ import { db } from "@/lib/firebase"; // or wherever your db is
 import type { User as FirebaseUser } from "firebase/auth";
 import { RenderDoc } from "@/app/dashboard/view/page";
 import { useAuth } from "@/src/hooks/useAuth";
-import { Camera, Code2, Eye, EyeOff, FileText, Loader2, Monitor, Palette, Rocket, RotateCcw, Smartphone, Tablet } from "lucide-react";
+import { Camera, Code2, Eye, EyeOff, FileText, Loader2, Monitor, Palette, Rocket, Smartphone, Tablet } from "lucide-react";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { sanitizeImageName } from "./helpers";
 import AiEditPanel from "./editor/AiEditPanel";
@@ -2950,7 +3002,9 @@ export default function PreviewEditor({
                 </button>
 
                 {/* FLOATING DEVICE SELECTOR – TOP CENTER */}
-                <div className="absolute top-5 left-1/2 z-[101] -translate-x-1/2">
+                <div
+                    id="kloner-device-toggle"
+                    className="absolute top-5 left-1/2 z-[101] -translate-x-1/2">
                     <div className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white/95 px-2 py-1 shadow-md">
                         <motion.button
                             type="button"
@@ -3034,6 +3088,7 @@ export default function PreviewEditor({
                         <div className="flex flex-col gap-2 rounded-full border border-neutral-200 bg-white/80 p-1 shadow-md backdrop-blur-sm">
                             {/* Styles */}
                             <button
+                                id="kloner-selection-style"
                                 type="button"
                                 onClick={() => {
                                     const isActive = !sidebarHidden && sidePanelMode === "style";
@@ -3106,6 +3161,7 @@ export default function PreviewEditor({
 
                             {/* Deploy */}
                             <button
+                                id="kloner-actions-row"
                                 type="button"
                                 onClick={() => setExportPrompt(true)}
                                 disabled={exporting}
@@ -4079,10 +4135,12 @@ export default function PreviewEditor({
                         )}
 
                         {allPages && allPages.length > 1 && (
-                            <div className="mt-3" id="kloner-page-switcher">
+                            <div className="mt-3">
                                 <div className="flex justify-center">
                                     {/* Outer pill: Layers button + visible pages in one horizontal row */}
-                                    <div className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/80 px-2 py-1 shadow-sm">
+                                    <div
+                                        id="kloner-page-switcher"
+                                        className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/80 px-2 py-1 shadow-sm">
                                         {/* Layers toggle */}
                                         <button
                                             type="button"
@@ -4293,7 +4351,6 @@ export default function PreviewEditor({
                         {/* Right-side history menu (top-right overlay) */}
                         {historyOpen ? (
                             <div
-                                id="kloner-history"
                                 className="hidden lg:block absolute top-20 right-3 z-[80] w-72 max-h-[70vh]"
                             >
                                 <div className="flex flex-col rounded-lg border border-neutral-200 bg-white/95 shadow-lg">
@@ -4323,6 +4380,7 @@ export default function PreviewEditor({
                         ) : (
                             <button
                                 type="button"
+                                id="kloner-history"
                                 onClick={() => setHistoryOpen(true)}
                                 className="hidden lg:flex absolute top-20 right-3 z-[70] h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white/95 text-neutral-600 shadow-md hover:bg-neutral-100 hover:text-neutral-800"
                                 title="Show edit history"
@@ -4334,7 +4392,7 @@ export default function PreviewEditor({
 
 
 
-                        <div className="hidden lg:block mb-3" id="kloner-save-changes-desktop">
+                        <div className="hidden lg:block mb-3" id="kloner-apply-changes">
                             <button
                                 onClick={() => doSave()}
                                 disabled={closing || savingDraft || !dirty}
@@ -4344,7 +4402,6 @@ export default function PreviewEditor({
                                     : "bg-emerald-50 text-emerald-700 pointer-events-none"
                                     }`}
                                 title="Apply current draft to the live preview"
-                                id="kloner-apply-changes"
                             >
                                 {applyingPreview || savingDraft ? (
                                     <a className="flex items-center justify-center flex-inline gap-2">

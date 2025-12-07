@@ -48,7 +48,7 @@ function BlockToolbar({
                     className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Select entire page"
                 >
-                    <Square className="h-3.5 w-3.5" />
+                    <Square className="h-5 w-5" />
                     <span className="sr-only">Select entire page</span>
                 </button>
 
@@ -59,7 +59,7 @@ function BlockToolbar({
                     className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Duplicate block"
                 >
-                    <Copy className="h-3.5 w-3.5" />
+                    <Copy className="h-5 w-5" />
                     <span className="sr-only">Duplicate block</span>
                 </button>
 
@@ -81,7 +81,7 @@ function BlockToolbar({
                     className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-red-50 text-red-600 hover:bg-red-100"
                     title="Delete block"
                 >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-5 w-5" />
                     <span className="sr-only">Delete block</span>
                 </button>
             </div>
@@ -94,7 +94,7 @@ function BlockToolbar({
                     className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Move block up"
                 >
-                    <ArrowUp className="h-3.5 w-3.5" />
+                    <ArrowUp className="h-5 w-5" />
                     <span className="sr-only">Move block up</span>
                 </button>
                 <button
@@ -103,7 +103,7 @@ function BlockToolbar({
                     className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Move block down"
                 >
-                    <ArrowDown className="h-3.5 w-3.5" />
+                    <ArrowDown className="h-5 w-5" />
                     <span className="sr-only">Move block down</span>
                 </button>
                 <button
@@ -112,7 +112,7 @@ function BlockToolbar({
                     className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Move block left"
                 >
-                    <ArrowLeft className="h-3.5 w-3.5" />
+                    <ArrowLeft className="h-5 w-5" />
                     <span className="sr-only">Move block left</span>
                 </button>
                 <button
@@ -121,14 +121,14 @@ function BlockToolbar({
                     className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Move block right"
                 >
-                    <ArrowRight className="h-3.5 w-3.5" />
+                    <ArrowRight className="h-5 w-5" />
                     <span className="sr-only">Move block right</span>
                 </button>
             </div>
 
             {/* Padding: Pad | − / + */}
             <div className="ml-1 flex items-center gap-0.5 border-l border-slate-200 pl-1">
-                <span className="rounded-full bg-slate-900/90 px-1 text-[9px] font-semibold uppercase tracking-wide text-slate-100">
+                <span className="rounded-full bg-slate-900/90 px-1 text-[12px] font-semibold uppercase tracking-wide text-slate-100">
                     Pad
                 </span>
                 <button
@@ -137,7 +137,7 @@ function BlockToolbar({
                     className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Reduce padding"
                 >
-                    <Minus className="h-3.5 w-3.5" />
+                    <Minus className="h-5 w-5" />
                     <span className="sr-only">Reduce padding</span>
                 </button>
                 <button
@@ -146,14 +146,14 @@ function BlockToolbar({
                     className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Increase padding"
                 >
-                    <Plus className="h-3.5 w-3.5" />
+                    <Plus className="h-5 w-5" />
                     <span className="sr-only">Increase padding</span>
                 </button>
             </div>
 
             {/* Block size: Size | − / + */}
             <div className="ml-1 flex items-center gap-0.5 border-l border-slate-200 pl-1">
-                <span className="rounded-full bg-slate-900/90 px-1 text-[9px] font-semibold uppercase tracking-wide text-slate-100">
+                <span className="rounded-full bg-slate-900/90 px-1 text-[12px] font-semibold uppercase tracking-wide text-slate-100">
                     Size
                 </span>
                 <button
@@ -162,7 +162,7 @@ function BlockToolbar({
                     className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Shrink block"
                 >
-                    <Minus className="h-3.5 w-3.5" />
+                    <Minus className="h-5 w-5" />
                     <span className="sr-only">Shrink block</span>
                 </button>
                 <button
@@ -171,14 +171,14 @@ function BlockToolbar({
                     className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Grow block"
                 >
-                    <Plus className="h-3.5 w-3.5" />
+                    <Plus className="h-5 w-5" />
                     <span className="sr-only">Grow block</span>
                 </button>
             </div>
 
             {/* Text / link helpers: Txt | + , Link */}
             <div className="ml-1 flex items-center gap-0.5 border-l border-slate-200 pl-1">
-                <span className="rounded-full bg-slate-900/90 px-1 text-[9px] font-semibold uppercase tracking-wide text-slate-100">
+                <span className="rounded-full bg-slate-900/90 px-1 text-[12px] font-semibold uppercase tracking-wide text-slate-100">
                     Txt
                 </span>
                 <button
@@ -187,7 +187,7 @@ function BlockToolbar({
                     className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Add overlay text box"
                 >
-                    <TypeIcon className="h-3.5 w-3.5" />
+                    <TypeIcon className="h-5 w-5" />
                     <span className="sr-only">Add text box</span>
                 </button>
                 <button
@@ -196,14 +196,14 @@ function BlockToolbar({
                     className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Edit link"
                 >
-                    <Link2 className="h-3.5 w-3.5" />
+                    <Link2 className="h-5 w-5" />
                     <span className="sr-only">Edit link</span>
                 </button>
             </div>
 
             {/* Image group: Img | + / BG / × / − / + */}
             <div className="ml-1 flex items-center gap-0.5 border-l border-slate-200 pl-1">
-                <span className="rounded-full bg-slate-900/90 px-1 text-[9px] font-semibold uppercase tracking-wide text-slate-100">
+                <span className="rounded-full bg-slate-900/90 px-1 text-[12px] font-semibold uppercase tracking-wide text-slate-100">
                     Img
                 </span>
 
@@ -214,7 +214,7 @@ function BlockToolbar({
                     className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Insert image"
                 >
-                    <ImageIcon className="h-3.5 w-3.5" />
+                    <ImageIcon className="h-5 w-5" />
                     <span className="sr-only">Insert image</span>
                 </button>
 
@@ -225,7 +225,7 @@ function BlockToolbar({
                     className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Set block background image"
                 >
-                    <LayersIcon className="h-3.5 w-3.5" />
+                    <LayersIcon className="h-5 w-5" />
                     <span className="sr-only">Set background image</span>
                 </button>
 
@@ -236,7 +236,7 @@ function BlockToolbar({
                     className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-red-50 text-red-600 hover:bg-red-100"
                     title="Delete image"
                 >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-5 w-5" />
                     <span className="sr-only">Delete image</span>
                 </button>
 
@@ -247,7 +247,7 @@ function BlockToolbar({
                     className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Shrink image"
                 >
-                    <Minus className="h-3.5 w-3.5" />
+                    <Minus className="h-5 w-5" />
                     <span className="sr-only">Shrink image</span>
                 </button>
                 <button
@@ -256,7 +256,7 @@ function BlockToolbar({
                     className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Grow image"
                 >
-                    <Plus className="h-3.5 w-3.5" />
+                    <Plus className="h-5 w-5" />
                     <span className="sr-only">Grow image</span>
                 </button>
             </div>
@@ -269,7 +269,7 @@ function BlockToolbar({
                     className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Bring image forward"
                 >
-                    <ArrowUp className="h-3.5 w-3.5" />
+                    <ArrowUp className="h-5 w-5" />
                     <span className="sr-only">Bring image forward</span>
                 </button>
                 <button
@@ -278,7 +278,7 @@ function BlockToolbar({
                     className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Send image backward"
                 >
-                    <ArrowDown className="h-3.5 w-3.5" />
+                    <ArrowDown className="h-5 w-5" />
                     <span className="sr-only">Send image backward</span>
                 </button>
             </div>
@@ -291,7 +291,7 @@ function BlockToolbar({
                     className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Undo"
                 >
-                    <Undo2 className="h-3.5 w-3.5" />
+                    <Undo2 className="h-5 w-5" />
                     <span className="sr-only">Undo</span>
                 </button>
                 <button
@@ -300,7 +300,7 @@ function BlockToolbar({
                     className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
                     title="Redo"
                 >
-                    <Redo2 className="h-3.5 w-3.5" />
+                    <Redo2 className="h-5 w-5" />
                     <span className="sr-only">Redo</span>
                 </button>
             </div>

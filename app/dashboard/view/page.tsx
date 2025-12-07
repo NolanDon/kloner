@@ -918,11 +918,39 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     onClick: () => void;
     compact?: boolean;
 }) {
-    // Drive everything from the parent `locked` prop.
-    const effectiveLocked = locked;
+    // Local debounce lock so the button stays disabled briefly
+    // even if the parent re-renders and flips `locked` back to false.
+    const [localLocked, setLocalLocked] = useState(false);
+    const timeoutRef = useRef<number | null>(null);
+
+    // Clear any pending timeout on unmount to avoid setting state after unmount.
+    useEffect(() => {
+        return () => {
+            if (timeoutRef.current !== null) {
+                window.clearTimeout(timeoutRef.current);
+            }
+        };
+    }, []);
+
+    const effectiveLocked = locked || localLocked;
 
     const handleClick = () => {
         if (effectiveLocked) return;
+
+        // Immediately lock locally so user cannot spam-click
+        setLocalLocked(true);
+
+        // Reset any previous timer
+        if (timeoutRef.current !== null) {
+            window.clearTimeout(timeoutRef.current);
+        }
+
+        // Auto-unlock after 30s; adjust if you want a shorter/longer debounce
+        timeoutRef.current = window.setTimeout(() => {
+            setLocalLocked(false);
+            timeoutRef.current = null;
+        }, 30_000);
+
         onClick();
     };
 
@@ -970,8 +998,8 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                 disabled={effectiveLocked}
                 aria-busy={effectiveLocked}
                 className={`group relative flex ${sizeMinH} ${sizeMinW} ${sizeMaxW} items-center justify-center rounded-xl border-2 border-dashed bg-white text-center transition ${effectiveLocked
-                    ? "opacity-70 cursor-wait"
-                    : "hover:border-neutral-400"
+                        ? "opacity-70 cursor-wait"
+                        : "hover:border-neutral-400"
                     }`}
                 title={title}
                 aria-disabled={effectiveLocked}
@@ -982,8 +1010,8 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                     >
                         <Hammer
                             className={`h-7 w-7 text-neutral-600 ${effectiveLocked
-                                ? "ghost-hammer-swing"
-                                : "transition-transform group-hover:-rotate-6"
+                                    ? "ghost-hammer-swing"
+                                    : "transition-transform group-hover:-rotate-6"
                                 }`}
                             aria-hidden
                         />
@@ -3307,8 +3335,11 @@ export default function PreviewPage(): JSX.Element {
                                             : `${previewRemaining}/${previewLimitDisplay}`}
                                     </span>
                                 </span>
-                            </div>
 
+                                <span className="basis-full text-[11px] text-neutral-500 px-2.5">
+                                    Credits reset monthly.
+                                </span>
+                            </div>
                             {userTier === "free" && (
                                 <p className="text-[11px] leading-relaxed text-neutral-500">
                                     Free plans include a limited number of screenshots and
@@ -3556,7 +3587,7 @@ export default function PreviewPage(): JSX.Element {
                                     </>
                                 ) : step3Done ? (
                                     <>
-                                        <span>— Customize your website, and when you're satisfied, click </span>
+                                        <span>— Customize your preview, when you're ready, deploy it live by clicking </span>
 
                                         <button
                                             type="button"

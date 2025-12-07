@@ -489,6 +489,84 @@ ${trimmedHtml}
     }
 }
 
+/**
+ * Ensure / sync a dedicated credits.aiEdits bucket based on the
+ * configured monthly limit and how many credits have been used.
+ *
+ * - Each AI edit costs 5 credits.
+ * - If the bucket is missing or expired, it is (re)created.
+ * - Returns { remaining, limit } for UI.
+ */
+async function syncAiEditCreditsBucket(opts: {
+    userRef: any;
+    tier: UserTier;
+    now: Date;
+    usedCreditsBefore: number;
+    consumedNow: boolean;
+}): Promise<{ remaining: number | null; limit: number | null }> {
+    const { userRef, tier, now, usedCreditsBefore, consumedNow } = opts;
+
+    let limit: number | null = null;
+    try {
+        const rawLimit = monthlyLimitFor(tier, "edit");
+        limit = rawLimit || 0;
+    } catch (err) {
+        console.error("[ai-edit][credits] monthlyLimitFor(edit) failed", err);
+        return { remaining: null, limit: null };
+    }
+
+    // Unlimited / no configured limit
+    if (!limit) {
+        return { remaining: null, limit: 0 };
+    }
+
+    const usedTotal = usedCreditsBefore + (consumedNow ? 5 : 0);
+    const computedRemaining = Math.max(limit - usedTotal, 0);
+
+    try {
+        const snap = await userRef.get();
+        const data = snap.exists ? (snap.data() as any) : {};
+        const bucket =
+            data["credits.aiEdits"] ||
+            (data.credits && data.credits.aiEdits) ||
+            {};
+
+        const rawEnd = bucket.periodEnd;
+        let periodEndDate: Date | null = null;
+
+        if (rawEnd && typeof rawEnd.toDate === "function") {
+            periodEndDate = rawEnd.toDate() as Date;
+        } else if (rawEnd instanceof Date) {
+            periodEndDate = rawEnd;
+        }
+
+        // If no periodEnd or it's past, roll to end of current calendar month
+        if (!periodEndDate || now >= periodEndDate) {
+            const year = now.getUTCFullYear();
+            const month = now.getUTCMonth(); // 0-based
+            const firstNextMonth = new Date(
+                Date.UTC(year, month + 1, 1, 0, 0, 0, 0)
+            );
+            periodEndDate = new Date(firstNextMonth.getTime() - 1);
+        }
+
+        await userRef.set(
+            {
+                "credits.aiEdits": {
+                    remaining: computedRemaining,
+                    monthlyLimit: limit,
+                    periodEnd: periodEndDate,
+                },
+            },
+            { merge: true }
+        );
+    } catch (err) {
+        console.error("[ai-edit][credits] failed syncing credits.aiEdits", err);
+    }
+
+    return { remaining: computedRemaining, limit };
+}
+
 async function handlePost(req: NextRequest) {
     return requireSessionAndMaybeCsrf(req, async ({ uid, req }) => {
         let db: any = null;
@@ -522,18 +600,25 @@ async function handlePost(req: NextRequest) {
         const now = new Date();
 
         let aiEditsRef: any | null = null;
+        let userRef: any | null = null;
         let tier: UserTier = "free";
         let creditsLimit: number | null = null;
-        let creditsUsedBefore = 0;
+        let usedCreditsBefore = 0;
 
         if (db) {
             try {
-                const userRef = db.collection("kloner_users").doc(uid);
+                userRef = db.collection("kloner_users").doc(uid);
 
+                // Resolve tier from either userTier or tier field
                 try {
                     const userSnap = await userRef.get();
                     if (userSnap.exists) {
-                        const rawTier = (userSnap.data()?.userTier as string | undefined)?.toLowerCase();
+                        const data = userSnap.data() as any;
+                        const rawTierValue = (data.userTier ?? data.tier) as
+                            | string
+                            | undefined;
+                        const rawTier = rawTierValue?.toLowerCase();
+
                         if (
                             rawTier === "pro" ||
                             rawTier === "agency" ||
@@ -546,7 +631,10 @@ async function handlePost(req: NextRequest) {
                         }
                     }
                 } catch (e) {
-                    console.error("[ai-edit] failed to read userTier; defaulting to free", e);
+                    console.error(
+                        "[ai-edit] failed to read userTier/tier; defaulting to free",
+                        e
+                    );
                     tier = "free";
                 }
 
@@ -567,6 +655,7 @@ async function handlePost(req: NextRequest) {
 
                 aiEditsRef = renderRef.collection("ai_edits");
 
+                // Existing functionality: monthly credit check based on history
                 try {
                     const startOfMonth = new Date(
                         now.getFullYear(),
@@ -579,12 +668,12 @@ async function handlePost(req: NextRequest) {
                         .get();
 
                     const editCountThisMonth = monthSnap.size ?? 0;
-                    creditsUsedBefore = editCountThisMonth * 5;
+                    usedCreditsBefore = editCountThisMonth * 5;
 
                     const allowed = canConsumeCredit(
                         tier,
                         "edit",
-                        creditsUsedBefore
+                        usedCreditsBefore
                     );
 
                     const limit = monthlyLimitFor(tier, "edit");
@@ -594,8 +683,19 @@ async function handlePost(req: NextRequest) {
                         console.log("[ai-edit] credit check blocked request", {
                             tier,
                             creditsLimit,
-                            creditsUsedBefore,
+                            usedCreditsBefore,
                         });
+
+                        // Also ensure we have a credits.aiEdits bucket that reflects "0 remaining"
+                        if (userRef && limit) {
+                            await syncAiEditCreditsBucket({
+                                userRef,
+                                tier,
+                                now,
+                                usedCreditsBefore,
+                                consumedNow: false,
+                            });
+                        }
 
                         return NextResponse.json(
                             {
@@ -611,7 +711,10 @@ async function handlePost(req: NextRequest) {
                         );
                     }
                 } catch (err) {
-                    console.error("[ai-edit] credit check failed, allowing request", err);
+                    console.error(
+                        "[ai-edit] credit check failed, allowing request",
+                        err
+                    );
                 }
             } catch (err) {
                 console.error(
@@ -622,6 +725,32 @@ async function handlePost(req: NextRequest) {
             }
         }
 
+        // HARD TIER GATE: AI edits are Pro+ only
+        const isPaidTier =
+            tier === "pro" || tier === "agency" || tier === "enterprise";
+
+        if (!isPaidTier) {
+            const limit = monthlyLimitFor(tier, "edit") || 0;
+            console.log("[ai-edit] blocked: tier not eligible for AI edits", {
+                uid,
+                tier,
+                limit,
+            });
+
+            return NextResponse.json(
+                {
+                    error:
+                        "AI edits are available on Pro plans and higher. Upgrade your plan to use this feature.",
+                    meta: {
+                        tier,
+                        creditsRemaining: 0,
+                        creditsLimit: limit,
+                    },
+                },
+                { status: 402 }
+            );
+        }
+
         let modelResult: AiEditModelResult;
         try {
             modelResult = await runAiEditModel({ html, prompt });
@@ -630,14 +759,14 @@ async function handlePost(req: NextRequest) {
             return NextResponse.json({ error: "model_failed" }, { status: 502 });
         }
 
-        // ===== HARD SAFETY: reject destructive diffs =====
+        // ===== HARD SAFETY: reject destructive diffs (currently disabled) =====
         let effectiveAfterHtml = modelResult.afterHtml;
         // if (isDestructiveEdit(html, effectiveAfterHtml)) {
         //     console.warn("[ai-edit] destructive edit detected; reverting to original block", {
         //         originalLength: html.length,
         //         newLength: effectiveAfterHtml.length,
         //     });
-
+        //
         //     effectiveAfterHtml = html;
         //     modelResult.summary =
         //         "AI edit looked destructive (too much content removed), so your original section was kept.";
@@ -773,20 +902,33 @@ async function handlePost(req: NextRequest) {
             };
         });
 
-
+        // Sync / create credits.aiEdits and compute remaining for response
         let creditsRemaining: number | null = null;
         try {
-            const limit = monthlyLimitFor(tier, "edit");
-            creditsLimit = limit || 0;
-
-            if (limit) {
-                const usedAfter = creditsUsedBefore + 5;
-                creditsRemaining = Math.max(limit - usedAfter, 0);
+            if (userRef) {
+                const synced = await syncAiEditCreditsBucket({
+                    userRef,
+                    tier,
+                    now,
+                    usedCreditsBefore,
+                    consumedNow: true,
+                });
+                creditsRemaining = synced.remaining;
+                creditsLimit = synced.limit;
             } else {
-                creditsRemaining = null;
+                // Fallback to old-style math if somehow userRef is missing
+                const limit = monthlyLimitFor(tier, "edit");
+                creditsLimit = limit || 0;
+
+                if (limit) {
+                    const usedAfter = usedCreditsBefore + 5;
+                    creditsRemaining = Math.max(limit - usedAfter, 0);
+                } else {
+                    creditsRemaining = null;
+                }
             }
         } catch (err) {
-            console.error("[ai-edit] failed computing remaining credits", err);
+            console.error("[ai-edit] failed computing/syncing AI edit credits", err);
         }
 
         console.log("[ai-edit] POST success", {
@@ -854,7 +996,12 @@ async function handleGet(req: NextRequest) {
             try {
                 const userSnap = await userRef.get();
                 if (userSnap.exists) {
-                    const rawTier = (userSnap.data()?.userTier as string | undefined)?.toLowerCase();
+                    const data = userSnap.data() as any;
+                    const rawTierValue = (data.userTier ?? data.tier) as
+                        | string
+                        | undefined;
+                    const rawTier = rawTierValue?.toLowerCase();
+
                     if (
                         rawTier === "pro" ||
                         rawTier === "agency" ||
@@ -867,7 +1014,10 @@ async function handleGet(req: NextRequest) {
                     }
                 }
             } catch (e) {
-                console.error("[ai-edit][GET] failed to read userTier; defaulting to free", e);
+                console.error(
+                    "[ai-edit][GET] failed to read userTier/tier; defaulting to free",
+                    e
+                );
                 tier = "free";
             }
 
@@ -875,13 +1025,35 @@ async function handleGet(req: NextRequest) {
             const renderSnap = await renderRef.get();
 
             if (!renderSnap.exists) {
+                // Still sync / create credits.aiEdits for Pro+ users so UI can show it
+                let creditsRemaining: number | null = null;
+                let creditsLimit: number | null = null;
+
+                try {
+                    const now = new Date();
+                    const synced = await syncAiEditCreditsBucket({
+                        userRef,
+                        tier,
+                        now,
+                        usedCreditsBefore: 0,
+                        consumedNow: false,
+                    });
+                    creditsRemaining = synced.remaining;
+                    creditsLimit = synced.limit;
+                } catch (err) {
+                    console.error(
+                        "[ai-edit][GET] failed syncing AI edit credits for missing render",
+                        err
+                    );
+                }
+
                 return NextResponse.json(
                     {
                         suggestions: [],
                         meta: {
                             tier,
-                            creditsRemaining: null,
-                            creditsLimit: monthlyLimitFor(tier, "edit") || 0,
+                            creditsRemaining,
+                            creditsLimit,
                         },
                     },
                     { status: 200 }
@@ -900,7 +1072,8 @@ async function handleGet(req: NextRequest) {
             }));
 
             let creditsRemaining: number | null = null;
-            let creditsLimit = 0;
+            let creditsLimit: number | null = null;
+
             try {
                 const now = new Date();
                 const startOfMonth = new Date(
@@ -914,18 +1087,23 @@ async function handleGet(req: NextRequest) {
                     .get();
 
                 const editCountThisMonth = monthSnap.size ?? 0;
-                const usedCredits = editCountThisMonth * 5;
+                const usedCreditsBefore = editCountThisMonth * 5;
 
-                const limit = monthlyLimitFor(tier, "edit");
-                creditsLimit = limit || 0;
+                const synced = await syncAiEditCreditsBucket({
+                    userRef,
+                    tier,
+                    now,
+                    usedCreditsBefore,
+                    consumedNow: false,
+                });
 
-                if (limit) {
-                    creditsRemaining = Math.max(limit - usedCredits, 0);
-                } else {
-                    creditsRemaining = null;
-                }
+                creditsRemaining = synced.remaining;
+                creditsLimit = synced.limit;
             } catch (err) {
-                console.error("[ai-edit][GET] failed computing remaining credits", err);
+                console.error(
+                    "[ai-edit][GET] failed computing/syncing AI edit credits",
+                    err
+                );
             }
 
             return NextResponse.json(

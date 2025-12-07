@@ -509,7 +509,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
             </button>
 
             <div className="flex flex-col sm:flex-row gap-4 sm:gap-5">
-                {thumbUrl ? (
+                {thumbUrl && (
                     <div className="h-12 w-12 rounded-lg overflow-hidden border border-neutral-200 bg-neutral-100 shrink-0">
                         <img
                             src={thumbUrl}
@@ -517,13 +517,6 @@ function UrlRow({ uid, r }: UrlRowProps) {
                             className="object-cover"
                             draggable={false}
                         />
-                    </div>
-                ) : (
-                    <div
-                        className="h-12 w-12 rounded-lg grid place-items-center text-white shrink-0"
-                        style={{ backgroundColor: ACCENT }}
-                    >
-                        {(r.urlHash ?? hash64(r.url)).slice(0, 2).toUpperCase()}
                     </div>
                 )}
 
@@ -586,7 +579,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
                                     aria-disabled={locked}
                                     tabIndex={locked ? -1 : 0}
                                 >
-                                    Go to Builder 
+                                    Go to Builder
                                 </a>
                             </>
                         )}
