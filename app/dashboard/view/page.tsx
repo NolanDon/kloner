@@ -182,7 +182,7 @@ type RenderCardProps = {
     r: { id: string } & RenderDoc;
     isDeleting: boolean;
     isOpening: boolean;
-    hardLocked: boolean;
+    hardLocked: boolean; // kept in props but no longer used to lock other cards
     isDeploying: boolean;
     deployLocked: boolean;
     urlHash: string | null;
@@ -200,7 +200,7 @@ function RenderCardInner({
     r,
     isDeleting,
     isOpening,
-    hardLocked,
+    hardLocked, // no-op for locking logic now
     isDeploying,
     deployLocked,
     urlHash,
@@ -229,29 +229,37 @@ function RenderCardInner({
             ? Math.min(100, Math.max(0, rawPercent))
             : null;
 
-    const normalizedProgressLabel =
-        (isDeploying
+    // finished when at 100% and not queued/deploying
+    const isComplete =
+        normalizedProgressPercent !== null &&
+        normalizedProgressPercent >= 100 &&
+        !isQueued &&
+        !isDeploying;
+
+    // only the actively building/deploying card gets a progress bar
+    const hasActiveProgress =
+        normalizedProgressPercent !== null &&
+        normalizedProgressPercent < 100 &&
+        (isQueued || isDeploying);
+
+    const normalizedProgressLabel = hasActiveProgress
+        ? isDeploying
             ? "Deploying…"
-            : isQueued
-                ? "Building preview…"
-                : hardLocked
-                    ? "Working…"
-                    : null);
+            : "Building preview…"
+        : null;
 
-    const hasProgressInfo =
-        !!normalizedProgressLabel || normalizedProgressPercent !== null;
+    const hasProgressInfo = !isComplete && hasActiveProgress;
+    const isBuilding = hasActiveProgress;
 
-    const isBuilding =
-        normalizedProgressPercent !== null && normalizedProgressPercent < 100;
+    // only the card that is actually building/deploying is locked
+    const isThisCardLockedForBuild = hasActiveProgress;
 
     const disableOpen =
         isOpening ||
-        isQueued ||
         isFailed ||
-        hardLocked ||
         isDeploying ||
         isArchived ||
-        isBuilding;
+        isThisCardLockedForBuild;
 
     const { src: refImgUrl, onError: refImgErr } = useResolvedImg(r.key || "");
 
@@ -455,6 +463,17 @@ function RenderCardInner({
                 : "border-neutral-200"
                 }`}
         >
+            {/* controller version badge – top left */}
+            {controllerVersion && (
+                <span
+                    className="absolute left-2 top-1 z-30 inline-flex items-center gap-1 rounded-md bg-neutral-900/85 px-2 py-0.5 text-[10px] font-medium text-neutral-50 shadow-sm"
+                    title={`Controller version ${controllerVersion}`}
+                >
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                    <span>v{controllerVersion}</span>
+                </span>
+            )}
+
             {isArchivedFlag && (
                 <span
                     className="absolute left-2 top-7 z-30 mt-1 rounded-md bg-amber-200/90 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900 shadow"
@@ -467,7 +486,7 @@ function RenderCardInner({
             {!isDeployedFlag && !isArchivedFlag && (
                 <button
                     onClick={() => discardRender(r.id)}
-                    disabled={isDeleting}
+                    disabled={isDeleting || isBuilding}
                     aria-label="Discard preview"
                     title="Delete this editable preview"
                     className="absolute right-1 top-1 z-40 inline-flex h-7 w-7 items-center justify-center rounded-full border border-red-200 bg-white/95 pb-1 text-[18px] font-bold leading-none text-red-600 shadow-sm hover:border-red-500 hover:bg-red-600 hover:text-white disabled:opacity-60"
@@ -512,8 +531,8 @@ function RenderCardInner({
                                     isArchivedFlag ||
                                     (!r.html && !isDeployedFlag) ||
                                     isDeleting ||
-                                    isQueued ||
-                                    isDeploying
+                                    isDeploying ||
+                                    isThisCardLockedForBuild
                                 }
                                 className={`group inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium ${isArchivedFlag
                                     ? "cursor-not-allowed border border-neutral-300 bg-neutral-50 text-neutral-400"
@@ -572,7 +591,7 @@ function RenderCardInner({
                             )}
                         </div>
 
-                        {/* progress bar / status */}
+                        {/* progress bar / status – only for the active build/deploy and never at 100% */}
                         {hasProgressInfo && (
                             <div className="mt-1 w-full">
                                 <div className="mb-1 flex items-center justify-between text-[10px] text-neutral-600">
@@ -778,8 +797,8 @@ function RenderCardInner({
 
                 {isDeleting && <CenterSpinner />}
 
-                {/* only show generic overlay spinner when we do NOT have progress info */}
-                {(isQueued || hardLocked || isDeploying) && !hasProgressInfo && (
+                {/* generic overlay spinner only when this card is queued/deploying and has no bar */}
+                {(isQueued || isDeploying) && !hasProgressInfo && (
                     <CenterSpinner
                         label={
                             isDeploying
@@ -899,12 +918,23 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     onClick: () => void;
     compact?: boolean;
 }) {
-    const effectiveLocked = locked;
+    const [justClicked, setJustClicked] = React.useState(false);
+
+    // Local cooldown + external lock
+    const effectiveLocked = locked || justClicked;
 
     const handleClick = () => {
         if (effectiveLocked) return;
+        setJustClicked(true);
         onClick();
     };
+
+    // Simple cooldown window so the card stays disabled briefly
+    React.useEffect(() => {
+        if (!justClicked) return;
+        const timer = setTimeout(() => setJustClicked(false), 2000); // ~2s cool-down
+        return () => clearTimeout(timer);
+    }, [justClicked]);
 
     const title = effectiveLocked ? "Generating preview…" : "Generate preview";
     const subtitle = effectiveLocked
@@ -950,8 +980,8 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                 disabled={effectiveLocked}
                 aria-busy={effectiveLocked}
                 className={`group relative flex ${sizeMinH} ${sizeMinW} ${sizeMaxW} items-center justify-center rounded-xl border-2 border-dashed bg-white text-center transition ${effectiveLocked
-                    ? "opacity-70 cursor-wait"
-                    : "hover:border-neutral-400"
+                        ? "opacity-70 cursor-wait"
+                        : "hover:border-neutral-400"
                     }`}
                 title={title}
                 aria-disabled={effectiveLocked}
@@ -962,8 +992,8 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                     >
                         <Hammer
                             className={`h-7 w-7 text-neutral-600 ${effectiveLocked
-                                ? "ghost-hammer-swing"
-                                : "transition-transform group-hover:-rotate-6"
+                                    ? "ghost-hammer-swing"
+                                    : "transition-transform group-hover:-rotate-6"
                                 }`}
                             aria-hidden
                         />
@@ -3241,6 +3271,11 @@ export default function PreviewPage(): JSX.Element {
     }, [search]);
 
 
+    // somewhere above the JSX return in this component:
+    const hasGhostPending = groupedShots.some((group, groupIndex) => {
+        if (groupIndex > 0) return false;
+        return group.items.some((s) => pendingByKey[s.path]);
+    });
 
 
     return (
@@ -3464,7 +3499,7 @@ export default function PreviewPage(): JSX.Element {
                         These are the concept sites generated from your url.
                     </p>
 
-                    {renders.length === 0 ? (
+                    {(renders.length === 0 || hasGhostPending) ? (
                         <>
                             <div className="mt-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-2 text-sm text-neutral-700 flex flex-wrap items-center gap-2 my-4">
                                 <div className="flex items-center gap-1 p-2">
@@ -3513,6 +3548,7 @@ export default function PreviewPage(): JSX.Element {
                                 })}
                             </div>
                         </>
+
                     ) : (
                         <>
                             <div className="mt-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-1 text-sm text-neutral-700 flex flex-wrap items-center gap-1 my-4">
