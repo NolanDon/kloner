@@ -1,4 +1,19 @@
 // app/api/ai-edit/route.ts
+//
+// AI edit endpoint for Kloner.
+//
+// Responsibilities:
+// - Auth + CSRF guard (requireSessionAndMaybeCsrf)
+// - Safety: moderate user prompt and any AI image prompts BEFORE calling OpenAI
+// - Call Responses API (gpt-5-mini) to do a small, HTML-scoped edit
+// - Optionally materialize AI images into Firebase Storage via gpt-image-1
+// - Track usage via Firestore and AI-edit credit buckets
+//
+// Safety goals:
+// - Never let obviously illegal / disallowed prompts reach the main model
+// - Force the model to refuse when users push outside allowed content
+// - Keep the feature scoped to "HTML block editing" only
+
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../_lib/route-guard";
@@ -30,14 +45,19 @@ interface AiEditModelResult {
     summary: string;
 }
 
-// keep payload small to reduce latency
+// Hard caps to keep payloads predictable
 const MAX_HTML_CHARS = 8_000;
+const MAX_PROMPT_CHARS = 1_000;
 
 const STORAGE_BUCKET =
     process.env.FIREBASE_STORAGE_BUCKET ||
     process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ||
     undefined;
 
+/**
+ * Trim HTML to a bounded size while trying to keep <head> intact.
+ * This keeps model latency and cost under control.
+ */
 function trimHtmlForModel(html: string): string {
     if (html.length <= MAX_HTML_CHARS) return html;
 
@@ -80,6 +100,51 @@ function extractTextFromResponse(resp: any): string {
 }
 
 /**
+ * Moderate user prompts (and image slot prompts) using omni-moderation-latest.
+ *
+ * Behavior:
+ * - If moderation returns flagged: throw an error with code "PROMPT_UNSAFE"
+ * - If moderation fails (network, config, etc): throw; caller should fail CLOSED
+ *
+ * This prevents obviously illegal / disallowed content from ever reaching
+ * the main text or image models.
+ */
+async function assertPromptSafe(prompt: string) {
+    try {
+        const moderation = await client.moderations.create({
+            model: "omni-moderation-latest",
+            input: prompt,
+        });
+
+        const result: any = (moderation as any).results?.[0];
+        if (!result) {
+            console.error("[ai-edit] moderation: no results, failing closed");
+            const err = new Error("moderation_failed");
+            (err as any).code = "MODERATION_ERROR";
+            throw err;
+        }
+
+        if (result.flagged) {
+            console.warn("[ai-edit] moderation: prompt flagged", {
+                categories: result.categories,
+                category_scores: result.category_scores,
+            });
+            const err = new Error("prompt_unsafe");
+            (err as any).code = "PROMPT_UNSAFE";
+            throw err;
+        }
+    } catch (err: any) {
+        // Fail closed: never proceed to main models if safety layer is broken
+        console.error("[ai-edit] moderation error", {
+            name: err?.name,
+            message: err?.message,
+            code: err?.code,
+        });
+        throw err;
+    }
+}
+
+/**
  * Parse KLONER_IMAGE_SLOT comments.
  * Example: <!-- KLONER_IMAGE_SLOT_0: a wide elephant background -->
  */
@@ -101,6 +166,7 @@ function extractImageSlots(html: string): { index: number; prompt: string }[] {
 
 /**
  * Simple JPEG compression via sharp.
+ * This keeps AI-generated images smaller without destroying quality.
  */
 async function compressImageBuffer(buf: Buffer): Promise<any> {
     try {
@@ -124,15 +190,22 @@ type ImageDebug = {
 
 /**
  * Generate+upload images for the KLONER slots and wire them into the HTML.
- * Returns new HTML + a debug payload.
+ *
+ * Safety:
+ * - Each slot prompt is passed through moderation before image generation.
+ * - If image generation returns a policy error (403), we revert back to original HTML.
+ *
+ * Returns new HTML + a debug payload used for logging / UI.
  */
 async function materializeAiImages(
     html: string,
-    opts: { uid: string; renderId: string }
+    opts: { uid: string; renderId: string; originalHtml?: string }
 ): Promise<{
     html: string;
     debug: ImageDebug;
 }> {
+    const originalHtml = opts.originalHtml ?? html;
+
     const debug: ImageDebug = {
         imageSlotsFound: 0,
         imageSlotsMaterialized: 0,
@@ -161,6 +234,9 @@ async function materializeAiImages(
 
     for (const slot of slots) {
         try {
+            // Safety: moderate the slot prompt before calling the image model
+            await assertPromptSafe(slot.prompt);
+
             console.log("[ai-edit] generating AI image for slot", slot);
 
             const imgResp = await client.images.generate({
@@ -234,6 +310,14 @@ async function materializeAiImages(
                 debug.imageErrorMessage = message;
                 break;
             }
+
+            // If moderation failed with PROMPT_UNSAFE, also stop and revert later
+            if (err?.code === "PROMPT_UNSAFE" || err?.code === "MODERATION_ERROR") {
+                debug.imageErrorStatus = 400;
+                debug.imageErrorMessage =
+                    "Image prompt was blocked or moderation failed; reverting image changes.";
+                break;
+            }
         }
     }
 
@@ -241,13 +325,26 @@ async function materializeAiImages(
 
     let outHtml = html;
 
-    // If nothing materialized, strip markers and placeholders
+    // If nothing materialized, strip markers and placeholders so we don't leave junk
     if (slotUrlMap.size === 0) {
         outHtml = outHtml.replace(
             /<!--\s*KLONER_IMAGE_SLOT_\d+\s*:[\s\S]*?-->/g,
             ""
         );
         outHtml = outHtml.replace(/__KLONER_IMAGE_SLOT_\d+__/g, "");
+
+        // If failure was due to policy or moderation, revert to original HTML
+        if (
+            debug.imageErrorStatus === 400 ||
+            debug.imageErrorStatus === 403 ||
+            debug.imageErrorStatus === 401
+        ) {
+            console.warn(
+                "[ai-edit] image materialization blocked; reverting to original HTML block"
+            );
+            return { html: originalHtml, debug };
+        }
+
         return { html: outHtml, debug };
     }
 
@@ -270,7 +367,8 @@ async function materializeAiImages(
 }
 
 /**
- * Count occurrences of a tag like <div ...> or <section ...>
+ * Count occurrences of a tag like <div ...> or <section ...>.
+ * Used in destructive-edit detection (currently optional).
  */
 function countTag(html: string, tag: string): number {
     const re = new RegExp(`<${tag}[^>]*>`, "gi");
@@ -283,6 +381,8 @@ function countTag(html: string, tag: string): number {
  * Heuristic to block destructive edits:
  * - large length drop
  * - or big drop in key structural tags
+ *
+ * This is a second safety layer to avoid "delete everything" behavior.
  */
 function isDestructiveEdit(beforeHtml: string, afterHtml: string): boolean {
     const beforeLen = beforeHtml.length;
@@ -310,18 +410,47 @@ function isDestructiveEdit(beforeHtml: string, afterHtml: string): boolean {
     return false;
 }
 
+/**
+ * Core model call for AI editing.
+ *
+ * Safety layers here:
+ * - System prompt explicitly tells the model to follow OpenAI safety policies
+ *   and to refuse unsafe instructions by returning the original block unchanged.
+ * - Output is constrained to SUMMARY + HTML: <block> format.
+ */
 async function runAiEditModel(input: {
     html: string;
     prompt: string;
+    uid: string;
 }): Promise<AiEditModelResult> {
     const trimmedHtml = trimHtmlForModel(input.html);
-    const { prompt } = input;
+    const { prompt, uid } = input;
 
     const system = `
 You are an HTML refactoring assistant for the Kloner website editor.
 
-You receive the HTML for a single selected block (for example a section, div, card, or hero area) plus a short user instruction.
-Your job is to apply a small, focused change to that block while preserving the existing content and layout.
+SAFETY AND POLICY (MUST FOLLOW):
+- You must comply with OpenAI safety policies at all times.
+- If the user asks for anything involving:
+  - illegal content,
+  - child sexual content,
+  - explicit sexual content,
+  - graphic violence,
+  - self-harm,
+  - hate or harassment,
+  - or instructions that meaningfully facilitate wrongdoing
+    (for example: hacking, explosives, serious harm),
+  you MUST REFUSE.
+- When refusing:
+  - Do NOT change the HTML.
+  - Set SUMMARY to a short refusal message like:
+    "Request refused for safety reasons. No changes applied."
+  - Under HTML: return the original HTML block unchanged.
+
+ROLE:
+- You receive the HTML for a single selected block (for example a section, div, card, or hero area)
+  plus a short user instruction.
+- Your job is to apply a small, focused change to that block while preserving the existing content and layout.
 
 CORE BEHAVIOR:
 - Apply only minimal, targeted changes based on the user instruction.
@@ -329,7 +458,8 @@ CORE BEHAVIOR:
 - Preserve all IDs, class names, and data-* attributes.
 - Preserve Kloner-specific guard rails (attributes like data-kloner-root, kloner markers, etc).
 - Do not delete or empty major sections of the block.
-- Do not replace the block with a bare wrapper. The original structure and content must remain, with only small adjustments (e.g. colors, gradients, wording tweaks).
+- Do not replace the block with a bare wrapper. The original structure and content must remain,
+  with only small adjustments (for example: colors, gradients, wording tweaks).
 
 MEDIA RULES:
 - Do not remove images or other media unless the user explicitly asks.
@@ -338,12 +468,15 @@ MEDIA RULES:
 
 THEME AND DESIGN RULES:
 - Preserve the current theme of the block unless the user explicitly requests design changes.
-- Preserve all existing classes that control theme, such as Tailwind utilities (bg-*, text-*, font-*, rounded-*, shadow-*), color tokens, and spacing.
+- Preserve all existing classes that control theme, such as Tailwind utilities
+  (bg-*, text-*, font-*, rounded-*, shadow-*), color tokens, and spacing.
 - Preserve CSS variables and design tokens (for example: var(--accent), var(--primary), etc).
-- When you add new elements, reuse the same style and theme classes already present in the surrounding HTML so the new content matches the current site.
+- When you add new elements, reuse the same style and theme classes already present
+  in the surrounding HTML so the new content matches the current site.
 
 AI IMAGE GENERATION RULES:
-- You may request new AI-generated images only when the user's instruction clearly asks for a new or changed image or background.
+- You may request new AI-generated images only when the user's instruction clearly asks
+  for a new or changed image or background.
   Examples:
     - "change the background to an image of an elephant"
     - "add a hero photo of a dog on a couch"
@@ -365,15 +498,18 @@ AI IMAGE GENERATION RULES:
 
   3) Reuse the same slot index everywhere that same image is used in this block.
 
-- If the user does not explicitly ask for a new or changed image, do not create any KLONER_IMAGE_SLOT comments or placeholders.
+- If the user does not explicitly ask for a new or changed image,
+  do not create any KLONER_IMAGE_SLOT comments or placeholders.
 
 CONFLICT HANDLING:
-- If the user instruction conflicts with these rules, follow these rules first and then satisfy the instruction as much as possible within these constraints.
+- If the user instruction conflicts with these rules,
+  follow these rules first and then satisfy the instruction as much as possible
+  within these constraints.
 
 OUTPUT FORMAT (STRICT):
 Return plain text in exactly this format, with no extra commentary:
 
-SUMMARY: <one short sentence describing what changed>
+SUMMARY: <one short sentence describing what changed or why it was refused>
 HTML:
 <the edited HTML for the same block, including any KLONER_IMAGE_SLOT comments if used>
 
@@ -410,7 +546,11 @@ ${trimmedHtml}
                     content: [{ type: "input_text", text: user }],
                 },
             ],
-            max_output_tokens: 12000,
+            max_output_tokens: 12_000,
+            metadata: {
+                feature: "kloner_ai_edit",
+                uid,
+            },
         });
 
         const raw = extractTextFromResponse(resp);
@@ -496,6 +636,9 @@ ${trimmedHtml}
  * - Each AI edit costs 5 credits.
  * - If the bucket is missing or expired, it is (re)created.
  * - Returns { remaining, limit } for UI.
+ *
+ * Important: Credits are consumed only when we actually accept and store
+ * an AI edit suggestion (not when requests are blocked by moderation).
  */
 async function syncAiEditCreditsBucket(opts: {
     userRef: any;
@@ -567,6 +710,18 @@ async function syncAiEditCreditsBucket(opts: {
     return { remaining: computedRemaining, limit };
 }
 
+/**
+ * POST /api/ai-edit
+ *
+ * Flow:
+ * 1) Auth + CSRF via requireSessionAndMaybeCsrf
+ * 2) Basic validation
+ * 3) Prompt moderation gate (omni-moderation-latest)
+ * 4) Tier + credit checks (Pro+ only)
+ * 5) Run AI edit model (gpt-5-mini)
+ * 6) Materialize any AI images (gpt-image-1) with moderation on each slot
+ * 7) Persist result + sync AI edit credits bucket
+ */
 async function handlePost(req: NextRequest) {
     return requireSessionAndMaybeCsrf(req, async ({ uid, req }) => {
         let db: any = null;
@@ -581,14 +736,18 @@ async function handlePost(req: NextRequest) {
 
         const renderId = body.renderId?.trim();
         const html = body.html ?? "";
-        const prompt = body.prompt?.trim() ?? "";
+        const rawPrompt = body.prompt?.trim() ?? "";
 
-        if (!renderId || !html || !prompt) {
+        // Enforce basic shape and non-empty prompt
+        if (!renderId || !html || !rawPrompt) {
             return NextResponse.json(
                 { error: "renderId, html, and prompt are required" },
                 { status: 400 }
             );
         }
+
+        // Clamp prompt length so no one can dump huge arbitrary text
+        const prompt = rawPrompt.slice(0, MAX_PROMPT_CHARS);
 
         console.log("[ai-edit] POST start", {
             uid,
@@ -596,6 +755,30 @@ async function handlePost(req: NextRequest) {
             htmlLength: html.length,
             promptSnippet: prompt.slice(0, 120),
         });
+
+        // Safety gate: moderate the user prompt BEFORE any model calls
+        try {
+            await assertPromptSafe(prompt);
+        } catch (err: any) {
+            if (err?.code === "PROMPT_UNSAFE") {
+                return NextResponse.json(
+                    {
+                        error:
+                            "This edit request was blocked because it violated our content rules.",
+                    },
+                    { status: 400 }
+                );
+            }
+
+            // If moderation infra is broken, fail CLOSED
+            return NextResponse.json(
+                {
+                    error:
+                        "AI editing is temporarily unavailable due to a safety system error. Try again later.",
+                },
+                { status: 503 }
+            );
+        }
 
         const now = new Date();
 
@@ -655,7 +838,7 @@ async function handlePost(req: NextRequest) {
 
                 aiEditsRef = renderRef.collection("ai_edits");
 
-                // Existing functionality: monthly credit check based on history
+                // Monthly credit check based on historical AI edits (5 credits per edit)
                 try {
                     const startOfMonth = new Date(
                         now.getFullYear(),
@@ -686,7 +869,7 @@ async function handlePost(req: NextRequest) {
                             usedCreditsBefore,
                         });
 
-                        // Also ensure we have a credits.aiEdits bucket that reflects "0 remaining"
+                        // Ensure we have a credits.aiEdits bucket that reflects "0 remaining"
                         if (userRef && limit) {
                             await syncAiEditCreditsBucket({
                                 userRef,
@@ -753,13 +936,13 @@ async function handlePost(req: NextRequest) {
 
         let modelResult: AiEditModelResult;
         try {
-            modelResult = await runAiEditModel({ html, prompt });
+            modelResult = await runAiEditModel({ html, prompt, uid });
         } catch (err: any) {
             console.error("[ai-edit] model error (unexpected throw)", err);
             return NextResponse.json({ error: "model_failed" }, { status: 502 });
         }
 
-        // ===== HARD SAFETY: reject destructive diffs (currently disabled) =====
+        // Optional destructive diff guard (second layer, in case model misbehaves)
         let effectiveAfterHtml = modelResult.afterHtml;
         // if (isDestructiveEdit(html, effectiveAfterHtml)) {
         //     console.warn("[ai-edit] destructive edit detected; reverting to original block", {
@@ -784,20 +967,23 @@ async function handlePost(req: NextRequest) {
             const result = await materializeAiImages(afterHtml, {
                 uid,
                 renderId: renderId!,
+                originalHtml: html,
             });
             afterHtml = result.html;
             imageDebug = result.debug;
 
             console.log("[ai-edit] materializeAiImages debug", imageDebug);
 
-            // If model tried to create images but org is not allowed (403), revert HTML
+            // If model tried to create images but org is not allowed (403),
+            // or moderation blocked the image prompts, revert HTML.
             if (
                 imageDebug.imageSlotsFound > 0 &&
                 imageDebug.imageSlotsMaterialized === 0 &&
-                imageDebug.imageErrorStatus === 403
+                (imageDebug.imageErrorStatus === 403 ||
+                    imageDebug.imageErrorStatus === 400)
             ) {
                 console.warn(
-                    "[ai-edit] reverting AI edit because image generation is not allowed (403)"
+                    "[ai-edit] reverting AI edit because image generation is not allowed or was blocked"
                 );
                 afterHtml = html;
             }
@@ -809,7 +995,7 @@ async function handlePost(req: NextRequest) {
             afterHtml = effectiveAfterHtml;
         }
 
-        // Final safety: never return unresolved KLONER image placeholders
+        // Final safety: never return unresolved KLONER image placeholders or comments
         afterHtml = afterHtml
             .replace(/__KLONER_IMAGE_SLOT_\d+__/g, "")
             .replace(/<!--\s*KLONER_IMAGE_SLOT_\d+\s*:[\s\S]*?-->/g, "");
@@ -860,6 +1046,7 @@ async function handlePost(req: NextRequest) {
             uid,
         });
 
+        // Trim history to last 5 edits for this render
         try {
             const extraSnap = await aiEditsRef
                 .orderBy("createdAt", "desc")
@@ -955,6 +1142,12 @@ async function handlePost(req: NextRequest) {
     });
 }
 
+/**
+ * GET /api/ai-edit?renderId=...
+ *
+ * Returns up to 5 latest AI edit suggestions + current AI edit credits
+ * for display in the UI. Does NOT hit OpenAI.
+ */
 async function handleGet(req: NextRequest) {
     return requireSessionAndMaybeCsrf(req, async ({ uid, req }) => {
         let db: any = null;
@@ -975,6 +1168,7 @@ async function handleGet(req: NextRequest) {
             );
         }
 
+        // If Firestore is down, just return no suggestions plus default meta
         if (!db) {
             return NextResponse.json(
                 {
