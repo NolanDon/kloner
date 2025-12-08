@@ -19,6 +19,7 @@ import {
     type QueryDocumentSnapshot,
     type DocumentData,
     type QuerySnapshot,
+    getDoc,
 } from "firebase/firestore";
 import {
     ArrowUpRight,
@@ -97,6 +98,12 @@ type UiState =
     | "error"
     | "canceled"
     | "unknown";
+
+type VercelIntegration = {
+    vercelTeamId?: string | null;
+    vercelUserId?: string | null;
+    configurationId?: string | null;
+};
 
 function toDate(v: any): Date | null {
     if (!v) return null;
@@ -246,6 +253,9 @@ export default function DeploymentsPage(): JSX.Element {
     const [lastGlobalCheck, setLastGlobalCheck] = useState<Date | null>(null);
     const [refreshError, setRefreshError] = useState<string | null>(null);
 
+    const [vercelIntegration, setVercelIntegration] =
+        useState<VercelIntegration | null>(null);
+
     const handleArchivedPageIdsChange = async (ids: string[]) => {
         setActiveArchivedPageIds(ids);
 
@@ -273,30 +283,38 @@ export default function DeploymentsPage(): JSX.Element {
         return () => off();
     }, []);
 
+    // Load Vercel integration (team/user IDs) for domain link
     useEffect(() => {
-        try {
-            const raw =
-                typeof window !== "undefined"
-                    ? localStorage.getItem("kloner.deployments.hasNew")
-                    : null;
-            if (!raw) return;
-            const parsed = JSON.parse(raw) as {
-                ts?: number;
-                url?: string;
-                projectId?: string | null;
-                projectName?: string | null;
-            };
-            setHasNewFlag(true);
-            setHasNewMeta({
-                url: parsed.url,
-                projectName: parsed.projectName ?? null,
-                projectId: parsed.projectId ?? null,
-            });
-            localStorage.removeItem("kloner.deployments.hasNew");
-        } catch {
-            // ignore
+        if (!user) {
+            setVercelIntegration(null);
+            return;
         }
-    }, []);
+
+        const integRef = doc(
+            db,
+            "kloner_users",
+            user.uid,
+            "integrations",
+            "vercel"
+        );
+
+        getDoc(integRef)
+            .then((snap) => {
+                if (!snap.exists()) {
+                    setVercelIntegration(null);
+                    return;
+                }
+                const data = snap.data() as any;
+                setVercelIntegration({
+                    vercelTeamId: data.vercelTeamId ?? null,
+                    vercelUserId: data.vercelUserId ?? null,
+                    configurationId: data.configurationId ?? null,
+                });
+            })
+            .catch(() => {
+                setVercelIntegration(null);
+            });
+    }, [user]);
 
     useEffect(() => {
         if (!user) {
@@ -330,6 +348,31 @@ export default function DeploymentsPage(): JSX.Element {
 
         return () => off();
     }, [user]);
+
+    useEffect(() => {
+        try {
+            const raw =
+                typeof window !== "undefined"
+                    ? localStorage.getItem("kloner.deployments.hasNew")
+                    : null;
+            if (!raw) return;
+            const parsed = JSON.parse(raw) as {
+                ts?: number;
+                url?: string;
+                projectId?: string | null;
+                projectName?: string | null;
+            };
+            setHasNewFlag(true);
+            setHasNewMeta({
+                url: parsed.url,
+                projectName: parsed.projectName ?? null,
+                projectId: parsed.projectId ?? null,
+            });
+            localStorage.removeItem("kloner.deployments.hasNew");
+        } catch {
+            // ignore
+        }
+    }, []);
 
     // derive project/url groups for dropdown
     const projectGroups: ProjectGroup[] = useMemo(() => {
@@ -852,7 +895,6 @@ export default function DeploymentsPage(): JSX.Element {
         }
     }
 
-
     const handleSaveDraft = async (payload: {
         draftId?: string;
         html: string;
@@ -1126,6 +1168,33 @@ export default function DeploymentsPage(): JSX.Element {
                                     d.vercelUrl ||
                                     null;
 
+                                // Build Vercel domains link for this deployment
+                                let domainsHref: string | null = null;
+                                if (displayUrl) {
+                                    let hostname = displayUrl;
+                                    try {
+                                        hostname = new URL(displayUrl).hostname;
+                                    } catch {
+                                        // keep raw string
+                                    }
+
+                                    const params = new URLSearchParams();
+
+                                    // prefill domain search with this deployment's hostname
+                                    params.set("q", hostname);
+
+                                    // prefer per-deployment team id, fall back to integration
+                                    const teamId =
+                                        d.vercelTeamId || vercelIntegration?.vercelTeamId || null;
+                                    if (teamId) {
+                                        params.set("teamId", teamId);
+                                    }
+
+                                    const qs = params.toString();
+                                    domainsHref = `https://vercel.com/domains${qs ? `?${qs}` : ""}`;
+                                }
+
+
                                 return (
                                     <section aria-label="Latest deployment">
                                         <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-500 mb-2">
@@ -1143,6 +1212,19 @@ export default function DeploymentsPage(): JSX.Element {
                                                         {displayUrl ||
                                                             "URL pending"}
                                                     </div>
+                                                    {domainsHref && (
+                                                        <div className="mt-1 text-[11px] text-neutral-500">
+                                                            <a
+                                                                href={domainsHref}
+                                                                target="_blank"
+                                                                rel="noreferrer"
+                                                                className="inline-flex items-center gap-1 text-[11px] font-medium text-neutral-800 hover:text-neutral-900 underline underline-offset-2"
+                                                            >
+                                                                <span>Apply a custom domain in Vercel</span>
+                                                                <ArrowUpRight className="h-3 w-3" />
+                                                            </a>
+                                                        </div>
+                                                    )}
                                                 </div>
 
                                                 <div
@@ -1213,14 +1295,14 @@ export default function DeploymentsPage(): JSX.Element {
                                                             style={{
                                                                 backgroundColor:
                                                                     ACCENT,
-                                                                boxShadow:
-                                                                    "0 5px 15px rgba(245,95,42,0.40)",
+                                                                // boxShadow:
+                                                                //     "0 5px 15px rgba(245,95,42,0.40)",
                                                             }}
                                                         >
                                                             <span>
                                                                 Customize
                                                             </span>
-                                                            <BrushIcon className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
+                                                            <BrushIcon className="h-3.5 w-3.5 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
                                                         </button>
                                                         <a
                                                             href={

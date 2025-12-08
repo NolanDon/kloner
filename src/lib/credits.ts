@@ -30,7 +30,7 @@ export const CREDIT_LIMITS: Record<
     agency: {
         screenshotMonthly: 400,
         previewMonthly: 1500,
-        editMonthly: 1500, // 300 edits @ 5 credits each
+        editMonthly: 1200, // 300 edits @ 5 credits each
     },
     // 0 = unlimited / contract; enforce via Stripe + custom terms.
     enterprise: {
