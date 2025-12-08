@@ -17,6 +17,7 @@ import {
     Layers as LayersIcon,
     Undo2,
     Redo2,
+    RotateCcw,
 } from "lucide-react";
 import type { SelectionMeta } from "@/components/PreviewEditor";
 
@@ -186,7 +187,19 @@ function BlockToolbar({
                     <Plus className="h-5 w-5" />
                     <span className="sr-only">Increase padding on all sides</span>
                 </button>
+
+                {/* Reset padding (current device only) */}
+                <button
+                    type="button"
+                    onClick={() => { callApi("blockPadReset") }}
+                    className="ml-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
+                    title="Reset padding for this device"
+                >
+                    <RotateCcw className="h-4 w-4" />
+                    <span className="sr-only">Reset padding for this device</span>
+                </button>
             </div>
+
 
             {/* Block size: Size | − / + */}
             <div className="ml-1 flex items-center gap-0.5 border-l border-slate-200 pl-1">

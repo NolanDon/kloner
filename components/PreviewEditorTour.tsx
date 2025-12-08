@@ -41,7 +41,7 @@ const steps: Step[] = [
     },
     {
         target: "#kloner-device-toggle",
-        content: "Switch between desktop, tablet, and mobile views of your cloned page.",
+        content: "Switch between desktop, tablet, and mobile views of your preview. Most changes you make will only affect your currently selected device.",
         disableBeacon: true,
     },
 
@@ -54,6 +54,12 @@ const steps: Step[] = [
         target: "#kloner-meta-toggle",
         content:
             "Control page-level SEO here: update titles and descriptions, upload a favicon, and edit advanced JSON-LD for each page.",
+        disableBeacon: true,
+    },
+    {
+        target: "#kloner-ai-image-library",
+        content:
+            "This panel stores all your AI-generated images for your reuse. Drag an image onto any block, or just click a block and the image to auto-insert.",
         disableBeacon: true,
     },
     {

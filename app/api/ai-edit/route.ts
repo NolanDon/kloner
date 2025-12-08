@@ -663,8 +663,7 @@ async function syncAiEditCreditsBucket(opts: {
         return { remaining: null, limit: 0 };
     }
 
-    const usedTotal = usedCreditsBefore + (consumedNow ? 5 : 0);
-    const computedRemaining = Math.max(limit - usedTotal, 0);
+    let remainingResult: number = 0;
 
     try {
         const snap = await userRef.get();
@@ -683,8 +682,29 @@ async function syncAiEditCreditsBucket(opts: {
             periodEndDate = rawEnd;
         }
 
-        // If no periodEnd or it's past, roll to end of current calendar month
-        if (!periodEndDate || now >= periodEndDate) {
+        const bucketHasActivePeriod =
+            periodEndDate !== null && now < periodEndDate;
+
+        // Normalize existing remaining; invalid => 0 but NEVER used to top-up
+        const existingRemaining =
+            typeof bucket.remaining === "number" && bucket.remaining >= 0
+                ? bucket.remaining
+                : 0;
+
+        if (bucketHasActivePeriod) {
+            // Inside current month: DO NOT increase remaining.
+            if (consumedNow) {
+                remainingResult = Math.max(existingRemaining - 5, 0);
+            } else {
+                remainingResult = existingRemaining;
+            }
+        } else {
+            // No bucket or period expired: this is where a reset is allowed.
+            // Use historical usage to avoid silently giving more than the plan allows.
+            const usedTotal = usedCreditsBefore + (consumedNow ? 5 : 0);
+            remainingResult = Math.max(limit - usedTotal, 0);
+
+            // Roll to end of current calendar month (UTC) for the new period
             const year = now.getUTCFullYear();
             const month = now.getUTCMonth(); // 0-based
             const firstNextMonth = new Date(
@@ -696,7 +716,7 @@ async function syncAiEditCreditsBucket(opts: {
         await userRef.set(
             {
                 "credits.aiEdits": {
-                    remaining: computedRemaining,
+                    remaining: remainingResult,
                     monthlyLimit: limit,
                     periodEnd: periodEndDate,
                 },
@@ -705,10 +725,12 @@ async function syncAiEditCreditsBucket(opts: {
         );
     } catch (err) {
         console.error("[ai-edit][credits] failed syncing credits.aiEdits", err);
+        return { remaining: null, limit };
     }
 
-    return { remaining: computedRemaining, limit };
+    return { remaining: remainingResult, limit };
 }
+
 
 /**
  * POST /api/ai-edit

@@ -918,39 +918,11 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     onClick: () => void;
     compact?: boolean;
 }) {
-    // Local debounce lock so the button stays disabled briefly
-    // even if the parent re-renders and flips `locked` back to false.
-    const [localLocked, setLocalLocked] = useState(false);
-    const timeoutRef = useRef<number | null>(null);
-
-    // Clear any pending timeout on unmount to avoid setting state after unmount.
-    useEffect(() => {
-        return () => {
-            if (timeoutRef.current !== null) {
-                window.clearTimeout(timeoutRef.current);
-            }
-        };
-    }, []);
-
-    const effectiveLocked = locked || localLocked;
+    // Drive everything from the parent `locked` prop.
+    const effectiveLocked = locked;
 
     const handleClick = () => {
         if (effectiveLocked) return;
-
-        // Immediately lock locally so user cannot spam-click
-        setLocalLocked(true);
-
-        // Reset any previous timer
-        if (timeoutRef.current !== null) {
-            window.clearTimeout(timeoutRef.current);
-        }
-
-        // Auto-unlock after 30s; adjust if you want a shorter/longer debounce
-        timeoutRef.current = window.setTimeout(() => {
-            setLocalLocked(false);
-            timeoutRef.current = null;
-        }, 30_000);
-
         onClick();
     };
 

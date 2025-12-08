@@ -794,7 +794,6 @@ export async function buildFinalExport(opts: {
 }
 
 
-
 function injectClientRouter(html: string): string {
     if (!html) return html;
 
@@ -1222,7 +1221,8 @@ export default function PreviewEditor({
         setHtmlDraft((prev) => {
             if (!prev) return prev;
 
-            const next = removePageFromHtmlById(prev, pageId); // your existing logic
+            // non-destructive: mark as archived + hide, don't delete
+            const next = archivePageInHtmlById(prev, pageId);
 
             setPreviewHtml(next);
             if (onLiveHtml) onLiveHtml(next);
@@ -1231,6 +1231,7 @@ export default function PreviewEditor({
             return next;
         });
     }
+
 
     function restorePageInHtmlById(html: string, pageId: string): string {
         if (!html) return html;
@@ -1256,6 +1257,7 @@ export default function PreviewEditor({
         }
     }
 
+
     const restorePage = (pageId: string) => {
         // drop from archive list + propagate up
         pushArchivedIds((prev) => prev.filter((id) => id !== pageId));
@@ -1269,6 +1271,7 @@ export default function PreviewEditor({
             return next;
         });
     };
+
 
     function aiSuggestionToSnapshot(s: AiEditSuggestion): DraftSnapshot {
         let createdMs: number | null = null;
@@ -1449,29 +1452,33 @@ export default function PreviewEditor({
             allPages ? allPages.find((p) => p.id === activePageId) ?? null : null,
         [allPages, activePageId]
     );
+    function archivePageInHtmlById(html: string, pageId: string): string {
+        if (!html) return html;
 
-    // function archivePageInHtmlById(html: string, pageId: string): string {
-    //     if (!html) return html;
-    //     try {
-    //         const parser = new DOMParser();
-    //         const doc = parser.parseFromString(html, "text/html");
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, "text/html");
 
-    //         // assumes page roots have data-kloner-page-id="<pageId>"
-    //         const nodes = doc.querySelectorAll<HTMLElement>(
-    //             `[data-kloner-page-id="${pageId}"]`
-    //         );
+            const nodes = doc.querySelectorAll<HTMLElement>(
+                `[data-kloner-page-id="${pageId}"]`
+            );
 
-    //         nodes.forEach((node) => {
-    //             node.setAttribute("data-kloner-archived", "1");
-    //             node.style.display = "none";
-    //         });
+            nodes.forEach((node) => {
+                node.setAttribute("data-kloner-archived", "1");
 
-    //         return "<!doctype html>\n" + doc.documentElement.outerHTML;
-    //     } catch (err) {
-    //         console.warn("[archivePageInHtmlById] failed", err);
-    //         return html;
-    //     }
-    // }
+                // hide from preview/export, but keep in doc for restore
+                if (!node.style.display || node.style.display !== "none") {
+                    node.style.display = "none";
+                }
+            });
+
+            return "<!doctype html>\n" + doc.documentElement.outerHTML;
+        } catch (err) {
+            console.warn("[archivePageInHtmlById] failed", err);
+            return html;
+        }
+    }
+
 
 
     function postToEditor(data: any) {
@@ -3060,7 +3067,6 @@ export default function PreviewEditor({
                     <div className="pointer-events-auto fixed left-4 top-1/2 z-40 -translate-y-1/2 hidden lg:block">
                         <div className="flex flex-col gap-2 rounded-full border border-neutral-200 bg-white/80 p-1 shadow-md backdrop-blur-sm">
                             {/* Styles */}
-                            {/* Styles */}
                             <button
                                 id="kloner-selection-style"
                                 type="button"
@@ -3119,7 +3125,7 @@ export default function PreviewEditor({
 
                             <button
                                 type="button"
-                                id="kloner-ai-library-toggle"
+                                id="kloner-ai-image-library"
                                 onClick={() => {
                                     const isActive =
                                         !sidebarHidden && sidePanelMode === "ai-library";
@@ -3411,7 +3417,7 @@ export default function PreviewEditor({
                                                                 type="button"
                                                                 className="rounded border border-neutral-300 bg-white px-2 py-1 text-[11px] leading-tight shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
-                                                                style={{ fontSize: s.px / 1.6 }}
+                                                                // style={{ fontSize: s.px / 1.6 }}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
                                                                         kind: "fontSizePx",
@@ -3711,67 +3717,6 @@ export default function PreviewEditor({
                                                     </div>
                                                 </div>
 
-                                                {/* Layout width */}
-                                                <div>
-                                                    <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
-                                                        Layout width
-                                                    </div>
-                                                    <div className="flex flex-wrap gap-1">
-                                                        <button
-                                                            type="button"
-                                                            className="rounded border border-neutral-300 bg-white px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                            disabled={closing}
-                                                            onClick={() =>
-                                                                sendStyleCommand({
-                                                                    kind: "widthPreset",
-                                                                    value: "auto",
-                                                                })
-                                                            }
-                                                        >
-                                                            Auto
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            className="rounded border border-neutral-300 bg-white px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                            disabled={closing}
-                                                            onClick={() =>
-                                                                sendStyleCommand({
-                                                                    kind: "widthPreset",
-                                                                    value: "narrow",
-                                                                })
-                                                            }
-                                                        >
-                                                            Narrow
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            className="rounded border border-neutral-300 bg-white px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                            disabled={closing}
-                                                            onClick={() =>
-                                                                sendStyleCommand({
-                                                                    kind: "widthPreset",
-                                                                    value: "wide",
-                                                                })
-                                                            }
-                                                        >
-                                                            Wide
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            className="rounded border border-neutral-300 bg-white px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                            disabled={closing}
-                                                            onClick={() =>
-                                                                sendStyleCommand({
-                                                                    kind: "widthPreset",
-                                                                    value: "full",
-                                                                })
-                                                            }
-                                                        >
-                                                            Full bleed
-                                                        </button>
-                                                    </div>
-                                                </div>
-
                                                 {/* Block align */}
                                                 <div>
                                                     <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
@@ -3816,69 +3761,6 @@ export default function PreviewEditor({
                                                             }
                                                         >
                                                             Right
-                                                        </button>
-                                                    </div>
-                                                </div>
-
-                                                {/* Vertical spacing */}
-                                                <div>
-                                                    <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
-                                                        Vertical spacing
-                                                    </div>
-                                                    <div className="mb-1 flex flex-wrap gap-1">
-                                                        <button
-                                                            type="button"
-                                                            className="rounded border border-neutral-300 bg-white px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                            disabled={closing}
-                                                            onClick={() =>
-                                                                sendStyleCommand({
-                                                                    kind: "marginTop",
-                                                                    value: "none",
-                                                                })
-                                                            }
-                                                        >
-                                                            No top
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            className="rounded border border-neutral-300 bg-white px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                            disabled={closing}
-                                                            onClick={() =>
-                                                                sendStyleCommand({
-                                                                    kind: "marginTop",
-                                                                    value: "md",
-                                                                })
-                                                            }
-                                                        >
-                                                            Top space
-                                                        </button>
-                                                    </div>
-                                                    <div className="flex flex-wrap gap-1">
-                                                        <button
-                                                            type="button"
-                                                            className="rounded border border-neutral-300 bg-white px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                            disabled={closing}
-                                                            onClick={() =>
-                                                                sendStyleCommand({
-                                                                    kind: "marginBottom",
-                                                                    value: "none",
-                                                                })
-                                                            }
-                                                        >
-                                                            No bottom
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            className="rounded border border-neutral-300 bg-white px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                            disabled={closing}
-                                                            onClick={() =>
-                                                                sendStyleCommand({
-                                                                    kind: "marginBottom",
-                                                                    value: "lg",
-                                                                })
-                                                            }
-                                                        >
-                                                            Bottom space
                                                         </button>
                                                     </div>
                                                 </div>
@@ -3940,7 +3822,7 @@ export default function PreviewEditor({
                                     )}
 
                                     {/* Screenshot mode hint */}
-                                    {mode === "screenshot" && (
+                                    {isDevCodeMode && mode === "screenshot" && (
                                         <div className="text-[12px] text-slate-600">
                                             Edit in Preview, apply with “Apply changes".
                                         </div>

@@ -31,29 +31,87 @@ export function installKlonerIframeApi(
     }
 
 
-      /* generic alignment hook */
-    [data-kl-align] {
-        text-align: var(--kl-align-desktop, inherit);
+       /* =========================================
+    Per-device text alignment, driven by editor device
+    ========================================= */
+    [data-kl-align]{
+      text-align: inherit;
     }
 
-    /* block positioning based on the same var */
-    [data-kl-align][style*="--kl-align-desktop: center"] {
-        display: block;
-        margin-left: auto !important;
-        margin-right: auto !important;
+    :root[data-kl-device="desktop"] [data-kl-align]{
+      text-align: var(--kl-align-desktop, inherit);
     }
 
-    [data-kl-align][style*="--kl-align-desktop: right"] {
-        display: block;
-        margin-left: auto !important;
-        margin-right: 0 !important;
+    :root[data-kl-device="tablet"] [data-kl-align]{
+      text-align: var(
+        --kl-align-tablet,
+        var(--kl-align-desktop, inherit)
+      );
     }
 
-    [data-kl-align][style*="--kl-align-desktop: left"] {
-        display: block;
-        margin-left: 0 !important;
-        margin-right: 0 !important;
+    :root[data-kl-device="mobile"] [data-kl-align]{
+      text-align: var(
+        --kl-align-mobile,
+        var(--kl-align-tablet, var(--kl-align-desktop, inherit))
+      );
     }
+
+    /* =========================================
+       Per-device block positioning (margin-based align)
+       Uses the current device's var only
+       ========================================= */
+
+    /* Desktop block align */
+    :root[data-kl-device="desktop"] [data-kl-align][style*="--kl-align-desktop: center"]{
+      display:block;
+      margin-left:auto !important;
+      margin-right:auto !important;
+    }
+    :root[data-kl-device="desktop"] [data-kl-align][style*="--kl-align-desktop: right"]{
+      display:block;
+      margin-left:auto !important;
+      margin-right:0 !important;
+    }
+    :root[data-kl-device="desktop"] [data-kl-align][style*="--kl-align-desktop: left"]{
+      display:block;
+      margin-left:0 !important;
+      margin-right:0 !important;
+    }
+
+    /* Tablet block align */
+    :root[data-kl-device="tablet"] [data-kl-align][style*="--kl-align-tablet: center"]{
+      display:block;
+      margin-left:auto !important;
+      margin-right:auto !important;
+    }
+    :root[data-kl-device="tablet"] [data-kl-align][style*="--kl-align-tablet: right"]{
+      display:block;
+      margin-left:auto !important;
+      margin-right:0 !important;
+    }
+    :root[data-kl-device="tablet"] [data-kl-align][style*="--kl-align-tablet: left"]{
+      display:block;
+      margin-left:0 !important;
+      margin-right:0 !important;
+    }
+
+    /* Mobile block align */
+    :root[data-kl-device="mobile"] [data-kl-align][style*="--kl-align-mobile: center"]{
+      display:block;
+      margin-left:auto !important;
+      margin-right:auto !important;
+    }
+    :root[data-kl-device="mobile"] [data-kl-align][style*="--kl-align-mobile: right"]{
+      display:block;
+      margin-left:auto !important;
+      margin-right:0 !important;
+    }
+    :root[data-kl-device="mobile"] [data-kl-align][style*="--kl-align-mobile: left"]{
+      display:block;
+      margin-left:0 !important;
+      margin-right:0 !important;
+    }
+
 
     /* =========================================
        Nav link → page mapping badges
@@ -206,26 +264,106 @@ export function installKlonerIframeApi(
     }
 
 
-    /* =========================================
-    Per-device text alignment, driven by editor device
-    ========================================= */
+       /* =========================================
+       Per-device text alignment + font size
+       ========================================= */
+    [data-kl-align]{
+      text-align: var(--kl-align-desktop, inherit);
+    }
+
+    [data-kl-font]{
+      font-size: var(--kl-font-size-desktop, inherit);
+    }
+
     :root[data-kl-device="desktop"] [data-kl-align]{
-    text-align: var(--kl-align-desktop, inherit);
+      text-align: var(--kl-align-desktop, inherit);
+    }
+    :root[data-kl-device="desktop"] [data-kl-font]{
+      font-size: var(--kl-font-size-desktop, inherit);
     }
 
     :root[data-kl-device="tablet"] [data-kl-align]{
-    text-align: var(
+      text-align: var(
         --kl-align-tablet,
         var(--kl-align-desktop, inherit)
-    );
+      );
+    }
+    :root[data-kl-device="tablet"] [data-kl-font]{
+      font-size: var(
+        --kl-font-size-tablet,
+        var(--kl-font-size-desktop, inherit)
+      );
     }
 
     :root[data-kl-device="mobile"] [data-kl-align]{
-    text-align: var(
+      text-align: var(
         --kl-align-mobile,
         var(--kl-align-tablet, var(--kl-align-desktop, inherit))
-    );
+      );
     }
+    :root[data-kl-device="mobile"] [data-kl-font]{
+      font-size: var(
+        --kl-font-size-mobile,
+        var(--kl-font-size-tablet, var(--kl-font-size-desktop, inherit))
+      );
+    }
+
+    /* =========================================
+       Per-device block positioning (margin-based align)
+       Uses the current device's var only
+       ========================================= */
+
+    /* Desktop block align */
+    :root[data-kl-device="desktop"] [data-kl-align][style*="--kl-align-desktop: center"]{
+      display:block;
+      margin-left:auto !important;
+      margin-right:auto !important;
+    }
+    :root[data-kl-device="desktop"] [data-kl-align][style*="--kl-align-desktop: right"]{
+      display:block;
+      margin-left:auto !important;
+      margin-right:0 !important;
+    }
+    :root[data-kl-device="desktop"] [data-kl-align][style*="--kl-align-desktop: left"]{
+      display:block;
+      margin-left:0 !important;
+      margin-right:0 !important;
+    }
+
+    /* Tablet block align */
+    :root[data-kl-device="tablet"] [data-kl-align][style*="--kl-align-tablet: center"]{
+      display:block;
+      margin-left:auto !important;
+      margin-right:auto !important;
+    }
+    :root[data-kl-device="tablet"] [data-kl-align][style*="--kl-align-tablet: right"]{
+      display:block;
+      margin-left:auto !important;
+      margin-right:0 !important;
+    }
+    :root[data-kl-device="tablet"] [data-kl-align][style*="--kl-align-tablet: left"]{
+      display:block;
+      margin-left:0 !important;
+      margin-right:0 !important;
+    }
+
+    /* Mobile block align */
+    :root[data-kl-device="mobile"] [data-kl-align][style*="--kl-align-mobile: center"]{
+      display:block;
+      margin-left:auto !important;
+      margin-right:auto !important;
+    }
+    :root[data-kl-device="mobile"] [data-kl-align][style*="--kl-align-mobile: right"]{
+      display:block;
+      margin-left:auto !important;
+      margin-right:0 !important;
+    }
+    :root[data-kl-device="mobile"] [data-kl-align][style*="--kl-align-mobile: left"]{
+      display:block;
+      margin-left:0 !important;
+      margin-right:0 !important;
+    }
+
 
     .khint {
       position:fixed;
@@ -523,6 +661,12 @@ export function installKlonerIframeApi(
         return "--kl-align-desktop";
     }
 
+    function getFontSizeVarName(device: Device) {
+        if (device === "tablet") return "--kl-font-size-tablet";
+        if (device === "mobile") return "--kl-font-size-mobile";
+        return "--kl-font-size-desktop";
+    }
+
     // per-device image width helpers
     function getImageWidthKey(device: Device) {
         if (device === "tablet") return "klImgTabletWidth";
@@ -742,8 +886,18 @@ export function installKlonerIframeApi(
             selected.style.fontFamily = cmd.value;
             didChange = true;
         } else if (cmd.kind === "fontSizePx" && typeof cmd.value === "number") {
-            selected.style.fontSize = `${cmd.value}px`;
+            const px = cmd.value;
+            const varName = getFontSizeVarName(activeDevice);
+
+            // mark this element as using per-device font sizing
+            selected.setAttribute("data-kl-font", "1");
+
+            // set the device-specific var and clear generic inline font-size
+            selected.style.setProperty(varName, `${px}px`);
+            selected.style.removeProperty("font-size");
+
             didChange = true;
+
         } else if (cmd.kind === "align") {
             const v = cmd.value;
             if (v === "left" || v === "center" || v === "right") {
@@ -937,6 +1091,11 @@ export function installKlonerIframeApi(
     api.padLess = () => {
         if (!selected) return;
         adjustBlockPadding(selected, "all", -8);
+    };
+
+    api.blockPadReset = () => {
+        if (!selected) return;
+        resetBlockPaddingForDevice(selected, activeDevice);
     };
 
 
@@ -1424,6 +1583,32 @@ export function installKlonerIframeApi(
         );
     }
 
+    function resetBlockPaddingForDevice(
+        block: HTMLElement,
+        device: Device,
+    ) {
+        // Keep other devices untouched. Only overwrite this device's vars.
+        const base = 24; // neutral reset value
+
+        const allVar = getPaddingVarName(device, "all");
+        block.style.setProperty(allVar, `${base}px`);
+
+        const sides: PadSide[] = ["top", "bottom", "left", "right"];
+        for (const side of sides) {
+            const varName = getPaddingVarName(device, side);
+            block.style.setProperty(varName, `${base}px`);
+        }
+
+        block.setAttribute("data-kl-pad", "1");
+
+        saveHistory();
+        notify();
+
+        showHint(
+            `Padding (${device}, all sides) reset.`,
+            block,
+        );
+    }
 
 
     function growBlock(block: HTMLElement, factor: number = 1.1) {
