@@ -148,29 +148,63 @@ export function installKlonerIframeApi(
       box-shadow: 0 10px 24px rgba(15,23,42,0.18);
     }
 
-    /* =========================================
+      /* =========================================
        Per-device padding driven by editor device toggle
+       Supports per-side vars with sensible fallbacks
        ========================================= */
     :root[data-kl-device="desktop"] [data-kl-pad]{
-      padding-top: var(--kl-pad-desktop, 24px);
-      padding-bottom: var(--kl-pad-desktop, 24px);
+      padding-top: var(--kl-pad-top-desktop, var(--kl-pad-desktop, 24px));
+      padding-bottom: var(--kl-pad-bottom-desktop, var(--kl-pad-desktop, 24px));
+      padding-left: var(--kl-pad-left-desktop, var(--kl-pad-desktop, 24px));
+      padding-right: var(--kl-pad-right-desktop, var(--kl-pad-desktop, 24px));
     }
 
     :root[data-kl-device="tablet"] [data-kl-pad]{
-      padding-top: var(--kl-pad-tablet, var(--kl-pad-desktop, 24px));
-      padding-bottom: var(--kl-pad-tablet, var(--kl-pad-desktop, 24px));
+      padding-top: var(
+        --kl-pad-top-tablet,
+        var(--kl-pad-top-desktop, var(--kl-pad-desktop, 24px))
+      );
+      padding-bottom: var(
+        --kl-pad-bottom-tablet,
+        var(--kl-pad-bottom-desktop, var(--kl-pad-desktop, 24px))
+      );
+      padding-left: var(
+        --kl-pad-left-tablet,
+        var(--kl-pad-left-desktop, var(--kl-pad-desktop, 24px))
+      );
+      padding-right: var(
+        --kl-pad-right-tablet,
+        var(--kl-pad-right-desktop, var(--kl-pad-desktop, 24px))
+      );
     }
 
     :root[data-kl-device="mobile"] [data-kl-pad]{
       padding-top: var(
-        --kl-pad-mobile,
-        var(--kl-pad-tablet, var(--kl-pad-desktop, 24px))
+        --kl-pad-top-mobile,
+        var(--kl-pad-top-tablet,
+          var(--kl-pad-top-desktop, var(--kl-pad-desktop, 24px))
+        )
       );
       padding-bottom: var(
-        --kl-pad-mobile,
-        var(--kl-pad-tablet, var(--kl-pad-desktop, 24px))
+        --kl-pad-bottom-mobile,
+        var(--kl-pad-bottom-tablet,
+          var(--kl-pad-bottom-desktop, var(--kl-pad-desktop, 24px))
+        )
+      );
+      padding-left: var(
+        --kl-pad-left-mobile,
+        var(--kl-pad-left-tablet,
+          var(--kl-pad-left-desktop, var(--kl-pad-desktop, 24px))
+        )
+      );
+      padding-right: var(
+        --kl-pad-right-mobile,
+        var(--kl-pad-right-tablet,
+          var(--kl-pad-right-desktop, var(--kl-pad-desktop, 24px))
+        )
       );
     }
+
 
     /* =========================================
     Per-device text alignment, driven by editor device
@@ -367,6 +401,43 @@ export function installKlonerIframeApi(
         // placeholder for future UI
     }
 
+    async function insertImageFromLibraryIntoBlock(
+        block: HTMLElement,
+        src: string,
+        storagePath?: string,
+    ) {
+        if (!src) return;
+
+        const img = doc.createElement("img");
+        img.src = src;
+        img.alt = "";
+
+        // Tag it with the storage path so delete-assets works
+        if (storagePath) {
+            img.setAttribute("data-kloner-path", storagePath);
+        }
+
+        img.style.display = "block";
+        img.style.maxWidth = "100%";
+        img.style.height = "auto";
+        img.removeAttribute("height");
+
+        const box = cssBox(block);
+        if (box.w > 4) {
+            const w = Math.round(box.w);
+            img.style.width = `${w}px`;
+            img.setAttribute("width", String(w));
+        }
+
+        if (block.firstChild) block.insertBefore(img, block.firstChild);
+        else block.appendChild(img);
+
+        saveHistory();
+        notify();
+        showHint("Image inserted from your library.", block);
+    }
+
+
     function saveHistory() {
         const snap = serializeClean();
         if (idx >= 0 && hist[idx] === snap) return;
@@ -426,13 +497,25 @@ export function installKlonerIframeApi(
     saveHistory();
 
     let selected: HTMLElement | null = null;
+
+    type PadSide = "all" | "top" | "bottom" | "left" | "right";
+
     let activeDevice: Device = initialDevice;
 
-    function getPaddingVarName(device: Device) {
-        if (device === "tablet") return "--kl-pad-tablet";
-        if (device === "mobile") return "--kl-pad-mobile";
-        return "--kl-pad-desktop";
+    function getPaddingVarName(device: Device, side: PadSide = "all") {
+        const suffix =
+            device === "tablet"
+                ? "tablet"
+                : device === "mobile"
+                    ? "mobile"
+                    : "desktop";
+
+        if (side === "all") {
+            return `--kl-pad-${suffix}`;
+        }
+        return `--kl-pad-${side}-${suffix}`;
     }
+
 
     function getAlignVarName(device: Device) {
         if (device === "tablet") return "--kl-align-tablet";
@@ -440,8 +523,96 @@ export function installKlonerIframeApi(
         return "--kl-align-desktop";
     }
 
-    function getCurrentDevicePadding(block: HTMLElement, device: Device): number {
-        const varName = getPaddingVarName(device);
+    // per-device image width helpers
+    function getImageWidthKey(device: Device) {
+        if (device === "tablet") return "klImgTabletWidth";
+        if (device === "mobile") return "klImgMobileWidth";
+        return "klImgDesktopWidth";
+    }
+
+    function ensureImageWidthBaselines(img: HTMLImageElement) {
+        const ds = img.dataset as any;
+
+        const rendered =
+            Math.round(img.getBoundingClientRect().width) ||
+            img.naturalWidth ||
+            parseInt(img.getAttribute("width") || "0", 10) ||
+            0;
+
+        if (!rendered) return;
+
+        const hasAny =
+            !!ds.klImgDesktopWidth ||
+            !!ds.klImgTabletWidth ||
+            !!ds.klImgMobileWidth;
+
+        // If we already have baselines but they are wildly larger than the
+        // actual rendered width (old behaviour), reset them to rendered-based
+        if (hasAny) {
+            const existing =
+                parseFloat(ds.klImgDesktopWidth || ds.klImgTabletWidth || ds.klImgMobileWidth || "0") ||
+                0;
+
+            if (existing && existing > rendered * 1.25) {
+                // fall through and recompute
+            } else {
+                return;
+            }
+        }
+
+        const desktop = rendered;
+        const tablet = Math.round(rendered * 0.85);
+        const mobile = Math.round(rendered * 0.7);
+
+        ds.klImgDesktopWidth = String(desktop);
+        ds.klImgTabletWidth = String(tablet);
+        ds.klImgMobileWidth = String(mobile);
+    }
+
+    function getImageWidthForDevice(img: HTMLImageElement, device: Device): number {
+        ensureImageWidthBaselines(img);
+        const key = getImageWidthKey(device);
+        const raw = (img.dataset as any)[key] as string | undefined;
+        if (!raw) return 0;
+        const n = parseFloat(raw);
+        return Number.isFinite(n) && n > 0 ? n : 0;
+    }
+
+    function setImageWidthForDevice(
+        img: HTMLImageElement,
+        device: Device,
+        width: number,
+    ) {
+        const key = getImageWidthKey(device);
+        (img.dataset as any)[key] = String(Math.round(width));
+    }
+
+    function applyImageWidthForDevice(img: HTMLImageElement, device: Device) {
+        const w = getImageWidthForDevice(img, device);
+        if (!w) return;
+
+        const rounded = Math.round(w);
+
+        img.style.width = `${rounded}px`;
+        img.setAttribute("width", String(rounded));
+        // allow growing beyond parent; device-specific widths control behaviour
+        img.style.maxWidth = "none";
+        img.style.height = "auto";
+        img.removeAttribute("height");
+    }
+
+    function applyImageWidthsForAll(device: Device) {
+        doc.querySelectorAll<HTMLImageElement>("img").forEach((img) => {
+            applyImageWidthForDevice(img, device);
+        });
+    }
+
+    function getCurrentDevicePadding(
+        block: HTMLElement,
+        device: Device,
+        side: PadSide,
+    ): number {
+        const varName = getPaddingVarName(device, side);
         const raw = block.style.getPropertyValue(varName)?.trim();
 
         if (raw && raw.endsWith("px")) {
@@ -449,39 +620,80 @@ export function installKlonerIframeApi(
             if (!Number.isNaN(n)) return n;
         }
 
-        // Fallback: use computed paddingTop as base
         const cs = doc.defaultView!.getComputedStyle(block);
-        const fromComputed = parseFloat(cs.paddingTop || "0") || 0;
+
+        let fromComputed = 0;
+        if (side === "top" || side === "all") {
+            fromComputed = parseFloat(cs.paddingTop || "0") || 0;
+        } else if (side === "bottom") {
+            fromComputed = parseFloat(cs.paddingBottom || "0") || 0;
+        } else if (side === "left") {
+            fromComputed = parseFloat(cs.paddingLeft || "0") || 0;
+        } else if (side === "right") {
+            fromComputed = parseFloat(cs.paddingRight || "0") || 0;
+        }
+
         if (fromComputed > 0) return fromComputed;
 
         return 24;
     }
 
+
     function normalizeAllDevicePadding(block: HTMLElement) {
-        const desktop = getCurrentDevicePadding(block, "desktop");
+        const cs = doc.defaultView!.getComputedStyle(block);
 
-        const tabletRaw = block.style.getPropertyValue("--kl-pad-tablet");
-        const mobileRaw = block.style.getPropertyValue("--kl-pad-mobile");
+        const desktopTop = parseFloat(cs.paddingTop || "0") || 24;
+        const desktopBottom =
+            parseFloat(cs.paddingBottom || "0") || desktopTop;
+        const desktopLeft =
+            parseFloat(cs.paddingLeft || "0") || desktopTop;
+        const desktopRight =
+            parseFloat(cs.paddingRight || "0") || desktopTop;
 
-        const tablet =
-            tabletRaw && tabletRaw.endsWith("px")
-                ? parseFloat(tabletRaw)
-                : Math.round(desktop * 0.85);
+        const scale = (n: number, f: number) => Math.round(n * f);
 
-        const mobile =
-            mobileRaw && mobileRaw.endsWith("px")
-                ? parseFloat(mobileRaw)
-                : Math.round(desktop * 0.7);
+        const tabletTop = scale(desktopTop, 0.85);
+        const tabletBottom = scale(desktopBottom, 0.85);
+        const tabletLeft = scale(desktopLeft, 0.85);
+        const tabletRight = scale(desktopRight, 0.85);
 
-        // Switch block to responsive padding mode
+        const mobileTop = scale(desktopTop, 0.7);
+        const mobileBottom = scale(desktopBottom, 0.7);
+        const mobileLeft = scale(desktopLeft, 0.7);
+        const mobileRight = scale(desktopRight, 0.7);
+
         block.setAttribute("data-kl-pad", "1");
-        // Let stylesheet control padding so device rules can work
-        block.style.removeProperty("padding");
 
-        block.style.setProperty("--kl-pad-desktop", `${desktop}px`);
-        block.style.setProperty("--kl-pad-tablet", `${tablet}px`);
-        block.style.setProperty("--kl-pad-mobile", `${mobile}px`);
+        block.style.removeProperty("padding");
+        block.style.removeProperty("padding-top");
+        block.style.removeProperty("padding-bottom");
+        block.style.removeProperty("padding-left");
+        block.style.removeProperty("padding-right");
+
+        // device-level fallbacks (kept for compatibility, using top as base)
+        block.style.setProperty("--kl-pad-desktop", `${desktopTop}px`);
+        block.style.setProperty("--kl-pad-tablet", `${tabletTop}px`);
+        block.style.setProperty("--kl-pad-mobile", `${mobileTop}px`);
+
+        // desktop per-side
+        block.style.setProperty("--kl-pad-top-desktop", `${desktopTop}px`);
+        block.style.setProperty("--kl-pad-bottom-desktop", `${desktopBottom}px`);
+        block.style.setProperty("--kl-pad-left-desktop", `${desktopLeft}px`);
+        block.style.setProperty("--kl-pad-right-desktop", `${desktopRight}px`);
+
+        // tablet per-side
+        block.style.setProperty("--kl-pad-top-tablet", `${tabletTop}px`);
+        block.style.setProperty("--kl-pad-bottom-tablet", `${tabletBottom}px`);
+        block.style.setProperty("--kl-pad-left-tablet", `${tabletLeft}px`);
+        block.style.setProperty("--kl-pad-right-tablet", `${tabletRight}px`);
+
+        // mobile per-side
+        block.style.setProperty("--kl-pad-top-mobile", `${mobileTop}px`);
+        block.style.setProperty("--kl-pad-bottom-mobile", `${mobileBottom}px`);
+        block.style.setProperty("--kl-pad-left-mobile", `${mobileLeft}px`);
+        block.style.setProperty("--kl-pad-right-mobile", `${mobileRight}px`);
     }
+
 
     function publishSelection() {
         if (selected) {
@@ -558,18 +770,12 @@ export function installKlonerIframeApi(
 
                 if (v === "center") {
                     headings.forEach((h) => {
-                        // drop captured fixed widths so centering isn’t offset
                         if (h.style.width) h.style.removeProperty("width");
-                        // optional: if you want max-width free too
-                        // if (h.style.maxWidth) h.style.removeProperty("max-width");
-
-                        // make the block itself center inside the parent
                         h.style.display = h.style.display || "block";
                         h.style.marginLeft = "auto";
                         h.style.marginRight = "auto";
                     });
                 } else if (v === "left") {
-                    // reset auto margins when aligning left
                     headings.forEach((h) => {
                         if (h.style.marginLeft === "auto") {
                             h.style.removeProperty("margin-left");
@@ -629,11 +835,22 @@ export function installKlonerIframeApi(
         select(el);
     };
 
-    // device (for per-device padding etc.)
+    // image ops (library)
+    api.insertImageFromLibrary = (src: string, storagePath?: string) => {
+        if (!selected) {
+            const body = doc.body as HTMLElement;
+            showHint("Select a block, then choose an image from your library.", body);
+            return;
+        }
+        insertImageFromLibraryIntoBlock(selected, src, storagePath);
+    };
+
+    // device (for per-device padding and image widths)
     api.setDevice = (next: Device) => {
         if (!next || next === activeDevice) return;
         activeDevice = next;
         doc.documentElement.setAttribute("data-kl-device", next);
+        applyImageWidthsForAll(activeDevice);
     };
 
     // block ops
@@ -683,9 +900,28 @@ export function installKlonerIframeApi(
         moveBlock(selected, "right");
     };
 
+
+    // padding
+    api.blockPad = (side: PadSide = "all", deltaPx: number = 8) => {
+        if (!selected) return;
+
+        const s: PadSide =
+            side === "top" ||
+                side === "bottom" ||
+                side === "left" ||
+                side === "right"
+                ? side
+                : "all";
+
+        const d = typeof deltaPx === "number" ? deltaPx : 0;
+        if (!d) return;
+
+        adjustBlockPadding(selected, s, d);
+    };
+
     api.padMore = () => {
         if (!selected) return;
-        adjustBlockPadding(selected, 8);
+        adjustBlockPadding(selected, "all", 8);
     };
 
     api.blockGrow = () => {
@@ -700,10 +936,11 @@ export function installKlonerIframeApi(
 
     api.padLess = () => {
         if (!selected) return;
-        adjustBlockPadding(selected, -8);
+        adjustBlockPadding(selected, "all", -8);
     };
 
-    // image ops
+
+    // image ops (local file / bg / sizing)
     api.insertImage = () => {
         if (!selected) return;
         insertImageIntoBlock(selected).catch(() => { });
@@ -888,6 +1125,7 @@ export function installKlonerIframeApi(
     api.imgBg = api.setBackgroundImage;
     api.imgGrow = api.growImage;
     api.imgShrink = api.shrinkImage;
+    api.imgInsertFromLibrary = api.insertImageFromLibrary;
 
     api.textboxAdd = api.addTextBox;
     api.linkEdit = api.editLink;
@@ -910,10 +1148,6 @@ export function installKlonerIframeApi(
         },
         true
     );
-
-    // no drag / drag-to-resize / drag-and-drop layout logic anymore
-
-    /* asset + image helpers, padding, moveBlock etc. */
 
     function deleteAssetsForElement(root: HTMLElement) {
         const paths = new Set<string>();
@@ -1128,26 +1362,69 @@ export function installKlonerIframeApi(
         showHint("Background image set (pending upload).", block);
     }
 
-    function adjustBlockPadding(block: HTMLElement, deltaPx: number) {
-        // ensure block is using responsive padding vars
-        normalizeAllDevicePadding(block);
+    function adjustBlockPadding(
+        block: HTMLElement,
+        side: PadSide,
+        deltaPx: number,
+    ) {
+        // Only normalize once per block; otherwise each edit on tablet/mobile
+        // overwrites all device paddings from that device's computed style.
+        if (!block.hasAttribute("data-kl-pad")) {
+            normalizeAllDevicePadding(block);
+        }
 
-        const varName = getPaddingVarName(activeDevice);
-        const current = getCurrentDevicePadding(block, activeDevice);
+        const current = getCurrentDevicePadding(block, activeDevice, side);
+
+        const MIN_PAD = 0;
+        const MAX_PAD = 480; // or whatever upper bound you want
+
         let next = current + deltaPx;
 
-        if (next < 0) next = 0;
-        if (next > 160) next = 160;
+        if (next < MIN_PAD) next = MIN_PAD;
+        if (next > MAX_PAD) next = MAX_PAD;
 
         const rounded = Math.round(next);
 
-        block.style.setProperty(varName, `${rounded}px`);
+        if (side === "all") {
+            const topVar = getPaddingVarName(activeDevice, "top");
+            const bottomVar = getPaddingVarName(activeDevice, "bottom");
+            const leftVar = getPaddingVarName(activeDevice, "left");
+            const rightVar = getPaddingVarName(activeDevice, "right");
+            const allVar = getPaddingVarName(activeDevice, "all");
+
+            block.style.setProperty(topVar, `${rounded}px`);
+            block.style.setProperty(bottomVar, `${rounded}px`);
+            block.style.setProperty(leftVar, `${rounded}px`);
+            block.style.setProperty(rightVar, `${rounded}px`);
+            block.style.setProperty(allVar, `${rounded}px`);
+        } else {
+            const varName = getPaddingVarName(activeDevice, side);
+            block.style.setProperty(varName, `${rounded}px`);
+        }
+
         block.setAttribute("data-kl-pad", "1");
 
         saveHistory();
         notify();
-        showHint(`Padding (${activeDevice}) set to ${rounded}px.`, block);
+
+        const label =
+            side === "all"
+                ? "all sides"
+                : side === "top"
+                    ? "top"
+                    : side === "bottom"
+                        ? "bottom"
+                        : side === "left"
+                            ? "left"
+                            : "right";
+
+        showHint(
+            `Padding (${activeDevice}, ${label}) set to ${rounded}px.`,
+            block,
+        );
     }
+
+
 
     function growBlock(block: HTMLElement, factor: number = 1.1) {
         const rect = block.getBoundingClientRect();
@@ -1230,17 +1507,20 @@ export function installKlonerIframeApi(
             return;
         }
         const current = linkEl.getAttribute("href") || "";
-        const next = prompt("Link URL (href):", current);
-        if (next === null) return;
-        if (next.trim() === "") {
-            linkEl.removeAttribute("href");
-            showHint("Link cleared.", linkEl);
-        } else {
-            linkEl.setAttribute("href", next.trim());
-            showHint("Link updated.", linkEl);
+        the:
+        {
+            const next = prompt("Link URL (href):", current);
+            if (next === null) break the;
+            if (next.trim() === "") {
+                linkEl.removeAttribute("href");
+                showHint("Link cleared.", linkEl);
+            } else {
+                linkEl.setAttribute("href", next.trim());
+                showHint("Link updated.", linkEl);
+            }
+            saveHistory();
+            notify();
         }
-        saveHistory();
-        notify();
     }
 
     function getImageFromSelection(sel: HTMLElement | null): HTMLImageElement | null {
@@ -1268,6 +1548,7 @@ export function installKlonerIframeApi(
         }
     }
 
+    // per-device, small-increment image resize
     function resizeImage(target: HTMLElement, factor: number) {
         const img =
             (target.tagName === "IMG"
@@ -1279,47 +1560,52 @@ export function installKlonerIframeApi(
             return;
         }
 
-        const naturalW =
-            Number(img.dataset.klonerBaseWidth) ||
+        ensureImageWidthBaselines(img);
+
+        const baseline =
+            Number(img.dataset.klImgDesktopWidth) ||
             img.naturalWidth ||
             parseInt(img.getAttribute("width") || "0", 10) ||
-            0;
-        const naturalH =
-            Number(img.dataset.klonerBaseHeight) ||
-            img.naturalHeight ||
-            parseInt(img.getAttribute("height") || "0", 10) ||
+            Math.round(img.getBoundingClientRect().width) ||
             0;
 
-        if (!naturalW || !naturalH) {
+        if (!baseline) {
             showHint("Can't determine image size.", img);
             return;
         }
 
-        if (!img.dataset.klonerBaseWidth) {
-            img.dataset.klonerBaseWidth = String(naturalW);
-            img.dataset.klonerBaseHeight = String(naturalH);
+        const currentW =
+            getImageWidthForDevice(img, activeDevice) ||
+            Math.round(img.getBoundingClientRect().width) ||
+            baseline;
+
+        if (!currentW) {
+            showHint("Can't determine image size.", img);
+            return;
         }
 
-        const currentW =
-            parseInt(
-                (img.style.width && img.style.width.endsWith("px")
-                    ? img.style.width.slice(0, -2)
-                    : img.getAttribute("width") || "") || "0",
-                10
-            ) || naturalW;
+        const direction = factor >= 1 ? 1 : -1;
 
-        let nextW = Math.round(currentW * factor);
-        const minW = Math.max(80, Math.round(naturalW * 0.25));
-        const maxW = Math.round(naturalW * 2.5);
+        // constant, small step so first click doesn't jump
+        let step = 12;
+        if (baseline < 320) step = 8;
+        if (baseline > 1200) step = 16;
+
+        let nextW = currentW + direction * step;
+
+        const minW = Math.max(80, Math.round(baseline * 0.25));
+        const maxW = Math.round(baseline * 2.5);
 
         if (nextW < minW) nextW = minW;
         if (nextW > maxW) nextW = maxW;
 
-        img.style.width = `${nextW}px`;
-        img.setAttribute("width", String(nextW));
-        img.style.maxWidth = "100%";
-        img.style.height = "auto";
-        img.removeAttribute("height");
+        setImageWidthForDevice(img, activeDevice, nextW);
+        applyImageWidthForDevice(img, activeDevice);
+
+        const parent = img.parentElement as HTMLElement | null;
+        if (parent && (!parent.style.overflow || parent.style.overflow === "hidden")) {
+            parent.style.overflow = "visible";
+        }
 
         saveHistory();
         notify();

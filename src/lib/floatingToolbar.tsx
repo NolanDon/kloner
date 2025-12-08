@@ -32,7 +32,7 @@ function BlockToolbar({
     callApi,
 }: {
     style: React.CSSProperties;
-    callApi: (method: string) => void;
+    callApi: (method: string, ...args: any[]) => void;
 }) {
     return (
         <div
@@ -61,17 +61,6 @@ function BlockToolbar({
                 >
                     <Copy className="h-5 w-5" />
                     <span className="sr-only">Duplicate block</span>
-                </button>
-
-                {/* Clear selection */}
-                <button
-                    type="button"
-                    onClick={() => callApi("clear")}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Clear selection"
-                >
-                    <span className="text-[10px] font-semibold">CL</span>
-                    <span className="sr-only">Clear selection</span>
                 </button>
 
                 {/* Delete block */}
@@ -126,28 +115,76 @@ function BlockToolbar({
                 </button>
             </div>
 
-            {/* Padding: Pad | − / + */}
+            {/* Padding: Pad | arrows | − / + (all sides) */}
             <div className="ml-1 flex items-center gap-0.5 border-l border-slate-200 pl-1">
                 <span className="rounded-full bg-slate-900/90 px-1 text-[12px] font-semibold uppercase tracking-wide text-slate-100">
                     Pad
                 </span>
+
+                {/* Top padding + */}
                 <button
                     type="button"
-                    onClick={() => callApi("padLess")}
+                    onClick={() => callApi("blockPad", "top", 8)}
                     className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Reduce padding"
+                    title="Increase top padding"
+                >
+                    <ArrowUp className="h-5 w-5" />
+                    <span className="sr-only">Increase top padding</span>
+                </button>
+
+                {/* Bottom padding + */}
+                <button
+                    type="button"
+                    onClick={() => callApi("blockPad", "bottom", 8)}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
+                    title="Increase bottom padding"
+                >
+                    <ArrowDown className="h-5 w-5" />
+                    <span className="sr-only">Increase bottom padding</span>
+                </button>
+
+                {/* Left padding + */}
+                <button
+                    type="button"
+                    onClick={() => callApi("blockPad", "left", 8)}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
+                    title="Increase left padding"
+                >
+                    <ArrowLeft className="h-5 w-5" />
+                    <span className="sr-only">Increase left padding</span>
+                </button>
+
+                {/* Right padding + */}
+                <button
+                    type="button"
+                    onClick={() => callApi("blockPad", "right", 8)}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
+                    title="Increase right padding"
+                >
+                    <ArrowRight className="h-5 w-5" />
+                    <span className="sr-only">Increase right padding</span>
+                </button>
+
+                {/* All sides − */}
+                <button
+                    type="button"
+                    onClick={() => callApi("blockPad", "all", -8)}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
+                    title="Reduce padding on all sides"
                 >
                     <Minus className="h-5 w-5" />
-                    <span className="sr-only">Reduce padding</span>
+                    <span className="sr-only">Reduce padding on all sides</span>
                 </button>
+
+                {/* All sides + */}
                 <button
                     type="button"
-                    onClick={() => callApi("padMore")}
+                    onClick={() => callApi("blockPad", "all", 8)}
                     className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Increase padding"
+                    title="Increase padding on all sides"
                 >
                     <Plus className="h-5 w-5" />
-                    <span className="sr-only">Increase padding</span>
+                    <span className="sr-only">Increase padding on all sides</span>
                 </button>
             </div>
 
@@ -370,7 +407,20 @@ export function FloatingBlockToolbar({
         }
     }
 
-    return <BlockToolbar style={style} callApi={callApi} />;
+    return (
+        <div style={style} className="flex flex-col items-center gap-1.5">
+            <BlockToolbar style={{}} callApi={callApi} />
+
+            {/* Explicit close / deselect button under toolbar */}
+            <button
+                type="button"
+                onClick={() => callApi("clear")}
+                className="inline-flex items-center justify-center rounded-full bg-white px-3 py-1 text-[12px] font-semibold tracking-wide text-neutral-800 shadow-lg"
+            >
+                Close Toolbar
+            </button>
+        </div>
+    );
 }
 
 export default FloatingBlockToolbar;

@@ -535,8 +535,8 @@ function RenderCardInner({
                                     isThisCardLockedForBuild
                                 }
                                 className={`group inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium ${isArchivedFlag
-                                    ? "cursor-not-allowed border border-neutral-300 bg-neutral-50 text-neutral-400"
-                                    : "border border-neutral-300 bg-accent text-white shadow-sm hover:bg-accent/90 disabled:opacity-60"
+                                    ? "cursor-not-allowed bg-neutral-50 text-neutral-400"
+                                    : "bg-accent text-white shadow-sm hover:bg-accent/90 disabled:opacity-60"
                                     }`}
                                 title={
                                     isArchivedFlag
@@ -570,7 +570,7 @@ function RenderCardInner({
                                 <button
                                     onClick={() => continueRender(r.id)}
                                     disabled={disableOpen || isDeleting || !r.html}
-                                    className="group inline-flex flex-1 items-center justify-center gap-2 rounded-md border border-neutral-800 px-3 py-1.5 font-medium text-neutral-800 shadow-sm disabled:opacity-60"
+                                    className="group inline-flex flex-1 items-center justify-center gap-2 rounded-md border border-neutral-400 px-3 py-1.5 font-medium text-neutral-800 shadow-sm disabled:opacity-60"
                                     title={
                                         isArchivedFlag
                                             ? "Unarchive to customize this preview"
@@ -998,8 +998,8 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                 disabled={effectiveLocked}
                 aria-busy={effectiveLocked}
                 className={`group relative flex ${sizeMinH} ${sizeMinW} ${sizeMaxW} items-center justify-center rounded-xl border-2 border-dashed bg-white text-center transition ${effectiveLocked
-                        ? "opacity-70 cursor-wait"
-                        : "hover:border-neutral-400"
+                    ? "opacity-70 cursor-wait"
+                    : "hover:border-neutral-400"
                     }`}
                 title={title}
                 aria-disabled={effectiveLocked}
@@ -1010,8 +1010,8 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                     >
                         <Hammer
                             className={`h-7 w-7 text-neutral-600 ${effectiveLocked
-                                    ? "ghost-hammer-swing"
-                                    : "transition-transform group-hover:-rotate-6"
+                                ? "ghost-hammer-swing"
+                                : "transition-transform group-hover:-rotate-6"
                                 }`}
                             aria-hidden
                         />
@@ -3384,22 +3384,18 @@ export default function PreviewPage(): JSX.Element {
                 {/* Step 1: URL selection */}
                 <section className="mb-8 rounded-3xl border border-neutral-200 bg-white/70 px-4 py-4 sm:px-5 sm:py-5 shadow-sm">
                     <div className="flex items-center justify-between gap-3 flex-wrap">
-                        <div className="space-y-2">
-                            <div className="inline-flex items-center gap-2 rounded-full bg-neutral-100 pl-1 pr-3 py-1 text-[17px] mb-4 font-medium text-neutral-600">
-                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent text-white text-[12px]">
-                                    1
+                        <div className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/80 px-3 py-1.5 text-xs sm:text-sm font-medium text-neutral-700 shadow-sm">
+                            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-white shadow-sm">
+                                1
+                            </span>
+                            <div className="flex flex-col leading-tight">
+                                <span className="text-[10px] uppercase tracking-[0.18em] text-neutral-400">
+                                    Step 1
                                 </span>
-                                <span>URLs</span>
-                                {/* {step1Done ? (
-                                    <CheckCircle2 className="h-4.5 w-4.5 text-emerald-500" />
-                                ) :
-                                    <Clock10 className="h-4 w-4 text-amber-500" />
-                                } */}
+                                <span className="text-[13px] sm:text-[14px] text-neutral-800">
+                                    URLs
+                                </span>
                             </div>
-
-                            <p className="text-sm text-neutral-500">
-                                Choose which site to generate previews from.
-                            </p>
                         </div>
                     </div>
 
@@ -3507,16 +3503,24 @@ export default function PreviewPage(): JSX.Element {
                 <section className="mt-10 rounded-3xl border border-neutral-200 bg-white/70 px-4 py-5 sm:px-5 sm:py-6 shadow-sm">
                     <div className="mb-3 flex items-center justify-between">
                         <div className="space-y-1">
-                            <div className="inline-flex items-center gap-2 rounded-full bg-neutral-100 pl-1 pr-3 py-1 text-[17px] mb-4 font-medium text-neutral-600">
-                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent text-white text-[12px]">
+                            <div className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/80 px-3 py-1.5 text-xs sm:text-sm font-medium text-neutral-700 shadow-sm">
+                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-white shadow-sm">
                                     2
                                 </span>
-                                <span>Websites</span>
+                                <div className="flex flex-col leading-tight">
+                                    <span className="text-[10px] uppercase tracking-[0.18em] text-neutral-400">
+                                        Step 2
+                                    </span>
+                                    <span className="text-[13px] sm:text-[14px] text-neutral-800">
+                                        Websites
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     </div>
+
                     <p className="mt-1 mb-2 text-sm text-neutral-500">
-                        These are the concept sites generated from your url.
+                        These are the website previews generated from your url.
                     </p>
 
                     {(renders.length === 0 || hasGhostPending) ? (

@@ -23,59 +23,6 @@ export interface SeoMeta {
     jsonLd?: unknown;
 }
 
-
-
-// const steps: Step[] = [
-//     {
-//         target: "#kloner-home",
-//         content:
-//             "This is your live editable preview. In 1 minute, we’ll show you how to edit it and deploy.",
-//         disableBeacon: true,
-//     },
-//     {
-//         target: "#kloner-page-switcher",
-//         content: "Use the page switcher to jump between different pages like Home, Pricing, and About. Press Enter to continue.",
-//         disableBeacon: true,
-//     },
-//     {
-//         target: "#kloner-undo",
-//         content: "Undo your most recent edit directly in the editor.",
-//         disableBeacon: true,
-//     },
-//     {
-//         target: "#kloner-history",
-//         content: "You can also revert to older versions by clicking tabs in the history section.",
-//         disableBeacon: true,
-//     },
-//     {
-//         target: "#kloner-ai-edit-panel",
-//         content: "Use AI Edit to rewrite, generate pictures, or refine copy and layout for the selected block.",
-//         disableBeacon: true,
-//     },
-//     {
-//         target: "#kloner-apply-changes",
-//         content: "Apply your changes to update the live preview.",
-//         disableBeacon: true,
-//     },
-//     {
-//         target: "#kloner-device-toggle",
-//         content: "Switch between desktop, tablet, and mobile views of your cloned page.",
-//         disableBeacon: true,
-//     },
-
-//     {
-//         target: "#kloner-selection-style",
-//         content: "Fine-tune typography, spacing, alignment, and colors for the currently selected block here.",
-//         disableBeacon: true,
-//     },
-
-//     {
-//         target: "#kloner-actions-row",
-//         content: "When your edits are ready, use this to deploy changes to a live website.",
-//         disableBeacon: true,
-//     },
-// ];
-
 // Fire-and-forget request to delete assets by their storage paths.
 // The dashboard host listens for "kloner:delete-assets" messages.
 function requestDeleteAssetsByPaths(paths: string[]) {
@@ -700,7 +647,7 @@ import { db } from "@/lib/firebase"; // or wherever your db is
 import type { User as FirebaseUser } from "firebase/auth";
 import { RenderDoc } from "@/app/dashboard/view/page";
 import { useAuth } from "@/src/hooks/useAuth";
-import { Camera, Code2, Eye, EyeOff, FileText, Loader2, Monitor, Palette, Rocket, Smartphone, Tablet } from "lucide-react";
+import { Camera, Code2, Eye, EyeOff, FileText, Images, Loader2, Maximize2, Minimize2, Monitor, Palette, Redo2, Rocket, RotateCcw, RotateCw, Smartphone, Tablet, Undo2 } from "lucide-react";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { sanitizeImageName } from "./helpers";
 import AiEditPanel from "./editor/AiEditPanel";
@@ -708,6 +655,7 @@ import { PreviewEditorTour } from "./PreviewEditorTour";
 import { injectEditableOverlay } from "@/src/lib/klonerIframeRuntime";
 import { MetaSettings, UploadedAsset } from "./MetaSettings";
 import { FloatingBlockToolbar } from "@/src/lib/floatingToolbar";
+import { AiImageLibraryPanel } from "./AiImageLibraryPanel";
 
 const MAX_HISTORY_SNAPSHOTS = 40;
 
@@ -1044,7 +992,7 @@ type DerivedTheme = {
     fontFamilies: string[];
 };
 
-type SidePanelMode = "style" | "meta";
+type SidePanelMode = "style" | "meta" | "ai-library";
 
 
 export type SeoMetaByPage = Record<string, SeoMeta>;
@@ -1170,6 +1118,7 @@ export default function PreviewEditor({
     initialSeoMetaByPage,
     onArchivedPageIdsChange,
 }: Props) {
+    const isDevCodeMode = process.env.NODE_ENV === "development";
     const [nameHint, setNameHint] = useState<string>("");
     const [version, setVersion] = useState<number>(1);
     const [mode, setMode] = useState<ViewMode>("preview");
@@ -1207,6 +1156,23 @@ export default function PreviewEditor({
     const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
     const [archivedPageIds, setArchivedPageIds] = useState<string[]>([]);
     const [showPageLayers, setShowPageLayers] = useState(false);
+
+    // inside your component body
+    const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
+
+    const togglePreviewFullscreen = () => {
+        setIsPreviewFullscreen((prev) => !prev);
+    };
+
+    const handleUndoLastHtmlEdit = () => {
+        if (typeof window === "undefined") return;
+        window.dispatchEvent(new CustomEvent("kloner:undo-last-html"));
+    };
+
+    const handleRedoLastHtmlEdit = () => {
+        if (typeof window === "undefined") return;
+        window.dispatchEvent(new CustomEvent("kloner:redo-last-html"));
+    };
 
     useEffect(() => {
         const win = iframeRef.current?.contentWindow as any;
@@ -2912,6 +2878,13 @@ export default function PreviewEditor({
         [closing, mode, tryClearIframeSelection]
     );
 
+    // kicks to preview if detects "code mode" in prod
+    useEffect(() => {
+        if (!isDevCodeMode && mode === "code") {
+            handleModeClick("preview");
+        }
+    }, [isDevCodeMode, mode, handleModeClick]);
+
     const activeSourceImage = useMemo(
         () =>
             (allPages && activePage && activePage.screenshotUrl) || sourceImage,
@@ -3087,22 +3060,23 @@ export default function PreviewEditor({
                     <div className="pointer-events-auto fixed left-4 top-1/2 z-40 -translate-y-1/2 hidden lg:block">
                         <div className="flex flex-col gap-2 rounded-full border border-neutral-200 bg-white/80 p-1 shadow-md backdrop-blur-sm">
                             {/* Styles */}
+                            {/* Styles */}
                             <button
                                 id="kloner-selection-style"
                                 type="button"
                                 onClick={() => {
-                                    const isActive = !sidebarHidden && sidePanelMode === "style";
+                                    const isActive = !sidebarHidden && sidePanelMode === "style" && mode === "preview";
                                     if (isActive) {
                                         setSidebarHidden(true);
                                     } else {
                                         setSidePanelMode("style");
                                         setSidebarHidden(false);
-                                        if (mode === "screenshot") {
+                                        if (mode === "screenshot" || mode === "code") {
                                             handleModeClick("preview");
                                         }
                                     }
                                 }}
-                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "style"
+                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "style" && mode === "preview"
                                     ? "border-transparent bg-[#f55f2a] text-white"
                                     : "border-neutral-300 bg-white/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
                                     }`}
@@ -3114,7 +3088,6 @@ export default function PreviewEditor({
                                 </span>
                             </button>
 
-                            {/* Meta */}
                             <button
                                 type="button"
                                 id="kloner-meta-toggle"
@@ -3125,7 +3098,9 @@ export default function PreviewEditor({
                                     } else {
                                         setSidePanelMode("meta");
                                         setSidebarHidden(false);
-                                        if (mode === "screenshot") {
+
+                                        // meta editing should always work against the visual preview, not code/screenshot
+                                        if (mode !== "preview") {
                                             handleModeClick("preview");
                                         }
                                     }
@@ -3142,11 +3117,45 @@ export default function PreviewEditor({
                                 </span>
                             </button>
 
+                            <button
+                                type="button"
+                                id="kloner-ai-library-toggle"
+                                onClick={() => {
+                                    const isActive =
+                                        !sidebarHidden && sidePanelMode === "ai-library";
+                                    if (isActive) {
+                                        setSidebarHidden(true);
+                                    } else {
+                                        setSidePanelMode("ai-library");
+                                        setSidebarHidden(false);
+                                        if (mode === "screenshot") {
+                                            handleModeClick("preview");
+                                        }
+                                    }
+                                }}
+                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "ai-library"
+                                    ? "border-transparent bg-[#f55f2a] text-white"
+                                    : "border-neutral-300 bg-white/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
+                                    }`}
+                            >
+                                <Images className="h-4 w-4" aria-hidden="true" />
+                                <span className="sr-only">AI images</span>
+                                <span className="pointer-events-none absolute left-11 top-1/2 hidden -translate-y-1/2 rounded-md bg-neutral-900 px-2 py-1 text-[10px] font-medium text-white shadow-sm group-hover:inline-block">
+                                    AI images
+                                </span>
+                            </button>
+
                             {/* Code */}
-                            {/* <button
+                            <button
                                 type="button"
                                 onClick={() => {
-                                    handleModeClick(mode === "code" ? "preview" : "code");
+                                    const goingToCode = mode !== "code";
+
+                                    // ensure the sidebar is visible and on the style panel
+                                    setSidebarHidden(false);
+                                    setSidePanelMode("style");
+
+                                    handleModeClick(goingToCode ? "code" : "preview");
                                 }}
                                 className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${mode === "code"
                                     ? "border-transparent bg-[#f55f2a] text-white"
@@ -3158,7 +3167,8 @@ export default function PreviewEditor({
                                 <span className="pointer-events-none absolute left-11 top-1/2 hidden -translate-y-1/2 rounded-md bg-neutral-900 px-2 py-1 text-[10px] font-medium text-white shadow-sm group-hover:inline-block">
                                     Code
                                 </span>
-                            </button> */}
+                            </button>
+
 
                             {/* Deploy */}
                             <button
@@ -3182,7 +3192,7 @@ export default function PreviewEditor({
                             <button
                                 type="button"
                                 onClick={() => {
-                                    setSidebarHidden(false);
+                                    setSidebarHidden(true);
                                     setSidePanelMode("style");
                                     handleModeClick("screenshot");
                                 }}
@@ -3210,108 +3220,9 @@ export default function PreviewEditor({
                             exit={{ x: -16, opacity: 0 }}
                             transition={{ duration: 0.18, ease: "easeOut" }}
                         >
-                            {/* Top bar: label + style/meta toggle + hide
-                            <div className="mb-3 flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-2">
-                                    <div className="flex h-6 w-6 items-center justify-center rounded-full border border-neutral-200 bg-neutral-50 text-[10px] font-semibold uppercase text-neutral-500">
-                                        UI
-                                    </div>
-                                    <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                                        Editor
-                                    </span>
-                                </div>
-
-                                <div className="flex items-center gap-1">
-                                    <div className="inline-flex rounded-full bg-neutral-100 p-0.5 text-[11px] shadow-sm">
-                                        <button
-                                            onClick={() => setSidePanelMode("style")}
-                                            id="kloner-style-toggle"
-                                            className={`flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium transition-colors ${sidePanelMode === "style"
-                                                ? "bg-neutral-900 text-white"
-                                                : "text-neutral-500 hover:bg-neutral-200"
-                                                }`}
-                                            type="button"
-                                        >
-                                            <span>Style</span>
-                                        </button>
-                                        <button
-                                            onClick={() => setSidePanelMode("meta")}
-                                            className={`flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium transition-colors ${sidePanelMode === "meta"
-                                                ? "bg-neutral-900 text-white"
-                                                : "text-neutral-500 hover:bg-neutral-200"
-                                                }`}
-                                            type="button"
-                                        >
-                                            <span>Meta</span>
-                                        </button>
-                                    </div>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => setSidebarHidden(true)}
-                                        className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-[13px] text-neutral-500 shadow-sm transition hover:bg-neutral-100 hover:text-neutral-800"
-                                        title="Hide sidebar"
-                                    >
-                                        ×
-                                    </button>
-                                </div>
-                            </div> */}
-
-                            {/* Sticky meta header
-                            <div className="sticky top-0 z-10 mb-2 bg-white/95 pb-2 pt-1 backdrop-blur-sm">
-                                <div className="flex items-center justify-between">
-                                    {sidePanelMode === "meta" && (
-                                        <MetaSettings
-                                            key={currentPageKey}
-                                            draftId={draftId}
-                                            meta={currentSeoMeta}
-                                            uploadFileToUserBlob={uploadFileToUserBlob}
-                                            onSaveMeta={handleSaveMetaForCurrentPage}
-                                        />
-                                    )}
-
-                                    <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-400 lg:hidden">
-                                        Controls
-                                    </span>
-                                </div>
-                            </div> */}
-
                             {/* STYLE MODE BODY */}
                             {!controlsCollapsed && sidePanelMode === "style" && (
                                 <>
-                                    {/* Actions
-                                    <div className="mb-4" id="kloner-actions-row">
-                                        <div className="mb-2 flex items-center justify-between">
-                                            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
-                                                Actions
-                                            </span>
-                                        </div>
-
-                                        <motion.div
-                                            whileHover={{ y: -1 }}
-                                            whileTap={{ scale: 0.98 }}
-                                            className="group inline-flex items-center gap-2 rounded-full px-4 py-2 text-[13px] font-semibold text-white shadow-sm"
-                                            style={{ backgroundColor: ACCENT }}
-                                            id="kloner-deploy-button"
-                                        >
-                                            <button
-                                                type="button"
-                                                onClick={() => setExportPrompt(true)}
-                                                className="font-semibold leading-none"
-                                            >
-                                                {exporting ? "Exporting…" : "Deploy"}
-                                            </button>
-                                            <Rocket className="h-4 w-4 transform transition-transform duration-150 group-hover:translate-x-0.5" />
-                                        </motion.div>
-
-                                        {exportNote && (
-                                            <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
-                                                {exportNote}
-                                            </div>
-                                        )}
-                                    </div> */}
-
-                                    {/* Selection styling sidebar */}
                                     {mode === "preview" && (
                                         <div
                                             className="mt-1 border-t border-neutral-200 pt-3 text-[12px]"
@@ -4015,8 +3926,8 @@ export default function PreviewEditor({
                                         </div>
                                     </div>
 
-                                    {/* Code mode */}
-                                    {mode === "code" && (
+                                    {/* Code mode – dev-only */}
+                                    {isDevCodeMode && mode === "code" && (
                                         <div className="min-h-0 flex-1">
                                             <textarea
                                                 className="h-full w-full rounded border border-neutral-300 bg-white p-2 font-mono text-[12px] leading-5 outline-none shadow-sm focus:ring-1 focus:ring-neutral-400 disabled:opacity-60"
@@ -4034,7 +3945,26 @@ export default function PreviewEditor({
                                             Edit in Preview, apply with “Apply changes".
                                         </div>
                                     )}
+
                                 </>
+                            )}
+
+                            {sidePanelMode === "ai-library" && (
+                                <AiImageLibraryPanel
+                                    iframeRef={iframeRef}
+                                    user={user}
+                                    renderId={draftId ?? null}
+                                />
+                            )}
+
+                            {sidePanelMode === "meta" && (
+                                <MetaSettings
+                                    key={currentPageKey}
+                                    draftId={draftId}
+                                    meta={currentSeoMeta}
+                                    uploadFileToUserBlob={uploadFileToUserBlob}
+                                    onSaveMeta={handleSaveMetaForCurrentPage}
+                                />
                             )}
                         </motion.aside>
                     )}
@@ -4253,45 +4183,137 @@ export default function PreviewEditor({
                         )}
 
 
-                        {(mode === "preview" || mode === "code") && (
+                        {(mode === "preview" || (isDevCodeMode && mode === "code")) && (
                             <div
                                 id="kloner-home"
                                 ref={iframeWrapperRef}
-                                className="flex-1 overflow-auto p-3 sm:p-6"
+                                className={
+                                    isPreviewFullscreen
+                                        ? "flex-1 min-h-0 flex flex-col overflow-hidden"
+                                        : "flex-1 overflow-auto p-3 sm:p-6"
+                                }
                             >
                                 <AnimatePresence mode="wait">
                                     <motion.div
                                         key={activePageId}
-                                        className="mx-auto"
-                                        style={{
-                                            width: devicePx,
-                                            minWidth: 320,
-                                            maxWidth: "100%",
-                                        }}
+                                        className={
+                                            isPreviewFullscreen
+                                                ? "flex-1 min-h-0 flex items-stretch"
+                                                : "mx-auto"
+                                        }
+                                        style={
+                                            isPreviewFullscreen
+                                                ? {
+                                                    width: "100%",
+                                                    minWidth: 320,
+                                                    maxWidth: "100%",
+                                                }
+                                                : {
+                                                    width: devicePx,
+                                                    minWidth: 320,
+                                                    maxWidth: "100%",
+                                                }
+                                        }
                                         initial={{ opacity: 0, y: 6 }}
                                         animate={{ opacity: 1, y: 0 }}
                                         exit={{ opacity: 0, y: -6 }}
                                         transition={{ duration: 0.22 }}
                                     >
                                         {device === "desktop" && (
-                                            <div className="rounded-xl border border-neutral-800 bg-neutral-950/90 shadow-xl overflow-hidden">
+                                            <div className="flex-1 min-h-0 rounded-xl border border-neutral-800 bg-neutral-950/90 shadow-xl overflow-hidden flex flex-col">
                                                 <div className="flex items-center gap-2 px-4 py-2 border-b border-neutral-800 bg-neutral-900/90">
                                                     <div className="flex gap-1.5">
                                                         <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
                                                         <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
                                                         <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
                                                     </div>
+
                                                     <div className="mx-auto h-6 max-w-xs flex-1 rounded-full bg-neutral-800/90 text-[12px] text-neutral-400 px-3 flex items-center">
                                                         preview.kloner
                                                     </div>
-                                                    <div className="w-10" />
+
+                                                    {/* undo / redo / fullscreen (desktop only) */}
+                                                    <div
+                                                        id="kloner-quick-undo"
+                                                        className="flex items-center gap-1.5"
+                                                    >
+                                                        {/* UNDO */}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const api = iframeRef.current?.contentWindow?.__klonerApi;
+                                                                if (api?.undo) api.undo();
+                                                            }}
+                                                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800/80 transition"
+                                                            aria-label="Undo"
+                                                        >
+                                                            <Undo2 className="h-5 w-5" />
+                                                        </button>
+
+                                                        {/* REDO */}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const api = iframeRef.current?.contentWindow?.__klonerApi;
+                                                                if (api?.redo) api.redo();
+                                                            }}
+                                                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800/80 transition"
+                                                            aria-label="Redo"
+                                                        >
+                                                            <Redo2 className="h-5 w-5" />
+                                                        </button>
+
+                                                        {/* FULLSCREEN */}
+                                                        <button
+                                                            type="button"
+                                                            onClick={togglePreviewFullscreen}
+                                                            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800/80 transition"
+                                                            aria-label={isPreviewFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+                                                        >
+                                                            {isPreviewFullscreen ? (
+                                                                <Minimize2 className="h-5 w-5" />
+                                                            ) : (
+                                                                <Maximize2 className="h-5 w-5" />
+                                                            )}
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                                <div className="bg-white">{iframeNode}</div>
+
+                                                <div className="bg-white flex-1 min-h-0 overflow-auto">
+                                                    {iframeNode}
+                                                </div>
                                             </div>
                                         )}
 
                                         {device === "tablet" && (
                                             <div className="mx-auto rounded-[28px] border border-neutral-700 bg-neutral-950/90 px-4 pt-4 pb-6 shadow-xl">
+                                                <div className="flex items-center justify-end gap-1.5">
+                                                    {/* UNDO */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const api = iframeRef.current?.contentWindow?.__klonerApi;
+                                                            if (api?.undo) api.undo();
+                                                        }}
+                                                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800/80 transition"
+                                                        aria-label="Undo"
+                                                    >
+                                                        <Undo2 className="h-5 w-5" />
+                                                    </button>
+
+                                                    {/* REDO */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const api = iframeRef.current?.contentWindow?.__klonerApi;
+                                                            if (api?.redo) api.redo();
+                                                        }}
+                                                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800/80 transition"
+                                                        aria-label="Redo"
+                                                    >
+                                                        <Redo2 className="h-5 w-5" />
+                                                    </button>
+                                                </div>
                                                 <div className="mx-auto mb-2 h-1.5 w-20 rounded-full bg-neutral-700" />
                                                 <div className="overflow-hidden rounded-[20px] border border-neutral-200 bg-white">
                                                     {iframeNode}
@@ -4301,6 +4323,33 @@ export default function PreviewEditor({
 
                                         {device === "mobile" && (
                                             <div className="mx-auto rounded-[36px] border border-neutral-800 bg-neutral-950/90 px-3 pt-4 pb-5 shadow-xl max-w-xs sm:max-w-sm">
+                                                <div className="flex items-center justify-end gap-1.5">
+                                                    {/* UNDO */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const api = iframeRef.current?.contentWindow?.__klonerApi;
+                                                            if (api?.undo) api.undo();
+                                                        }}
+                                                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800/80 transition"
+                                                        aria-label="Undo"
+                                                    >
+                                                        <Undo2 className="h-5 w-5" />
+                                                    </button>
+
+                                                    {/* REDO */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const api = iframeRef.current?.contentWindow?.__klonerApi;
+                                                            if (api?.redo) api.redo();
+                                                        }}
+                                                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800/80 transition"
+                                                        aria-label="Redo"
+                                                    >
+                                                        <Redo2 className="h-5 w-5" />
+                                                    </button>
+                                                </div>
                                                 <div className="mx-auto mb-3 h-2 w-24 rounded-full bg-neutral-700" />
                                                 <div className="overflow-hidden rounded-[28px] border border-neutral-200 bg-white">
                                                     {iframeNode}
@@ -4311,11 +4360,12 @@ export default function PreviewEditor({
                                     </motion.div>
                                 </AnimatePresence>
 
-                                {/* TOOLBAR SHOULD BE RENDERED HERE OR NEAR HERE */}
                                 <FloatingBlockToolbar
                                     iframeRef={iframeRef}
                                     wrapperRef={iframeWrapperRef}
-                                    selectionMeta={selectionMeta} uiScale={0} />
+                                    selectionMeta={selectionMeta}
+                                    uiScale={0}
+                                />
                             </div>
                         )}
 
