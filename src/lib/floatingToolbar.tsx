@@ -226,6 +226,41 @@ function BlockToolbar({
                 </button>
             </div>
 
+            {/* Border radius: Rad | − / + / reset (per-device) */}
+            <div className="ml-1 flex items-center gap-0.5 border-l border-slate-200 pl-1">
+                <span className="rounded-full bg-slate-900/90 px-1 text-[12px] font-semibold uppercase tracking-wide text-slate-100">
+                    Rad
+                </span>
+                <button
+                    type="button"
+                    onClick={() => callApi("blockRadius", -4)}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
+                    title="Reduce border radius"
+                >
+                    <Minus className="h-5 w-5" />
+                    <span className="sr-only">Reduce border radius</span>
+                </button>
+                <button
+                    type="button"
+                    onClick={() => callApi("blockRadius", 4)}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
+                    title="Increase border radius"
+                >
+                    <Plus className="h-5 w-5" />
+                    <span className="sr-only">Increase border radius</span>
+                </button>
+                <button
+                    type="button"
+                    onClick={() => callApi("blockRadiusReset")}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
+                    title="Reset border radius for this device"
+                >
+                    <RotateCcw className="h-4 w-4" />
+                    <span className="sr-only">Reset border radius for this device</span>
+                </button>
+            </div>
+
+
             {/* Text / link helpers: Txt | + , Link */}
             <div className="ml-1 flex items-center gap-0.5 border-l border-slate-200 pl-1">
                 <span className="rounded-full bg-slate-900/90 px-1 text-[12px] font-semibold uppercase tracking-wide text-slate-100">

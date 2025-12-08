@@ -57,6 +57,33 @@ export function installKlonerIframeApi(
     }
 
     /* =========================================
+       Per-device border radius
+       ========================================= */
+    :root[data-kl-device="desktop"] [data-kl-radius]{
+      border-radius: var(--kl-radius-desktop, 0px);
+    }
+
+    :root[data-kl-device="tablet"] [data-kl-radius]{
+      border-radius: var(
+        --kl-radius-tablet,
+        var(--kl-radius-desktop, 0px)
+      );
+    }
+
+    :root[data-kl-device="mobile"] [data-kl-radius]{
+      border-radius: var(
+        --kl-radius-mobile,
+        var(--kl-radius-tablet, var(--kl-radius-desktop, 0px))
+      );
+    }
+
+    /* make inner images follow the block radius */
+    [data-kl-radius] img{
+      border-radius: inherit;
+    }
+
+
+    /* =========================================
        Per-device block positioning (margin-based align)
        Uses the current device's var only
        ========================================= */
@@ -667,6 +694,80 @@ export function installKlonerIframeApi(
         return "--kl-font-size-desktop";
     }
 
+    function getRadiusVarName(device: Device) {
+        if (device === "tablet") return "--kl-radius-tablet";
+        if (device === "mobile") return "--kl-radius-mobile";
+        return "--kl-radius-desktop";
+    }
+
+    function getCurrentDeviceRadius(block: HTMLElement, device: Device): number {
+        const varName = getRadiusVarName(device);
+        const rawVar = block.style.getPropertyValue(varName)?.trim();
+
+        if (rawVar && rawVar.endsWith("px")) {
+            const n = parseFloat(rawVar.slice(0, -2));
+            if (!Number.isNaN(n)) return n;
+        }
+
+        const cs = doc.defaultView!.getComputedStyle(block);
+        const br = (cs as any).borderRadius as string | undefined;
+
+        if (br && br !== "0px") {
+            // border-radius can be "12px" or "10px 12px"; take the first numeric token
+            const match = br.match(/([0-9.]+)px/);
+            if (match) {
+                const n = parseFloat(match[1]);
+                if (!Number.isNaN(n)) return n;
+            }
+        }
+
+        return 0;
+    }
+
+    function adjustBlockRadius(block: HTMLElement, deltaPx: number) {
+        if (!deltaPx) return;
+
+        const current = getCurrentDeviceRadius(block, activeDevice);
+
+        const MIN_RAD = 0;
+        const MAX_RAD = 96;
+
+        let next = current + deltaPx;
+        if (next < MIN_RAD) next = MIN_RAD;
+        if (next > MAX_RAD) next = MAX_RAD;
+
+        const rounded = Math.round(next);
+        const varName = getRadiusVarName(activeDevice);
+
+        // mark this element as radius-managed by the editor
+        block.setAttribute("data-kl-radius", "1");
+        block.style.setProperty(varName, `${rounded}px`);
+
+        saveHistory();
+        notify();
+
+        showHint(
+            `Border radius (${activeDevice}) set to ${rounded}px.`,
+            block,
+        );
+    }
+
+    function resetBlockRadiusForDevice(block: HTMLElement, device: Device) {
+        const varName = getRadiusVarName(device);
+
+        block.setAttribute("data-kl-radius", "1");
+        block.style.setProperty(varName, "0px");
+
+        saveHistory();
+        notify();
+
+        showHint(
+            `Border radius (${device}) reset.`,
+            block,
+        );
+    }
+
+
     // per-device image width helpers
     function getImageWidthKey(device: Device) {
         if (device === "tablet") return "klImgTabletWidth";
@@ -1098,6 +1199,17 @@ export function installKlonerIframeApi(
         resetBlockPaddingForDevice(selected, activeDevice);
     };
 
+
+    // border radius (per-device)
+    api.blockRadius = (deltaPx: number = 4) => {
+        if (!selected) return;
+        adjustBlockRadius(selected, deltaPx);
+    };
+
+    api.blockRadiusReset = () => {
+        if (!selected) return;
+        resetBlockRadiusForDevice(selected, activeDevice);
+    };
 
     // image ops (local file / bg / sizing)
     api.insertImage = () => {
