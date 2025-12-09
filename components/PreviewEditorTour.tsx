@@ -10,7 +10,7 @@ const steps: Step[] = [
     {
         target: "#kloner-home",
         content:
-            "This is your live editable preview. In 1 minute, we’ll show you how to edit it and deploy.",
+            "This is your live editable preview. Feel free to drag it around, this is your sandbox.",
         disableBeacon: true,
     },
     {

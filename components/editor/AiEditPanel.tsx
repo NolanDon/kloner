@@ -1,7 +1,8 @@
 "use client";
 
 import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Image as ImageIcon, Info } from "lucide-react";
 
 export interface AiEditSuggestion {
     id: string;
@@ -20,16 +21,15 @@ type SelectionMeta = {
 };
 
 interface AiEditPanelProps {
-    renderId: string;
+    renderId: string | undefined;
     getSelectedBlockHtml: () => string | null;
     selectionMeta?: SelectionMeta;
     onApplyBlockHtml: (blockHtml: string, targetPath?: string | null) => void;
     onAiEditingStateChange?: (isEditing: boolean, targetPath?: string | null) => void;
 
-    // NEW: push the full AI history up whenever it changes
+    // push the full AI history up whenever it changes
     onAiHistoryChange?: (items: AiEditSuggestion[]) => void;
 }
-
 
 const PLACEHOLDERS = [
     "Soften the hero headline.",
@@ -87,11 +87,14 @@ export default function AiEditPanel(props: AiEditPanelProps) {
     const [creditsLimit, setCreditsLimit] = useState<number | null>(null);
     const [tier, setTier] = useState<string | undefined>(undefined);
 
+    const [attachedImage, setAttachedImage] = useState<File | null>(null);
+    const fileInputRef = useRef<HTMLInputElement | null>(null);
+
     useEffect(() => {
         if (onAiHistoryChange) onAiHistoryChange(suggestions);
     }, [suggestions, onAiHistoryChange]);
 
-    // Single source of truth: “scoped” means selectionMeta.has is true
+    // “scoped” means selectionMeta.has is true
     const hasScopedBlock = !!selectionMeta?.has;
     const targetPath = selectionMeta?.path ?? null;
 
@@ -121,11 +124,11 @@ export default function AiEditPanel(props: AiEditPanelProps) {
     // initial load of history + credit meta
     useEffect(() => {
         let cancelled = false;
-
         async function loadSuggestions() {
             try {
+                const rid = renderId ?? "";
                 const res = await fetch(
-                    `/api/ai-edit?renderId=${encodeURIComponent(renderId)}`,
+                    `/api/ai-edit${rid ? `?renderId=${encodeURIComponent(rid)}` : ""}`,
                     { credentials: "include" }
                 );
                 if (!res.ok) return;
@@ -174,10 +177,14 @@ export default function AiEditPanel(props: AiEditPanelProps) {
             return;
         }
 
+        const basePrompt = prompt.trim();
+        const promptForApi = attachedImage
+            ? `${basePrompt}\n\n[Attached image: ${attachedImage.name}]`
+            : basePrompt;
+
         setLoading(true);
         setError(null);
 
-        // optional: tell PreviewEditor to show “editing” state on this block
         if (onAiEditingStateChange) {
             try {
                 onAiEditingStateChange(true, targetPath);
@@ -194,13 +201,12 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                 credentials: "include",
                 headers: {
                     "content-type": "application/json",
-                    // adapt header name to whatever your guard expects
                     "x-kloner-csrf": csrf ?? "",
                 },
                 body: JSON.stringify({
                     renderId,
                     html: blockHtml,
-                    prompt: prompt.trim(),
+                    prompt: promptForApi,
                 }),
             });
 
@@ -215,10 +221,10 @@ export default function AiEditPanel(props: AiEditPanelProps) {
             const all: AiEditSuggestion[] = j.suggestions || [];
             setSuggestions(all);
             setPrompt("");
+            setAttachedImage(null);
 
             applyCreditsMeta(j.meta);
 
-            // pick the latest suggestion – prefer explicit `suggestion`, else newest in `suggestions`
             const latest: AiEditSuggestion | undefined =
                 (j.suggestion as AiEditSuggestion | undefined) ||
                 (Array.isArray(all) && all.length ? all[0] : undefined);
@@ -226,7 +232,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
             if (latest && latest.afterHtml) {
                 setActivePreviewId(latest.id);
                 onApplyBlockHtml(latest.afterHtml, targetPath || undefined);
-                setCollapsed(false); // auto-open the history rail when a new change arrives
+                setCollapsed(false);
             }
         } catch {
             setError("Network error while calling AI edit");
@@ -255,7 +261,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
 
     const creditsText =
         typeof creditsLimit === "number" && creditsLimit > 0
-            ? `Remaining credits: ${Math.max(creditsRemaining ?? 0, 0)} / ${creditsLimit}`
+            ? `Credits: ${Math.max(creditsRemaining ?? 0, 0)} / ${creditsLimit}`
             : creditsLimit === 0
                 ? "Your plan includes unlimited AI edits this month."
                 : null;
@@ -263,126 +269,202 @@ export default function AiEditPanel(props: AiEditPanelProps) {
     const atMaxChars =
         MAX_PROMPT_CHARS > 0 && prompt.length >= MAX_PROMPT_CHARS;
 
+    const orderedSuggestions = [...suggestions].sort((a, b) => {
+        const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const db = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return db - da;
+    });
+
     return (
-        <>
-            {/* centered input bar above canvas */}
-            <div className="mb-4 flex justify-center mt-2 pt-8">
-                <div className="w-full max-w-[820px]">
-                    {/* <div className="mb-1 flex items-center justify-between px-1">
-                        {loading && (
-                            <span className="text-[11px] text-neutral-500">
-                                Thinking…
-                            </span>
-                        )}
-                    </div> */}
-
-                    {error && (
-                        <p className="mt-1 px-1 text-[11px] text-red-600">
-                            {error}
-                        </p>
-                    )}
-
-
-                    {/* NEW: credits indicator under the input */}
-                    <div className="mt-1 px-2 min-h-[16px] text-[13px] text-neutral-800">
-                        {creditsText
-                            ? <>{creditsText}</>
-                            : null}
+        <div className="flex h-full flex-col rounded-xl border border-neutral-200 bg-white/95 shadow-sm">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2">
+                <div className="space-y-0.5">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                        AI Edit Assistant
                     </div>
-
-                    {/* AI edit input bar */}
-                    <div className="flex justify-center">
-                        <div className="relative w-full max-w-[860px]">
-                            {/* subtle accent glow */}
-                            <div
-                                aria-hidden="true"
-                                className="pointer-events-none absolute inset-0 -z-10 rounded-[999px] opacity-60 blur-xl"
-                                style={{
-                                    background:
-                                        "radial-gradient(circle at 0% 0%, rgba(245,95,42,0.35), transparent 55%), radial-gradient(circle at 100% 100%, rgba(245,95,42,0.25), transparent 55%)",
-                                }}
-                            />
-
-                            {/* header row above input */}
-                            <div className="mb-2 flex items-center justify-between px-1">
-                                {/* <div className="inline-flex items-center gap-2 rounded-full bg-[color-mix(in_srgb,var(--accent,#f55f2a)_15%,#020617)] px-3 py-1">
-                                    <span className="h-2 w-2 rounded-full bg-[var(--accent,#f55f2a)] shadow-[0_0_0_3px_rgba(245,95,42,0.45)]" />
-                                    <span className="text-[13px] font-semibold uppercase tracking-[0.12em] text-neutral-100">
-                                        AI Edit Assistant
-                                    </span>
-                                </div> */}
-
-                                {loading && (
-                                    <span className="text-[11px] text-neutral-400">Generating an edit…</span>
-                                )}
-                            </div>
-
-                            {/* main input pill */}
-                            <div className="mt-2 flex items-center gap-2 rounded-[999px] bg-[rgba(3,7,18,0.96)] px-3 py-2.5 ">
-                                {/* left icon chip */}
-                                <div className="hidden sm:flex h-9 w-11 items-center justify-center rounded-full bg-accent text-[12px] font-semibold text-white shadow-[0_0_0_1px_rgba(15,23,42,0.7)]">
-                                    AI
-                                </div>
-
-                                <input
-                                    type="text"
-                                    value={prompt}
-                                    onChange={(e) => {
-                                        const value = e.target.value.slice(0, MAX_PROMPT_CHARS);
-                                        setPrompt(value);
-                                        if (error) setError(null);
-                                    }}
-                                    maxLength={MAX_PROMPT_CHARS}
-                                    placeholder={placeholder || "Describe a small change to this block…"}
-                                    className="h-[46px] w-full max-w-[820px] bg-transparent text-[15px] leading-[1.2] text-neutral-50 placeholder:text-neutral-500 focus:outline-none"
-                                    disabled={loading}
-                                />
-
-                                <button
-                                    type="button"
-                                    onClick={handleRun}
-                                    disabled={generateDisabled}
-                                    className={`inline-flex h-10 items-center justify-center whitespace-nowrap rounded-full px-4 text-[14px] font-semibold tracking-wide transition ${generateDisabled
-                                        ? "cursor-not-allowed bg-neutral-800 text-neutral-500"
-                                        : "bg-[var(--accent,#f55f2a)] text-white shadow-[0_0_0_1px_rgba(15,23,42,0.8),0_12px_30px_rgba(245,95,42,0.35)] hover:brightness-110 active:brightness-95"
-                                        }`}
-                                >
-                                    {loading ? "Applying…" : "Apply edit"}
-                                </button>
-                            </div>
-
-                            {/* helper + char counter */}
-                            <div className="mt-2 flex items-center justify-between px-1 text-[13px]">
-                                <div className="min-h-[22px]">
-                                    {atMaxChars ? (
-                                        <span className="text-red-500">
-                                            Max {MAX_PROMPT_CHARS} characters reached.
-                                        </span>
-                                    ) : !hasScopedBlock && prompt.length > 0 ? (
-                                        <span className="text-amber-500">
-                                            No block is selected. Click a section in the preview, then describe the change.
-                                        </span>
-                                    ) : hasScopedBlock && prompt.length > 0 ? (
-                                        <span className="text-emerald-700">
-                                            This edit will only affect your selected block in the preview.
-                                        </span>
-                                    ) : (
-                                        <span className="text-neutral-800">
-                                            Tell our AI what you want changed. Be specific for better results.
-                                        </span>
-                                    )}
-                                </div>
-
-                                {prompt.length > 0 && (
-                                    <span className="text-[11px] text-neutral-500">
-                                        {prompt.length}/{MAX_PROMPT_CHARS}
-                                    </span>
-                                )}
-                            </div>
-                        </div>
+                    <div className="flex items-center gap-1 text-[11px] text-neutral-600">
+                        <span>
+                            Ask for small, focused changes to the selected block.
+                        </span>
+                        <span title="AI edits only affect the block you have selected in the preview." />
                     </div>
                 </div>
+                {creditsText && (
+                    <div
+                        className="rounded-full whitespace-nowrap bg-neutral-900 px-2 py-0.5 text-[10px] font-medium text-white"
+                        title="Monthly AI edit credits for this account."
+                    >
+                        {creditsText}
+                    </div>
+                )}
             </div>
-        </>
+
+            {/* Chat log */}
+            <div className="flex-1 space-y-3 overflow-y-auto bg-gradient-to-b from-white via-white to-neutral-50 px-3 py-3 text-[12px]">
+                {error && (
+                    <div className="rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] text-red-700">
+                        {error}
+                    </div>
+                )}
+
+                {orderedSuggestions.length === 0 ? (
+                    <div className="flex h-40 items-center justify-center rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 text-center">
+                        <p className="text-[12px] text-neutral-500">
+                            No AI edits yet for this page. Select a block in the preview,
+                            describe a small change below, and your conversation will show
+                            up here.
+                        </p>
+                    </div>
+                ) : (
+                    orderedSuggestions.map((s) => (
+                        <div key={s.id} className="space-y-1">
+                            {/* User bubble */}
+                            <div className="flex justify-end">
+                                <div className="max-w-[80%] rounded-2xl bg-[var(--accent,#f55f2a)] px-3 py-1.5 text-white shadow-sm">
+                                    <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/80">
+                                        You
+                                    </div>
+                                    <div className="text-[12px]">{s.prompt}</div>
+                                </div>
+                            </div>
+
+                            {/* AI bubble */}
+                            <div className="flex justify-start">
+                                <div className="max-w-[85%] rounded-2xl border border-neutral-200 bg-white px-3 py-1.5 text-neutral-900 shadow-sm">
+                                    <div className="mb-1 flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+                                        <span>AI edit</span>
+                                        <span>{formatCreatedAt(s.createdAt)}</span>
+                                    </div>
+                                    <div className="text-[12px] text-neutral-800">
+                                        {s.summary ||
+                                            "Updated the selected block based on your request."}
+                                    </div>
+                                    <div className="mt-1 flex items-center justify-between text-[10px] text-neutral-500">
+                                        <span>
+                                            This change has been applied to your selected block.
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDismiss(s.id)}
+                                            className="text-[10px] font-medium text-neutral-500 hover:text-red-500"
+                                            title="Remove this entry from the chatlog."
+                                        >
+                                            Dismiss
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    ))
+                )}
+            </div>
+
+            {/* Input/footer */}
+            <div className="border-t border-neutral-200 bg-white px-3 py-2">
+                <div className="mb-1 flex items-center justify-between">
+                    <span className="text-[11px] text-neutral-600">
+                        Tell our AI what you want changed or fixed in the selected block.
+                        The more specific you are, the better the result.
+                    </span>
+                    {prompt.length > 0 && (
+                        <span className="text-[11px] text-neutral-400">
+                            {prompt.length}/{MAX_PROMPT_CHARS}
+                        </span>
+                    )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                    {/* Attach image + small icons */}
+                    <div className="flex items-center gap-1">
+                        <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-300 bg-white text-neutral-500 hover:bg-neutral-100"
+                            title="Attach an image reference to this request."
+                        >
+                            <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                            <span className="sr-only">Attach image</span>
+                        </button>
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                setAttachedImage(file);
+                            }}
+                        />
+                        {attachedImage && (
+                            <span
+                                className="truncate text-[11px] text-neutral-500 max-w-[120px]"
+                                title={attachedImage.name}
+                            >
+                                {attachedImage.name}
+                            </span>
+                        )}
+                    </div>
+
+                    {/* Text input */}
+                    <div className="flex flex-1 items-center gap-2 rounded-full border border-neutral-300 bg-white px-3 py-1.5 shadow-sm">
+                        <span className="hidden h-7 w-7 items-center justify-center rounded-full bg-[var(--accent,#f55f2a)] text-[11px] font-semibold text-white sm:inline-flex">
+                            AI
+                        </span>
+                        <input
+                            type="text"
+                            value={prompt}
+                            onChange={(e) => {
+                                const value = e.target.value.slice(0, MAX_PROMPT_CHARS);
+                                setPrompt(value);
+                                if (error) setError(null);
+                            }}
+                            maxLength={MAX_PROMPT_CHARS}
+                            placeholder={
+                                placeholder ||
+                                "Ask for a small, specific change to this block…"
+                            }
+                            className="h-8 w-full bg-transparent text-[13px] text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
+                            disabled={loading}
+                        />
+                    </div>
+
+                    {/* Send button */}
+                    <button
+                        type="button"
+                        onClick={handleRun}
+                        disabled={generateDisabled}
+                        className={`inline-flex h-9 items-center justify-center whitespace-nowrap rounded-full px-4 text-[13px] font-semibold transition ${generateDisabled
+                            ? "cursor-not-allowed bg-neutral-200 text-neutral-500"
+                            : "bg-[var(--accent,#f55f2a)] text-white shadow-sm hover:brightness-110 active:brightness-95"
+                            }`}
+                        title={
+                            generateDisabled
+                                ? "Select a block and enter a prompt to apply an edit."
+                                : "Send this request to the AI editor."
+                        }
+                    >
+                        {loading ? "Applying…" : "Apply"}
+                    </button>
+                </div>
+
+                <div className="mt-1 min-h-[18px] text-[11px]">
+                    {atMaxChars ? (
+                        <span className="text-red-500">
+                            Max {MAX_PROMPT_CHARS} characters reached.
+                        </span>
+                    ) : !hasScopedBlock && prompt.length > 0 ? (
+                        <span className="text-amber-600">
+                            No block selected. Click a section in the preview first.
+                        </span>
+                    ) : hasScopedBlock && prompt.length > 0 ? (
+                        <span className="text-emerald-600">
+                            This edit will only affect your current selection.
+                        </span>
+                    ) : null}
+                </div>
+            </div>
+        </div>
     );
 }

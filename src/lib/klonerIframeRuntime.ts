@@ -19,6 +19,20 @@ export function installKlonerIframeApi(
     const style = doc.createElement("style");
     style.setAttribute("data-kloner-style", "1");
     style.textContent = `
+
+     html, body {
+        margin: 0;
+        padding: 0;
+        overflow: auto;
+        scrollbar-width: none;        
+    }
+
+    html::-webkit-scrollbar,
+    body::-webkit-scrollbar {
+        width: 0;
+        height: 0;
+    }
+
     :root {
       --amber-50:#FFFBEB;
       --amber-200:#FDE68A;
@@ -83,60 +97,61 @@ export function installKlonerIframeApi(
     }
 
 
-    /* =========================================
-       Per-device block positioning (margin-based align)
-       Uses the current device's var only
+        /* =========================================
+       Per-device margin driven by editor device toggle
+       Supports per-side vars with sensible fallbacks
        ========================================= */
-
-    /* Desktop block align */
-    :root[data-kl-device="desktop"] [data-kl-align][style*="--kl-align-desktop: center"]{
-      display:block;
-      margin-left:auto !important;
-      margin-right:auto !important;
-    }
-    :root[data-kl-device="desktop"] [data-kl-align][style*="--kl-align-desktop: right"]{
-      display:block;
-      margin-left:auto !important;
-      margin-right:0 !important;
-    }
-    :root[data-kl-device="desktop"] [data-kl-align][style*="--kl-align-desktop: left"]{
-      display:block;
-      margin-left:0 !important;
-      margin-right:0 !important;
+    :root[data-kl-device="desktop"] [data-kl-mar]{
+      margin-top: var(--kl-mar-top-desktop, var(--kl-mar-desktop, 0px)) !important;
+      margin-bottom: var(--kl-mar-bottom-desktop, var(--kl-mar-desktop, 0px)) !important;
+      margin-left: var(--kl-mar-left-desktop, var(--kl-mar-desktop, 0px)) !important;
+      margin-right: var(--kl-mar-right-desktop, var(--kl-mar-desktop, 0px)) !important;
     }
 
-    /* Tablet block align */
-    :root[data-kl-device="tablet"] [data-kl-align][style*="--kl-align-tablet: center"]{
-      display:block;
-      margin-left:auto !important;
-      margin-right:auto !important;
-    }
-    :root[data-kl-device="tablet"] [data-kl-align][style*="--kl-align-tablet: right"]{
-      display:block;
-      margin-left:auto !important;
-      margin-right:0 !important;
-    }
-    :root[data-kl-device="tablet"] [data-kl-align][style*="--kl-align-tablet: left"]{
-      display:block;
-      margin-left:0 !important;
-      margin-right:0 !important;
+    :root[data-kl-device="tablet"] [data-kl-mar]{
+      margin-top: var(
+        --kl-mar-top-tablet,
+        var(--kl-mar-top-desktop, var(--kl-mar-desktop, 0px))
+      ) !important;
+      margin-bottom: var(
+        --kl-mar-bottom-tablet,
+        var(--kl-mar-bottom-desktop, var(--kl-mar-desktop, 0px))
+      ) !important;
+      margin-left: var(
+        --kl-mar-left-tablet,
+        var(--kl-mar-left-desktop, var(--kl-mar-desktop, 0px))
+      ) !important;
+      margin-right: var(
+        --kl-mar-right-tablet,
+        var(--kl-mar-right-desktop, var(--kl-mar-desktop, 0px))
+      ) !important;
     }
 
-    /* Mobile block align */
-    :root[data-kl-device="mobile"] [data-kl-align][style*="--kl-align-mobile: center"]{
-      display:block;
-      margin-left:auto !important;
-      margin-right:auto !important;
-    }
-    :root[data-kl-device="mobile"] [data-kl-align][style*="--kl-align-mobile: right"]{
-      display:block;
-      margin-left:auto !important;
-      margin-right:0 !important;
-    }
-    :root[data-kl-device="mobile"] [data-kl-align][style*="--kl-align-mobile: left"]{
-      display:block;
-      margin-left:0 !important;
-      margin-right:0 !important;
+    :root[data-kl-device="mobile"] [data-kl-mar]{
+      margin-top: var(
+        --kl-mar-top-mobile,
+        var(--kl-mar-top-tablet,
+          var(--kl-mar-top-desktop, var(--kl-mar-desktop, 0px))
+        )
+      ) !important;
+      margin-bottom: var(
+        --kl-mar-bottom-mobile,
+        var(--kl-mar-bottom-tablet,
+          var(--kl-mar-bottom-desktop, var(--kl-mar-desktop, 0px))
+        )
+      ) !important;
+      margin-left: var(
+        --kl-mar-left-mobile,
+        var(--kl-mar-left-tablet,
+          var(--kl-mar-left-desktop, var(--kl-mar-desktop, 0px))
+        )
+      ) !important;
+      margin-right: var(
+        --kl-mar-right-mobile,
+        var(--kl-mar-right-tablet,
+          var(--kl-mar-right-desktop, var(--kl-mar-desktop, 0px))
+        )
+      ) !important;
     }
 
 
@@ -232,6 +247,64 @@ export function installKlonerIframeApi(
     [data-kloner-textbox][data-kloner-sel]{
       box-shadow: 0 10px 24px rgba(15,23,42,0.18);
     }
+
+        /* =========================================
+       Per-device margin driven by editor device toggle
+       Supports per-side vars with sensible fallbacks
+       ========================================= */
+    :root[data-kl-device="desktop"] [data-kl-mar]{
+      margin-top: var(--kl-mar-top-desktop, var(--kl-mar-desktop, 0px));
+      margin-bottom: var(--kl-mar-bottom-desktop, var(--kl-mar-desktop, 0px));
+      margin-left: var(--kl-mar-left-desktop, var(--kl-mar-desktop, 0px));
+      margin-right: var(--kl-mar-right-desktop, var(--kl-mar-desktop, 0px));
+    }
+
+    :root[data-kl-device="tablet"] [data-kl-mar]{
+      margin-top: var(
+        --kl-mar-top-tablet,
+        var(--kl-mar-top-desktop, var(--kl-mar-desktop, 0px))
+      );
+      margin-bottom: var(
+        --kl-mar-bottom-tablet,
+        var(--kl-mar-bottom-desktop, var(--kl-mar-desktop, 0px))
+      );
+      margin-left: var(
+        --kl-mar-left-tablet,
+        var(--kl-mar-left-desktop, var(--kl-mar-desktop, 0px))
+      );
+      margin-right: var(
+        --kl-mar-right-tablet,
+        var(--kl-mar-right-desktop, var(--kl-mar-desktop, 0px))
+      );
+    }
+
+    :root[data-kl-device="mobile"] [data-kl-mar]{
+      margin-top: var(
+        --kl-mar-top-mobile,
+        var(--kl-mar-top-tablet,
+          var(--kl-mar-top-desktop, var(--kl-mar-desktop, 0px))
+        )
+      );
+      margin-bottom: var(
+        --kl-mar-bottom-mobile,
+        var(--kl-mar-bottom-tablet,
+          var(--kl-mar-bottom-desktop, var(--kl-mar-desktop, 0px))
+        )
+      );
+      margin-left: var(
+        --kl-mar-left-mobile,
+        var(--kl-mar-left-tablet,
+          var(--kl-mar-left-desktop, var(--kl-mar-desktop, 0px))
+        )
+      );
+      margin-right: var(
+        --kl-mar-right-mobile,
+        var(--kl-mar-right-tablet,
+          var(--kl-mar-right-desktop, var(--kl-mar-desktop, 0px))
+        )
+      );
+    }
+
 
       /* =========================================
        Per-device padding driven by editor device toggle
@@ -522,6 +595,54 @@ export function installKlonerIframeApi(
             // best-effort only; ignore failures
         }
 
+
+        // 1b) Bake per-device margin into the clone so export has real margins
+        try {
+            const liveMarNodes = doc.body.querySelectorAll<HTMLElement>("[data-kl-mar]");
+            const cloneMarNodes = bodyClone.querySelectorAll<HTMLElement>("[data-kl-mar]");
+
+            liveMarNodes.forEach((liveEl, idx) => {
+                const cloneEl = cloneMarNodes[idx];
+                if (!cloneEl) return;
+
+                const cs = doc.defaultView!.getComputedStyle(liveEl);
+                const mt = cs.marginTop;
+                const mb = cs.marginBottom;
+                const ml = cs.marginLeft;
+                const mr = cs.marginRight;
+
+                if (mt && mt !== "0px") cloneEl.style.marginTop = mt;
+                if (mb && mb !== "0px") cloneEl.style.marginBottom = mb;
+                if (ml && ml !== "0px") cloneEl.style.marginLeft = ml;
+                if (mr && mr !== "0px") cloneEl.style.marginRight = mr;
+
+                // Drop editor-specific vars / flags from export
+                cloneEl.style.removeProperty("--kl-mar-desktop");
+                cloneEl.style.removeProperty("--kl-mar-tablet");
+                cloneEl.style.removeProperty("--kl-mar-mobile");
+
+                cloneEl.style.removeProperty("--kl-mar-top-desktop");
+                cloneEl.style.removeProperty("--kl-mar-bottom-desktop");
+                cloneEl.style.removeProperty("--kl-mar-left-desktop");
+                cloneEl.style.removeProperty("--kl-mar-right-desktop");
+
+                cloneEl.style.removeProperty("--kl-mar-top-tablet");
+                cloneEl.style.removeProperty("--kl-mar-bottom-tablet");
+                cloneEl.style.removeProperty("--kl-mar-left-tablet");
+                cloneEl.style.removeProperty("--kl-mar-right-tablet");
+
+                cloneEl.style.removeProperty("--kl-mar-top-mobile");
+                cloneEl.style.removeProperty("--kl-mar-bottom-mobile");
+                cloneEl.style.removeProperty("--kl-mar-left-mobile");
+                cloneEl.style.removeProperty("--kl-mar-right-mobile");
+
+                cloneEl.removeAttribute("data-kl-mar");
+            });
+        } catch {
+            // best-effort only; ignore failures
+        }
+
+
         // 2) The exported HTML doesn’t need the editor device flag
         htmlClone.removeAttribute("data-kl-device");
 
@@ -565,6 +686,46 @@ export function installKlonerIframeApi(
     function updateUndoRedoState() {
         // placeholder for future UI
     }
+
+
+    function adjustBlockLayer(block: HTMLElement, direction: "forward" | "backward") {
+        const cs = doc.defaultView!.getComputedStyle(block);
+
+        // make sure it participates in stacking
+        if (cs.position === "static") {
+            block.style.position = "relative";
+        }
+
+        const ds = block.dataset as any;
+
+        let current = 0;
+
+        if (ds.klZIndex) {
+            const n = parseInt(ds.klZIndex, 10);
+            if (Number.isFinite(n)) current = n;
+        } else if (block.style.zIndex) {
+            const n = parseInt(block.style.zIndex, 10);
+            if (Number.isFinite(n)) current = n;
+        } else {
+            const cz = cs.zIndex;
+            const n = parseInt(cz || "0", 10);
+            if (Number.isFinite(n)) current = n;
+        }
+
+        let next = direction === "forward" ? current + 10 : current - 10;
+        if (next < 0) next = 0;
+
+        ds.klZIndex = String(next);
+        block.style.zIndex = String(next);
+
+        saveHistory();
+        notify();
+        showHint(
+            direction === "forward" ? "Block brought forward." : "Block sent backward.",
+            block,
+        );
+    }
+
 
     async function insertImageFromLibraryIntoBlock(
         block: HTMLElement,
@@ -630,10 +791,14 @@ export function installKlonerIframeApi(
                 ensureButtonHasContent(el);
             });
 
-        select(null);
+        // important: do NOT clear selection here, so the React toolbar
+        // does not receive a "has: false" event and unmount.
+        // select(null);
+
         updateUndoRedoState();
         notify();
     }
+
 
     function undo() {
         restoreHistory(idx - 1);
@@ -666,6 +831,194 @@ export function installKlonerIframeApi(
     type PadSide = "all" | "top" | "bottom" | "left" | "right";
 
     let activeDevice: Device = initialDevice;
+
+    type MarginSide = "all" | "top" | "bottom" | "left" | "right";
+
+    function getMarginVarName(device: Device, side: MarginSide = "all") {
+        const suffix =
+            device === "tablet"
+                ? "tablet"
+                : device === "mobile"
+                    ? "mobile"
+                    : "desktop";
+
+        if (side === "all") {
+            return `--kl-mar-${suffix}`;
+        }
+        return `--kl-mar-${side}-${suffix}`;
+    }
+
+    function getCurrentDeviceMargin(
+        block: HTMLElement,
+        device: Device,
+        side: MarginSide,
+    ): number {
+        const varName = getMarginVarName(device, side);
+        const raw = block.style.getPropertyValue(varName)?.trim();
+
+        if (raw && raw.endsWith("px")) {
+            const n = parseFloat(raw.slice(0, -2));
+            if (!Number.isNaN(n)) return n;
+        }
+
+        const cs = doc.defaultView!.getComputedStyle(block);
+
+        let fromComputed = 0;
+        if (side === "top" || side === "all") {
+            fromComputed = parseFloat(cs.marginTop || "0") || 0;
+        } else if (side === "bottom") {
+            fromComputed = parseFloat(cs.marginBottom || "0") || 0;
+        } else if (side === "left") {
+            fromComputed = parseFloat(cs.marginLeft || "0") || 0;
+        } else if (side === "right") {
+            fromComputed = parseFloat(cs.marginRight || "0") || 0;
+        }
+
+        return fromComputed;
+    }
+
+    function normalizeAllDeviceMargin(block: HTMLElement) {
+        const cs = doc.defaultView!.getComputedStyle(block);
+
+        const desktopTop = parseFloat(cs.marginTop || "0") || 0;
+        const desktopBottom =
+            parseFloat(cs.marginBottom || "0") || desktopTop;
+        const desktopLeft =
+            parseFloat(cs.marginLeft || "0") || desktopTop;
+        const desktopRight =
+            parseFloat(cs.marginRight || "0") || desktopTop;
+
+        const scale = (n: number, f: number) => Math.round(n * f);
+
+        const tabletTop = scale(desktopTop, 0.85);
+        const tabletBottom = scale(desktopBottom, 0.85);
+        const tabletLeft = scale(desktopLeft, 0.85);
+        const tabletRight = scale(desktopRight, 0.85);
+
+        const mobileTop = scale(desktopTop, 0.7);
+        const mobileBottom = scale(desktopBottom, 0.7);
+        const mobileLeft = scale(desktopLeft, 0.7);
+        const mobileRight = scale(desktopRight, 0.7);
+
+        block.setAttribute("data-kl-mar", "1");
+
+        block.style.removeProperty("margin");
+        block.style.removeProperty("margin-top");
+        block.style.removeProperty("margin-bottom");
+        block.style.removeProperty("margin-left");
+        block.style.removeProperty("margin-right");
+
+        // device-level fallbacks (kept for compatibility)
+        block.style.setProperty("--kl-mar-desktop", `${desktopTop}px`);
+        block.style.setProperty("--kl-mar-tablet", `${tabletTop}px`);
+        block.style.setProperty("--kl-mar-mobile", `${mobileTop}px`);
+
+        // desktop per-side
+        block.style.setProperty("--kl-mar-top-desktop", `${desktopTop}px`);
+        block.style.setProperty("--kl-mar-bottom-desktop", `${desktopBottom}px`);
+        block.style.setProperty("--kl-mar-left-desktop", `${desktopLeft}px`);
+        block.style.setProperty("--kl-mar-right-desktop", `${desktopRight}px`);
+
+        // tablet per-side
+        block.style.setProperty("--kl-mar-top-tablet", `${tabletTop}px`);
+        block.style.setProperty("--kl-mar-bottom-tablet", `${tabletBottom}px`);
+        block.style.setProperty("--kl-mar-left-tablet", `${tabletLeft}px`);
+        block.style.setProperty("--kl-mar-right-tablet", `${tabletRight}px`);
+
+        // mobile per-side
+        block.style.setProperty("--kl-mar-top-mobile", `${mobileTop}px`);
+        block.style.setProperty("--kl-mar-bottom-mobile", `${mobileBottom}px`);
+        block.style.setProperty("--kl-mar-left-mobile", `${mobileLeft}px`);
+        block.style.setProperty("--kl-mar-right-mobile", `${mobileRight}px`);
+    }
+
+    function adjustBlockMargin(
+        block: HTMLElement,
+        side: MarginSide,
+        deltaPx: number,
+    ) {
+        if (!block.hasAttribute("data-kl-mar")) {
+            normalizeAllDeviceMargin(block);
+        }
+
+        const current = getCurrentDeviceMargin(block, activeDevice, side);
+
+        // allow negative to pull blocks together, but clamp
+        const MIN_MAR = -240;
+        const MAX_MAR = 480;
+
+        let next = current + deltaPx;
+
+        if (next < MIN_MAR) next = MIN_MAR;
+        if (next > MAX_MAR) next = MAX_MAR;
+
+        const rounded = Math.round(next);
+
+        if (side === "all") {
+            const topVar = getMarginVarName(activeDevice, "top");
+            const bottomVar = getMarginVarName(activeDevice, "bottom");
+            const leftVar = getMarginVarName(activeDevice, "left");
+            const rightVar = getMarginVarName(activeDevice, "right");
+            const allVar = getMarginVarName(activeDevice, "all");
+
+            block.style.setProperty(topVar, `${rounded}px`);
+            block.style.setProperty(bottomVar, `${rounded}px`);
+            block.style.setProperty(leftVar, `${rounded}px`);
+            block.style.setProperty(rightVar, `${rounded}px`);
+            block.style.setProperty(allVar, `${rounded}px`);
+        } else {
+            const varName = getMarginVarName(activeDevice, side);
+            block.style.setProperty(varName, `${rounded}px`);
+        }
+
+        block.setAttribute("data-kl-mar", "1");
+
+        saveHistory();
+        notify();
+
+        const label =
+            side === "all"
+                ? "all sides"
+                : side === "top"
+                    ? "top"
+                    : side === "bottom"
+                        ? "bottom"
+                        : side === "left"
+                            ? "left"
+                            : "right";
+
+        showHint(
+            `Margin (${activeDevice}, ${label}) set to ${rounded}px.`,
+            block,
+        );
+    }
+
+    function resetBlockMarginForDevice(
+        block: HTMLElement,
+        device: Device,
+    ) {
+        const base = 0;
+
+        const allVar = getMarginVarName(device, "all");
+        block.style.setProperty(allVar, `${base}px`);
+
+        const sides: MarginSide[] = ["top", "bottom", "left", "right"];
+        for (const side of sides) {
+            const varName = getMarginVarName(device, side);
+            block.style.setProperty(varName, `${base}px`);
+        }
+
+        block.setAttribute("data-kl-mar", "1");
+
+        saveHistory();
+        notify();
+
+        showHint(
+            `Margin (${device}, all sides) reset.`,
+            block,
+        );
+    }
+
 
     function getPaddingVarName(device: Device, side: PadSide = "all") {
         const suffix =
@@ -986,6 +1339,7 @@ export function installKlonerIframeApi(
         if (cmd.kind === "fontFamily" && typeof cmd.value === "string") {
             selected.style.fontFamily = cmd.value;
             didChange = true;
+
         } else if (cmd.kind === "fontSizePx" && typeof cmd.value === "number") {
             const px = cmd.value;
             const varName = getFontSizeVarName(activeDevice);
@@ -993,9 +1347,16 @@ export function installKlonerIframeApi(
             // mark this element as using per-device font sizing
             selected.setAttribute("data-kl-font", "1");
 
-            // set the device-specific var and clear generic inline font-size
-            selected.style.setProperty(varName, `${px}px`);
+            // wipe any inner inline font-size so the device var is authoritative
+            selected.querySelectorAll<HTMLElement>("*").forEach((child) => {
+                child.style.removeProperty("font-size");
+            });
+
+            // also wipe inline font-size on the selected root
             selected.style.removeProperty("font-size");
+
+            // set the device-specific var
+            selected.style.setProperty(varName, `${px}px`);
 
             didChange = true;
 
@@ -1008,7 +1369,7 @@ export function installKlonerIframeApi(
                 // mark this element as alignment-managed by the editor
                 block.setAttribute("data-kl-align", "1");
 
-                // per-device alignment via CSS var
+                // per-device alignment via CSS var (text-align + block-align handled in CSS)
                 block.style.setProperty(varName, v);
 
                 // clear inline textAlign on descendants so parent wins
@@ -1043,12 +1404,15 @@ export function installKlonerIframeApi(
 
                 didChange = true;
             }
+
         } else if (cmd.kind === "textColor" && typeof cmd.value === "string") {
             selected.style.color = cmd.value;
             didChange = true;
+
         } else if (cmd.kind === "bgColor" && typeof cmd.value === "string") {
             selected.style.backgroundColor = cmd.value;
             didChange = true;
+
         } else if (cmd.kind === "transform") {
             if (cmd.value === "uppercase") {
                 selected.style.textTransform = "uppercase";
@@ -1057,12 +1421,14 @@ export function installKlonerIframeApi(
                 selected.style.textTransform = "none";
                 didChange = true;
             }
+
         } else if (
             cmd.kind === "weight" &&
             (typeof cmd.value === "string" || typeof cmd.value === "number")
         ) {
             (selected.style as any).fontWeight = String(cmd.value);
             didChange = true;
+
         } else if (
             cmd.kind === "letterSpacing" &&
             typeof cmd.value === "string"
@@ -1078,7 +1444,40 @@ export function installKlonerIframeApi(
         }
     }
 
+
     const api: any = (doc.defaultView as any).__klonerApi || {};
+
+    // inside installKlonerIframeApi, after `const api: any = ...`
+
+    // block ops
+    api.deleteBlock = () => {
+        if (!selected) return;
+        deleteAssetsForElement(selected);
+        const p = selected.parentElement;
+        selected.remove();
+        select(null);
+        p?.focus?.();
+        saveHistory();
+        notify();
+    };
+
+    api.bringBlockForward = () => {
+        if (!selected) return;
+        adjustBlockLayer(selected, "forward");
+    };
+
+    api.sendBlockBackward = () => {
+        if (!selected) return;
+        adjustBlockLayer(selected, "backward");
+    };
+
+    // aliases if you prefer block*-style names
+    api.blockBringForward = api.bringBlockForward;
+    api.blockSendBackward = api.sendBlockBackward;
+
+
+    // aliases for React toolbar
+    api.blockDelete = api.deleteBlock;
 
     // core
     api.clear = () => {
@@ -1197,6 +1596,39 @@ export function installKlonerIframeApi(
     api.blockPadReset = () => {
         if (!selected) return;
         resetBlockPaddingForDevice(selected, activeDevice);
+    };
+
+    // margin (per-device)
+    api.blockMargin = (side: MarginSide = "all", deltaPx: number = 8) => {
+        if (!selected) return;
+
+        const s: MarginSide =
+            side === "top" ||
+                side === "bottom" ||
+                side === "left" ||
+                side === "right"
+                ? side
+                : "all";
+
+        const d = typeof deltaPx === "number" ? deltaPx : 0;
+        if (!d) return;
+
+        adjustBlockMargin(selected, s, d);
+    };
+
+    api.marginMore = () => {
+        if (!selected) return;
+        adjustBlockMargin(selected, "all", 8);
+    };
+
+    api.marginLess = () => {
+        if (!selected) return;
+        adjustBlockMargin(selected, "all", -8);
+    };
+
+    api.blockMarginReset = () => {
+        if (!selected) return;
+        resetBlockMarginForDevice(selected, activeDevice);
     };
 
 
@@ -1411,7 +1843,7 @@ export function installKlonerIframeApi(
         (e) => {
             const t = e.target as HTMLElement;
             const block = t.closest(
-                "section, article, header, footer, main, button, a, div, li, p, h1, h2, h3, h4, h5"
+                "section, article, header, footer, main, button, a, div, li, p, span, h1, h2, h3, h4, h5, h6"
             ) as HTMLElement | null;
 
             if (block) select(block);
@@ -1981,6 +2413,7 @@ export function installKlonerIframeApi(
         }
         if (e.key === "Escape")
             (doc.defaultView as any).__klonerApi?.clear();
+
         if ((key === "backspace" || key === "delete") && selected) {
             const active = doc.activeElement as HTMLElement | null;
             if (
@@ -1989,15 +2422,11 @@ export function installKlonerIframeApi(
                 active?.tagName !== "TEXTAREA"
             ) {
                 e.preventDefault();
-                const parent = selected.parentElement;
-                selected.remove();
-                (doc.defaultView as any).__klonerApi?.clear();
-                parent?.focus?.();
-                saveHistory();
-                notify();
+                (doc.defaultView as any).__klonerApi?.deleteBlock();
             }
         }
     });
+
 
     updateUndoRedoState();
     publishSelection();

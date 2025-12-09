@@ -134,6 +134,7 @@ const RenderCard = memo(
             (a.lastExportedAt || "") === (b.lastExportedAt || "") &&
             (a.siteConfigId || "") === (b.siteConfigId || "") &&
             (a.controllerVersion || "") === (b.controllerVersion || "") &&
+            (a.model || "") === (b.model || "") &&
             // progress
             (a.progressLabel || "") === (b.progressLabel || "") &&
             (a.progressPercent || null) === (b.progressPercent || null) &&
@@ -163,6 +164,7 @@ export type RenderDoc = {
     model?: string | null;
     version?: number;
     controllerVersion?: string | null;
+    mode?: string | null;
     lastExportedAt?: any;
     vercelProjectId?: string | null;
     vercelProjectName?: string | null;
@@ -271,13 +273,16 @@ function RenderCardInner({
     const controllerVersion =
         typeof r.controllerVersion === "string" ? r.controllerVersion : "";
 
+    const model =
+        typeof r.model === "string" ? r.model : "";
+
     const [shareOpen, setShareOpen] = useState(false);
     const [shareRemixable, setShareRemixable] = useState(true);
     const [shareBusy, setShareBusy] = useState(false);
     const [alreadyShared, setAlreadyShared] = useState(false);
     const [checkingShared, setCheckingShared] = useState(false);
     const [shareError, setShareError] = useState<string | null>(null);
-
+    const isDev = process.env.NODE_ENV === "development";
     const [shareProjectName, setShareProjectName] = useState("");
     const hasEditedShareNameRef = useRef(false);
 
@@ -464,13 +469,24 @@ function RenderCardInner({
                 }`}
         >
             {/* controller version badge – top left */}
-            {controllerVersion && (
+            {(controllerVersion && isDev) && (
                 <span
                     className="absolute left-2 top-1 z-30 inline-flex items-center gap-1 rounded-md bg-neutral-900/85 px-2 py-0.5 text-[10px] font-medium text-neutral-50 shadow-sm"
                     title={`Controller version ${controllerVersion}`}
                 >
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                     <span>v{controllerVersion}</span>
+                </span>
+            )}
+
+            {/* controller version badge – top left */}
+            {(controllerVersion && isDev) && (
+                <span
+                    className="absolute left-2 bottom-1 z-30 inline-flex items-center gap-1 rounded-md bg-neutral-900/85 px-2 py-0.5 text-[10px] font-medium text-neutral-50 shadow-sm"
+                    title={`Model ${model}`}
+                >
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                    <span>{model}</span>
                 </span>
             )}
 
@@ -918,11 +934,30 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     onClick: () => void;
     compact?: boolean;
 }) {
-    // Drive everything from the parent `locked` prop.
-    const effectiveLocked = locked;
+    // Local 30s cooldown so the card stays "generating" even if the parent lock flickers.
+    const [cooldownActive, setCooldownActive] = useState(false);
+
+    // When cooldown turns on, schedule it to turn off after 30 seconds.
+    useEffect(() => {
+        if (!cooldownActive) return;
+
+        const timeoutId = setTimeout(() => {
+            setCooldownActive(false);
+        }, 30_000);
+
+        return () => {
+            clearTimeout(timeoutId);
+        };
+    }, [cooldownActive]);
+
+    // Final lock state: either parent says it's locked, or local cooldown is active.
+    const effectiveLocked = locked || cooldownActive;
 
     const handleClick = () => {
         if (effectiveLocked) return;
+        // Start local cooldown immediately so user sees hammer animation
+        // and the button stays disabled ~30s even if parent rerenders.
+        setCooldownActive(true);
         onClick();
     };
 
@@ -1001,6 +1036,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
         </>
     );
 });
+
 
 
 // ---------------------------------------------------------------------
@@ -2162,7 +2198,7 @@ export default function PreviewPage(): JSX.Element {
                 [primaryKey]: true,
             }));
             setErr("");
-            
+
             try {
                 const body: any = { keys: storageKeys.slice(0, 25) }; // respect cap in route
                 if (isHttpUrl(targetUrl)) {
@@ -2791,78 +2827,6 @@ export default function PreviewPage(): JSX.Element {
 
         setRenders((prev) => withArchivedPageIds(prev, activeRenderId, ids));
     };
-
-
-
-    // const rescan = useCallback(
-    //     async () => {
-    //         if (
-    //             !isHttpUrl(targetUrl) ||
-    //             !user ||
-    //             !docData
-    //         )
-    //             return;
-
-    //         if (!canUseScreenshotCredit()) {
-    //             push(
-    //                 "You have used all available screenshot credits for today on this plan.",
-    //                 "warn"
-    //             );
-    //             setShowCreditsPaywall("screenshot");
-    //             return;
-    //         }
-
-    //         if (
-    //             !window.confirm(
-    //                 "Queue a fresh snapshot collection for 10 credits?"
-    //             )
-    //         )
-    //             return;
-
-    //         setRescanning(true);
-    //         setErr("");
-
-    //         try {
-    //             const r = await fetch(
-    //                 "/api/private/generate",
-    //                 {
-    //                     method: "POST",
-    //                     headers: {
-    //                         "content-type": "application/json",
-    //                     },
-    //                     credentials: "include",
-    //                     body: JSON.stringify({ url: targetUrl }),
-    //                 }
-    //             );
-
-    //             if (!r.ok) {
-    //                 const j = (await r
-    //                     .json()
-    //                     .catch(() => ({}))) as any;
-    //                 setErr(
-    //                     j?.error || "Rescan failed."
-    //                 );
-    //                 push("Rescan failed", "err");
-    //             } else {
-    //                 push("Rescan started", "ok");
-    //             }
-    //         } catch (e: any) {
-    //             setErr(
-    //                 e?.message || "Rescan failed."
-    //             );
-    //             push("Rescan failed", "err");
-    //         } finally {
-    //             setRescanning(false);
-    //         }
-    //     },
-    //     [
-    //         targetUrl,
-    //         user,
-    //         docData,
-    //         push,
-    //         canUseScreenshotCredit,
-    //     ]
-    // );
 
     useEffect(() => {
         if (didAutoSelectRef.current) return;

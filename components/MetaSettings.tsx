@@ -30,6 +30,9 @@ export function MetaSettings({
     const savingRef = useRef(false);
     const [justSaved, setJustSaved] = useState(false);
 
+    // AI generation state
+    const [generating, setGenerating] = useState(false);
+
     // local meta copy
     const [draftMeta, setDraftMeta] = useState<MetaWithJsonLd>(meta);
 
@@ -43,6 +46,15 @@ export function MetaSettings({
         setDraftMeta(meta);
         setJsonText(meta.jsonLd ? JSON.stringify(meta.jsonLd, null, 2) : "");
     }, [meta]);
+
+    const isEmptyObject = (val: unknown): boolean =>
+        !!val && typeof val === "object" && Object.keys(val as any).length === 0;
+
+    const isMetaEmpty =
+        !draftMeta ||
+        (!draftMeta.title?.trim() &&
+            !draftMeta.description?.trim() &&
+            (!draftMeta.jsonLd || isEmptyObject(draftMeta.jsonLd)));
 
     const handleMetaChange = (key: keyof MetaWithJsonLd, value: string) => {
         setDraftMeta((prev) => ({ ...prev, [key]: value }));
@@ -87,209 +99,134 @@ export function MetaSettings({
         }
     };
 
-    const uploadFavicon = async (e: ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        e.target.value = "";
+    // Pick the meta block for this page from seoMetaByPage
+    function pickMetaFromSeoMetaByPage(seoMetaByPage: any): MetaWithJsonLd | null {
+        if (!seoMetaByPage || typeof seoMetaByPage !== "object") return null;
 
-        if (!file || !draftId) return;
-        if (!file.type.startsWith("image/")) {
-            alert("Please upload a valid image file for the favicon.");
-            return;
+        // Prefer “single” / “__single__” if present
+        if (seoMetaByPage.single) {
+            return {
+                title: seoMetaByPage.single.title ?? "",
+                description: seoMetaByPage.single.description ?? "",
+                jsonLd: seoMetaByPage.single.jsonLd ?? undefined,
+            };
+        }
+        if (seoMetaByPage.__single__) {
+            return {
+                title: seoMetaByPage.__single__.title ?? "",
+                description: seoMetaByPage.__single__.description ?? "",
+                jsonLd: seoMetaByPage.__single__.jsonLd ?? undefined,
+            };
+        }
+        // Then try homepage route
+        if (seoMetaByPage["/"]) {
+            return {
+                title: seoMetaByPage["/"].title ?? "",
+                description: seoMetaByPage["/"].description ?? "",
+                jsonLd: seoMetaByPage["/"].jsonLd ?? undefined,
+            };
         }
 
-        setUploading(true);
+        const keys = Object.keys(seoMetaByPage);
+        if (!keys.length) return null;
+
+        const k = keys[0];
+        const block = seoMetaByPage[k];
+        if (!block || typeof block !== "object") return null;
+
+        return {
+            title: block.title ?? "",
+            description: block.description ?? "",
+            jsonLd: block.jsonLd ?? undefined,
+        };
+    }
+
+    const handleGenerateMetaClick = async () => {
+        if (!draftId) {
+            alert("Missing renderId for this draft.");
+            return;
+        }
+        if (generating) return;
+
+        setGenerating(true);
         try {
-            const { url } = await uploadFileToUserBlob(file, draftId);
+            const res = await fetch("/api/render-meta", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ renderId: draftId }),
+            });
 
-            const nextMeta: MetaWithJsonLd = {
-                ...draftMeta,
-                faviconUrl: url,
-            };
-
-            setDraftMeta(nextMeta);
-
-            if (onSaveMeta) {
-                await onSaveMeta(nextMeta);
+            if (!res.ok) {
+                const errJson = await res.json().catch(() => null);
+                const msg =
+                    errJson?.error ||
+                    `Failed to generate SEO meta (status ${res.status})`;
+                alert(msg);
+                return;
             }
 
-            alert("Favicon uploaded successfully.");
-        } catch (error) {
-            console.error("Favicon upload failed:", error);
-            alert("Favicon upload failed. See console for details.");
+            const data = await res.json();
+            const metaBlock = pickMetaFromSeoMetaByPage(data?.seoMetaByPage);
+            if (!metaBlock) {
+                alert("SEO meta generation returned no usable data.");
+                return;
+            }
+
+            // Update local state
+            setDraftMeta(metaBlock);
+            setJsonText(
+                metaBlock.jsonLd ? JSON.stringify(metaBlock.jsonLd, null, 2) : ""
+            );
+
+            // Persist immediately via onSaveMeta
+            if (onSaveMeta) {
+                await onSaveMeta(metaBlock);
+                setJustSaved(true);
+                setTimeout(() => setJustSaved(false), 1500);
+            }
+        } catch (err: any) {
+            alert(err?.message || "Failed to generate SEO meta.");
         } finally {
-            setUploading(false);
+            setGenerating(false);
         }
     };
 
-
     return (
-        <div className="space-y-4">
-            <h3 className="text-lg font-bold">SEO &amp; Site Metadata</h3>
-
-            {/* Page title */}
-            <div>
-                <label
-                    htmlFor="meta-title"
-                    className="block text-sm font-semibold text-gray-700"
-                >
-                    Page Title
-                </label>
-                <input
-                    id="meta-title"
-                    name="meta-title"
-                    type="text"
-                    value={draftMeta.title ?? ""}
-                    onChange={(e) => handleMetaChange("title", e.target.value)}
-                    placeholder="E.g. Cookie Gifts & Holiday Boxes"
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-accent focus:ring-accent sm:text-sm p-2 border"
-                    maxLength={60}
-                    autoComplete="off"
-                />
-                <p className="text-md text-gray-500 mt-1">
-                    Used in browser tabs and search results. Max 60 characters.
-                </p>
-            </div>
-
-            {/* Meta description */}
-            <div>
-                <label
-                    htmlFor="meta-description"
-                    className="block text-sm font-semibold text-gray-700"
-                >
-                    Meta Description
-                </label>
-                <textarea
-                    id="meta-description"
-                    name="meta-description"
-                    value={draftMeta.description ?? ""}
-                    onChange={(e) =>
-                        handleMetaChange("description", e.target.value)
-                    }
-                    placeholder="A short, search-friendly summary of this page..."
-                    rows={3}
-                    className="mt-1 min-h-[100px] block w-full rounded-md border-gray-300 shadow-sm focus:border-accent focus:ring-accent sm:text-sm p-2 border"
-                    maxLength={160}
-                    autoComplete="off"
-                />
-                <p className="text-md text-gray-500 mt-1">
-                    Used for search snippets. Max 160 characters.
-                </p>
-            </div>
-
-            {/* OG image URL */}
-            <div>
-                <label
-                    htmlFor="meta-og-image"
-                    className="block text-sm font-semibold text-gray-700"
-                >
-                    Social Share Image URL (OpenGraph)
-                </label>
-                <input
-                    id="meta-og-image"
-                    name="meta-og-image"
-                    type="url"
-                    value={draftMeta.ogImageUrl ?? ""}
-                    onChange={(e) =>
-                        handleMetaChange("ogImageUrl", e.target.value)
-                    }
-                    placeholder="https://example.com/share.png"
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-accent focus:ring-accent sm:text-sm p-2 border"
-                    autoComplete="off"
-                />
-                <p className="text-md text-gray-500 mt-1">
-                    Image shown when this page is shared on social platforms.
-                </p>
-            </div>
-
-            {/* Favicon upload */}
-            <div>
-                <label
-                    htmlFor="meta-favicon"
-                    className="block text-sm font-semibold text-gray-700"
-                >
-                    Favicon
-                </label>
-                <div className="flex items-center space-x-3 mt-1">
-                    {draftMeta.faviconUrl ? (
-                        <span className="inline-block w-6 h-6 border rounded-sm flex items-center justify-center overflow-hidden">
-                            <img
-                                src={draftMeta.faviconUrl}
-                                alt="Favicon preview"
-                                className="object-cover w-full h-full"
-                            />
-                        </span>
-                    ) : (
-                        <span className="text-sm text-gray-500">
-                            No favicon uploaded
+        <div className="flex flex-col gap-4">
+            {isMetaEmpty ? (
+                <div className="flex flex-1 items-center justify-center pt-[150px]">
+                    <div className="inline-flex min-h-[120px] max-w-sm flex-col items-center justify-center rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-center text-xs text-amber-900">
+                        <div className="mb-2 font-medium">
+                            No SEO metadata found for this page.
+                        </div>
+                        <button
+                            type="button"
+                            onClick={handleGenerateMetaClick}
+                            disabled={generating}
+                            className="mt-1 inline-flex items-center rounded-full bg-accent px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
+                        >
+                            {generating ? "Generating meta…" : "Generate Meta with AI"}
+                        </button>
+                    </div>
+                </div>
+            ) : (
+                <div className="mt-2 flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={handleMetaSaveClick}
+                        disabled={saving}
+                        className="inline-flex items-center rounded-full bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
+                    >
+                        {saving ? "Saving…" : "Save meta"}
+                    </button>
+                    {justSaved && (
+                        <span className="text-[11px] text-emerald-600">
+                            Saved
                         </span>
                     )}
-                    <label
-                        className={`cursor-pointer inline-flex items-center px-3 py-1 border border-transparent text-sm font-semibold rounded-md shadow-sm text-white ${uploading
-                            ? "bg-gray-400"
-                            : "bg-orange-600 hover:bg-orange-700"
-                            } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent`}
-                    >
-                        {uploading ? "Uploading..." : "Upload Favicon"}
-                        <input
-                            id="meta-favicon"
-                            name="meta-favicon"
-                            type="file"
-                            accept="image/*"
-                            onChange={uploadFavicon}
-                            disabled={uploading}
-                            className="sr-only"
-                        />
-                    </label>
                 </div>
-            </div>
-
-            {/* JSON-LD editor */}
-            <div>
-                <label
-                    htmlFor="meta-jsonld"
-                    className="block text-sm font-semibold text-gray-700"
-                >
-                    JSON-LD (advanced)
-                </label>
-                <textarea
-                    id="meta-jsonld"
-                    name="meta-jsonld"
-                    value={jsonText}
-                    onChange={(e) => setJsonText(e.target.value)}
-                    placeholder={`{
-  "@context": "https://schema.org",
-  "@type": "WebPage",
-  "name": "The Basic Website — Sample Brand",
-  "url": "https://example.com/"
-}`}
-                    rows={10}
-                    className="mt-1 block w-full rounded-md border-gray-300 font-mono text-md leading-5 shadow-sm focus:border-accent focus:ring-accent p-2 border"
-                    spellCheck={false}
-                />
-                <p className="text-md text-gray-500 mt-1">
-                    Must be valid JSON. This content will be rendered inside a{" "}
-                    {`<script type="application/ld+json">`} tag for this page.
-                </p>
-            </div>
-
-            {/* Save meta button with debounce */}
-            <button
-                type="button"
-                onClick={handleMetaSaveClick}
-                disabled={saving}
-                className={`inline-flex items-center rounded-md px-3 py-2 text-sm font-semibold transition ${saving
-                    ? "bg-accent/50 text-white cursor-not-allowed"
-                    : justSaved
-                        ? "bg-accent/50 text-white"
-                        : "bg-accent text-white hover:brightness-95"
-                    }`}
-            >
-                {saving
-                    ? "Saving..."
-                    : justSaved
-                        ? "Saved Changes"
-                        : "Save Changes"}
-            </button>
+            )}
         </div>
     );
 }
+

@@ -4,7 +4,7 @@ import { callBackend } from "@/src/lib/callBackend";
 import { verifySession } from "../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { getAuthoritativeUserTier } from "../../_lib/userTier";
-import { consumeUserCredit } from "../../_lib/credits-server";
+import { peekUserCredit, consumeUserCredit } from "../../_lib/credits-server";
 import type { UserTier } from "@/src/lib/credits";
 
 export const runtime = "nodejs";
@@ -90,6 +90,34 @@ export async function POST(req: NextRequest) {
                             "Unable to determine subscription tier. Try again shortly.",
                     },
                     { status: 500 }
+                );
+            }
+
+            // HARD GATE: do not render if out of preview credits
+            try {
+                const peek = await peekUserCredit(decoded.uid, tier, "preview");
+
+                // Block when:
+                // - peek.ok is false (we treat that as "cannot safely allow")
+                // - remaining is a concrete number and < 1 (no full preview run available)
+                if (!peek.ok || (peek.remaining !== null && peek.remaining < 1)) {
+                    return NextResponse.json(
+                        {
+                            error: "Monthly preview limit reached for your plan.",
+                            remaining: peek.remaining,
+                            kind: "preview",
+                        },
+                        { status: 429 }
+                    );
+                }
+            } catch (e: any) {
+                return NextResponse.json(
+                    {
+                        error:
+                            e?.message ||
+                            "Unable to check preview credits. Try again shortly.",
+                    },
+                    { status: 503 }
                 );
             }
 
@@ -226,7 +254,7 @@ export async function POST(req: NextRequest) {
                 // Burn ONE preview credit only on real success (200 from backend).
                 if (r.upstream.ok && status === 200) {
                     try {
-                await consumeUserCredit(decoded.uid, tier, "preview");
+                        await consumeUserCredit(decoded.uid, tier, "preview");
                     } catch (err: any) {
                         console.warn("consumeUserCredit failed (preview)", {
                             uid: decoded.uid,

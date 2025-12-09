@@ -1,23 +1,19 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
-    Square,
-    Copy,
     Trash2,
     ArrowUp,
     ArrowDown,
     ArrowLeft,
     ArrowRight,
-    Plus,
-    Minus,
     Type as TypeIcon,
     Link2,
     Image as ImageIcon,
-    Layers as LayersIcon,
     Undo2,
     Redo2,
     RotateCcw,
+    Layers,
 } from "lucide-react";
 import type { SelectionMeta } from "@/components/PreviewEditor";
 
@@ -28,366 +24,444 @@ type FloatingBlockToolbarProps = {
     uiScale: number;
 };
 
+type ToolbarPos = { top: number; left: number } | null;
+
 function BlockToolbar({
     style,
     callApi,
+    selectionMeta,
+    onDragStart,
 }: {
     style: React.CSSProperties;
     callApi: (method: string, ...args: any[]) => void;
+    selectionMeta: SelectionMeta;
+    onDragStart: (e: React.MouseEvent<HTMLDivElement>) => void;
 }) {
+    const tagName =
+        selectionMeta.tagName?.toUpperCase?.() || (selectionMeta as any).tagName || "DIV";
+
     return (
         <div
             style={style}
-            className="flex items-center gap-1.5 rounded-full border border-slate-300 bg-white/95 px-2 py-1 text-[13px] text-slate-800 shadow-xl"
+            className="cursor-move flex h-[560px] w-[380px] p-4 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white text-[12px] text-neutral-800 shadow-2xl"
+            onMouseDown={onDragStart}
         >
-            {/* Selection / core actions */}
-            <div className="flex items-center gap-0.5">
-                {/* Whole page select */}
+            {/* grip */}
+            <div className="mr-1 flex flex-col gap-0.5">
+                <span className="h-0.5 w-4 rounded-full bg-neutral-300" />
+                <span className="h-0.5 w-4 rounded-full bg-neutral-300" />
+            </div>
+            {/* Tabs */}
+            {/* <div className="flex items-center border-b border-neutral-200 bg-neutral-50 px-3.5 py-1.5 text-[11px] font-semibold">
+                <button className="px-2 py-1 rounded-full bg-accent px-3.5 py-1.5 text-white shadow-sm">
+                    Edit
+                </button>
+                <button className="ml-2 rounded-full px-3.5 py-1.5 text-neutral-600 hover:bg-neutral-100">
+                    Prompt
+                </button>
+                <button className="ml-auto rounded-full px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] text-neutral-500 hover:bg-neutral-100">
+                    Per-device settings
+                </button>
                 <button
                     type="button"
-                    onClick={() => callApi("selectAll")}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Select entire page"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 shadow-sm hover:bg-neutral-100 pb-1"
+                    title="Deselect block"
+                    onClick={() => callApi("clear")}
                 >
-                    <Square className="h-5 w-5" />
-                    <span className="sr-only">Select entire page</span>
+                    <span className="text-[20px] leading-none">×</span>
                 </button>
+            </div> */}
+            {/* Header – drag handle */}
+            <div className="flex items-center justify-between border-b border-neutral-200 px-3.5 py-2.5 bg-neutral-50">
+                <div className="flex items-center gap-2">
+                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-white">
+                        {tagName.slice(0, 1)}
+                    </span>
+                    <div className="flex flex-col">
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                            Selected block
+                        </span>
+                        <span className="text-[14px] font-semibold text-neutral-500">
+                            &lt;{tagName.toLowerCase()}&gt;
+                        </span>
+                    </div>
+                </div>
+            </div>
 
-                {/* Duplicate block */}
-                <button
-                    type="button"
-                    onClick={() => callApi("blockDuplicate")}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Duplicate block"
-                >
-                    <Copy className="h-5 w-5" />
-                    <span className="sr-only">Duplicate block</span>
-                </button>
-
-                {/* Delete block */}
+            {/* Delete block */}
+            <div>
+                <div className="my-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                    Danger
+                </div>
                 <button
                     type="button"
                     onClick={() => callApi("blockDelete")}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-red-50 text-red-600 hover:bg-red-100"
-                    title="Delete block"
+                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-[11px] text-rose-700 hover:bg-rose-100"
                 >
-                    <Trash2 className="h-5 w-5" />
-                    <span className="sr-only">Delete block</span>
-                </button>
-            </div>
-
-            {/* Layout movement: up / down / left / right */}
-            <div className="ml-1 flex items-center gap-0.5 border-l border-slate-200 pl-1">
-                <button
-                    type="button"
-                    onClick={() => callApi("blockMoveUp")}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Move block up"
-                >
-                    <ArrowUp className="h-5 w-5" />
-                    <span className="sr-only">Move block up</span>
-                </button>
-                <button
-                    type="button"
-                    onClick={() => callApi("blockMoveDown")}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Move block down"
-                >
-                    <ArrowDown className="h-5 w-5" />
-                    <span className="sr-only">Move block down</span>
-                </button>
-                <button
-                    type="button"
-                    onClick={() => callApi("blockMoveLeft")}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Move block left"
-                >
-                    <ArrowLeft className="h-5 w-5" />
-                    <span className="sr-only">Move block left</span>
-                </button>
-                <button
-                    type="button"
-                    onClick={() => callApi("blockMoveRight")}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Move block right"
-                >
-                    <ArrowRight className="h-5 w-5" />
-                    <span className="sr-only">Move block right</span>
-                </button>
-            </div>
-
-            {/* Padding: Pad | arrows | − / + (all sides) */}
-            <div className="ml-1 flex items-center gap-0.5 border-l border-slate-200 pl-1">
-                <span className="rounded-full bg-slate-900/90 px-1 text-[12px] font-semibold uppercase tracking-wide text-slate-100">
-                    Pad
-                </span>
-
-                {/* Top padding + */}
-                <button
-                    type="button"
-                    onClick={() => callApi("blockPad", "top", 8)}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Increase top padding"
-                >
-                    <ArrowUp className="h-5 w-5" />
-                    <span className="sr-only">Increase top padding</span>
-                </button>
-
-                {/* Bottom padding + */}
-                <button
-                    type="button"
-                    onClick={() => callApi("blockPad", "bottom", 8)}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Increase bottom padding"
-                >
-                    <ArrowDown className="h-5 w-5" />
-                    <span className="sr-only">Increase bottom padding</span>
-                </button>
-
-                {/* Left padding + */}
-                <button
-                    type="button"
-                    onClick={() => callApi("blockPad", "left", 8)}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Increase left padding"
-                >
-                    <ArrowLeft className="h-5 w-5" />
-                    <span className="sr-only">Increase left padding</span>
-                </button>
-
-                {/* Right padding + */}
-                <button
-                    type="button"
-                    onClick={() => callApi("blockPad", "right", 8)}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Increase right padding"
-                >
-                    <ArrowRight className="h-5 w-5" />
-                    <span className="sr-only">Increase right padding</span>
-                </button>
-
-                {/* All sides − */}
-                <button
-                    type="button"
-                    onClick={() => callApi("blockPad", "all", -8)}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Reduce padding on all sides"
-                >
-                    <Minus className="h-5 w-5" />
-                    <span className="sr-only">Reduce padding on all sides</span>
-                </button>
-
-                {/* All sides + */}
-                <button
-                    type="button"
-                    onClick={() => callApi("blockPad", "all", 8)}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Increase padding on all sides"
-                >
-                    <Plus className="h-5 w-5" />
-                    <span className="sr-only">Increase padding on all sides</span>
-                </button>
-
-                {/* Reset padding (current device only) */}
-                <button
-                    type="button"
-                    onClick={() => { callApi("blockPadReset") }}
-                    className="ml-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Reset padding for this device"
-                >
-                    <RotateCcw className="h-4 w-4" />
-                    <span className="sr-only">Reset padding for this device</span>
+                    <Trash2 className="h-3.5 w-3.5" />
+                    <span>Delete block</span>
                 </button>
             </div>
 
 
-            {/* Block size: Size | − / + */}
-            <div className="ml-1 flex items-center gap-0.5 border-l border-slate-200 pl-1">
-                <span className="rounded-full bg-slate-900/90 px-1 text-[12px] font-semibold uppercase tracking-wide text-slate-100">
-                    Size
-                </span>
-                <button
-                    type="button"
-                    onClick={() => callApi("blockShrink")}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Shrink block"
-                >
-                    <Minus className="h-5 w-5" />
-                    <span className="sr-only">Shrink block</span>
-                </button>
-                <button
-                    type="button"
-                    onClick={() => callApi("blockGrow")}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Grow block"
-                >
-                    <Plus className="h-5 w-5" />
-                    <span className="sr-only">Grow block</span>
-                </button>
-            </div>
+            {/* Body sections */}
+            <div className="mt-2 flex-1 space-y-4 overflow-y-auto px-3.5 py-3.5 text-[12px]">
+                {/* Layout */}
+                <div>
+                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                        Layout
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                        <button
+                            type="button"
+                            onClick={() => callApi("blockMoveUp")}
+                            className="flex h-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                        >
+                            <ArrowUp className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => callApi("blockMoveDown")}
+                            className="flex h-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                        >
+                            <ArrowDown className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => callApi("blockMoveLeft")}
+                            className="flex h-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                        >
+                            <ArrowLeft className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => callApi("blockMoveRight")}
+                            className="flex h-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                        >
+                            <ArrowRight className="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+                </div>
 
-            {/* Border radius: Rad | − / + / reset (per-device) */}
-            <div className="ml-1 flex items-center gap-0.5 border-l border-slate-200 pl-1">
-                <span className="rounded-full bg-slate-900/90 px-1 text-[12px] font-semibold uppercase tracking-wide text-slate-100">
-                    Rad
-                </span>
-                <button
-                    type="button"
-                    onClick={() => callApi("blockRadius", -4)}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Reduce border radius"
-                >
-                    <Minus className="h-5 w-5" />
-                    <span className="sr-only">Reduce border radius</span>
-                </button>
-                <button
-                    type="button"
-                    onClick={() => callApi("blockRadius", 4)}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Increase border radius"
-                >
-                    <Plus className="h-5 w-5" />
-                    <span className="sr-only">Increase border radius</span>
-                </button>
-                <button
-                    type="button"
-                    onClick={() => callApi("blockRadiusReset")}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Reset border radius for this device"
-                >
-                    <RotateCcw className="h-4 w-4" />
-                    <span className="sr-only">Reset border radius for this device</span>
-                </button>
-            </div>
+                {/* Padding */}
+                <div>
+                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                        Padding
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                        <button
+                            type="button"
+                            onClick={() => callApi("blockPad", "top", 8)}
+                            className="flex h-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                        >
+                            <ArrowUp className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => callApi("blockPad", "bottom", 8)}
+                            className="flex h-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                        >
+                            <ArrowDown className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => callApi("blockPad", "left", 8)}
+                            className="flex h-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                        >
+                            <ArrowLeft className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => callApi("blockPad", "right", 8)}
+                            className="flex h-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                        >
+                            <ArrowRight className="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+                    <div className="mt-1 flex items-center gap-1.5">
+                        <button
+                            type="button"
+                            onClick={() => callApi("blockPad", "all", -8)}
+                            className="flex-1 rounded-md border border-neutral-200 bg-white px-2 py-1 text-[11px] hover:bg-neutral-50"
+                        >
+                            Less
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => callApi("blockPad", "all", 8)}
+                            className="flex-1 rounded-md border border-neutral-200 bg-white px-2 py-1 text-[11px] hover:bg-neutral-50"
+                        >
+                            More
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => callApi("blockPadReset")}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                            title="Reset padding for this device"
+                        >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+                </div>
 
 
-            {/* Text / link helpers: Txt | + , Link */}
-            <div className="ml-1 flex items-center gap-0.5 border-l border-slate-200 pl-1">
-                <span className="rounded-full bg-slate-900/90 px-1 text-[12px] font-semibold uppercase tracking-wide text-slate-100">
-                    Txt
-                </span>
-                <button
-                    type="button"
-                    onClick={() => callApi("textboxAdd")}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Add overlay text box"
-                >
-                    <TypeIcon className="h-5 w-5" />
-                    <span className="sr-only">Add text box</span>
-                </button>
-                <button
-                    type="button"
-                    onClick={() => callApi("linkEdit")}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Edit link"
-                >
-                    <Link2 className="h-5 w-5" />
-                    <span className="sr-only">Edit link</span>
-                </button>
-            </div>
+                {/* Margin */}
+                <div>
+                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                        Margin
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                        <button
+                            type="button"
+                            onClick={() => callApi("blockMargin", "top", 8)}
+                            className="flex h-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                        >
+                            <ArrowUp className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => callApi("blockMargin", "bottom", 8)}
+                            className="flex h-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                        >
+                            <ArrowDown className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => callApi("blockMargin", "left", 8)}
+                            className="flex h-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                        >
+                            <ArrowLeft className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => callApi("blockMargin", "right", 8)}
+                            className="flex h-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                        >
+                            <ArrowRight className="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+                    <div className="mt-1 flex items-center gap-1.5">
+                        <button
+                            type="button"
+                            onClick={() => callApi("blockMargin", "all", -8)}
+                            className="flex-1 rounded-md border border-neutral-200 bg-white px-2 py-1 text-[11px] hover:bg-neutral-50"
+                        >
+                            Less
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => callApi("blockMargin", "all", 8)}
+                            className="flex-1 rounded-md border border-neutral-200 bg-white px-2 py-1 text-[11px] hover:bg-neutral-50"
+                        >
+                            More
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => callApi("blockMarginReset")}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                            title="Reset margin for this device"
+                        >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+                </div>
 
-            {/* Image group: Img | + / BG / × / − / + */}
-            <div className="ml-1 flex items-center gap-0.5 border-l border-slate-200 pl-1">
-                <span className="rounded-full bg-slate-900/90 px-1 text-[12px] font-semibold uppercase tracking-wide text-slate-100">
-                    Img
-                </span>
 
-                {/* Insert image */}
-                <button
-                    type="button"
-                    onClick={() => callApi("imgInsert")}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Insert image"
-                >
-                    <ImageIcon className="h-5 w-5" />
-                    <span className="sr-only">Insert image</span>
-                </button>
 
-                {/* Background image */}
-                <button
-                    type="button"
-                    onClick={() => callApi("imgBg")}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Set block background image"
-                >
-                    <LayersIcon className="h-5 w-5" />
-                    <span className="sr-only">Set background image</span>
-                </button>
+                {/* Size */}
+                <div>
+                    <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                        Size
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <button
+                            type="button"
+                            onClick={() => callApi("blockShrink")}
+                            className="flex-1 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] hover:bg-neutral-50"
+                        >
+                            Shrink
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => callApi("blockGrow")}
+                            className="flex-1 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] hover:bg-neutral-50"
+                        >
+                            Grow
+                        </button>
+                    </div>
+                </div>
 
-                {/* Delete image */}
-                <button
-                    type="button"
-                    onClick={() => callApi("imgDelete")}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-red-50 text-red-600 hover:bg-red-100"
-                    title="Delete image"
-                >
-                    <Trash2 className="h-5 w-5" />
-                    <span className="sr-only">Delete image</span>
-                </button>
+                {/* Corners */}
+                <div>
+                    <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                        Corners
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <button
+                            type="button"
+                            onClick={() => callApi("blockRadius", -4)}
+                            className="flex-1 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] hover:bg-neutral-50"
+                        >
+                            Straighter
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => callApi("blockRadius", 4)}
+                            className="flex-1 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] hover:bg-neutral-50"
+                        >
+                            Rounder
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => callApi("blockRadiusReset")}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                            title="Reset radius for this device"
+                        >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+                </div>
 
-                {/* Image size − / + */}
-                <button
-                    type="button"
-                    onClick={() => callApi("imgShrink")}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Shrink image"
-                >
-                    <Minus className="h-5 w-5" />
-                    <span className="sr-only">Shrink image</span>
-                </button>
-                <button
-                    type="button"
-                    onClick={() => callApi("imgGrow")}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Grow image"
-                >
-                    <Plus className="h-5 w-5" />
-                    <span className="sr-only">Grow image</span>
-                </button>
-            </div>
+                {/* Layering */}
+                <div>
+                    <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                        Layering
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <button
+                            type="button"
+                            onClick={() => callApi("bringBlockForward")}
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] hover:bg-neutral-50"
+                        >
+                            <ArrowUp className="h-3.5 w-3.5" />
+                            <span>Bring forward</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => callApi("sendBlockBackward")}
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] hover:bg-neutral-50"
+                        >
+                            <ArrowDown className="h-3.5 w-3.5" />
+                            <span>Send backward</span>
+                        </button>
+                    </div>
+                </div>
 
-            {/* Image z-index layering: Fwd / Back */}
-            <div className="ml-1 flex items-center gap-0.5 border-l border-slate-200 pl-1">
-                <button
-                    type="button"
-                    onClick={() => callApi("bringImageForward")}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Bring image forward"
-                >
-                    <ArrowUp className="h-5 w-5" />
-                    <span className="sr-only">Bring image forward</span>
-                </button>
-                <button
-                    type="button"
-                    onClick={() => callApi("sendImageBackward")}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Send image backward"
-                >
-                    <ArrowDown className="h-5 w-5" />
-                    <span className="sr-only">Send image backward</span>
-                </button>
-            </div>
 
-            {/* History: undo / redo */}
-            <div className="ml-1 flex items-center gap-0.5 border-l border-slate-200 pl-1">
-                <button
-                    type="button"
-                    onClick={() => callApi("historyUndo")}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Undo"
-                >
-                    <Undo2 className="h-5 w-5" />
-                    <span className="sr-only">Undo</span>
-                </button>
-                <button
-                    type="button"
-                    onClick={() => callApi("historyRedo")}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100"
-                    title="Redo"
-                >
-                    <Redo2 className="h-5 w-5" />
-                    <span className="sr-only">Redo</span>
-                </button>
+                {/* Text & links */}
+                <div>
+                    <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                        Text & links
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <button
+                            type="button"
+                            onClick={() => callApi("textboxAdd")}
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] hover:bg-neutral-50"
+                        >
+                            <TypeIcon className="h-3.5 w-3.5" />
+                            <span>Add text</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => callApi("linkEdit")}
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] hover:bg-neutral-50"
+                        >
+                            <Link2 className="h-3.5 w-3.5" />
+                            <span>Edit link</span>
+                        </button>
+                    </div>
+                </div>
+
+                {/* Images */}
+                <div>
+                    <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                        Images
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <button
+                            type="button"
+                            onClick={() => callApi("imgInsert")}
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] hover:bg-neutral-50"
+                        >
+                            <ImageIcon className="h-3.5 w-3.5" />
+                            <span>Add</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => callApi("imgBg")}
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] hover:bg-neutral-50"
+                        >
+                            <Layers className="h-3.5 w-3.5" />
+                            <span>As background</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => callApi("imgDelete")}
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-[11px] text-rose-700 hover:bg-rose-100"
+                        >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            <span>Remove</span>
+                        </button>
+                    </div>
+                    <div className="mt-2 flex items-center gap-1.5">
+                        <button
+                            type="button"
+                            onClick={() => callApi("imgShrink")}
+                            className="flex-1 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] hover:bg-neutral-50"
+                        >
+                            Smaller
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => callApi("imgGrow")}
+                            className="flex-1 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] hover:bg-neutral-50"
+                        >
+                            Larger
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => callApi("bringImageForward")}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                            title="Bring forward"
+                        >
+                            <ArrowUp className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => callApi("sendImageBackward")}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                            title="Send backward"
+                        >
+                            <ArrowDown className="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+                </div>
+
+                {/* History */}
+                <div>
+                    <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                        History
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <button
+                            type="button"
+                            onClick={() => callApi("historyUndo")}
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] hover:bg-neutral-50"
+                        >
+                            <Undo2 className="h-3.5 w-3.5" />
+                            <span>Undo</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => callApi("historyRedo")}
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] hover:bg-neutral-50"
+                        >
+                            <Redo2 className="h-3.5 w-3.5" />
+                            <span>Redo</span>
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     );
@@ -397,52 +471,97 @@ export function FloatingBlockToolbar({
     iframeRef,
     wrapperRef,
     selectionMeta,
-    uiScale,
 }: FloatingBlockToolbarProps) {
-    if (!selectionMeta || !selectionMeta.has || !(selectionMeta as any).rect) return null;
+    const [toolbarPos, setToolbarPos] = useState<ToolbarPos>(null);
+    const toolbarPosRef = useRef<ToolbarPos>(null);
 
-    const iframeEl = iframeRef.current;
-    const wrapperEl = wrapperRef.current;
-    if (!iframeEl || !wrapperEl) return null;
+    // new: track dragging so we can temporarily disable iframe pointer events
+    const [isDraggingToolbar, setIsDraggingToolbar] = useState(false);
+    const iframePrevPointerEventsRef = useRef<string | null>(null);
 
-    const r = (selectionMeta as any).rect as {
-        top: number;
-        left: number;
-        width: number;
-        height: number;
-        bottom: number;
-    };
-    const scale = uiScale || 1;
+    useEffect(() => {
+        toolbarPosRef.current = toolbarPos;
+    }, [toolbarPos]);
 
-    const iframeBox = iframeEl.getBoundingClientRect();
-    const wrapperBox = wrapperEl.getBoundingClientRect();
+    // Disable iframe pointer events while dragging toolbar so mouseup can't be swallowed
+    useEffect(() => {
+        const iframe = iframeRef.current;
+        if (!iframe) return;
 
-    // position based on block bottom instead of top
-    const blockViewportBottom = iframeBox.top + r.bottom * scale;
-    const blockViewportLeft = iframeBox.left + r.left * scale;
-    const blockViewportCenterX = blockViewportLeft + (r.width * scale) / 2;
+        if (isDraggingToolbar) {
+            if (iframePrevPointerEventsRef.current === null) {
+                iframePrevPointerEventsRef.current = iframe.style.pointerEvents;
+            }
+            iframe.style.pointerEvents = "none";
+        } else {
+            if (iframePrevPointerEventsRef.current !== null) {
+                iframe.style.pointerEvents = iframePrevPointerEventsRef.current;
+                iframePrevPointerEventsRef.current = null;
+            }
+        }
+    }, [isDraggingToolbar, iframeRef]);
 
-    // toolbar 8px below the block
-    let top =
-        blockViewportBottom - wrapperBox.top + wrapperEl.scrollTop + 8;
-    let left =
-        blockViewportCenterX - wrapperBox.left + wrapperEl.scrollLeft;
+    // Dock to the right of iframe on first selection
+    useEffect(() => {
+        const iframe = iframeRef.current;
+        const wrapper = wrapperRef.current;
+        if (!selectionMeta?.has || !iframe || !wrapper) return;
 
-    const PADDING = 8;
-    const maxLeft = wrapperEl.scrollWidth - PADDING;
-    const minLeft = PADDING;
+        if (toolbarPosRef.current) return;
 
-    if (left < minLeft) left = minLeft;
-    if (left > maxLeft) left = maxLeft;
+        const iframeBox = iframe.getBoundingClientRect();
+        const wrapperBox = wrapper.getBoundingClientRect();
 
-    const style: React.CSSProperties = {
-        position: "absolute",
-        top,
-        left,
-        transform: "translateX(-50%)",
-        zIndex: 120,
-        pointerEvents: "auto",
-    };
+        const panelWidth = 380;
+        const panelHeight = 560;
+        const padding = 16;
+
+        const rawTop =
+            wrapper.scrollTop + (iframeBox.top - wrapperBox.top) + padding;
+        const rawLeft =
+            wrapper.scrollLeft + (iframeBox.right - wrapperBox.left) + padding;
+
+        const minTop = padding;
+        const maxTop = wrapper.scrollHeight - panelHeight - padding;
+        const minLeft = padding;
+        const maxLeft = wrapper.scrollWidth - panelWidth - padding;
+
+        const top =
+            maxTop <= minTop
+                ? Math.max(minTop, rawTop)
+                : Math.max(minTop, Math.min(maxTop, rawTop));
+
+        const left =
+            maxLeft <= minLeft
+                ? Math.max(minLeft, rawLeft)
+                : Math.max(minLeft, Math.min(maxLeft, rawLeft));
+
+        setToolbarPos({ top, left });
+    }, [selectionMeta?.has, iframeRef, wrapperRef]);
+
+    if (!selectionMeta || !selectionMeta.has || !(selectionMeta as any).rect) {
+        return null;
+    }
+
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return null;
+
+    const baseStyle: React.CSSProperties =
+        toolbarPos != null
+            ? {
+                position: "absolute",
+                top: toolbarPos.top,
+                left: toolbarPos.left,
+                zIndex: 120,
+                pointerEvents: "auto",
+            }
+            : {
+                position: "absolute",
+                top: wrapper.scrollTop + 80,
+                left: wrapper.scrollLeft + wrapper.clientWidth - 380 - 16,
+                zIndex: 120,
+                pointerEvents: "auto",
+            };
 
     function callApi(method: string, ...args: any[]) {
         const win = iframeRef.current?.contentWindow as any;
@@ -451,22 +570,77 @@ export function FloatingBlockToolbar({
         try {
             api[method](...args);
         } catch {
-            // ignore
+            // swallow
         }
     }
 
-    return (
-        <div style={style} className="flex flex-col items-center gap-1.5">
-            <BlockToolbar style={{}} callApi={callApi} />
+    // Drag handler
+    const handleDragStart = (e: React.MouseEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        const wrapperEl = wrapperRef.current;
+        if (!wrapperEl) return;
 
-            {/* Explicit close / deselect button under toolbar */}
-            <button
-                type="button"
-                onClick={() => callApi("clear")}
-                className="inline-flex items-center justify-center rounded-full bg-white px-3 py-1 text-[12px] font-semibold tracking-wide text-neutral-800 shadow-lg"
-            >
-                Close Toolbar
-            </button>
+        const wrapper = wrapperEl;
+
+        const startX = e.clientX;
+        const startY = e.clientY;
+
+        const start = toolbarPosRef.current || {
+            top: wrapper.scrollTop + 80,
+            left: wrapper.scrollLeft + wrapper.clientWidth - 380 - 16,
+        };
+
+        const padding = 8;
+        const panelWidth = 380;
+        const panelHeight = 560;
+
+        setIsDraggingToolbar(true);
+
+        function onMove(ev: MouseEvent) {
+            const dx = ev.clientX - startX;
+            const dy = ev.clientY - startY;
+
+            let nextTop = start.top + dy;
+            let nextLeft = start.left + dx;
+
+            const minTop = padding;
+            const maxTop = wrapper.scrollHeight - panelHeight - padding;
+            const minLeft = padding;
+            const maxLeft = wrapper.scrollWidth - panelWidth - padding;
+
+            if (maxTop <= minTop) {
+                nextTop = Math.max(minTop, nextTop);
+            } else {
+                nextTop = Math.max(minTop, Math.min(maxTop, nextTop));
+            }
+
+            if (maxLeft <= minLeft) {
+                nextLeft = Math.max(minLeft, nextLeft);
+            } else {
+                nextLeft = Math.max(minLeft, Math.min(maxLeft, nextLeft));
+            }
+
+            setToolbarPos({ top: nextTop, left: nextLeft });
+        }
+
+        function onUp() {
+            window.removeEventListener("mousemove", onMove);
+            window.removeEventListener("mouseup", onUp);
+            setIsDraggingToolbar(false);
+        }
+
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+    };
+
+    return (
+        <div style={baseStyle}>
+            <BlockToolbar
+                style={{}}
+                callApi={callApi}
+                selectionMeta={selectionMeta}
+                onDragStart={handleDragStart}
+            />
         </div>
     );
 }

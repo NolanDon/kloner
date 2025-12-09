@@ -63,13 +63,13 @@ export async function POST(req: NextRequest) {
                 );
             }
 
-            // Hard gate: do not even hit Fly if out of previews
+            // Hard gate: do not even hit Fly if out of snapshot
             try {
-                const peek = await peekUserCredit(decoded.uid, tier, "preview");
+                const peek = await peekUserCredit(decoded.uid, tier, "snapshot");
                 if (!peek.ok || (peek.remaining !== null && peek.remaining <= 0)) {
                     return NextResponse.json(
                         {
-                            error: "Monthly preview limit reached for your plan.",
+                            error: "Monthly snapshot limit reached for your plan.",
                             remaining: peek.remaining,
                         },
                         { status: 429 }
@@ -155,7 +155,6 @@ export async function POST(req: NextRequest) {
                 // Heavy work succeeded → burn one credit
                 try {
                     // NOTE: currently charging "snapshot" credits for this endpoint.
-                    // If you want it to use "preview", change the third arg accordingly.
                     await consumeUserCredit(decoded.uid, tier, "snapshot");
                 } catch {
                     // If this fails you effectively gave a free run; acceptable.

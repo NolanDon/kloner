@@ -3,7 +3,7 @@
 
 import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 import { useEffect, useMemo, useRef, useState, useCallback, ChangeEvent } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useDragControls } from "framer-motion";
 
 export type Device = "desktop" | "tablet" | "mobile";
 export type ViewMode = "code" | "preview" | "screenshot";
@@ -647,7 +647,7 @@ import { db } from "@/lib/firebase"; // or wherever your db is
 import type { User as FirebaseUser } from "firebase/auth";
 import { RenderDoc } from "@/app/dashboard/view/page";
 import { useAuth } from "@/src/hooks/useAuth";
-import { Camera, Code2, Eye, EyeOff, FileText, Images, Loader2, Maximize2, Minimize2, Monitor, Palette, Redo2, Rocket, RotateCcw, RotateCw, Smartphone, Tablet, Undo2 } from "lucide-react";
+import { Camera, Code2, Eye, EyeOff, FileText, Images, Loader2, Maximize2, MessageSquare, Minimize2, Monitor, Palette, Redo2, Rocket, RotateCcw, RotateCw, Smartphone, Tablet, Undo2 } from "lucide-react";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { sanitizeImageName } from "./helpers";
 import AiEditPanel from "./editor/AiEditPanel";
@@ -656,6 +656,7 @@ import { injectEditableOverlay } from "@/src/lib/klonerIframeRuntime";
 import { MetaSettings, UploadedAsset } from "./MetaSettings";
 import { FloatingBlockToolbar } from "@/src/lib/floatingToolbar";
 import { AiImageLibraryPanel } from "./AiImageLibraryPanel";
+import MiniToolbar from "@/src/lib/miniToolbar";
 
 const MAX_HISTORY_SNAPSHOTS = 40;
 
@@ -991,7 +992,7 @@ type DerivedTheme = {
     fontFamilies: string[];
 };
 
-type SidePanelMode = "style" | "meta" | "ai-library";
+type SidePanelMode = "style" | "meta" | "ai-library" | "code";
 
 
 export type SeoMetaByPage = Record<string, SeoMeta>;
@@ -1131,8 +1132,9 @@ export default function PreviewEditor({
     const [closePrompt, setClosePrompt] = useState(false);
     const [exportPrompt, setExportPrompt] = useState(false);
     const [controlsCollapsed, setControlsCollapsed] = useState<boolean>(false);
-    const [sidePanelMode, setSidePanelMode] = useState<SidePanelMode>("style");
-    const [htmlDraft, setHtmlDraft] = useState<string>("");
+    const [sidePanelMode, setSidePanelMode] = useState<
+        "style" | "meta" | "ai-library" | "revision-chat"
+    >("style"); const [htmlDraft, setHtmlDraft] = useState<string>("");
     const [previewHtml, setPreviewHtml] = useState<string>("");
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -1146,6 +1148,54 @@ export default function PreviewEditor({
     const [saveNudgeArmed, setSaveNudgeArmed] = useState(false);
     const [history, setHistory] = useState<DraftSnapshot[]>([]);
     const [aiHistory, setAiHistory] = useState<AiEditSuggestion[]>([]);
+
+    // dragging iframe
+    const previewDragControls = useDragControls();
+
+    const [isDraggingPreview, setIsDraggingPreview] = useState(false);
+
+    useEffect(() => {
+        const handlePointerUp = () => {
+            // Any pointer release ends drag and re-enables iframe events
+            setIsDraggingPreview(false);
+        };
+
+        window.addEventListener("pointerup", handlePointerUp);
+        window.addEventListener("pointercancel", handlePointerUp);
+
+        return () => {
+            window.removeEventListener("pointerup", handlePointerUp);
+            window.removeEventListener("pointercancel", handlePointerUp);
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!previewDragControls) return;
+
+        const handlePointerUp = (event: PointerEvent | MouseEvent | TouchEvent) => {
+            try {
+                // Hard stop any active drag on pointer release anywhere
+                // DragControls may not expose stop() in the TS type for some versions,
+                // so call it dynamically via any to avoid a compile error.
+                (previewDragControls as any).stop?.(event as any);
+            } catch {
+                // ignore – stop() is safe to call even if nothing is dragging
+            }
+        };
+
+        window.addEventListener("pointerup", handlePointerUp);
+        window.addEventListener("pointercancel", handlePointerUp);
+        window.addEventListener("mouseup", handlePointerUp);
+        window.addEventListener("touchend", handlePointerUp);
+
+        return () => {
+            window.removeEventListener("pointerup", handlePointerUp);
+            window.removeEventListener("pointercancel", handlePointerUp);
+            window.removeEventListener("mouseup", handlePointerUp);
+            window.removeEventListener("touchend", handlePointerUp);
+        };
+    }, [previewDragControls]);
+
 
     // Custom colors
     const [customTextColor, setCustomTextColor] = useState<string>("#000000");
@@ -1161,16 +1211,6 @@ export default function PreviewEditor({
 
     const togglePreviewFullscreen = () => {
         setIsPreviewFullscreen((prev) => !prev);
-    };
-
-    const handleUndoLastHtmlEdit = () => {
-        if (typeof window === "undefined") return;
-        window.dispatchEvent(new CustomEvent("kloner:undo-last-html"));
-    };
-
-    const handleRedoLastHtmlEdit = () => {
-        if (typeof window === "undefined") return;
-        window.dispatchEvent(new CustomEvent("kloner:redo-last-html"));
     };
 
     useEffect(() => {
@@ -1452,9 +1492,9 @@ export default function PreviewEditor({
             allPages ? allPages.find((p) => p.id === activePageId) ?? null : null,
         [allPages, activePageId]
     );
+
     function archivePageInHtmlById(html: string, pageId: string): string {
         if (!html) return html;
-
         try {
             const parser = new DOMParser();
             const doc = parser.parseFromString(html, "text/html");
@@ -1466,8 +1506,9 @@ export default function PreviewEditor({
             nodes.forEach((node) => {
                 node.setAttribute("data-kloner-archived", "1");
 
-                // hide from preview/export, but keep in doc for restore
-                if (!node.style.display || node.style.display !== "none") {
+                // only hide if not already hidden
+                const style = node.getAttribute("style") || "";
+                if (!/display\s*:\s*none/.test(style)) {
                     node.style.display = "none";
                 }
             });
@@ -1478,8 +1519,6 @@ export default function PreviewEditor({
             return html;
         }
     }
-
-
 
     function postToEditor(data: any) {
         const iframe = iframeRef.current;
@@ -1779,9 +1818,9 @@ export default function PreviewEditor({
     }, [previewHtml, activePageId, allPages]);
 
     const [uiScale, setUiScale] = useState<number>(() => {
-        if (typeof window === "undefined") return 0.80
+        if (typeof window === "undefined") return 0.75
         const v = Number(localStorage.getItem("kloner:uiScale"));
-        return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : 0.80
+        return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : 0.75
     });
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -2973,12 +3012,27 @@ export default function PreviewEditor({
                         else performClose("discard");
                     }}
                     disabled={closing}
-                    className={`absolute top-5 right-5 z-[100] inline-flex items-center gap-2 rounded-lg px-4 py-2 text-md sm:text-sm font-semibold shadow-lg ${closing
-                        ? "bg-accent text-white cursor-not-allowed"
-                        : "bg-accent text-white"
+                    aria-label="Close editor"
+                    className={`absolute top-5 right-5 z-[100] inline-flex h-6 w-6 items-center justify-center rounded-full border border-neutral-300 bg-white/90 text-neutral-700 shadow-md transition ${closing
+                        ? "cursor-not-allowed opacity-60"
+                        : "hover:bg-neutral-100 hover:text-neutral-900"
                         }`}
                 >
-                    <span>Close editor</span>
+                    <span className="block h-[18px] w-[18px]">
+                        <svg
+                            viewBox="0 0 24 24"
+                            className="h-full w-full"
+                            aria-hidden="true"
+                        >
+                            <path
+                                d="M6 6l12 12M18 6L6 18"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinecap="round"
+                            />
+                        </svg>
+                    </span>
                 </button>
 
                 {/* FLOATING DEVICE SELECTOR – TOP CENTER */}
@@ -2991,13 +3045,13 @@ export default function PreviewEditor({
                             onClick={() => handleDeviceChange("desktop")}
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.96 }}
-                            className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${device === "desktop"
+                            className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors ${device === "desktop"
                                 ? "bg-[#f55f2a] text-white"
                                 : "bg-white text-neutral-600 hover:bg-neutral-100"
                                 }`}
                             title="Desktop"
                         >
-                            <Monitor className="h-4 w-4" />
+                            <Monitor className="h-3 w-3" />
                         </motion.button>
 
                         <motion.button
@@ -3005,13 +3059,13 @@ export default function PreviewEditor({
                             onClick={() => handleDeviceChange("tablet")}
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.96 }}
-                            className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${device === "tablet"
+                            className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors ${device === "tablet"
                                 ? "bg-[#f55f2a] text-white"
                                 : "bg-white text-neutral-600 hover:bg-neutral-100"
                                 }`}
                             title="Tablet"
                         >
-                            <Tablet className="h-4 w-4" />
+                            <Tablet className="h-3 w-3" />
                         </motion.button>
 
                         <motion.button
@@ -3019,39 +3073,41 @@ export default function PreviewEditor({
                             onClick={() => handleDeviceChange("mobile")}
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.96 }}
-                            className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${device === "mobile"
+                            className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors ${device === "mobile"
                                 ? "bg-[#f55f2a] text-white"
                                 : "bg-white text-neutral-600 hover:bg-neutral-100"
                                 }`}
                             title="Mobile"
                         >
-                            <Smartphone className="h-4 w-4" />
+                            <Smartphone className="h-3 w-3" />
                         </motion.button>
                     </div>
                 </div>
 
                 {/* UI scale – top left */}
-                <div className="absolute top-5 left-5 z-[101] flex items-center gap-2 rounded-full border border-neutral-200 bg-white/95 px-3 py-1 shadow-md">
-                    <span className="text-[11px] font-medium text-neutral-600">UI scale</span>
+                {sidebarHidden && (
+                    <div className="absolute top-5 left-5 z-10 flex items-center gap-2 rounded-full border border-neutral-200 bg-white/95 px-3 py-1 shadow-md">
+                        <span className="text-[11px] font-medium text-neutral-600">UI scale</span>
 
-                    <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-600">
-                        <button
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-white text-neutral-600 shadow-sm hover:bg-neutral-100"
-                            onClick={() => setUiScale((s) => Math.max(0.5, +(s - 0.05).toFixed(2)))}
-                            disabled={closing}
-                        >
-                            −
-                        </button>
-                        <span className="w-10 text-center">{Math.round(uiScale * 100)}%</span>
-                        <button
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-white text-neutral-600 shadow-sm hover:bg-neutral-100"
-                            onClick={() => setUiScale((s) => Math.min(1.25, +(s + 0.05).toFixed(2)))}
-                            disabled={closing}
-                        >
-                            +
-                        </button>
+                        <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-600">
+                            <button
+                                className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-white text-neutral-600 shadow-sm hover:bg-neutral-100"
+                                onClick={() => setUiScale((s) => Math.max(0.5, +(s - 0.05).toFixed(2)))}
+                                disabled={closing}
+                            >
+                                −
+                            </button>
+                            <span className="w-10 text-center">{Math.round(uiScale * 100)}%</span>
+                            <button
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-white text-neutral-600 shadow-sm hover:bg-neutral-100"
+                                onClick={() => setUiScale((s) => Math.min(1.25, +(s + 0.05).toFixed(2)))}
+                                disabled={closing}
+                            >
+                                +
+                            </button>
+                        </div>
                     </div>
-                </div>
+                )}
 
                 <div
                     className="relative bg-white rounded-xl shadow-xl gap-4 p-4 grid grid-cols-1"
@@ -3122,6 +3178,38 @@ export default function PreviewEditor({
                                     Meta
                                 </span>
                             </button>
+
+                            {/* AI edit chatlog */}
+                            <button
+                                type="button"
+                                id="kloner-ai-edit-toggle"
+                                onClick={() => {
+                                    const isActive =
+                                        !sidebarHidden && sidePanelMode === "revision-chat";
+                                    if (isActive) {
+                                        setSidebarHidden(true);
+                                    } else {
+                                        setSidePanelMode("revision-chat");
+                                        setSidebarHidden(false);
+
+                                        // AI edits always operate on the visual preview
+                                        if (mode !== "preview") {
+                                            handleModeClick("preview");
+                                        }
+                                    }
+                                }}
+                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "revision-chat"
+                                    ? "border-transparent bg-[#f55f2a] text-white"
+                                    : "border-neutral-300 bg-white/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
+                                    }`}
+                            >
+                                <MessageSquare className="h-4 w-4" aria-hidden="true" />
+                                <span className="sr-only">AI edit chat</span>
+                                <span className="pointer-events-none absolute left-11 top-1/2 hidden -translate-y-1/2 rounded-md bg-neutral-900 px-2 py-1 text-[10px] font-medium text-white shadow-sm group-hover:inline-block">
+                                    AI edit chat
+                                </span>
+                            </button>
+
 
                             <button
                                 type="button"
@@ -3220,11 +3308,11 @@ export default function PreviewEditor({
                     {!sidebarHidden && (
                         <motion.aside
                             id="kloner-style-sidebar"
-                            className="pointer-events-auto fixed left-16 top-16 bottom-16 z-40 flex w-[310px] flex-col overflow-auto rounded-xl border border-neutral-200 bg-white/90 px-3 py-3 shadow-lg backdrop-blur-sm"
+                            className="pointer-events-auto fixed left-16 h-full z-40 flex w-[400px] flex-col overflow-auto rounded-xl border border-neutral-200 bg-white/90 px-3 py-3 shadow-lg backdrop-blur-sm"
                             initial={{ x: -16, opacity: 0 }}
                             animate={{ x: 0, opacity: 1 }}
                             exit={{ x: -16, opacity: 0 }}
-                            transition={{ duration: 0.18, ease: "easeOut" }}
+                            transition={{ duration: 0.18, ease: 'easeOut' }}
                         >
                             {/* STYLE MODE BODY */}
                             {!controlsCollapsed && sidePanelMode === "style" && (
@@ -3848,17 +3936,8 @@ export default function PreviewEditor({
                                     onSaveMeta={handleSaveMetaForCurrentPage}
                                 />
                             )}
-                        </motion.aside>
-                    )}
 
-
-                    {/* Right / canvas */}
-                    <section className="relative bg-slate-50 rounded-lg border overflow-hidden flex flex-col max-lg:order-1">
-                        {mode === "preview" && draftId && (
-                            <div
-                                className="border-t max-h-72 overflow-auto"
-                                id="kloner-ai-edit-panel"
-                            >
+                            {sidePanelMode === "revision-chat" && (
                                 <AiEditPanel
                                     renderId={draftId}
                                     getSelectedBlockHtml={getSelectedBlockHtml}
@@ -3937,6 +4016,19 @@ export default function PreviewEditor({
                                         setAiEditing(isEditing);
                                     }}
                                 />
+                            )}
+                        </motion.aside>
+                    )}
+
+
+                    {/* Right / canvas */}
+                    <section className="relative bg-slate-50 rounded-lg border overflow-hidden flex flex-col max-lg:order-1">
+                        {mode === "preview" && draftId && (
+                            <div
+                                className="border-t max-h-72 overflow-auto"
+                                id="kloner-ai-edit-panel"
+                            >
+
                             </div>
                         )}
 
@@ -3947,14 +4039,15 @@ export default function PreviewEditor({
                             </div>
                         )}
 
-                        {allPages && allPages.length > 1 && (
-                            <div className="mt-3">
+                        {allPages && allPages.length > 0 && (
+                            <div className="mt-20">
                                 <div className="flex justify-center">
-                                    {/* Outer pill: Layers button + visible pages in one horizontal row */}
+                                    {/* Outer pill: Layers button + all pages in one horizontal row */}
                                     <div
                                         id="kloner-page-switcher"
-                                        className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/80 px-2 py-1 shadow-sm">
-                                        {/* Layers toggle */}
+                                        className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/80 px-2 py-1 shadow-sm"
+                                    >
+                                        {/* Layers toggle (kept, even though archived row is gone) */}
                                         <button
                                             type="button"
                                             onClick={() => setShowPageLayers((open) => !open)}
@@ -3973,94 +4066,85 @@ export default function PreviewEditor({
                                             <span>Pages</span>
                                         </button>
 
-                                        {/* Visible pages, horizontally aligned to the right of the button */}
-                                        {showPageLayers && (
-                                            <div className="inline-flex items-center gap-2">
-                                                {allPages
-                                                    .filter((p) => !archivedPageIds.includes(p.id))
-                                                    .map((p) => {
-                                                        const isActive = p.id === activePageId;
-                                                        return (
-                                                            <motion.div
-                                                                key={p.id}
-                                                                layout
-                                                                initial={{ opacity: 0, scale: 0.9, y: 2 }}
-                                                                animate={{ opacity: 1, scale: 1, y: 0 }}
-                                                                exit={{ opacity: 0, scale: 0.9, y: 2 }}
-                                                                className="inline-flex items-center"
-                                                            >
-                                                                <motion.button
+                                        {/* All pages – archived ones are greyed out with restore below */}
+                                        <div className="inline-flex items-center gap-2">
+                                            {allPages.map((p) => {
+                                                const isActive = p.id === activePageId;
+                                                const isArchived = archivedPageIds.includes(p.id);
+
+                                                const baseClasses =
+                                                    "px-3 py-2 rounded-full text-xs font-semibold transition-colors flex items-center gap-2 border";
+                                                const stateClasses = isArchived
+                                                    ? "bg-neutral-100 text-neutral-400 border-neutral-200/80 opacity-70 cursor-default"
+                                                    : isActive
+                                                        ? "bg-accent text-white border-transparent"
+                                                        : "bg-white text-neutral-700 hover:bg-neutral-100 border-neutral-200";
+
+                                                return (
+                                                    <motion.div
+                                                        key={p.id}
+                                                        layout
+                                                        initial={{ opacity: 0, scale: 0.9, y: 2 }}
+                                                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                                                        exit={{ opacity: 0, scale: 0.9, y: 2 }}
+                                                        className="inline-flex flex-col items-center"
+                                                    >
+                                                        <motion.button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                if (!isArchived) handlePageSwitch(p.id);
+                                                            }}
+                                                            whileHover={!isArchived ? { scale: 1.03, y: -1 } : undefined}
+                                                            whileTap={!isArchived ? { scale: 0.97 } : undefined}
+                                                            className={[baseClasses, stateClasses].join(" ")}
+                                                        >
+                                                            <span>{p.id}</span>
+
+                                                            {/* Archive icon only for non-archived pages */}
+                                                            {!isArchived && (
+                                                                <button
                                                                     type="button"
-                                                                    onClick={() => handlePageSwitch(p.id)}
-                                                                    whileHover={{ scale: 1.03, y: -1 }}
-                                                                    whileTap={{ scale: 0.97 }}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        archivePage(p.id);
+                                                                    }}
+                                                                    title="Archive page"
                                                                     className={[
-                                                                        "px-3 py-2 rounded-full text-xs font-semibold transition-colors flex items-center gap-2",
+                                                                        "flex h-5 w-5 items-center justify-center rounded-full transition",
                                                                         isActive
-                                                                            ? "bg-accent text-white"
-                                                                            : "bg-white text-neutral-700 hover:bg-neutral-100 border border-neutral-200",
+                                                                            ? "bg-white/20 text-white hover:bg-white/30"
+                                                                            : "bg-neutral-200 text-neutral-700 hover:bg-neutral-300",
                                                                     ].join(" ")}
                                                                 >
-                                                                    <span>{p.id}</span>
-
-                                                                    <a
-                                                                        type="button"
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            archivePage(p.id);
-                                                                        }}
-                                                                        title="Archive page"
-                                                                        className={[
-                                                                            "flex h-5 w-5 items-center justify-center rounded-full transition",
-                                                                            isActive
-                                                                                ? "bg-white/20 text-white hover:bg-white/30"
-                                                                                : "bg-neutral-200 text-neutral-700 hover:bg-neutral-300",
-                                                                        ].join(" ")}
+                                                                    <svg
+                                                                        xmlns="http://www.w3.org/2000/svg"
+                                                                        viewBox="0 0 20 20"
+                                                                        fill="currentColor"
+                                                                        className="h-5 w-5"
                                                                     >
-                                                                        <svg
-                                                                            xmlns="http://www.w3.org/2000/svg"
-                                                                            viewBox="0 0 20 20"
-                                                                            fill="currentColor"
-                                                                            className="h-5 w-5"
-                                                                        >
-                                                                            <path d="M5 3a2 2 0 00-2 2v4h2V5h10v4h2V5a2 2 0 00-2-2H5z" />
-                                                                            <path d="M3 11v4a2 2 0 002 2h10a2 2 0 002-2v-4h-3a3 3 0 01-6 0H3z" />
-                                                                        </svg>
-                                                                    </a>
-                                                                </motion.button>
-                                                            </motion.div>
-                                                        );
-                                                    })}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
+                                                                        <path d="M5 3a2 2 0 00-2 2v4h2V5h10v4h2V5a2 2 0 00-2-2H5z" />
+                                                                        <path d="M3 11v4a2 2 0 002 2h10a2 2 0 002-2v-4h-3a3 3 0 01-6 0H3z" />
+                                                                    </svg>
+                                                                </button>
+                                                            )}
+                                                        </motion.button>
 
-                                {/* Archived row only when open, but kept separate so it’s still readable */}
-                                {showPageLayers && archivedPageIds.length > 0 && (
-                                    <div className="mt-2 flex justify-center">
-                                        <div className="inline-flex items-center gap-1 rounded-full border border-dashed border-neutral-300 bg-neutral-50/80 px-2 py-1">
-                                            <span className="px-2 text-[12px] font-semibold uppercase tracking-wide text-neutral-500">
-                                                Archived
-                                            </span>
-                                            {allPages
-                                                .filter((p) => archivedPageIds.includes(p.id))
-                                                .map((p) => (
-                                                    <button
-                                                        key={p.id}
-                                                        type="button"
-                                                        onClick={() => restorePage(p.id)}
-                                                        className="px-2 py-1 rounded-full text-xs font-semibold text-neutral-600 bg-white hover:bg-neutral-100 border border-neutral-200"
-                                                    >
-                                                        {p.id}
-                                                        <span className="ml-1 text-md hover:underline text-emerald-600">
-                                                            Restore
-                                                        </span>
-                                                    </button>
-                                                ))}
+                                                        {/* Restore control only for archived pages */}
+                                                        {isArchived && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => restorePage(p.id)}
+                                                                className="mt-1 text-[11px] font-medium text-emerald-600 hover:text-emerald-700"
+                                                            >
+                                                                Restore
+                                                            </button>
+                                                        )}
+                                                    </motion.div>
+                                                );
+                                            })}
                                         </div>
                                     </div>
-                                )}
+                                </div>
                             </div>
                         )}
 
@@ -4078,6 +4162,11 @@ export default function PreviewEditor({
                                 <AnimatePresence mode="wait">
                                     <motion.div
                                         key={activePageId}
+                                        drag
+                                        dragControls={previewDragControls}
+                                        dragListener={false}
+                                        dragMomentum={false}     // was true – turn off inertia
+                                        dragElastic={0}          // remove springy snap-back
                                         className={
                                             isPreviewFullscreen
                                                 ? "flex-1 min-h-0 flex items-stretch"
@@ -4101,9 +4190,19 @@ export default function PreviewEditor({
                                         exit={{ opacity: 0, y: -6 }}
                                         transition={{ duration: 0.22 }}
                                     >
+
                                         {device === "desktop" && (
                                             <div className="flex-1 min-h-0 rounded-xl border border-neutral-800 bg-neutral-950/90 shadow-xl overflow-hidden flex flex-col">
-                                                <div className="flex items-center gap-2 px-4 py-2 border-b border-neutral-800 bg-neutral-900/90">
+                                                <div
+                                                    className="flex cursor-move items-center gap-2 px-4 py-2 border-b border-neutral-800 bg-neutral-900/90"
+                                                    onPointerDown={(e) => {
+                                                        // only start drag on primary button
+                                                        if (e.button !== 0 || e.buttons !== 1) return;
+                                                        e.preventDefault();
+                                                        setIsDraggingPreview(true);
+                                                        previewDragControls.start(e);
+                                                    }}
+                                                >
                                                     <div className="flex gap-1.5">
                                                         <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
                                                         <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
@@ -4119,7 +4218,7 @@ export default function PreviewEditor({
                                                         id="kloner-quick-undo"
                                                         className="flex items-center gap-1.5"
                                                     >
-                                                        {/* UNDO */}
+                                                        {/* UNDO
                                                         <button
                                                             type="button"
                                                             onClick={() => {
@@ -4132,7 +4231,6 @@ export default function PreviewEditor({
                                                             <Undo2 className="h-5 w-5" />
                                                         </button>
 
-                                                        {/* REDO */}
                                                         <button
                                                             type="button"
                                                             onClick={() => {
@@ -4143,7 +4241,7 @@ export default function PreviewEditor({
                                                             aria-label="Redo"
                                                         >
                                                             <Redo2 className="h-5 w-5" />
-                                                        </button>
+                                                        </button> */}
 
                                                         {/* FULLSCREEN */}
                                                         <button
@@ -4161,16 +4259,27 @@ export default function PreviewEditor({
                                                     </div>
                                                 </div>
 
-                                                <div className="bg-white flex-1 min-h-0 overflow-auto">
+                                                <div
+                                                    className="bg-white flex-1 min-h-0 overflow-auto"
+                                                    style={{ pointerEvents: isDraggingPreview ? "none" : "auto" }}
+                                                >
                                                     {iframeNode}
                                                 </div>
                                             </div>
                                         )}
 
                                         {device === "tablet" && (
-                                            <div className="mx-auto rounded-[28px] border border-neutral-700 bg-neutral-950/90 px-4 pt-4 pb-6 shadow-xl">
+                                            <div
+                                                onPointerDown={(e) => {
+                                                    if (e.button !== 0 || e.buttons !== 1) return;
+                                                    e.preventDefault();
+                                                    setIsDraggingPreview(true);
+                                                    previewDragControls.start(e);
+                                                }}
+                                                className="mx-auto cursor-move ounded-[28px] border border-neutral-700 bg-neutral-950/90 px-4 pt-4 pb-6 shadow-xl"
+                                            >
                                                 <div className="flex items-center justify-end gap-1.5">
-                                                    {/* UNDO */}
+                                                    {/* UNDO
                                                     <button
                                                         type="button"
                                                         onClick={() => {
@@ -4183,7 +4292,6 @@ export default function PreviewEditor({
                                                         <Undo2 className="h-5 w-5" />
                                                     </button>
 
-                                                    {/* REDO */}
                                                     <button
                                                         type="button"
                                                         onClick={() => {
@@ -4194,19 +4302,30 @@ export default function PreviewEditor({
                                                         aria-label="Redo"
                                                     >
                                                         <Redo2 className="h-5 w-5" />
-                                                    </button>
+                                                    </button> */}
                                                 </div>
                                                 <div className="mx-auto mb-2 h-1.5 w-20 rounded-full bg-neutral-700" />
-                                                <div className="overflow-hidden rounded-[20px] border border-neutral-200 bg-white">
+                                                <div
+                                                    className="overflow-hidden rounded-[20px]"
+                                                    style={{ pointerEvents: isDraggingPreview ? "none" : "auto" }}
+                                                >
                                                     {iframeNode}
                                                 </div>
                                             </div>
                                         )}
 
                                         {device === "mobile" && (
-                                            <div className="mx-auto rounded-[36px] border border-neutral-800 bg-neutral-950/90 px-3 pt-4 pb-5 shadow-xl max-w-xs sm:max-w-sm">
+                                            <div
+                                                onPointerDown={(e) => {
+                                                    if (e.button !== 0 || e.buttons !== 1) return;
+                                                    e.preventDefault();
+                                                    setIsDraggingPreview(true);
+                                                    previewDragControls.start(e);
+                                                }}
+                                                className="cursor-move mx-auto w-[380px] sm:w-[460px] max-w-full rounded-[36px] border border-neutral-800 bg-neutral-950/90 px-3 pt-4 pb-5 shadow-xl"
+                                            >
                                                 <div className="flex items-center justify-end gap-1.5">
-                                                    {/* UNDO */}
+                                                    {/* UNDO
                                                     <button
                                                         type="button"
                                                         onClick={() => {
@@ -4219,7 +4338,6 @@ export default function PreviewEditor({
                                                         <Undo2 className="h-5 w-5" />
                                                     </button>
 
-                                                    {/* REDO */}
                                                     <button
                                                         type="button"
                                                         onClick={() => {
@@ -4230,19 +4348,33 @@ export default function PreviewEditor({
                                                         aria-label="Redo"
                                                     >
                                                         <Redo2 className="h-5 w-5" />
-                                                    </button>
+                                                    </button> */}
                                                 </div>
                                                 <div className="mx-auto mb-3 h-2 w-24 rounded-full bg-neutral-700" />
-                                                <div className="overflow-hidden rounded-[28px] border border-neutral-200 bg-white">
+                                                <div
+                                                    className="overflow-hidden rounded-[28px]"
+                                                    style={{ pointerEvents: isDraggingPreview ? "none" : "auto" }}
+                                                >
                                                     {iframeNode}
                                                 </div>
                                                 <div className="mx-auto mt-3 h-7 w-24 rounded-full border border-neutral-700" />
                                             </div>
                                         )}
+
+
                                     </motion.div>
                                 </AnimatePresence>
 
-                                <FloatingBlockToolbar
+                                <div id="kloner-quick-undo">
+                                    <FloatingBlockToolbar
+                                        iframeRef={iframeRef}
+                                        wrapperRef={iframeWrapperRef}
+                                        selectionMeta={selectionMeta}
+                                        uiScale={0}
+                                    />
+                                </div>
+
+                                <MiniToolbar
                                     iframeRef={iframeRef}
                                     wrapperRef={iframeWrapperRef}
                                     selectionMeta={selectionMeta}
@@ -4419,28 +4551,28 @@ export default function PreviewEditor({
                             <div className="text-md font-semibold text-neutral-900 mb-2">
                                 Close editor?
                             </div>
-                            <p className="text-md text-neutral-600 mb-3">
+                            <p className="text-sm text-neutral-600 mb-3">
                                 You have unsaved changes. Save them before closing, or discard
                                 this draft.
                             </p>
                             <div className="flex justify-end gap-2 text-sm">
                                 <button
                                     type="button"
-                                    className="px-2.5 py-1.5 rounded border border-neutral-300 bg-white hover:bg-neutral-50 active:scale-[.98] font-semibold"
+                                    className="px-2.5 py-1.5 text-xs rounded border border-neutral-300 bg-white hover:bg-neutral-50 active:scale-[.98] font-semibold"
                                     onClick={() => setClosePrompt(false)}
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="button"
-                                    className="px-2.5 py-1.5 rounded border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 active:scale-[.98] font-semibold"
+                                    className="px-2.5 py-1.5 text-xs rounded border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 active:scale-[.98] font-semibold"
                                     onClick={() => performClose("discard")}
                                 >
                                     Discard
                                 </button>
                                 <button
                                     type="button"
-                                    className="px-2.5 py-1.5 rounded border border-transparent bg-accent text-white hover:brightness-110 active:scale-[.98] font-semibold"
+                                    className="px-2.5 py-1.5 text-xs rounded border border-transparent bg-accent text-white hover:brightness-110 active:scale-[.98] font-semibold"
                                     onClick={() => performClose("save")}
                                 >
                                     Save & close
