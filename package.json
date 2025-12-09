@@ -10,6 +10,7 @@
     "test": "jest --passWithNoTests"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@headlessui/react": "^2.2.9",
     "@vercel/blob": "^2.0.0",
     "firebase": "^12.5.0",
