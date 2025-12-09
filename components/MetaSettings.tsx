@@ -30,6 +30,9 @@ export function MetaSettings({
     const savingRef = useRef(false);
     const [justSaved, setJustSaved] = useState(false);
 
+    // track last successful save time
+    const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+
     // AI generation state
     const [generating, setGenerating] = useState(false);
 
@@ -91,6 +94,8 @@ export function MetaSettings({
             };
 
             await onSaveMeta(metaToSave);
+            const now = new Date();
+            setLastSavedAt(now);
             setJustSaved(true);
             setTimeout(() => setJustSaved(false), 1500);
         } finally {
@@ -181,6 +186,8 @@ export function MetaSettings({
             // Persist immediately via onSaveMeta
             if (onSaveMeta) {
                 await onSaveMeta(metaBlock);
+                const now = new Date();
+                setLastSavedAt(now);
                 setJustSaved(true);
                 setTimeout(() => setJustSaved(false), 1500);
             }
@@ -207,21 +214,54 @@ export function MetaSettings({
                         >
                             {generating ? "Generating meta…" : "Generate Meta with AI"}
                         </button>
+                        {lastSavedAt && (
+                            <div className="mt-2 text-[11px] text-neutral-600">
+                                Last updated at{" "}
+                                {lastSavedAt.toLocaleTimeString([], {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                    second: "2-digit",
+                                })}
+                            </div>
+                        )}
                     </div>
                 </div>
             ) : (
-                <div className="mt-2 flex items-center gap-2">
-                    <button
-                        type="button"
-                        onClick={handleMetaSaveClick}
-                        disabled={saving}
-                        className="inline-flex items-center rounded-full bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
-                    >
-                        {saving ? "Saving…" : "Save meta"}
-                    </button>
-                    {justSaved && (
-                        <span className="text-[11px] text-emerald-600">
-                            Saved
+                <div className="mt-2 flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={handleMetaSaveClick}
+                            disabled={saving}
+                            className="inline-flex items-center rounded-full bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
+                        >
+                            {saving ? "Saving…" : "Save meta"}
+                        </button>
+                        {justSaved && (
+                            <span className="text-[11px] text-emerald-600">
+                                Saved
+                                {lastSavedAt && (
+                                    <>
+                                        {" "}
+                                        at{" "}
+                                        {lastSavedAt.toLocaleTimeString([], {
+                                            hour: "2-digit",
+                                            minute: "2-digit",
+                                            second: "2-digit",
+                                        })}
+                                    </>
+                                )}
+                            </span>
+                        )}
+                    </div>
+                    {lastSavedAt && (
+                        <span className="text-[11px] text-neutral-500">
+                            Last saved at{" "}
+                            {lastSavedAt.toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                second: "2-digit",
+                            })}
                         </span>
                     )}
                 </div>
@@ -229,4 +269,3 @@ export function MetaSettings({
         </div>
     );
 }
-

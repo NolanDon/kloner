@@ -1,3 +1,4 @@
+// components/MiniToolbar.tsx
 "use client";
 
 import React, {
@@ -21,6 +22,8 @@ type MiniToolbarProps = {
     wrapperRef: React.RefObject<HTMLDivElement>;
     selectionMeta: SelectionMeta | null;
     uiScale: number;
+    aiEditing: boolean;
+    onAiEditRequest?: (prompt: string) => void;
 };
 
 function callApi(
@@ -43,11 +46,13 @@ export function MiniToolbar({
     wrapperRef,
     selectionMeta,
     uiScale,
+    aiEditing,
+    onAiEditRequest,
 }: MiniToolbarProps) {
     const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
     const [aiOpen, setAiOpen] = useState(false);
     const [prompt, setPrompt] = useState("");
-    const [imageFile, setImageFile] = useState<File | null>(null);
+    const [imageFile, setImageFile] = useState<File | null>(null); // still allowed for UX, not sent to backend
 
     const hasSelection =
         !!selectionMeta && !!selectionMeta.has && !!(selectionMeta as any).rect;
@@ -77,25 +82,24 @@ export function MiniToolbar({
         const iframeBox = iframeEl.getBoundingClientRect();
         const wrapperBox = wrapperEl.getBoundingClientRect();
 
-        // Position inside the scrollable wrapper so it scrolls with the block.
         const blockTopInWrapper =
             wrapperEl.scrollTop +
             (iframeBox.top - wrapperBox.top) +
-            rect.top * scale - (-80);
+            rect.top * scale -
+            -180;
 
         const blockLeftInWrapper =
             wrapperEl.scrollLeft +
             (iframeBox.left - wrapperBox.left) +
-            rect.left * scale - (-130);
+            rect.left * scale -
+            -105;
 
-        let top = blockTopInWrapper - 26; // just above the block
+        let top = blockTopInWrapper - 26;
         let left = blockLeftInWrapper;
 
         const PADDING = 8;
-        const maxTop =
-            wrapperEl.scrollHeight - PADDING; // loose clamp, mostly safety
-        const maxLeft =
-            wrapperEl.scrollWidth - PADDING;
+        const maxTop = wrapperEl.scrollHeight - PADDING;
+        const maxLeft = wrapperEl.scrollWidth - PADDING;
 
         if (top < PADDING) top = PADDING;
         if (top > maxTop) top = maxTop;
@@ -125,8 +129,6 @@ export function MiniToolbar({
 
     if (!hasSelection || !pos) return null;
 
-    // IMPORTANT: this is absolute inside the wrapper, so make sure
-    // the wrapper div has `relative` on its className.
     const containerStyle: CSSProperties = {
         position: "absolute",
         top: pos.top,
@@ -135,9 +137,20 @@ export function MiniToolbar({
         pointerEvents: "auto",
     };
 
-    const handleMoveUp = () => callApi(iframeRef, "blockMoveUp");
-    const handleMoveDown = () => callApi(iframeRef, "blockMoveDown");
-    function handleInsertBelowSimple() {
+    const disabled = aiEditing;
+
+    const handleMoveUp = () => {
+        if (disabled) return;
+        callApi(iframeRef, "blockMoveUp");
+    };
+
+    const handleMoveDown = () => {
+        if (disabled) return;
+        callApi(iframeRef, "blockMoveDown");
+    };
+
+    const handleInsertBelowSimple = () => {
+        if (disabled) return;
         const win = iframeRef.current?.contentWindow as any;
         const api = win?.__klonerApi;
         if (!api || typeof api.blockDuplicate !== "function") return;
@@ -147,19 +160,16 @@ export function MiniToolbar({
         } catch {
             // swallow
         }
-    }
-
+    };
 
     const handleAiSubmit = () => {
         const trimmed = prompt.trim();
-        if (!trimmed && !imageFile) return;
+        if (!trimmed) return;
+        if (disabled) return;
 
-        callApi(
-            iframeRef,
-            "insertSectionBelowWithAi",
-            trimmed || null,
-            imageFile || null
-        );
+        if (onAiEditRequest) {
+            onAiEditRequest(trimmed);
+        }
 
         setAiOpen(false);
         setPrompt("");
@@ -168,12 +178,13 @@ export function MiniToolbar({
 
     return (
         <div style={containerStyle} className="flex flex-col gap-2">
-            {/* mini pill pinned to same corner as selection box */}
             <div className="inline-flex items-center gap-1 text-[11px] font-semibold text-white shadow-lg px-1.5 py-1">
                 <button
                     type="button"
                     onClick={handleMoveUp}
-                    className="bg-accent inline-flex h-6 min-w-[24px] items-center justify-center px-2 py-2 bg-accent/90 hover:bg-accent/80"
+                    disabled={disabled}
+                    className={`bg-accent inline-flex h-6 min-w-[24px] items-center justify-center px-2 py-2 bg-accent/90 hover:bg-accent/80 ${disabled ? "opacity-60 cursor-not-allowed" : ""
+                        }`}
                     title="Move section up"
                 >
                     <ArrowUp className="h-3.5 w-3.5" />
@@ -181,7 +192,9 @@ export function MiniToolbar({
                 <button
                     type="button"
                     onClick={handleMoveDown}
-                    className="bg-accent inline-flex h-6 min-w-[24px] items-center justify-center px-2 py-2 bg-accent/90 hover:bg-accent/80"
+                    disabled={disabled}
+                    className={`bg-accent inline-flex h-6 min-w-[24px] items-center justify-center px-2 py-2 bg-accent/90 hover:bg-accent/80 ${disabled ? "opacity-60 cursor-not-allowed" : ""
+                        }`}
                     title="Move section down"
                 >
                     <ArrowDown className="h-3.5 w-3.5" />
@@ -189,27 +202,34 @@ export function MiniToolbar({
                 <button
                     type="button"
                     onClick={handleInsertBelowSimple}
-                    className="bg-accent inline-flex h-6 min-w-[24px] items-center justify-center px-2 py-2 bg-emerald-500 hover:bg-emerald-400 text-[11px]"
+                    disabled={disabled}
+                    className={`bg-accent inline-flex h-6 min-w-[24px] items-center justify-center px-2 py-2 bg-emerald-500 hover:bg-emerald-400 text-[11px] ${disabled ? "opacity-60 cursor-not-allowed" : ""
+                        }`}
                     title="Duplicate this block"
                 >
                     <Plus className="h-3.5 w-3.5" />
                 </button>
                 <button
                     type="button"
-                    onClick={() => setAiOpen((v) => !v)}
-                    className="inline-flex h-6 min-w-[30px] items-center justify-center px-2 py-2 bg-white text-[10px] font-semibold text-accent hover:bg-neutral-100 px-2 gap-1"
-                    title="Use AI to add next section"
+                    onClick={() => {
+                        if (disabled) return;
+                        setAiOpen((v) => !v);
+                    }}
+                    disabled={disabled}
+                    className={`inline-flex h-6 min-w-[30px] items-center justify-center px-2 py-2 bg-white text-[10px] font-semibold text-accent hover:bg-neutral-100 gap-1 ${disabled ? "opacity-60 cursor-not-allowed" : ""
+                        }`}
+                    title="Use AI to edit this block"
                 >
                     <Sparkles className="h-3.5 w-3.5" />
                     <span>AI</span>
                 </button>
             </div>
 
-            {aiOpen && (
+            {aiOpen && !disabled && (
                 <div className="w-[260px] rounded-2xl border border-neutral-200 bg-white shadow-2xl p-3 text-[12px] text-neutral-800">
                     <div className="mb-2 flex items-center justify-between gap-2">
                         <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                            AI next section
+                            AI edit block
                         </div>
                         <button
                             type="button"
@@ -222,15 +242,14 @@ export function MiniToolbar({
                     </div>
 
                     <p className="mb-2 text-[11px] text-neutral-600">
-                        Describe what should come next. You can attach a reference
-                        image for layout or style.
+                        Describe how this section should change. Small edits work best.
                     </p>
 
                     <textarea
                         rows={3}
                         value={prompt}
                         onChange={(e) => setPrompt(e.target.value)}
-                        placeholder="Tell Kloner what to add below this section…"
+                        placeholder="E.g. soften the headline, keep layout, make copy more benefit-focused…"
                         className="mb-2 w-full rounded-md border border-neutral-300 px-2 py-1.5 text-[12px] outline-none focus:ring-1 focus:ring-accent/70"
                     />
 
@@ -259,11 +278,11 @@ export function MiniToolbar({
                     <button
                         type="button"
                         onClick={handleAiSubmit}
-                        disabled={!prompt.trim() && !imageFile}
-                        className="mt-1 inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm hover:brightness-105 disabled:opacity-60"
+                        disabled={!prompt.trim() || disabled}
+                        className="mt-1 inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm hover:brightness-105 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                         <Sparkles className="h-3.5 w-3.5" />
-                        <span>Add section with AI</span>
+                        <span>Apply AI edit</span>
                     </button>
                 </div>
             )}

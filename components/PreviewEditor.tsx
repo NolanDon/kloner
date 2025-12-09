@@ -2161,6 +2161,7 @@ export default function PreviewEditor({
                 return;
             }
 
+
             // ----- build safe meta (no undefined, correct types) -----
             type SaveDraftMeta = {
                 nameHint?: string;
@@ -2191,6 +2192,7 @@ export default function PreviewEditor({
 
             // 5) Persist to Firestore (or whatever saveDraft does)
             const nextVersion = version + 1;
+
 
             await saveDraft({
                 draftId,
@@ -2915,6 +2917,162 @@ export default function PreviewEditor({
         [closing, doSave, onClose, tryClearIframeSelection]
     );
 
+    // Put this helper inside the same component, above the JSX return:
+    const applyAiEditedBlockHtml = useCallback(
+        async (afterBlockHtml: string) => {
+            const raw = (afterBlockHtml ?? "").trim();
+
+            const looksBroken =
+                !raw ||
+                raw === "</" ||
+                raw === "<" ||
+                raw.length < 8 ||
+                (!raw.includes("<") || !raw.includes(">"));
+
+            if (looksBroken) {
+                console.warn(
+                    "[PreviewEditor] Ignoring AI edit – block HTML looked broken",
+                    { afterBlockHtml },
+                );
+                return;
+            }
+
+            try {
+                if (!closing && !savingDraft && !applyingPreview && dirty) {
+                    await doSave();
+                }
+            } catch (err) {
+                console.warn(
+                    "[PreviewEditor] pre-AI save failed, continuing anyway",
+                    err,
+                );
+            }
+
+            try {
+                const iframe = iframeRef.current;
+                if (iframe && iframe.contentDocument) {
+                    const preAiDoc =
+                        iframe.contentDocument.documentElement.outerHTML;
+                    snapshotBeforeAiEdit(preAiDoc);
+                }
+            } catch (err) {
+                console.warn("Failed to snapshot before AI edit", err);
+            }
+
+            const fullHtml = applyBlockHtmlToIframeAndSerialize(raw, true);
+
+            if (!fullHtml) {
+                console.warn(
+                    "[PreviewEditor] applyBlockHtmlToIframeAndSerialize returned null",
+                );
+                return;
+            }
+
+            let cleanedHtml = fullHtml;
+            try {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(fullHtml, "text/html");
+                cleanedHtml = snapshotCleanFromDocument(doc);
+            } catch (err) {
+                console.warn(
+                    "[PreviewEditor] failed to clean AI-edited HTML",
+                    err,
+                );
+            }
+
+            setDirty(true);
+            setHtmlDraft(cleanedHtml);
+            setPreviewHtml(cleanedHtml);
+            if (onLiveHtml) onLiveHtml(cleanedHtml);
+        },
+        [
+            closing,
+            savingDraft,
+            applyingPreview,
+            dirty,
+            doSave,
+            iframeRef,
+            snapshotBeforeAiEdit,
+            applyBlockHtmlToIframeAndSerialize,
+            snapshotCleanFromDocument,
+            setDirty,
+            setHtmlDraft,
+            setPreviewHtml,
+            onLiveHtml,
+        ],
+    );
+
+    // Inside PreviewEditor component, near your other callbacks
+
+    const runAiEditFromMiniToolbar = useCallback(
+        async (prompt: string) => {
+            // Use the existing helper rather than __klonerApi
+            if (!getSelectedBlockHtml) {
+                console.warn("[MiniToolbar] getSelectedBlockHtml not available");
+                return;
+            }
+
+            const currentHtml = getSelectedBlockHtml();
+            if (!currentHtml || !currentHtml.trim()) {
+                console.warn("[MiniToolbar] empty selected block HTML for AI edit");
+                return;
+            }
+
+            if (!draftId) {
+                console.warn("[MiniToolbar] no draftId / renderId for AI edit");
+                return;
+            }
+
+            setAiEditing(true);
+            try {
+                const res = await fetch("/api/ai-edit", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        // add your CSRF header here if you already use one:
+                        // "x-kloner-csrf": csrfToken,
+                    },
+                    body: JSON.stringify({
+                        renderId: draftId,
+                        html: currentHtml,
+                        prompt,
+                    }),
+                });
+
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    console.error(
+                        "[MiniToolbar] AI edit failed",
+                        res.status,
+                        data?.error
+                    );
+                    return;
+                }
+
+                const data = await res.json();
+                const suggestion =
+                    data?.suggestions && data.suggestions.length
+                        ? data.suggestions[0]
+                        : null;
+
+                const afterHtml: string | undefined = suggestion?.afterHtml;
+
+                if (!afterHtml || typeof afterHtml !== "string") {
+                    console.warn("[MiniToolbar] No afterHtml in AI response");
+                    return;
+                }
+
+                await applyAiEditedBlockHtml(afterHtml);
+            } catch (err) {
+                console.error("[MiniToolbar] AI edit request threw", err);
+            } finally {
+                setAiEditing(false);
+            }
+        },
+        [getSelectedBlockHtml, draftId, applyAiEditedBlockHtml]
+    );
+
+
 
     const handleModeClick = useCallback(
         (next: ViewMode) => {
@@ -3323,7 +3481,7 @@ export default function PreviewEditor({
                     {!sidebarHidden && (
                         <motion.aside
                             id="kloner-style-sidebar"
-                            className="pointer-events-auto fixed left-16 h-full z-40 flex w-[400px] flex-col overflow-auto rounded-xl border border-neutral-200 bg-white/90 px-3 py-3 shadow-lg backdrop-blur-sm"
+                            className="pointer-events-auto fixed left-16 h-full z-40 flex w-[500px] flex-col overflow-auto rounded-xl border border-neutral-200 bg-white/90 px-3 py-3 shadow-lg backdrop-blur-sm"
                             initial={{ x: -16, opacity: 0 }}
                             animate={{ x: 0, opacity: 1 }}
                             exit={{ x: -16, opacity: 0 }}
@@ -3964,72 +4122,7 @@ export default function PreviewEditor({
                                     getSelectedBlockHtml={getSelectedBlockHtml}
                                     selectionMeta={selectionMeta}
                                     onAiHistoryChange={setAiHistory}
-                                    onApplyBlockHtml={async (afterBlockHtml: string) => {
-                                        const raw = (afterBlockHtml ?? "").trim();
-
-                                        const looksBroken =
-                                            !raw ||
-                                            raw === "</" ||
-                                            raw === "<" ||
-                                            raw.length < 8 ||
-                                            (!raw.includes("<") || !raw.includes(">"));
-
-                                        if (looksBroken) {
-                                            console.warn(
-                                                "[PreviewEditor] Ignoring AI edit – block HTML looked broken",
-                                                { afterBlockHtml },
-                                            );
-                                            return;
-                                        }
-
-                                        try {
-                                            if (!closing && !savingDraft && !applyingPreview && dirty) {
-                                                await doSave();
-                                            }
-                                        } catch (err) {
-                                            console.warn(
-                                                "[PreviewEditor] pre-AI save failed, continuing anyway",
-                                                err,
-                                            );
-                                        }
-
-                                        try {
-                                            const iframe = iframeRef.current;
-                                            if (iframe && iframe.contentDocument) {
-                                                const preAiDoc =
-                                                    iframe.contentDocument.documentElement.outerHTML;
-                                                snapshotBeforeAiEdit(preAiDoc);
-                                            }
-                                        } catch (err) {
-                                            console.warn("Failed to snapshot before AI edit", err);
-                                        }
-
-                                        const fullHtml = applyBlockHtmlToIframeAndSerialize(raw, true);
-
-                                        if (!fullHtml) {
-                                            console.warn(
-                                                "[PreviewEditor] applyBlockHtmlToIframeAndSerialize returned null",
-                                            );
-                                            return;
-                                        }
-
-                                        let cleanedHtml = fullHtml;
-                                        try {
-                                            const parser = new DOMParser();
-                                            const doc = parser.parseFromString(fullHtml, "text/html");
-                                            cleanedHtml = snapshotCleanFromDocument(doc);
-                                        } catch (err) {
-                                            console.warn(
-                                                "[PreviewEditor] failed to clean AI-edited HTML",
-                                                err,
-                                            );
-                                        }
-
-                                        setDirty(true);
-                                        setHtmlDraft(cleanedHtml);
-                                        setPreviewHtml(cleanedHtml);
-                                        if (onLiveHtml) onLiveHtml(cleanedHtml);
-                                    }}
+                                    onApplyBlockHtml={applyAiEditedBlockHtml}
                                     onAiEditingStateChange={(isEditing) => {
                                         setAiEditing(isEditing);
                                     }}
@@ -4397,7 +4490,9 @@ export default function PreviewEditor({
                                     iframeRef={iframeRef}
                                     wrapperRef={iframeWrapperRef}
                                     selectionMeta={selectionMeta}
-                                    uiScale={0}
+                                    uiScale={uiScale}
+                                    aiEditing={aiEditing}
+                                    onAiEditRequest={runAiEditFromMiniToolbar}
                                 />
                             </div>
                         )}
