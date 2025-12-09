@@ -1,11 +1,11 @@
-// app/api/ai-edit/route.ts
+// app/api/ai-edit/route.ts 
 //
 // AI edit endpoint for Kloner.
 //
 // Responsibilities:
 // - Auth + CSRF guard (requireSessionAndMaybeCsrf)
 // - Safety: moderate user prompt and any AI image prompts BEFORE calling OpenAI
-// - Call Responses API (gpt-5-mini) to do a small, HTML-scoped edit
+// - Call Gemini 3 Pro (code mode) or OpenAI gpt-5-mini (imagery mode) to do a small, HTML-scoped edit
 // - Optionally materialize AI images into Firebase Storage via gpt-image-1
 // - Track usage via Firestore and AI-edit credit buckets
 //
@@ -26,6 +26,9 @@ import {
 import { getStorage } from "firebase-admin/storage";
 import sharp from "sharp";
 
+// Gemini import
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -34,10 +37,20 @@ const client = new OpenAI({
     maxRetries: 0,
 });
 
+// Gemini client setup
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+const geminiClient = GEMINI_API_KEY
+    ? new GoogleGenerativeAI(GEMINI_API_KEY)
+    : null;
+
 interface AiEditRequestBody {
     renderId: string;
     html: string; // current block HTML (or full doc, but guarded below)
     prompt: string;
+    // Optional: choose which model family to use
+    // "code"     => Gemini 3 Pro (gemini-3-pro-preview)
+    // "imagery"  => OpenAI gpt-5-mini (ChatGPT mini) as before
+    mode?: "code" | "imagery";
 }
 
 interface AiEditModelResult {
@@ -79,7 +92,7 @@ function trimHtmlForModel(html: string): string {
     return head + rest.slice(0, remainingBudget);
 }
 
-// Robust extractor for the Responses API shape
+// Robust extractor for the Responses API shape (OpenAI)
 function extractTextFromResponse(resp: any): string {
     if (!resp || !resp.output) return "";
 
@@ -410,23 +423,8 @@ function isDestructiveEdit(beforeHtml: string, afterHtml: string): boolean {
     return false;
 }
 
-/**
- * Core model call for AI editing.
- *
- * Safety layers here:
- * - System prompt explicitly tells the model to follow OpenAI safety policies
- *   and to refuse unsafe instructions by returning the original block unchanged.
- * - Output is constrained to SUMMARY + HTML: <block> format.
- */
-async function runAiEditModel(input: {
-    html: string;
-    prompt: string;
-    uid: string;
-}): Promise<AiEditModelResult> {
-    const trimmedHtml = trimHtmlForModel(input.html);
-    const { prompt, uid } = input;
-
-    const system = `
+// Shared system prompt used for both Gemini and OpenAI
+const AI_EDIT_SYSTEM_PROMPT = `
 You are an HTML refactoring assistant for the Kloner website editor.
 
 SAFETY AND POLICY (MUST FOLLOW):
@@ -520,6 +518,25 @@ Requirements:
 - Do not wrap anything in backticks.
 `.trim();
 
+/**
+ * Core model call for AI editing.
+ *
+ * Gemini path (mode "code"):
+ * - gemini-3-pro-preview
+ *
+ * OpenAI path (mode "imagery" or fallback):
+ * - gpt-5-mini (same as before)
+ */
+async function runAiEditModel(input: {
+    html: string;
+    prompt: string;
+    uid: string;
+    mode?: "code" | "imagery";
+}): Promise<AiEditModelResult> {
+    const trimmedHtml = trimHtmlForModel(input.html);
+    const { prompt, uid } = input;
+    const mode = input.mode ?? "code";
+
     const user = `
 USER INSTRUCTION:
 ${prompt}
@@ -528,10 +545,106 @@ CURRENT HTML BLOCK (may be truncated for performance):
 ${trimmedHtml}
 `.trim();
 
+    // Try Gemini 3 Pro for code mode if configured
+    if (mode === "code" && geminiClient) {
+        try {
+            console.log("[ai-edit] calling Gemini 3 Pro (code mode)", {
+                htmlLength: trimmedHtml.length,
+                promptSnippet: prompt.slice(0, 120),
+            });
+
+            const model = geminiClient.getGenerativeModel({
+                model: "gemini-3-pro-preview",
+            });
+
+            const result = await model.generateContent({
+                contents: [
+                    {
+                        role: "user",
+                        parts: [
+                            {
+                                text: `${AI_EDIT_SYSTEM_PROMPT}\n\n${user}`,
+                            },
+                        ],
+                    },
+                ],
+            });
+
+            const raw = result.response?.text()?.trim() ?? "";
+
+            if (!raw) {
+                console.error(
+                    "[ai-edit] Gemini returned empty text; falling back to original HTML"
+                );
+                return {
+                    afterHtml: input.html,
+                    summary: "No safe HTML returned; left the block unchanged.",
+                };
+            }
+
+            const summaryMatch = raw.match(/^SUMMARY:\s*(.+)$/m);
+            const summary =
+                summaryMatch && summaryMatch[1].trim()
+                    ? summaryMatch[1].trim()
+                    : "Minimal changes applied.";
+
+            let htmlSection = raw;
+            const htmlMarkerIdx = raw.toLowerCase().indexOf("html:");
+            if (htmlMarkerIdx !== -1) {
+                htmlSection = raw.slice(htmlMarkerIdx + "html:".length).trim();
+            }
+
+            const lower = htmlSection.toLowerCase();
+            let htmlStart = lower.indexOf("<!doctype html");
+            if (htmlStart === -1) {
+                htmlStart = lower.indexOf("<html");
+            }
+
+            let afterHtml: string;
+
+            if (htmlStart !== -1) {
+                afterHtml = htmlSection.slice(htmlStart).trim();
+            } else {
+                afterHtml = htmlSection.trim();
+                if (!afterHtml) {
+                    console.error(
+                        "[ai-edit] Gemini returned empty HTML section; first 300 chars of raw:",
+                        raw.slice(0, 300)
+                    );
+                    return {
+                        afterHtml: input.html,
+                        summary:
+                            summary +
+                            " (Model did not return usable HTML; kept the original block unchanged.)",
+                    };
+                }
+            }
+
+            console.log("[ai-edit] Gemini model output lengths", {
+                rawLength: raw.length,
+                htmlLength: afterHtml.length,
+                summary,
+            });
+
+            return {
+                afterHtml,
+                summary,
+            };
+        } catch (err: any) {
+            console.error("[ai-edit] Gemini call failed, falling back to OpenAI", {
+                name: err?.name,
+                message: err?.message,
+            });
+            // fall through to OpenAI path below
+        }
+    }
+
+    // Fallback / imagery mode: OpenAI gpt-5-mini (ChatGPT mini) as before
     try {
-        console.log("[ai-edit] calling OpenAI", {
+        console.log("[ai-edit] calling OpenAI gpt-5-mini", {
             htmlLength: trimmedHtml.length,
             promptSnippet: prompt.slice(0, 120),
+            mode,
         });
 
         const resp = await client.responses.create({
@@ -539,7 +652,7 @@ ${trimmedHtml}
             input: [
                 {
                     role: "system",
-                    content: [{ type: "input_text", text: system }],
+                    content: [{ type: "input_text", text: AI_EDIT_SYSTEM_PROMPT }],
                 },
                 {
                     role: "user",
@@ -557,7 +670,7 @@ ${trimmedHtml}
 
         if (!raw) {
             console.error(
-                "[ai-edit] empty text from model, raw resp snippet:",
+                "[ai-edit] empty text from OpenAI model, raw resp snippet:",
                 JSON.stringify(resp, null, 2).slice(0, 2000)
             );
             return {
@@ -606,7 +719,7 @@ ${trimmedHtml}
             }
         }
 
-        console.log("[ai-edit] model output lengths", {
+        console.log("[ai-edit] OpenAI model output lengths", {
             rawLength: raw.length,
             htmlLength: afterHtml.length,
             summary,
@@ -740,7 +853,7 @@ async function syncAiEditCreditsBucket(opts: {
  * 2) Basic validation
  * 3) Prompt moderation gate (omni-moderation-latest)
  * 4) Tier + credit checks (Pro+ only)
- * 5) Run AI edit model (gpt-5-mini)
+ * 5) Run AI edit model (Gemini or gpt-5-mini depending on mode)
  * 6) Materialize any AI images (gpt-image-1) with moderation on each slot
  * 7) Persist result + sync AI edit credits bucket
  */
@@ -759,6 +872,8 @@ async function handlePost(req: NextRequest) {
         const renderId = body.renderId?.trim();
         const html = body.html ?? "";
         const rawPrompt = body.prompt?.trim() ?? "";
+        const mode: "code" | "imagery" =
+            body.mode === "imagery" ? "imagery" : "code";
 
         // Enforce basic shape and non-empty prompt
         if (!renderId || !html || !rawPrompt) {
@@ -776,6 +891,7 @@ async function handlePost(req: NextRequest) {
             renderId,
             htmlLength: html.length,
             promptSnippet: prompt.slice(0, 120),
+            mode,
         });
 
         // Safety gate: moderate the user prompt BEFORE any model calls
@@ -958,7 +1074,7 @@ async function handlePost(req: NextRequest) {
 
         let modelResult: AiEditModelResult;
         try {
-            modelResult = await runAiEditModel({ html, prompt, uid });
+            modelResult = await runAiEditModel({ html, prompt, uid, mode });
         } catch (err: any) {
             console.error("[ai-edit] model error (unexpected throw)", err);
             return NextResponse.json({ error: "model_failed" }, { status: 502 });
@@ -1147,6 +1263,7 @@ async function handlePost(req: NextRequest) {
             imageSlotsFound: imageDebug.imageSlotsFound,
             imageSlotsMaterialized: imageDebug.imageSlotsMaterialized,
             imageErrorStatus: imageDebug.imageErrorStatus,
+            mode,
         });
 
         return NextResponse.json(
@@ -1168,7 +1285,7 @@ async function handlePost(req: NextRequest) {
  * GET /api/ai-edit?renderId=...
  *
  * Returns up to 5 latest AI edit suggestions + current AI edit credits
- * for display in the UI. Does NOT hit OpenAI.
+ * for display in the UI. Does NOT hit OpenAI or Gemini.
  */
 async function handleGet(req: NextRequest) {
     return requireSessionAndMaybeCsrf(req, async ({ uid, req }) => {
