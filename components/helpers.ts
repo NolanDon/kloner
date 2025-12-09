@@ -137,7 +137,6 @@ export function extractArchivedPageIdsFromRender(render: any): string[] {
         (v) => typeof v === "string" && v.trim().length > 0
     );
 
-    console.log("result: ", result)
     return result;
 }
 
