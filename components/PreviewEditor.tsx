@@ -1133,7 +1133,7 @@ export default function PreviewEditor({
     const [exportPrompt, setExportPrompt] = useState(false);
     const [controlsCollapsed, setControlsCollapsed] = useState<boolean>(false);
     const [sidePanelMode, setSidePanelMode] = useState<
-        "style" | "meta" | "ai-library" | "revision-chat"
+        "style" | "meta" | "code" | "ai-library" | "revision-chat"
     >("style"); const [htmlDraft, setHtmlDraft] = useState<string>("");
     const [previewHtml, setPreviewHtml] = useState<string>("");
     const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -1243,6 +1243,34 @@ export default function PreviewEditor({
             return next;
         });
     }
+
+    function archivePageInHtmlById(html: string, pageId: string): string {
+        if (!html) return html;
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, "text/html");
+
+            const nodes = doc.querySelectorAll<HTMLElement>(
+                `[data-kloner-page-id="${pageId}"]`
+            );
+
+            nodes.forEach((node) => {
+                node.setAttribute("data-kloner-archived", "1");
+
+                // only hide if not already hidden
+                const style = node.getAttribute("style") || "";
+                if (!/display\s*:\s*none/.test(style)) {
+                    node.style.display = "none";
+                }
+            });
+
+            return "<!doctype html>\n" + doc.documentElement.outerHTML;
+        } catch (err) {
+            console.warn("[archivePageInHtmlById] failed", err);
+            return html;
+        }
+    }
+
 
     function archivePage(pageId: string) {
         if (
@@ -1492,33 +1520,6 @@ export default function PreviewEditor({
             allPages ? allPages.find((p) => p.id === activePageId) ?? null : null,
         [allPages, activePageId]
     );
-
-    function archivePageInHtmlById(html: string, pageId: string): string {
-        if (!html) return html;
-        try {
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, "text/html");
-
-            const nodes = doc.querySelectorAll<HTMLElement>(
-                `[data-kloner-page-id="${pageId}"]`
-            );
-
-            nodes.forEach((node) => {
-                node.setAttribute("data-kloner-archived", "1");
-
-                // only hide if not already hidden
-                const style = node.getAttribute("style") || "";
-                if (!/display\s*:\s*none/.test(style)) {
-                    node.style.display = "none";
-                }
-            });
-
-            return "<!doctype html>\n" + doc.documentElement.outerHTML;
-        } catch (err) {
-            console.warn("[archivePageInHtmlById] failed", err);
-            return html;
-        }
-    }
 
     function postToEditor(data: any) {
         const iframe = iframeRef.current;
@@ -3240,18 +3241,31 @@ export default function PreviewEditor({
                             </button>
 
                             {/* Code */}
+                            {/* Code */}
                             <button
                                 type="button"
                                 onClick={() => {
-                                    const goingToCode = mode !== "code";
+                                    // if you have a devMode flag, guard here:
+                                    // if (!devMode) {
+                                    //     toast.error("Code view is only available in Dev mode.");
+                                    //     return;
+                                    // }
 
-                                    // ensure the sidebar is visible and on the style panel
-                                    setSidebarHidden(false);
-                                    setSidePanelMode("style");
+                                    const isActive =
+                                        !sidebarHidden && sidePanelMode === "code" && mode === "code";
 
-                                    handleModeClick(goingToCode ? "code" : "preview");
+                                    if (isActive) {
+                                        // toggle back to preview and optionally hide sidebar
+                                        handleModeClick("preview");
+                                        // setSidebarHidden(true); // only if you want it to close
+                                    } else {
+                                        // open code mode in the sidepanel
+                                        setSidebarHidden(false);
+                                        setSidePanelMode("code");
+                                        handleModeClick("code");
+                                    }
                                 }}
-                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${mode === "code"
+                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${mode === "code" && sidePanelMode === "code" && !sidebarHidden
                                     ? "border-transparent bg-[#f55f2a] text-white"
                                     : "border-neutral-300 bg-white/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
                                     }`}
@@ -3262,6 +3276,7 @@ export default function PreviewEditor({
                                     Code
                                 </span>
                             </button>
+
 
 
                             {/* Deploy */}
@@ -3312,7 +3327,7 @@ export default function PreviewEditor({
                             initial={{ x: -16, opacity: 0 }}
                             animate={{ x: 0, opacity: 1 }}
                             exit={{ x: -16, opacity: 0 }}
-                            transition={{ duration: 0.18, ease: 'easeOut' }}
+                            transition={{ duration: 0.18, ease: "easeOut" }}
                         >
                             {/* STYLE MODE BODY */}
                             {!controlsCollapsed && sidePanelMode === "style" && (
@@ -3505,7 +3520,6 @@ export default function PreviewEditor({
                                                                 type="button"
                                                                 className="rounded border border-neutral-300 bg-white px-2 py-1 text-[11px] leading-tight shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
-                                                                // style={{ fontSize: s.px / 1.6 }}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
                                                                         kind: "fontSizePx",
@@ -3896,8 +3910,19 @@ export default function PreviewEditor({
                                         </div>
                                     </div>
 
-                                    {/* Code mode – dev-only */}
-                                    {isDevCodeMode && mode === "code" && (
+                                    {/* Screenshot mode hint (still lives under style panel) */}
+                                    {isDevCodeMode && mode === "screenshot" && (
+                                        <div className="mt-4 text-[12px] text-slate-600">
+                                            Edit in Preview, apply with “Apply changes".
+                                        </div>
+                                    )}
+                                </>
+                            )}
+
+                            {/* CODE MODE BODY – separate branch */}
+                            {sidePanelMode === "code" && (
+                                <>
+                                    {isDevCodeMode && mode === "code" ? (
                                         <div className="min-h-0 flex-1">
                                             <textarea
                                                 className="h-full w-full rounded border border-neutral-300 bg-white p-2 font-mono text-[12px] leading-5 outline-none shadow-sm focus:ring-1 focus:ring-neutral-400 disabled:opacity-60"
@@ -3907,15 +3932,11 @@ export default function PreviewEditor({
                                                 disabled={closing}
                                             />
                                         </div>
-                                    )}
-
-                                    {/* Screenshot mode hint */}
-                                    {isDevCodeMode && mode === "screenshot" && (
+                                    ) : (
                                         <div className="text-[12px] text-slate-600">
-                                            Edit in Preview, apply with “Apply changes".
+                                            Code view is only available in dev mode.
                                         </div>
                                     )}
-
                                 </>
                             )}
 
@@ -3944,53 +3965,50 @@ export default function PreviewEditor({
                                     selectionMeta={selectionMeta}
                                     onAiHistoryChange={setAiHistory}
                                     onApplyBlockHtml={async (afterBlockHtml: string) => {
-                                        // 0. Guard against obviously broken AI output
                                         const raw = (afterBlockHtml ?? "").trim();
 
                                         const looksBroken =
                                             !raw ||
                                             raw === "</" ||
                                             raw === "<" ||
-                                            raw.length < 8 ||                 // too short to be a meaningful block
+                                            raw.length < 8 ||
                                             (!raw.includes("<") || !raw.includes(">"));
 
                                         if (looksBroken) {
                                             console.warn(
                                                 "[PreviewEditor] Ignoring AI edit – block HTML looked broken",
-                                                { afterBlockHtml }
+                                                { afterBlockHtml },
                                             );
-                                            // optional toast here
                                             return;
                                         }
 
-                                        // 0.5 Save current draft BEFORE applying AI changes, so user can revert later
                                         try {
-                                            // only bother if there are unsaved edits and we're not already in a save/close cycle
                                             if (!closing && !savingDraft && !applyingPreview && dirty) {
-                                                // this will create a normal history checkpoint using your existing save flow
                                                 await doSave();
                                             }
                                         } catch (err) {
-                                            console.warn("[PreviewEditor] pre-AI save failed, continuing anyway", err);
+                                            console.warn(
+                                                "[PreviewEditor] pre-AI save failed, continuing anyway",
+                                                err,
+                                            );
                                         }
 
-                                        // 1. Snapshot full DOM before AI edit for local/history restore
                                         try {
                                             const iframe = iframeRef.current;
                                             if (iframe && iframe.contentDocument) {
-                                                const preAiDoc = iframe.contentDocument.documentElement.outerHTML;
+                                                const preAiDoc =
+                                                    iframe.contentDocument.documentElement.outerHTML;
                                                 snapshotBeforeAiEdit(preAiDoc);
                                             }
                                         } catch (err) {
                                             console.warn("Failed to snapshot before AI edit", err);
                                         }
 
-                                        // 2. Apply AI-edited block and serialize
                                         const fullHtml = applyBlockHtmlToIframeAndSerialize(raw, true);
 
                                         if (!fullHtml) {
                                             console.warn(
-                                                "[PreviewEditor] applyBlockHtmlToIframeAndSerialize returned null"
+                                                "[PreviewEditor] applyBlockHtmlToIframeAndSerialize returned null",
                                             );
                                             return;
                                         }
@@ -4003,7 +4021,7 @@ export default function PreviewEditor({
                                         } catch (err) {
                                             console.warn(
                                                 "[PreviewEditor] failed to clean AI-edited HTML",
-                                                err
+                                                err,
                                             );
                                         }
 
@@ -4019,6 +4037,7 @@ export default function PreviewEditor({
                             )}
                         </motion.aside>
                     )}
+
 
 
                     {/* Right / canvas */}
@@ -4102,7 +4121,7 @@ export default function PreviewEditor({
 
                                                             {/* Archive icon only for non-archived pages */}
                                                             {!isArchived && (
-                                                                <button
+                                                                <a
                                                                     type="button"
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
@@ -4125,7 +4144,7 @@ export default function PreviewEditor({
                                                                         <path d="M5 3a2 2 0 00-2 2v4h2V5h10v4h2V5a2 2 0 00-2-2H5z" />
                                                                         <path d="M3 11v4a2 2 0 002 2h10a2 2 0 002-2v-4h-3a3 3 0 01-6 0H3z" />
                                                                     </svg>
-                                                                </button>
+                                                                </a>
                                                             )}
                                                         </motion.button>
 

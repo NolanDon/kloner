@@ -120,6 +120,7 @@ export function scrubArchivedRoutes(html: string, archivedRoutes: string[]): str
 
 export function extractArchivedPageIdsFromRender(render: any): string[] {
 
+  
     if (!render) return [];
 
     const root = render as any;
@@ -136,13 +137,16 @@ export function extractArchivedPageIdsFromRender(render: any): string[] {
         (v) => typeof v === "string" && v.trim().length > 0
     );
 
+    console.log("result: ", result)
     return result;
 }
 
 
 // src/lib/helpers/archiveHelpers.ts
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { doc, updateDoc, serverTimestamp, collection, DocumentData, getDocs, query, QueryDocumentSnapshot, where, QuerySnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { SeoMeta } from "./PreviewEditor";
+import { DeploymentDoc } from "@/app/dashboard/deployments/page";
 
 export interface RenderLike {
     id: string;
@@ -238,4 +242,153 @@ export function normalizeKlonerPaddingForExport(html: string): string {
         // if DOMParser explodes for any reason, fall back to original HTML
         return html;
     }
+}
+
+
+export function toDate(v: any): Date | null {
+    if (!v) return null;
+    if (typeof v.toDate === "function") return v.toDate();
+    if (v instanceof Date) return v;
+    if (typeof v === "number") return new Date(v);
+    if (typeof v === "string") {
+        const d = new Date(v);
+        return Number.isNaN(d.getTime()) ? null : d;
+    }
+    return null;
+}
+
+export function formatDate(v: any): string {
+    const d = toDate(v);
+    if (!d) return "";
+    return d.toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+    });
+}
+
+
+export function pickNewest(
+    snap: QuerySnapshot<DocumentData>
+): QueryDocumentSnapshot<DocumentData> | null {
+    if (snap.empty) return null;
+
+    let best: QueryDocumentSnapshot<DocumentData> | null = null;
+    let bestTs = -Infinity;
+
+    snap.forEach((docSnap: QueryDocumentSnapshot<DocumentData, DocumentData>) => {
+        const data = docSnap.data() as any;
+        const ts =
+            (data.lastExportedAt &&
+                toDate(data.lastExportedAt)?.getTime()) ||
+            (data.updatedAt && toDate(data.updatedAt)?.getTime()) ||
+            (data.createdAt && toDate(data.createdAt)?.getTime()) ||
+            0;
+
+        if (ts > bestTs) {
+            bestTs = ts;
+            best = docSnap as QueryDocumentSnapshot<DocumentData>;
+        }
+    });
+
+    return best;
+}
+
+
+export async function fetchRenderForDeployment(opts: {
+    uid: string;
+    deployment: { id: string } & DeploymentDoc;
+}): Promise<{
+    id: string;
+    html: string;
+    referenceImage?: string;
+    seoMetaByPage?: Record<string, SeoMeta> | null;
+    archivedPageIds: string[];
+}> {
+    const { uid, deployment } = opts;
+    const colRef = collection(db, "kloner_users", uid, "kloner_renders");
+
+    const tryQueries: Array<
+        () => Promise<QueryDocumentSnapshot<DocumentData> | null>
+    > = [];
+
+    if (deployment.vercelProjectId) {
+        const projectId = deployment.vercelProjectId;
+        tryQueries.push(async () => {
+            const qy = query(colRef, where("vercelProjectId", "==", projectId));
+            const snap = await getDocs(qy);
+            return pickNewest(snap);
+        });
+    }
+
+    if (deployment.vercelProjectName) {
+        const projectName = deployment.vercelProjectName;
+        tryQueries.push(async () => {
+            const qy = query(
+                colRef,
+                where("vercelProjectName", "==", projectName)
+            );
+            const snap = await getDocs(qy);
+            return pickNewest(snap);
+        });
+    }
+
+    if (deployment.vercelUrl) {
+        const url = deployment.vercelUrl;
+        tryQueries.push(async () => {
+            const qy = query(colRef, where("lastDeployUrl", "==", url));
+            const snap = await getDocs(qy);
+            return pickNewest(snap);
+        });
+    }
+
+    // last resort: match by base URL used in the render
+    tryQueries.push(async () => {
+        const baseUrl = deployment.vercelUrl?.split("?")[0] || null;
+        if (!baseUrl) return null;
+        const qy = query(colRef, where("url", "==", baseUrl));
+        const snap = await getDocs(qy);
+        return pickNewest(snap);
+    });
+
+    for (const fn of tryQueries) {
+        const docSnap = await fn();
+        if (!docSnap) continue;
+
+        const data = docSnap.data() as any;
+
+        const rawHtml =
+            typeof data.html === "string" ? data.html.trim() : "";
+        if (!rawHtml) {
+            throw new Error(
+                "Reference render exists but has no HTML. Open this URL in the Preview Builder and re-export."
+            );
+        }
+
+        const refImg =
+            typeof data.referenceImage === "string" &&
+                data.referenceImage.trim().length > 0
+                ? data.referenceImage
+                : undefined;
+
+        const seoMetaByPage: Record<string, SeoMeta> | null =
+            data.seoMetaByPage && typeof data.seoMetaByPage === "object"
+                ? (data.seoMetaByPage as Record<string, SeoMeta>)
+                : null;
+
+        const archivedPageIds = extractArchivedPageIdsFromRender(data);
+
+        return {
+            id: docSnap.id,
+            html: rawHtml,
+            referenceImage: refImg,
+            seoMetaByPage,
+            archivedPageIds,
+        };
+    }
+
+    throw new Error(
+        "No reference render found for this deployment. Open this site in the Preview Builder and export at least one render."
+    );
 }

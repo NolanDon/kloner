@@ -1,7 +1,7 @@
 // src/app/dashboard/deployments/page.tsx
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
 import {
@@ -41,6 +41,8 @@ import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 import { RenderDoc } from "../view/page";
 import {
     extractArchivedPageIdsFromRender,
+    fetchRenderForDeployment,
+    formatDate,
     getArchivedRoutesForRender,
     normalizeKlonerPaddingForExport,
     persistArchivedPageIds,
@@ -50,7 +52,7 @@ import {
 
 const ACCENT = "#f55f2a";
 
-type DeploymentDoc = {
+export type DeploymentDoc = {
     vercelDeploymentId: string;
     vercelProjectId?: string | null;
     vercelProjectName?: string | null;
@@ -105,28 +107,6 @@ type VercelIntegration = {
     configurationId?: string | null;
 };
 
-function toDate(v: any): Date | null {
-    if (!v) return null;
-    if (typeof v.toDate === "function") return v.toDate();
-    if (v instanceof Date) return v;
-    if (typeof v === "number") return new Date(v);
-    if (typeof v === "string") {
-        const d = new Date(v);
-        return Number.isNaN(d.getTime()) ? null : d;
-    }
-    return null;
-}
-
-function formatDate(v: any): string {
-    const d = toDate(v);
-    if (!d) return "";
-    return d.toLocaleString(undefined, {
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-    });
-}
 
 function stateColor(state?: UiState | string | null): string {
     const s = (state || "").toLowerCase();
@@ -256,19 +236,54 @@ export default function DeploymentsPage(): JSX.Element {
     const [vercelIntegration, setVercelIntegration] =
         useState<VercelIntegration | null>(null);
 
-    const handleArchivedPageIdsChange = async (ids: string[]) => {
-        setActiveArchivedPageIds(ids);
+    const handleArchivedPageIdsChange = useCallback(
+        async (ids: string[]) => {
+            console.log("[Deployments] handleArchivedPageIdsChange", {
+                renderId: activeRenderId,
+                ids,
+            });
 
-        if (!user || !activeRenderId) return;
+            setActiveArchivedPageIds(ids);
 
-        await persistArchivedPageIds({
-            userId: user.uid,
-            renderId: activeRenderId,
-            ids,
-        });
+            if (!user || !activeRenderId) {
+                console.warn(
+                    "[Deployments] handleArchivedPageIdsChange missing user or activeRenderId",
+                    { user: !!user, activeRenderId }
+                );
+                return;
+            }
 
-        setRenders((prev) => withArchivedPageIds(prev, activeRenderId, ids));
-    };
+            try {
+                const dref = doc(
+                    db,
+                    "kloner_users",
+                    user.uid,
+                    "kloner_renders",
+                    activeRenderId
+                );
+
+                await updateDoc(dref, {
+                    archivedPageIds: ids,
+                    updatedAt: serverTimestamp(),
+                });
+
+                console.log(
+                    "[Deployments] archivedPageIds persisted to Firestore",
+                    {
+                        renderId: activeRenderId,
+                        ids,
+                    }
+                );
+            } catch (err) {
+                console.error(
+                    "[Deployments] failed to persist archivedPageIds",
+                    err
+                );
+            }
+        },
+        [user, activeRenderId]
+    );
+
 
     useEffect(() => {
         if (!showDeployHint) return;
@@ -610,128 +625,7 @@ export default function DeploymentsPage(): JSX.Element {
         }
     }
 
-    function pickNewest(
-        snap: QuerySnapshot<DocumentData>
-    ): QueryDocumentSnapshot<DocumentData> | null {
-        if (snap.empty) return null;
 
-        let best: QueryDocumentSnapshot<DocumentData> | null = null;
-        let bestTs = -Infinity;
-
-        snap.forEach((docSnap) => {
-            const data = docSnap.data() as any;
-            const ts =
-                (data.lastExportedAt &&
-                    toDate(data.lastExportedAt)?.getTime()) ||
-                (data.updatedAt && toDate(data.updatedAt)?.getTime()) ||
-                (data.createdAt && toDate(data.createdAt)?.getTime()) ||
-                0;
-
-            if (ts > bestTs) {
-                bestTs = ts;
-                best = docSnap as QueryDocumentSnapshot<DocumentData>;
-            }
-        });
-
-        return best;
-    }
-
-    async function fetchRenderForDeployment(opts: {
-        uid: string;
-        deployment: { id: string } & DeploymentDoc;
-    }): Promise<{
-        id: string;
-        html: string;
-        referenceImage?: string;
-        seoMetaByPage?: Record<string, SeoMeta> | null;
-        archivedPageIds: string[];
-    }> {
-        const { uid, deployment } = opts;
-        const colRef = collection(db, "kloner_users", uid, "kloner_renders");
-
-        const tryQueries: Array<
-            () => Promise<QueryDocumentSnapshot<DocumentData> | null>
-        > = [];
-
-        if (deployment.vercelProjectId) {
-            const projectId = deployment.vercelProjectId;
-            tryQueries.push(async () => {
-                const qy = query(colRef, where("vercelProjectId", "==", projectId));
-                const snap = await getDocs(qy);
-                return pickNewest(snap);
-            });
-        }
-
-        if (deployment.vercelProjectName) {
-            const projectName = deployment.vercelProjectName;
-            tryQueries.push(async () => {
-                const qy = query(
-                    colRef,
-                    where("vercelProjectName", "==", projectName)
-                );
-                const snap = await getDocs(qy);
-                return pickNewest(snap);
-            });
-        }
-
-        if (deployment.vercelUrl) {
-            const url = deployment.vercelUrl;
-            tryQueries.push(async () => {
-                const qy = query(colRef, where("lastDeployUrl", "==", url));
-                const snap = await getDocs(qy);
-                return pickNewest(snap);
-            });
-        }
-
-        // last resort: match by base URL used in the render
-        tryQueries.push(async () => {
-            const baseUrl = deployment.vercelUrl?.split("?")[0] || null;
-            if (!baseUrl) return null;
-            const qy = query(colRef, where("url", "==", baseUrl));
-            const snap = await getDocs(qy);
-            return pickNewest(snap);
-        });
-
-        for (const fn of tryQueries) {
-            const docSnap = await fn();
-            if (!docSnap) continue;
-
-            const data = docSnap.data() as any;
-
-            const rawHtml =
-                typeof data.html === "string" ? data.html.trim() : "";
-            if (!rawHtml) {
-                throw new Error(
-                    "Reference render exists but has no HTML. Open this URL in the Preview Builder and re-export."
-                );
-            }
-
-            const refImg =
-                typeof data.referenceImage === "string" &&
-                    data.referenceImage.trim().length > 0
-                    ? data.referenceImage
-                    : undefined;
-
-            const seoMetaByPage: Record<string, SeoMeta> | null =
-                data.seoMetaByPage && typeof data.seoMetaByPage === "object"
-                    ? (data.seoMetaByPage as Record<string, SeoMeta>)
-                    : null;
-
-            const archivedPageIds = extractArchivedPageIdsFromRender(data);
-
-            return {
-                id: docSnap.id,
-                html: rawHtml,
-                referenceImage: refImg,
-                seoMetaByPage,
-                archivedPageIds,
-            };
-        }
-
-        throw new Error(
-            "No reference render found for this deployment. Open this site in the Preview Builder and export at least one render."
-        );
-    }
 
     async function openEditorForDeployment(d: { id: string } & DeploymentDoc) {
         if (!user) return;

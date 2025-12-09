@@ -76,7 +76,7 @@ import { UrlDoc } from "../page";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 import { archiveRender, resolveStorageUrl, useResolvedImg } from "@/src/lib/renders";
 import { AnimatePresence, motion } from "framer-motion";
-import { extractArchivedPageIdsFromRender, getArchivedRoutesForRender, persistArchivedPageIds, scrubArchivedRoutes, withArchivedPageIds } from "@/components/helpers";
+import { extractArchivedPageIdsFromRender, fetchRenderForDeployment, getArchivedRoutesForRender, persistArchivedPageIds, scrubArchivedRoutes, withArchivedPageIds } from "@/components/helpers";
 
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
@@ -2295,7 +2295,11 @@ export default function PreviewPage(): JSX.Element {
 
                 const data = snap.data() as RenderDoc;
 
-                // hydrate meta map from Firestore (may be undefined)
+                // FIX: pass the doc, not the id
+                const archivedPages = extractArchivedPageIdsFromRender(data);
+                console.log("archive pages: ", archivedPages);
+                setActiveArchivedPageIds(archivedPages);
+
                 const seoMetaByPage =
                     (data.seoMetaByPage as SeoMetaByPage | undefined) ?? null;
 
@@ -2329,6 +2333,7 @@ export default function PreviewPage(): JSX.Element {
         },
         [user, shots, push],
     );
+
 
     const discardRender = useCallback(
         async (renderId: string) => {
@@ -2816,17 +2821,58 @@ export default function PreviewPage(): JSX.Element {
         []
     );
 
-    const handleArchivedPageIdsChange = async (ids: string[]) => {
-        if (!user || !activeRenderId) return;
+    const [activeArchivedPageIds, setActiveArchivedPageIds] = useState<string[]>(
+        []
+    );
 
-        await persistArchivedPageIds({
-            userId: user.uid,
-            renderId: activeRenderId,
-            ids,
-        });
 
-        setRenders((prev) => withArchivedPageIds(prev, activeRenderId, ids));
-    };
+    const handleArchivedPageIdsChange = useCallback(
+        async (ids: string[]) => {
+            console.log("[Dashboard] handleArchivedPageIdsChange", {
+                renderId: activeRenderId,
+                ids,
+            });
+
+            setActiveArchivedPageIds(ids);
+
+            if (!user || !activeRenderId) {
+                console.warn(
+                    "[Dashboard] handleArchivedPageIdsChange missing user or activeRenderId",
+                    { user: !!user, activeRenderId }
+                );
+                return;
+            }
+
+            try {
+                const dref = doc(
+                    db,
+                    "kloner_users",
+                    user.uid,
+                    "kloner_renders",
+                    activeRenderId
+                );
+
+                await updateDoc(dref, {
+                    archivedPageIds: ids,
+                    updatedAt: serverTimestamp(),
+                });
+
+                console.log(
+                    "[Deployments] archivedPageIds persisted to Firestore",
+                    {
+                        renderId: activeRenderId,
+                        ids,
+                    }
+                );
+            } catch (err) {
+                console.error(
+                    "[Deployments] failed to persist archivedPageIds",
+                    err
+                );
+            }
+        },
+        [user, activeRenderId]
+    );
 
     useEffect(() => {
         if (didAutoSelectRef.current) return;
@@ -3230,7 +3276,6 @@ export default function PreviewPage(): JSX.Element {
         return group.items.some((s) => pendingByKey[s.path]);
     });
 
-
     return (
         <main className="min-h-screen bg-white">
             <div className="mx-auto max-w-[1200px] px-4 sm:px-6 lg:px-10 py-8">
@@ -3609,11 +3654,15 @@ export default function PreviewPage(): JSX.Element {
                         initialHtml={editorHtml}
                         sourceImage={editorRefImg}
                         initialSeoMetaByPage={activeSeoMetaByPage || undefined}
-                        initialArchivedPageIds={extractArchivedPageIdsFromRender(activeRender)}
+                        initialArchivedPageIds={activeArchivedPageIds}
+                        onArchivedPageIdsChange={
+                            handleArchivedPageIdsChange
+                        }
                         onClose={() => {
                             setEditorOpen(false);
                             setActiveRenderId(undefined);
                             setActiveSeoMetaByPage(null);
+                            setActiveArchivedPageIds([]);
                         }}
                         onExport={(html, name) =>
                             exportToVercel({
