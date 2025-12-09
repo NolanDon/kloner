@@ -248,16 +248,39 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                 return;
             }
 
-            const all: AiEditSuggestion[] = j.suggestions || [];
-            setSuggestions(all);
+            // ---- updated suggestions handling so panel updates immediately ----
+            const suggestionsFromApi: AiEditSuggestion[] | null =
+                Array.isArray(j.suggestions) ? (j.suggestions as AiEditSuggestion[]) : null;
+            const suggestionFromApi: AiEditSuggestion | undefined =
+                j.suggestion as AiEditSuggestion | undefined;
+
+            // update suggestions state without requiring a reload
+            setSuggestions((prev) => {
+                if (suggestionsFromApi && suggestionsFromApi.length) {
+                    return suggestionsFromApi;
+                }
+                if (suggestionFromApi) {
+                    const exists = prev.some((s) => s.id === suggestionFromApi.id);
+                    if (exists) {
+                        return prev.map((s) =>
+                            s.id === suggestionFromApi.id ? suggestionFromApi : s
+                        );
+                    }
+                    return [...prev, suggestionFromApi];
+                }
+                return prev;
+            });
+
             setPrompt("");
             setAttachedImage(null);
 
             applyCreditsMeta(j.meta);
 
             const latest: AiEditSuggestion | undefined =
-                (j.suggestion as AiEditSuggestion | undefined) ||
-                (Array.isArray(all) && all.length ? all[0] : undefined);
+                suggestionFromApi ||
+                (suggestionsFromApi && suggestionsFromApi.length
+                    ? suggestionsFromApi[0]
+                    : undefined);
 
             if (latest && latest.afterHtml) {
                 setActivePreviewId(latest.id);
@@ -365,9 +388,6 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                             {/* User bubble */}
                             <div className="flex justify-end">
                                 <div className="max-w-[80%] rounded-2xl bg-[var(--accent,#f55f2a)] px-3 py-1.5 text-white shadow-sm">
-                                    {/* <div className="mb-0.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white/80">
-                                        You
-                                    </div> */}
                                     <div className="text-[20px]">{s.prompt}</div>
                                 </div>
                             </div>
@@ -375,15 +395,11 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                             {/* AI bubble */}
                             <div className="flex justify-start">
                                 <div className="max-w-[85%] rounded-2xl border border-neutral-200 bg-white px-3 py-1.5 text-neutral-900 shadow-sm">
-
                                     <div className="text-[20px] text-neutral-800">
                                         {s.summary ||
                                             "Updated the selected block based on your request."}
                                     </div>
                                     <div className="mt-1 flex items-center justify-between text-[20px] text-neutral-500">
-                                        {/* <span>
-                                            This change has been applied to your selected block.
-                                        </span> */}
                                         <button
                                             type="button"
                                             onClick={() => handleDismiss(s.id)}
@@ -395,10 +411,6 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                                     </div>
                                 </div>
                             </div>
-                            {/* <div className="mb-1 flex items-center text-[12px] uppercase tracking-[0.16em] text-neutral-400 gap-20">
-                                <span>AI edit</span>
-                                <span>{formatCreatedAt(s.createdAt)}</span>
-                            </div> */}
                         </div>
                     ))
                 )}
@@ -414,7 +426,6 @@ export default function AiEditPanel(props: AiEditPanelProps) {
             {/* Input/footer */}
             <div className="border-t border-neutral-200 bg-white px-3 py-2">
                 <div className="mb-1 flex items-center justify-between">
-
                     {prompt.length > 0 && (
                         <span className="text-[11px] text-neutral-400">
                             {prompt.length}/{MAX_PROMPT_CHARS}
