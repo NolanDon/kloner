@@ -3591,7 +3591,9 @@ export default function PreviewPage(): JSX.Element {
                     </div>
 
                     <p className="mt-1 mb-2 text-sm text-neutral-500">
-                        These are the website previews generated from your url.
+                        {(renders.length === 0 ? 'This section will host your editable previews'
+                            :
+                            'These are the website previews generated from your url.')}
                     </p>
 
                     {(renders.length === 0 || hasGhostPending) ? (

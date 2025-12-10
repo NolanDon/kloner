@@ -183,14 +183,14 @@ type ModalPlain = React.ComponentType;
 const items = [
   {
     title: "Paste a URL",
-    text: "Point us at any site. We'll fetch up to 10 pages of structure and begin creating a snapshot collection.",
+    text: "Point us at any site. We'll analyze the layout and create you a base layout.",
     step: 1,
     Modal: UrlInputModal as ModalPlain,
     needsProgress: false,
   },
   {
     title: "Preview",
-    text: "Once complete, begin generating previews from the collection we capture.",
+    text: "Once complete, begin generating previews from that layout.",
     step: 2,
     Modal: PreviewGridModal as ModalPlain,
     needsProgress: false,
