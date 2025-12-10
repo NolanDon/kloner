@@ -1151,7 +1151,7 @@ export default function PreviewEditor({
     const [history, setHistory] = useState<DraftSnapshot[]>([]);
     const [aiHistory, setAiHistory] = useState<AiEditSuggestion[]>([]);
     const [historyOpen, setHistoryOpen] = useState(false);
-    const [sidebarHidden, setSidebarHidden] = useState(false);
+    const [sidebarHidden, setSidebarHidden] = useState(true);
     // dragging iframe
     const previewDragControls = useDragControls();
 
@@ -2183,7 +2183,7 @@ export default function PreviewEditor({
 
         if (!snapshots.length) {
             return (
-                <div className="text-sm text-gray-500">
+                <div className="text-sm text-gray-500 bg-white">
                     No history yet. Autosaves and applied versions will appear here.
                 </div>
             );
@@ -2193,7 +2193,7 @@ export default function PreviewEditor({
 
         return (
             <div className="flex flex-col gap-2 text-md h-full bg-white">
-                <div className="flex-1 overflow-y-auto rounded-md border border-gray-200 bg-white/90">
+                <div className="flex-1 overflow-y-auto rounded-md border border-gray-200">
                     {ordered.map((snap) => (
                         <button
                             key={snap.id}
@@ -4519,8 +4519,8 @@ export default function PreviewEditor({
 
                         {(mode === "preview" || (isDevCodeMode && mode === "code")) && (
                             <div
-                                id="kloner-home"
                                 ref={iframeWrapperRef}
+                                id="kloner-home"
                                 className={
                                     isPreviewFullscreen
                                         ? "flex-1 min-h-0 flex flex-col overflow-hidden"
@@ -4733,14 +4733,14 @@ export default function PreviewEditor({
                                     </motion.div>
                                 </AnimatePresence>
 
-                                <div id="kloner-quick-undo">
+                                {/* <div id="kloner-quick-undo">
                                     <FloatingBlockToolbar
                                         iframeRef={iframeRef}
                                         wrapperRef={iframeWrapperRef}
                                         selectionMeta={selectionMeta}
                                         uiScale={0}
                                     />
-                                </div>
+                                </div> */}
 
                             </div>
                         )}
@@ -4804,7 +4804,7 @@ export default function PreviewEditor({
                                         </button>
                                     </div>
 
-                                    <div className="min-h-0 flex-1 overflow-y-auto p-2">
+                                    <div className="min-h-0 flex-1 overflow-y-auto p-2 bg-white">
                                         <HistoryPanel
                                             snapshots={mergedHistory}
                                             onRestore={handleRestoreSnapshot}
@@ -4867,8 +4867,10 @@ export default function PreviewEditor({
                         {aiEditing && !closing && (
                             <div className="absolute inset-0 z-[95] backdrop-blur-[2px] grid place-items-center pointer-events-auto">
                                 <div className="flex items-center gap-3 bg-white rounded border px-3 py-2 text-md text-neutral-800 shadow-md inline-flex items-center gap-2 rounded-2xl border border-neutral-200 px-3 py-1 text-[16px] text-neutral-700 shadow-sm">
-                                    <Loader2 className="h-3.5 w-3.5 animate-spin"
-                                        style={{ color: 'linear-gradient(90deg,#4f46e5,#ec4899,#f97316)]' }} />
+                                    <Loader2
+                                        className="h-3.5 w-3.5 animate-spin"
+                                        style={{ color: "linear-gradient(90deg,#4f46e5,#ec4899,#f97316)]" }}
+                                    />
                                     <span
                                         className="bg-clip-text text-transparent"
                                         style={{
@@ -4884,6 +4886,18 @@ export default function PreviewEditor({
                                 </div>
                             </div>
                         )}
+
+                        {!aiEditing && !closing && (
+                            <div id="kloner-quick-undo">
+                                <FloatingBlockToolbar
+                                    iframeRef={iframeRef}
+                                    wrapperRef={iframeWrapperRef}
+                                    selectionMeta={selectionMeta}
+                                    uiScale={0}
+                                />
+                            </div>
+                        )}
+
                     </section>
                 </div>
 

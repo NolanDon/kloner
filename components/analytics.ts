@@ -231,7 +231,7 @@ export type EditorSessionMetrics = {
     modeSwitchCount?: number;
     deviceSwitchCount?: number;
     historyRestoreCount?: number;
-};    
+};
 
 export type EditorSessionCounters = {
     save: number;
@@ -262,10 +262,13 @@ export async function recordEditorSessionAnalytics(
             return;
         }
 
+        // Capture a concrete string so TS stops complaining inside async callbacks
+        const uid = user.uid as string;
+
         const editorRef = doc(
             db,
             "kloner_users",
-            user.uid,
+            uid,
             "meta",
             "editor",
         );
@@ -276,6 +279,10 @@ export async function recordEditorSessionAnalytics(
                 : 0;
 
         const durationMinutes = msToMinutesRounded(safeDurationMs) ?? 0;
+
+        const approxStartedAtIso = new Date(
+            Date.now() - safeDurationMs,
+        ).toISOString();
 
         const c: EditorSessionCounters = {
             save: counters?.save ?? 0,
@@ -293,16 +300,17 @@ export async function recordEditorSessionAnalytics(
         };
 
         console.log("[recordEditorSessionAnalytics] start", {
-            uid: user.uid,
+            uid,
             durationMs: safeDurationMs,
             durationMinutes,
             reason,
+            approxStartedAtIso,
             counters: c,
         });
 
         const now = serverTimestamp();
 
-        // 1) Aggregate doc: last session + totals
+        // 1) Aggregate doc: last session + totals (+ last visit fields)
         await runTransaction(db, async (tx) => {
             const snap = await tx.get(editorRef);
             const data = (snap.data() || {}) as Record<string, any>;
@@ -325,7 +333,6 @@ export async function recordEditorSessionAnalytics(
             const safeNum = (v: any) =>
                 typeof v === "number" && Number.isFinite(v) ? v : 0;
 
-            // previous totals
             const prevTotals = {
                 editorSaveTotal: safeNum(data.editorSaveTotal),
                 editorExportTotal: safeNum(data.editorExportTotal),
@@ -370,19 +377,16 @@ export async function recordEditorSessionAnalytics(
                 updatedAt: now,
                 endedAt: now,
 
-                // old ms field (backwards-compat)
                 durationMs: safeDurationMs,
                 editorSessionTotalMs: prevTotalMs + safeDurationMs,
 
-                // new human-readable fields in minutes
-                durationMinutes: durationMinutes,
+                durationMinutes,
                 editorSessionTotalMinutes: prevTotalMinutes + durationMinutes,
 
-                reason: reason,
+                reason,
 
                 editorSessionCount: prevSessionCount + 1,
 
-                // per-session counts for the *last* session only
                 saveCount: c.save,
                 exportCount: c.export,
                 autosaveCount: c.autosave,
@@ -395,6 +399,11 @@ export async function recordEditorSessionAnalytics(
                 aiEditCount: c.aiEdit,
                 aiApplyCount: c.aiApply,
                 aiMiniToolbarCount: c.aiMiniToolbar,
+
+                // new last-session fields
+                lastSessionStartedApproxIso: approxStartedAtIso,
+                lastSessionEndedAt: now,
+                lastSessionDurationMinutes: durationMinutes,
 
                 ...totalsPatch,
             };
@@ -411,6 +420,19 @@ export async function recordEditorSessionAnalytics(
             } else {
                 tx.set(editorRef, basePatch, { merge: true });
             }
+
+            // also stamp lightweight last-visit info on root user doc
+            const userRef = doc(db, "kloner_users", uid);
+            tx.set(
+                userRef,
+                {
+                    lastVisitAt: now,
+                    lastSessionEndedAt: now,
+                    lastSessionDurationMinutes: durationMinutes,
+                    lastSessionReason: reason,
+                },
+                { merge: true },
+            );
         });
 
         console.log("[recordEditorSessionAnalytics] aggregate doc written");
@@ -420,25 +442,20 @@ export async function recordEditorSessionAnalytics(
             const sessionsCol = collection(
                 db,
                 "kloner_users",
-                user.uid,
+                uid,
                 "meta",
                 "editor",
                 "sessions",
             );
 
-            const approxStartedAt = new Date(
-                Date.now() - safeDurationMs,
-            ).toISOString();
-
             await addDoc(sessionsCol, {
                 createdAt: serverTimestamp(),
 
-                // ms kept, but minutes is what you'll actually read
                 durationMs: safeDurationMs,
                 durationMinutes,
 
                 reason,
-                approxStartedAtIso: approxStartedAt,
+                approxStartedAtIso,
 
                 saveCount: c.save,
                 exportCount: c.export,
@@ -462,3 +479,4 @@ export async function recordEditorSessionAnalytics(
         console.error("recordEditorSessionAnalytics failed", err);
     }
 }
+

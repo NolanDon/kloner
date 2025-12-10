@@ -9,6 +9,7 @@ import React, {
     useRef,
     memo,
 } from "react";
+import { flushSync } from "react-dom";
 import { toast } from "react-hot-toast";
 
 import { useRouter, useSearchParams } from "next/navigation";
@@ -935,30 +936,13 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     onClick: () => void;
     compact?: boolean;
 }) {
-    // Local 30s cooldown so the card stays "generating" even if the parent lock flickers.
-    const [cooldownActive, setCooldownActive] = useState(false);
-
-    // When cooldown turns on, schedule it to turn off after 30 seconds.
-    useEffect(() => {
-        if (!cooldownActive) return;
-
-        const timeoutId = setTimeout(() => {
-            setCooldownActive(false);
-        }, 30_000);
-
-        return () => {
-            clearTimeout(timeoutId);
-        };
-    }, [cooldownActive]);
-
-    // Final lock state: either parent says it's locked, or local cooldown is active.
-    const effectiveLocked = locked || cooldownActive;
+    // Rely entirely on the parent-provided 'locked' prop.
+    // The parent tracks pendingByKey and renders with queued status,
+    // so this card will naturally disable when a render appears.
+    const effectiveLocked = locked;
 
     const handleClick = () => {
         if (effectiveLocked) return;
-        // Start local cooldown immediately so user sees hammer animation
-        // and the button stays disabled ~30s even if parent rerenders.
-        setCooldownActive(true);
         onClick();
     };
 
@@ -2031,7 +2015,6 @@ export default function PreviewPage(): JSX.Element {
         const unsub = onSnapshot(qs, (snap) => {
             const all = snap.docs.map(mapRenderDoc);
 
-
             const filtered = all.filter((r) => {
                 const byUrl = (r.url || "") === targetUrl;
                 const byHash =
@@ -2039,7 +2022,10 @@ export default function PreviewPage(): JSX.Element {
                 const byKeyHash =
                     !!targetHash &&
                     extractHashFromKey(r.key) === targetHash;
-                return byUrl || byHash || byKeyHash;
+                // Include renders that match an optimistic key, even if URL doesn't match
+                const byOptimisticKey =
+                    r.key && Object.keys(optimisticByKey).includes(r.key);
+                return byUrl || byHash || byKeyHash || byOptimisticKey;
             });
 
             const now = Date.now();
@@ -2069,9 +2055,16 @@ export default function PreviewPage(): JSX.Element {
                     (r) => r.key === k
                 );
                 if (!exists) {
+                    // Real render hasn't appeared yet, keep optimistic
                     withOptimistic.unshift(opt);
                 } else {
+                    // Real render appeared, remove optimistic and clear pending
                     setOptimisticByKey((m) => {
+                        const n = { ...m };
+                        delete n[k];
+                        return n;
+                    });
+                    setPendingByKey((m) => {
                         const n = { ...m };
                         delete n[k];
                         return n;
@@ -2189,15 +2182,18 @@ export default function PreviewPage(): JSX.Element {
             // lock AFTER confirm so a cancelled prompt never locks anything
             startHardLock(primaryKey, optimisticId, 60_000);
 
-            setRenders((prev) => [optimistic, ...prev]);
-            setOptimisticByKey((m) => ({
-                ...m,
-                [primaryKey]: optimistic,
-            }));
-            setPendingByKey((m) => ({
-                ...m,
-                [primaryKey]: true,
-            }));
+            // Immediately update UI state synchronously so the ghost card disables right away
+            flushSync(() => {
+                setRenders((prev) => [optimistic, ...prev]);
+                setOptimisticByKey((m) => ({
+                    ...m,
+                    [primaryKey]: optimistic,
+                }));
+                setPendingByKey((m) => ({
+                    ...m,
+                    [primaryKey]: true,
+                }));
+            });
             setErr("");
 
             try {
@@ -3632,7 +3628,7 @@ export default function PreviewPage(): JSX.Element {
                                         return renders.some(
                                             (r) =>
                                                 r.key === s.path &&
-                                                r.status === "queued" &&
+                                                (r.status === "queued" || r.status === "processing") &&
                                                 !r.archived,
                                         );
                                     });
@@ -3725,7 +3721,7 @@ export default function PreviewPage(): JSX.Element {
                                         return renders.some(
                                             (r) =>
                                                 r.key === s.path &&
-                                                r.status === "queued" &&
+                                                (r.status === "queued" || r.status === "processing") &&
                                                 !r.archived,
                                         );
                                     });
