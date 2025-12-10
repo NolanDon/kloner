@@ -57,8 +57,10 @@ export async function POST(req: NextRequest) {
 
                 const bucket = getBucket();
 
-                // group by user + renderId
-                const objectPath = `kloner-screenshots/${uid}/${renderId}/${Date.now()}-${filename}`;
+                // new: no uid in path; use opaque asset id
+                const assetId = randomUUID();
+                const objectPath = `kloner-images/public/${assetId}-${filename}`;
+
                 const file = bucket.file(objectPath);
                 const token = randomUUID();
 
@@ -69,6 +71,9 @@ export async function POST(req: NextRequest) {
                         cacheControl: "public,max-age=31536000,immutable",
                         metadata: {
                             firebaseStorageDownloadTokens: token,
+                            // still record ownership in metadata if you need it later
+                            ownerUid: uid,
+                            renderId,
                         },
                     },
                 });

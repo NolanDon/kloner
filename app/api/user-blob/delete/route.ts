@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import admin from "firebase-admin";
 import type { Bucket } from "@google-cloud/storage";
-import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard"; // adjust path if needed
+import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 
 export const runtime = "nodejs";
 
@@ -50,44 +50,83 @@ export async function POST(req: NextRequest) {
             const { paths, renderId } = (await req.json()) as DeleteBody;
             const bucket = getBucket();
 
-            // Mode 1: delete by renderId prefix (preferred for renders)
+            // Mode 1: delete by renderId using metadata (ownerUid + renderId)
+            // Matches new upload path: kloner-images/public/<assetId>-<filename>
             if (renderId && typeof renderId === "string") {
-                const prefix = `kloner-screenshots/${uid}/${renderId}/`;
+                const [files] = await bucket.getFiles({
+                    prefix: "kloner-images/",
+                });
 
-                const [files] = await bucket.getFiles({ prefix });
+                const toDelete = [];
+                for (const file of files) {
+                    try {
+                        const [meta] = await file.getMetadata();
+                        const m = meta.metadata || {};
+                        const ownerUid = m.ownerUid as string | undefined;
+                        const fileRenderId = m.renderId as string | undefined;
+
+                        if (ownerUid === uid && fileRenderId === renderId) {
+                            toDelete.push(file);
+                        }
+                    } catch (e) {
+                        console.error(
+                            "storage delete (by renderId) metadata read failed",
+                            file.name,
+                            e,
+                        );
+                    }
+                }
 
                 await Promise.all(
-                    files.map((file) =>
+                    toDelete.map((file) =>
                         file.delete().catch((e) => {
                             console.error(
                                 "storage delete (by renderId) failed",
                                 file.name,
-                                e
+                                e,
                             );
-                        })
-                    )
+                        }),
+                    ),
                 );
 
-                return NextResponse.json({ ok: true, count: files.length });
+                return NextResponse.json({ ok: true, count: toDelete.length });
             }
 
-            // Mode 2: explicit paths (fallback / other callers)
+            // Mode 2: explicit paths
             if (!Array.isArray(paths) || paths.length === 0) {
                 return NextResponse.json(
                     { ok: false, error: "No paths or renderId provided" },
-                    { status: 400 }
+                    { status: 400 },
                 );
             }
 
             await Promise.all(
                 paths.map(async (p) => {
                     if (!p || typeof p !== "string") return;
+
+                    const file = bucket.file(p);
+
                     try {
-                        await bucket.file(p).delete();
+                        const [meta] = await file.getMetadata();
+                        const m = meta.metadata || {};
+                        const ownerUid = m.ownerUid as string | undefined;
+
+                        // For new objects: only allow delete if ownerUid matches.
+                        // For legacy objects with no ownerUid, allow delete so old
+                        // cleanup still works.
+                        if (ownerUid && ownerUid !== uid) {
+                            console.warn(
+                                "storage delete refused: owner mismatch",
+                                { path: p, ownerUid, uid },
+                            );
+                            return;
+                        }
+
+                        await file.delete();
                     } catch (e) {
                         console.error("storage delete failed", p, e);
                     }
-                })
+                }),
             );
 
             return NextResponse.json({ ok: true });
@@ -95,7 +134,7 @@ export async function POST(req: NextRequest) {
             console.error("user-storage delete error", err);
             return NextResponse.json(
                 { ok: false, error: err?.message || "delete_failed" },
-                { status: 500 }
+                { status: 500 },
             );
         }
     });
