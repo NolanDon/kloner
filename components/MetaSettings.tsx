@@ -12,7 +12,7 @@ export interface MetaWithJsonLd {
     title?: string;
     description?: string;
     faviconUrl?: string;
-    jsonLd?: unknown;
+    jsonLd?: unknown | null;
 }
 
 export interface MetaSettingsProps {
@@ -72,6 +72,23 @@ export function MetaSettings({
         setDraftMeta((prev) => ({ ...prev, [key]: value }));
     };
 
+    function sanitizeMetaForSave(metaIn: MetaWithJsonLd): MetaWithJsonLd {
+        const out: MetaWithJsonLd = {};
+
+        if (metaIn.title !== undefined) out.title = metaIn.title;
+        if (metaIn.description !== undefined) out.description = metaIn.description;
+        if (metaIn.faviconUrl !== undefined) out.faviconUrl = metaIn.faviconUrl;
+
+        // Critical part: never let jsonLd be undefined
+        if (metaIn.jsonLd === undefined) {
+            out.jsonLd = null; // explicit clear instead of undefined
+        } else {
+            out.jsonLd = metaIn.jsonLd ?? null;
+        }
+
+        return out;
+    }
+
     const handleMetaSaveClick = async () => {
         if (!onSaveMeta) return;
         if (savingRef.current) return;
@@ -81,7 +98,7 @@ export function MetaSettings({
         setJustSaved(false);
 
         try {
-            let parsedJsonLd: unknown | undefined = draftMeta.jsonLd;
+            let parsedJsonLd: unknown | null = draftMeta.jsonLd ?? null;
 
             const trimmed = jsonText.trim();
             if (trimmed.length > 0) {
@@ -94,13 +111,16 @@ export function MetaSettings({
                     return;
                 }
             } else {
-                parsedJsonLd = undefined;
+                // user cleared the textarea -> explicitly clear jsonLd
+                parsedJsonLd = null;
             }
 
-            const metaToSave: MetaWithJsonLd = {
+            const metaToSaveRaw: MetaWithJsonLd = {
                 ...draftMeta,
                 jsonLd: parsedJsonLd,
             };
+
+            const metaToSave = sanitizeMetaForSave(metaToSaveRaw);
 
             await onSaveMeta(metaToSave);
             const now = new Date();
@@ -122,14 +142,20 @@ export function MetaSettings({
             return {
                 title: seoMetaByPage.single.title ?? "",
                 description: seoMetaByPage.single.description ?? "",
-                jsonLd: seoMetaByPage.single.jsonLd ?? undefined,
+                jsonLd:
+                    seoMetaByPage.single.jsonLd !== undefined
+                        ? seoMetaByPage.single.jsonLd
+                        : null,
             };
         }
         if (seoMetaByPage.__single__) {
             return {
                 title: seoMetaByPage.__single__.title ?? "",
                 description: seoMetaByPage.__single__.description ?? "",
-                jsonLd: seoMetaByPage.__single__.jsonLd ?? undefined,
+                jsonLd:
+                    seoMetaByPage.__single__.jsonLd !== undefined
+                        ? seoMetaByPage.__single__.jsonLd
+                        : null,
             };
         }
         // Then try homepage route
@@ -137,7 +163,10 @@ export function MetaSettings({
             return {
                 title: seoMetaByPage["/"].title ?? "",
                 description: seoMetaByPage["/"].description ?? "",
-                jsonLd: seoMetaByPage["/"].jsonLd ?? undefined,
+                jsonLd:
+                    seoMetaByPage["/"].jsonLd !== undefined
+                        ? seoMetaByPage["/"].jsonLd
+                        : null,
             };
         }
 
@@ -151,7 +180,7 @@ export function MetaSettings({
         return {
             title: block.title ?? "",
             description: block.description ?? "",
-            jsonLd: block.jsonLd ?? undefined,
+            jsonLd: block.jsonLd !== undefined ? block.jsonLd : null,
         };
     }
 
@@ -187,16 +216,20 @@ export function MetaSettings({
             }
 
             const data = await res.json();
-            const metaBlock = pickMetaFromSeoMetaByPage(data?.seoMetaByPage);
-            if (!metaBlock) {
+            const metaBlockRaw = pickMetaFromSeoMetaByPage(data?.seoMetaByPage);
+            if (!metaBlockRaw) {
                 alert("SEO meta generation returned no usable data.");
                 return;
             }
 
+            const metaBlock = sanitizeMetaForSave(metaBlockRaw);
+
             // Update local state
             setDraftMeta(metaBlock);
             setJsonText(
-                metaBlock.jsonLd ? JSON.stringify(metaBlock.jsonLd, null, 2) : ""
+                metaBlock.jsonLd
+                    ? JSON.stringify(metaBlock.jsonLd, null, 2)
+                    : ""
             );
 
             // Persist immediately via onSaveMeta
@@ -369,60 +402,69 @@ export function MetaSettings({
                     </div>
                 </div>
 
-                {/* Buttons directly under the last block */}
-                <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-neutral-200 pt-3">
-                    <div className="flex items-center gap-3">
+                {/* Buttons + disclaimer directly under the last block */}
+                <div className="mt-5 flex flex-col gap-2 border-t border-neutral-200 pt-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                            <button
+                                type="button"
+                                onClick={handleMetaSaveClick}
+                                disabled={saving}
+                                className="inline-flex items-center rounded-full bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
+                            >
+                                {saving ? "Saving…" : "Save meta"}
+                            </button>
+                            <div className="flex flex-col text-[11px] text-neutral-500">
+                                {justSaved && (
+                                    <span className="text-emerald-600">
+                                        Saved
+                                        {lastSavedAt && (
+                                            <>
+                                                {" "}
+                                                at{" "}
+                                                {lastSavedAt.toLocaleTimeString(
+                                                    [],
+                                                    {
+                                                        hour: "2-digit",
+                                                        minute: "2-digit",
+                                                        second: "2-digit",
+                                                    }
+                                                )}
+                                            </>
+                                        )}
+                                    </span>
+                                )}
+                                {!justSaved && lastSavedAt && (
+                                    <span>
+                                        Last saved at{" "}
+                                        {lastSavedAt.toLocaleTimeString([], {
+                                            hour: "2-digit",
+                                            minute: "2-digit",
+                                            second: "2-digit",
+                                        })}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+
                         <button
                             type="button"
-                            onClick={handleMetaSaveClick}
-                            disabled={saving}
+                            onClick={handleGenerateMetaClick}
+                            disabled={generating}
                             className="inline-flex items-center rounded-full bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
                         >
-                            {saving ? "Saving…" : "Save meta"}
+                            {generating
+                                ? "Generating meta…"
+                                : `${generateLabel} with AI`}
                         </button>
-                        <div className="flex flex-col text-[11px] text-neutral-500">
-                            {justSaved && (
-                                <span className="text-emerald-600">
-                                    Saved
-                                    {lastSavedAt && (
-                                        <>
-                                            {" "}
-                                            at{" "}
-                                            {lastSavedAt.toLocaleTimeString(
-                                                [],
-                                                {
-                                                    hour: "2-digit",
-                                                    minute: "2-digit",
-                                                    second: "2-digit",
-                                                }
-                                            )}
-                                        </>
-                                    )}
-                                </span>
-                            )}
-                            {!justSaved && lastSavedAt && (
-                                <span>
-                                    Last saved at{" "}
-                                    {lastSavedAt.toLocaleTimeString([], {
-                                        hour: "2-digit",
-                                        minute: "2-digit",
-                                        second: "2-digit",
-                                    })}
-                                </span>
-                            )}
-                        </div>
                     </div>
 
-                    <button
-                        type="button"
-                        onClick={handleGenerateMetaClick}
-                        disabled={generating}
-                        className="inline-flex items-center rounded-full bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
-                    >
-                        {generating
-                            ? "Generating meta…"
-                            : `${generateLabel} with AI`}
-                    </button>
+                    <p className="text-[11px] leading-snug text-neutral-500">
+                        Note: Search engines can take time to pick up updated
+                        titles, descriptions, and JSON-LD. Changes here update your
+                        site immediately, but you need to check back in search
+                        results later to see them reflected.
+                    </p>
                 </div>
             </div>
         </div>
