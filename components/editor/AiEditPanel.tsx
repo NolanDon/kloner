@@ -497,7 +497,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                     {historyLoading && !historyError && orderedSuggestions.length === 0 ? (
                         <div className="flex h-30 items-center justify-center rounded-xl border border-neutral-200 bg-neutral-50 px-4 text-center text-[12px] text-neutral-500">
                             <div className="flex items-center gap-2">
-                                <Loader2 className="h-4 w-4 animate-spin text-neutral-400" />
+                                <Loader2 className="h-4 w-4 animate-spin text-neutral-400 py-4" />
                                 <span>Loading AI edit history…</span>
                             </div>
                         </div>
@@ -517,7 +517,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                                     {/* User bubble */}
                                     <div className="flex flex-col items-end gap-1">
                                         <div className="max-w-[80%] rounded-2xl bg-[var(--accent,#f55f2a)] px-3 py-1.5 text-white shadow-sm">
-                                            <div className="text-[20px]">{s.prompt}</div>
+                                            <div className="text-[16px]">{s.prompt}</div>
                                         </div>
                                         <div className="pr-2 text-[10px] text-neutral-400">
                                             {formatCreatedAt(s.createdAt)}
@@ -528,11 +528,11 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                                     {!isOptimistic && (
                                         <div className="flex flex-col items-start gap-1">
                                             <div className="max-w-[85%] rounded-2xl border border-neutral-200 bg-white px-3 py-1.5 text-neutral-900 shadow-sm">
-                                                <div className="text-[20px] text-neutral-800">
+                                                <div className="text-[16px] text-neutral-800">
                                                     {s.summary ||
                                                         "Updated the selected block based on your request."}
                                                 </div>
-                                                <div className="mt-1 flex items-center justify-between text-[20px] text-neutral-500">
+                                                <div className="mt-1 flex items-center justify-between text-[16px] text-neutral-500">
                                                     <button
                                                         type="button"
                                                         onClick={() => handleDismiss(s.id)}
@@ -574,11 +574,11 @@ export default function AiEditPanel(props: AiEditPanelProps) {
 
                 <div className="border-t border-neutral-200 bg-white px-3 py-2">
                     <div className="mb-1 flex items-center justify-between gap-2">
-                        {prompt.length > 0 && (
+                        {/* {prompt.length > 0 && ( */}
                             <span className="text-[11px] text-neutral-400">
                                 {prompt.length}/{MAX_PROMPT_CHARS}
                             </span>
-                        )}
+                        {/* )} */}
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -594,7 +594,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                                 onKeyDown={handleInputKeyDown}
                                 maxLength={MAX_PROMPT_CHARS}
                                 placeholder={placeholder}
-                                className="h-[80px] w-full bg-transparent text-[15px] leading-tight text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
+                                className="h-[50px] w-full bg-transparent text-[16px] leading-tight text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
                                 disabled={loading}
                             />
                         </div>

@@ -1088,7 +1088,7 @@ function deriveThemeFromInitialHtml(html: string | undefined | null): DerivedThe
 
 interface AiEditSuggestion { createdAt: string, afterHtml: string, id: string; renderId: string; prompt: string; summary: string; beforeHtml: string; }
 
-type DraftSnapshotSource = "manual" | "auto" | "before-ai" | "apply" | "ai";
+type DraftSnapshotSource = "manual" | "auto" | "before-ai" | "apply" | "ai-edit";
 
 type DraftSnapshot = {
     id: string;
@@ -1355,7 +1355,7 @@ export default function PreviewEditor({
             id: `ai-${s.id}`,
             html: s.afterHtml,
             createdAt: createdMs ?? 0, // or keep 0 so unknown ones sink to the bottom
-            source: "ai",
+            source: "ai-edit",
             summary: s.summary,
             prompt: s.prompt,
         };
@@ -2015,14 +2015,14 @@ export default function PreviewEditor({
         (snap: DraftSnapshot) => {
             if (!snap) return;
 
-            // const confirmRestore =
-            //     dirty
-            //         ? window.confirm(
-            //             "Replace the current draft with this version? Unsaved changes will be lost."
-            //         )
-            //         : true;
+            const confirmRestore =
+                dirty
+                    ? window.confirm(
+                        "Replace the current draft with this version? Unsaved changes will be lost."
+                    )
+                    : true;
 
-            // if (!confirmRestore) return;
+            if (!confirmRestore) return;
 
             setHtmlDraft(snap.html);
             setPreviewHtml(snap.html);
@@ -2052,7 +2052,7 @@ export default function PreviewEditor({
 
         return (
             <div className="flex flex-col gap-2 text-md h-full">
-                <div className="flex-1 overflow-y-auto rounded-md border border-gray-200 bg-white">
+                <div className="flex-1 overflow-y-auto rounded-md border border-gray-200 bg-white/90">
                     {ordered.map((snap) => (
                         <button
                             key={snap.id}
@@ -2067,7 +2067,7 @@ export default function PreviewEditor({
                                             ? "Autosave"
                                             : snap.source === "apply"
                                                 ? "Applied"
-                                                : snap.source === "ai"
+                                                : snap.source === "ai-edit"
                                                     ? "AI change"
                                                     : "Manual save"}
                                     </span>
@@ -2920,6 +2920,15 @@ export default function PreviewEditor({
         [closing, doSave, onClose, tryClearIframeSelection]
     );
 
+    function snapshotBeforeAiEdit(fullHtml: string) {
+        addSnapshot({
+            id: crypto.randomUUID(),
+            createdAt: Date.now(),
+            source: "auto", // pre-AI label
+            html: fullHtml,
+        });
+    }
+
     // Put this helper inside the same component, above the JSX return:
     const applyAiEditedBlockHtml = useCallback(
         async (afterBlockHtml: string) => {
@@ -2940,6 +2949,7 @@ export default function PreviewEditor({
                 return;
             }
 
+            // 1) Best-effort pre-AI save of the current state (optional, keeps old version safe)
             try {
                 if (!closing && !savingDraft && !applyingPreview && dirty) {
                     await doSave();
@@ -2951,6 +2961,7 @@ export default function PreviewEditor({
                 );
             }
 
+            // 2) Snapshot the *pre-AI* full HTML for undo
             try {
                 const iframe = iframeRef.current;
                 if (iframe && iframe.contentDocument) {
@@ -2962,6 +2973,7 @@ export default function PreviewEditor({
                 console.warn("Failed to snapshot before AI edit", err);
             }
 
+            // 3) Apply AI block into iframe and serialize full HTML
             const fullHtml = applyBlockHtmlToIframeAndSerialize(raw, true);
 
             if (!fullHtml) {
@@ -2971,6 +2983,7 @@ export default function PreviewEditor({
                 return;
             }
 
+            // 4) Clean the serialized full HTML
             let cleanedHtml = fullHtml;
             try {
                 const parser = new DOMParser();
@@ -2983,10 +2996,38 @@ export default function PreviewEditor({
                 );
             }
 
+            // 5) Update local editor state with the AI-edited HTML
             setDirty(true);
             setHtmlDraft(cleanedHtml);
             setPreviewHtml(cleanedHtml);
             if (onLiveHtml) onLiveHtml(cleanedHtml);
+
+            // 6) Snapshot the *post-AI* full HTML so you can "keep / discard" this edit
+            try {
+                addSnapshot({
+                    id: crypto.randomUUID(),
+                    createdAt: Date.now(),
+                    source: "ai-edit", // distinct label from "auto"
+                    html: cleanedHtml,
+                });
+            } catch (err) {
+                console.warn(
+                    "[PreviewEditor] failed to snapshot after AI edit",
+                    err,
+                );
+            }
+
+            // 7) Immediately persist the AI-edited HTML (blocking save for this helper)
+            try {
+                if (!closing) {
+                    await doSave();
+                }
+            } catch (err) {
+                console.warn(
+                    "[PreviewEditor] failed to save AI-edited HTML immediately",
+                    err,
+                );
+            }
         },
         [
             closing,
@@ -3002,6 +3043,7 @@ export default function PreviewEditor({
             setHtmlDraft,
             setPreviewHtml,
             onLiveHtml,
+            addSnapshot,
         ],
     );
 
@@ -3129,16 +3171,6 @@ export default function PreviewEditor({
         />
     );
 
-
-    function snapshotBeforeAiEdit(fullHtml: string) {
-        addSnapshot({
-            id: crypto.randomUUID(),
-            createdAt: Date.now(),
-            source: "before-ai", // new label
-            html: fullHtml
-        });
-    }
-
     // ARCHIVING PAGES
     function removePageFromHtmlById(rawHtml: string, pageId: string): string {
         try {
@@ -3175,7 +3207,7 @@ export default function PreviewEditor({
                     }}
                     disabled={closing}
                     aria-label="Close editor"
-                    className={`absolute top-5 right-5 z-[100] inline-flex h-6 w-6 items-center justify-center rounded-full border border-neutral-300 bg-white/90 text-neutral-700 shadow-md transition ${closing
+                    className={`absolute top-5 right-5 z-[100] inline-flex h-6 w-6 items-center justify-center rounded-full border border-neutral-300 bg-white/90/90 text-neutral-700 shadow-md transition ${closing
                         ? "cursor-not-allowed opacity-60"
                         : "hover:bg-neutral-100 hover:text-neutral-900"
                         }`}
@@ -3201,7 +3233,7 @@ export default function PreviewEditor({
                 <div
                     id="kloner-device-toggle"
                     className="absolute top-5 left-1/2 z-[101] -translate-x-1/2">
-                    <div className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white/95 px-2 py-1 shadow-md">
+                    <div className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white/90/95 px-2 py-1 shadow-md">
                         <motion.button
                             type="button"
                             onClick={() => handleDeviceChange("desktop")}
@@ -3209,7 +3241,7 @@ export default function PreviewEditor({
                             whileTap={{ scale: 0.96 }}
                             className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors ${device === "desktop"
                                 ? "bg-[#f55f2a] text-white"
-                                : "bg-white text-neutral-600 hover:bg-neutral-100"
+                                : "bg-white/90 text-neutral-600 hover:bg-neutral-100"
                                 }`}
                             title="Desktop"
                         >
@@ -3223,7 +3255,7 @@ export default function PreviewEditor({
                             whileTap={{ scale: 0.96 }}
                             className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors ${device === "tablet"
                                 ? "bg-[#f55f2a] text-white"
-                                : "bg-white text-neutral-600 hover:bg-neutral-100"
+                                : "bg-white/90 text-neutral-600 hover:bg-neutral-100"
                                 }`}
                             title="Tablet"
                         >
@@ -3237,7 +3269,7 @@ export default function PreviewEditor({
                             whileTap={{ scale: 0.96 }}
                             className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors ${device === "mobile"
                                 ? "bg-[#f55f2a] text-white"
-                                : "bg-white text-neutral-600 hover:bg-neutral-100"
+                                : "bg-white/90 text-neutral-600 hover:bg-neutral-100"
                                 }`}
                             title="Mobile"
                         >
@@ -3248,12 +3280,12 @@ export default function PreviewEditor({
 
                 {/* UI scale – top left */}
                 {sidebarHidden && (
-                    <div className="absolute top-5 left-5 z-10 flex items-center gap-2 rounded-full border border-neutral-200 bg-white/95 px-3 py-1 shadow-md">
+                    <div className="absolute top-5 left-5 z-10 flex items-center gap-2 rounded-full border border-neutral-200 bg-white/90/95 px-3 py-1 shadow-md">
                         <span className="text-[11px] font-medium text-neutral-600">UI scale</span>
 
                         <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-600">
                             <button
-                                className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-white text-neutral-600 shadow-sm hover:bg-neutral-100"
+                                className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-white/90 text-neutral-600 shadow-sm hover:bg-neutral-100"
                                 onClick={() => setUiScale((s) => Math.max(0.5, +(s - 0.05).toFixed(2)))}
                                 disabled={closing}
                             >
@@ -3261,7 +3293,7 @@ export default function PreviewEditor({
                             </button>
                             <span className="w-10 text-center">{Math.round(uiScale * 100)}%</span>
                             <button
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-white text-neutral-600 shadow-sm hover:bg-neutral-100"
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-white/90 text-neutral-600 shadow-sm hover:bg-neutral-100"
                                 onClick={() => setUiScale((s) => Math.min(1.25, +(s + 0.05).toFixed(2)))}
                                 disabled={closing}
                             >
@@ -3272,7 +3304,7 @@ export default function PreviewEditor({
                 )}
 
                 <div
-                    className="relative bg-white rounded-xl shadow-xl gap-4 p-4 grid grid-cols-1"
+                    className="relative bg-white/90 rounded-xl shadow-xl gap-4 p-4 grid grid-cols-1"
                     style={{
                         transform: `scale(${uiScale})`,
                         transformOrigin: "top left",
@@ -3283,7 +3315,7 @@ export default function PreviewEditor({
 
                     {/* FLOATING LEFT ICON RAIL (META / CODE / DEPLOY / SCREENSHOT / STYLES) */}
                     <div className="pointer-events-auto fixed left-4 top-1/2 z-40 -translate-y-1/2 hidden lg:block">
-                        <div className="flex flex-col gap-2 rounded-full border border-neutral-200 bg-white/80 p-1 shadow-md backdrop-blur-sm">
+                        <div className="flex flex-col gap-2 rounded-full border border-neutral-200 bg-white/90/80 p-1 shadow-md backdrop-blur-sm">
                             {/* Styles */}
                             <button
                                 id="kloner-selection-style"
@@ -3302,7 +3334,7 @@ export default function PreviewEditor({
                                 }}
                                 className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "style" && mode === "preview"
                                     ? "border-transparent bg-[#f55f2a] text-white"
-                                    : "border-neutral-300 bg-white/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
+                                    : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
                                     }`}
                             >
                                 <Palette className="h-4 w-4" aria-hidden="true" />
@@ -3331,7 +3363,7 @@ export default function PreviewEditor({
                                 }}
                                 className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "meta"
                                     ? "border-transparent bg-[#f55f2a] text-white"
-                                    : "border-neutral-300 bg-white/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
+                                    : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
                                     }`}
                             >
                                 <FileText className="h-4 w-4" aria-hidden="true" />
@@ -3362,7 +3394,7 @@ export default function PreviewEditor({
                                 }}
                                 className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "revision-chat"
                                     ? "border-transparent bg-[#f55f2a] text-white"
-                                    : "border-neutral-300 bg-white/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
+                                    : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
                                     }`}
                             >
                                 <MessageSquare className="h-4 w-4" aria-hidden="true" />
@@ -3391,7 +3423,7 @@ export default function PreviewEditor({
                                 }}
                                 className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "ai-library"
                                     ? "border-transparent bg-[#f55f2a] text-white"
-                                    : "border-neutral-300 bg-white/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
+                                    : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
                                     }`}
                             >
                                 <Images className="h-4 w-4" aria-hidden="true" />
@@ -3428,7 +3460,7 @@ export default function PreviewEditor({
                                 }}
                                 className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${mode === "code" && sidePanelMode === "code" && !sidebarHidden
                                     ? "border-transparent bg-[#f55f2a] text-white"
-                                    : "border-neutral-300 bg-white/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
+                                    : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
                                     }`}
                             >
                                 <Code2 className="h-4 w-4" aria-hidden="true" />
@@ -3448,7 +3480,7 @@ export default function PreviewEditor({
                                 disabled={exporting}
                                 className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${exporting
                                     ? "border-transparent bg-[#f55f2a]/70 text-white cursor-not-allowed"
-                                    : "border-neutral-300 bg-white/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
+                                    : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
                                     }`}
                             >
                                 <Rocket className="h-4 w-4" aria-hidden="true" />
@@ -3468,7 +3500,7 @@ export default function PreviewEditor({
                                 }}
                                 className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${mode === "screenshot"
                                     ? "border-transparent bg-[#f55f2a] text-white"
-                                    : "border-neutral-300 bg-white/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
+                                    : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
                                     }`}
                             >
                                 <Camera className="h-4 w-4" aria-hidden="true" />
@@ -3484,7 +3516,7 @@ export default function PreviewEditor({
                     {!sidebarHidden && (
                         <motion.aside
                             id="kloner-style-sidebar"
-                            className="pointer-events-auto fixed left-16 h-full z-40 flex w-[500px] flex-col overflow-auto rounded-xl border border-neutral-200 bg-white/90 px-3 py-3 shadow-lg backdrop-blur-sm"
+                            className="pointer-events-auto fixed left-16 h-full z-40 flex w-[500px] flex-col overflow-auto rounded-xl border border-neutral-200 bg-white/90/90 px-3 py-3 shadow-lg backdrop-blur-sm"
                             initial={{ x: -16, opacity: 0 }}
                             animate={{ x: 0, opacity: 1 }}
                             exit={{ x: -16, opacity: 0 }}
@@ -3578,7 +3610,7 @@ export default function PreviewEditor({
                                                                                 value: "transparent",
                                                                             })
                                                                         }
-                                                                        className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-dashed border-neutral-400/80 bg-white text-[9px] font-semibold uppercase tracking-wide text-neutral-500 shadow-sm transition hover:bg-neutral-50 hover:scale-105 active:scale-95 disabled:opacity-40"
+                                                                        className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-dashed border-neutral-400/80 bg-white/90 text-[9px] font-semibold uppercase tracking-wide text-neutral-500 shadow-sm transition hover:bg-neutral-50 hover:scale-105 active:scale-95 disabled:opacity-40"
                                                                         title="Transparent background"
                                                                     >
                                                                         ⌀
@@ -3625,7 +3657,7 @@ export default function PreviewEditor({
                                                                                 });
                                                                             }
                                                                         }}
-                                                                        className="h-7 flex-1 rounded border border-neutral-300 bg-white px-2 text-[11px] text-neutral-700 shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400"
+                                                                        className="h-7 flex-1 rounded border border-neutral-300 bg-white/90 px-2 text-[11px] text-neutral-700 shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400"
                                                                         placeholder="#ffffff"
                                                                     />
                                                                 </div>
@@ -3640,7 +3672,7 @@ export default function PreviewEditor({
                                                         Font
                                                     </div>
                                                     <select
-                                                        className="w-full rounded border border-neutral-300 bg-white px-2 py-1 text-[12px] shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400 disabled:opacity-50"
+                                                        className="w-full rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[12px] shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400 disabled:opacity-50"
                                                         disabled={closing}
                                                         onChange={(e) => {
                                                             const opt = FONT_OPTIONS.find(
@@ -3679,7 +3711,7 @@ export default function PreviewEditor({
                                                             <button
                                                                 key={s.id}
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white px-2 py-1 text-[11px] leading-tight shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] leading-tight shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -3708,7 +3740,7 @@ export default function PreviewEditor({
                                                             <button
                                                                 key={a.id}
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -3732,7 +3764,7 @@ export default function PreviewEditor({
                                                     <div className="flex flex-wrap gap-1">
                                                         <button
                                                             type="button"
-                                                            className="rounded border border-neutral-300 bg-white px-2 py-1 text-[11px] font-light shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-light shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                             disabled={closing}
                                                             onClick={() =>
                                                                 sendStyleCommand({
@@ -3745,7 +3777,7 @@ export default function PreviewEditor({
                                                         </button>
                                                         <button
                                                             type="button"
-                                                            className="rounded border border-neutral-300 bg-white px-2 py-1 text-[11px] font-normal shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-normal shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                             disabled={closing}
                                                             onClick={() =>
                                                                 sendStyleCommand({
@@ -3758,7 +3790,7 @@ export default function PreviewEditor({
                                                         </button>
                                                         <button
                                                             type="button"
-                                                            className="rounded border border-neutral-300 bg-white px-2 py-1 text-[11px] font-semibold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-semibold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                             disabled={closing}
                                                             onClick={() =>
                                                                 sendStyleCommand({
@@ -3771,7 +3803,7 @@ export default function PreviewEditor({
                                                         </button>
                                                         <button
                                                             type="button"
-                                                            className="rounded border border-neutral-300 bg-white px-2 py-1 text-[11px] font-semibold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-semibold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                             disabled={closing}
                                                             onClick={() =>
                                                                 sendStyleCommand({
@@ -3784,7 +3816,7 @@ export default function PreviewEditor({
                                                         </button>
                                                         <button
                                                             type="button"
-                                                            className="rounded border border-neutral-300 bg-white px-2 py-1 text-[11px] font-bold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-bold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                             disabled={closing}
                                                             onClick={() =>
                                                                 sendStyleCommand({
@@ -3797,7 +3829,7 @@ export default function PreviewEditor({
                                                         </button>
                                                         <button
                                                             type="button"
-                                                            className="rounded border border-neutral-300 bg-white px-2 py-1 text-[11px] font-extrabold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-extrabold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                             disabled={closing}
                                                             onClick={() =>
                                                                 sendStyleCommand({
@@ -3811,7 +3843,7 @@ export default function PreviewEditor({
 
                                                         <button
                                                             type="button"
-                                                            className="rounded border border-neutral-300 bg-white px-2 py-1 text-[11px] uppercase tracking-[0.14em] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] uppercase tracking-[0.14em] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                             disabled={closing}
                                                             onClick={() =>
                                                                 sendStyleCommand({
@@ -3824,7 +3856,7 @@ export default function PreviewEditor({
                                                         </button>
                                                         <button
                                                             type="button"
-                                                            className="rounded border border-neutral-300 bg-white px-2 py-1 text-[11px] normal-case shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] normal-case shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                             disabled={closing}
                                                             onClick={() =>
                                                                 sendStyleCommand({
@@ -3902,7 +3934,7 @@ export default function PreviewEditor({
                                                                     });
                                                                 }
                                                             }}
-                                                            className="h-7 flex-1 rounded border border-neutral-300 bg-white px-2 text-[11px] text-neutral-700 shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400"
+                                                            className="h-7 flex-1 rounded border border-neutral-300 bg-white/90 px-2 text-[11px] text-neutral-700 shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400"
                                                             placeholder="#111827"
                                                         />
                                                     </div>
@@ -3940,7 +3972,7 @@ export default function PreviewEditor({
                                                     <div className="flex flex-wrap gap-1">
                                                         <button
                                                             type="button"
-                                                            className="rounded border border-neutral-300 bg-white px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                             disabled={closing}
                                                             onClick={() =>
                                                                 sendStyleCommand({
@@ -3953,7 +3985,7 @@ export default function PreviewEditor({
                                                         </button>
                                                         <button
                                                             type="button"
-                                                            className="rounded border border-neutral-300 bg-white px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                             disabled={closing}
                                                             onClick={() =>
                                                                 sendStyleCommand({
@@ -3966,7 +3998,7 @@ export default function PreviewEditor({
                                                         </button>
                                                         <button
                                                             type="button"
-                                                            className="rounded border border-neutral-300 bg-white px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                             disabled={closing}
                                                             onClick={() =>
                                                                 sendStyleCommand({
@@ -3988,7 +4020,7 @@ export default function PreviewEditor({
                                                     <div className="flex flex-wrap gap-1">
                                                         <button
                                                             type="button"
-                                                            className="rounded border border-neutral-300 bg-white px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                             disabled={closing}
                                                             onClick={() =>
                                                                 sendStyleCommand({
@@ -4001,7 +4033,7 @@ export default function PreviewEditor({
                                                         </button>
                                                         <button
                                                             type="button"
-                                                            className="rounded border border-neutral-300 bg-white px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                             disabled={closing}
                                                             onClick={() =>
                                                                 sendStyleCommand({
@@ -4014,7 +4046,7 @@ export default function PreviewEditor({
                                                         </button>
                                                         <button
                                                             type="button"
-                                                            className="rounded border border-neutral-300 bg-white px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                            className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                             disabled={closing}
                                                             onClick={() =>
                                                                 sendStyleCommand({
@@ -4032,7 +4064,7 @@ export default function PreviewEditor({
                                     )}
 
                                     {/* Mobile footer actions */}
-                                    <div className="fixed bottom-10 left-0 right-0 z-50 block border-t border-neutral-200 bg-white/95 px-4 py-3 shadow-[0_-4px_12px_rgba(15,23,42,0.12)] lg:hidden">
+                                    <div className="fixed bottom-10 left-0 right-0 z-50 block border-t border-neutral-200 bg-white/90/95 px-4 py-3 shadow-[0_-4px_12px_rgba(15,23,42,0.12)] lg:hidden">
                                         <div className="flex flex-col gap-2" id="kloner-save-changes-mobile">
                                             <motion.button
                                                 whileHover={{ y: -0.5 }}
@@ -4086,7 +4118,7 @@ export default function PreviewEditor({
                                     {isDevCodeMode && mode === "code" ? (
                                         <div className="min-h-0 flex-1">
                                             <textarea
-                                                className="h-full w-full rounded border border-neutral-300 bg-white p-2 font-mono text-[12px] leading-5 outline-none shadow-sm focus:ring-1 focus:ring-neutral-400 disabled:opacity-60"
+                                                className="h-full w-full rounded border border-neutral-300 bg-white/90 p-2 font-mono text-[12px] leading-5 outline-none shadow-sm focus:ring-1 focus:ring-neutral-400 disabled:opacity-60"
                                                 value={htmlDraft}
                                                 onChange={(e) => setHtmlDraft(e.target.value)}
                                                 spellCheck={false}
@@ -4160,7 +4192,7 @@ export default function PreviewEditor({
                                     {/* Outer pill: Layers button + all pages in one horizontal row */}
                                     <div
                                         id="kloner-page-switcher"
-                                        className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/80 px-2 py-1 shadow-sm"
+                                        className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/90/80 px-2 py-1 shadow-sm"
                                     >
                                         {/* Layers toggle (kept, even though archived row is gone) */}
                                         <button
@@ -4193,7 +4225,7 @@ export default function PreviewEditor({
                                                     ? "bg-neutral-100 text-neutral-400 border-neutral-200/80 opacity-70 cursor-default"
                                                     : isActive
                                                         ? "bg-accent text-white border-transparent"
-                                                        : "bg-white text-neutral-700 hover:bg-neutral-100 border-neutral-200";
+                                                        : "bg-white/90 text-neutral-700 hover:bg-neutral-100 border-neutral-200";
 
                                                 return (
                                                     <motion.div
@@ -4227,7 +4259,7 @@ export default function PreviewEditor({
                                                                     className={[
                                                                         "flex h-5 w-5 items-center justify-center rounded-full transition",
                                                                         isActive
-                                                                            ? "bg-white/20 text-white hover:bg-white/30"
+                                                                            ? "bg-white/90/20 text-white hover:bg-white/90/30"
                                                                             : "bg-neutral-200 text-neutral-700 hover:bg-neutral-300",
                                                                     ].join(" ")}
                                                                 >
@@ -4375,7 +4407,7 @@ export default function PreviewEditor({
                                                 </div>
 
                                                 <div
-                                                    className="bg-white flex-1 min-h-0 overflow-auto"
+                                                    className="bg-white/90 flex-1 min-h-0 overflow-auto"
                                                     style={{ pointerEvents: isDraggingPreview ? "none" : "auto" }}
                                                 >
                                                     {iframeNode}
@@ -4511,7 +4543,7 @@ export default function PreviewEditor({
                                         <img
                                             src={activeSourceImage}
                                             alt="Reference"
-                                            className="w-full h-auto rounded border bg-white"
+                                            className="w-full h-auto rounded border bg-white/90"
                                         />
                                     ) : (
                                         <div className="h-[60vh] grid place-items-center text-slate-500 text-md">
@@ -4523,8 +4555,8 @@ export default function PreviewEditor({
                         )}
 
                         {closing && (
-                            <div className="absolute inset-0 bg-white/80 grid place-items-center">
-                                <div className="flex items-center gap-3 rounded border px-3 py-2 bg-white text-md text-neutral-800">
+                            <div className="absolute inset-0 bg-white/90/80 grid place-items-center">
+                                <div className="flex items-center gap-3 rounded border px-3 py-2 bg-white/90 text-md text-neutral-800">
                                     <Spinner /> Saving & closing…
                                 </div>
                             </div>
@@ -4535,7 +4567,7 @@ export default function PreviewEditor({
                             <div
                                 className="hidden lg:block absolute top-20 right-3 z-[80] w-72 max-h-[70vh]"
                             >
-                                <div className="flex flex-col rounded-lg border border-neutral-200 bg-white/95 shadow-lg">
+                                <div className="flex flex-col rounded-lg border border-neutral-200 bg-white/90/95 shadow-lg">
                                     <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-200">
                                         <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
                                             History
@@ -4543,7 +4575,7 @@ export default function PreviewEditor({
                                         <button
                                             type="button"
                                             onClick={() => setHistoryOpen(false)}
-                                            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 shadow-sm hover:bg-neutral-100 hover:text-neutral-800"
+                                            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white/90 text-neutral-500 shadow-sm hover:bg-neutral-100 hover:text-neutral-800"
                                             title="Hide history"
                                         >
                                             <EyeOff className="w-4 h-4" />
@@ -4564,7 +4596,7 @@ export default function PreviewEditor({
                                 type="button"
                                 id="kloner-history"
                                 onClick={() => setHistoryOpen(true)}
-                                className="hidden lg:flex absolute top-20 right-3 z-[70] h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white/95 text-neutral-600 shadow-md hover:bg-neutral-100 hover:text-neutral-800"
+                                className="hidden lg:flex absolute top-20 right-3 z-[70] h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white/90/95 text-neutral-600 shadow-md hover:bg-neutral-100 hover:text-neutral-800"
                                 title="Show edit history"
                             >
                                 <Eye className="w-4 h-4" />
@@ -4579,7 +4611,7 @@ export default function PreviewEditor({
                                 onClick={() => doSave()}
                                 disabled={closing || savingDraft || !dirty}
                                 aria-busy={applyingPreview}
-                                className={`rounded px-4 py-4 text-xl w-full transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${dirty
+                                className={`rounded px-4 py-4 w-full text-xl transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${dirty
                                     ? "bg-emerald-600 text-white hover:brightness-95 shadow-lg"
                                     : "bg-emerald-50 text-emerald-700 pointer-events-none"
                                     }`}
@@ -4600,8 +4632,8 @@ export default function PreviewEditor({
                         </div>
 
                         {exporting && !closing && (
-                            <div className="absolute inset-0 z-[95] bg-white/80 backdrop-blur-[2px] grid place-items-center pointer-events-auto">
-                                <div className="flex items-center gap-3 rounded border px-3 py-2 bg-white text-md text-neutral-800 shadow-md">
+                            <div className="absolute inset-0 z-[95] bg-white/90/80 backdrop-blur-[2px] grid place-items-center pointer-events-auto">
+                                <div className="flex items-center gap-3 rounded border px-3 py-2 bg-white/90 text-md text-neutral-800 shadow-md">
                                     <Spinner />
                                     <span>Exporting changes…</span>
                                 </div>
@@ -4610,9 +4642,21 @@ export default function PreviewEditor({
 
                         {aiEditing && !closing && (
                             <div className="absolute inset-0 z-[95] backdrop-blur-[2px] grid place-items-center pointer-events-auto">
-                                <div className="flex items-center gap-3 rounded border px-3 py-2 bg-white text-md text-neutral-800 shadow-md">
-                                    <Spinner />
-                                    <span>Applying AI edit…</span>
+                                <div className="flex items-center gap-3 bg-white rounded border px-3 py-2 text-md text-neutral-800 shadow-md inline-flex items-center gap-2 rounded-2xl border border-neutral-200 px-3 py-1 text-[16px] text-neutral-700 shadow-sm">
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin"
+                                        style={{ color: 'linear-gradient(90deg,#4f46e5,#ec4899,#f97316)]' }} />
+                                    <span
+                                        className="bg-clip-text text-transparent"
+                                        style={{
+                                            backgroundImage:
+                                                "linear-gradient(90deg,#4f46e5,#ec4899,#f97316)",
+                                            backgroundSize: "200% 200%",
+                                            animation:
+                                                "kloner-ai-gradient-move 3s linear infinite",
+                                        }}
+                                    >
+                                        Applying AI Edit...
+                                    </span>
                                 </div>
                             </div>
                         )}
@@ -4632,7 +4676,7 @@ export default function PreviewEditor({
                                 animate={{ scale: 1, opacity: 1 }}
                                 exit={{ scale: 0.9, opacity: 0 }}
                                 transition={{ type: "keyframes", stiffness: 260, damping: 22 }}
-                                className="bg-white rounded-lg shadow-xl p-4 w-full max-w-sm border border-neutral-200"
+                                className="bg-white/90 rounded-lg shadow-xl p-4 w-full max-w-sm border border-neutral-200"
                             >
                                 <div className="text-md font-semibold text-neutral-900 mb-2">
                                     Save images before switching pages?
@@ -4644,7 +4688,7 @@ export default function PreviewEditor({
                                 <div className="flex justify-end gap-2 text-md">
                                     <button
                                         type="button"
-                                        className="px-2.5 py-1.5 rounded border border-neutral-300 bg-white hover:bg-neutral-50 active:scale-[.98] font-semibold"
+                                        className="px-2.5 py-1.5 rounded border border-neutral-300 bg-white/90 hover:bg-neutral-50 active:scale-[.98] font-semibold"
                                         onClick={cancelPageSwitch}
                                     >
                                         Stay on this page
@@ -4664,7 +4708,7 @@ export default function PreviewEditor({
 
                 {closePrompt && (
                     <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/40">
-                        <div className="bg-white rounded-lg shadow-xl p-4 w-full max-w-sm border border-neutral-200">
+                        <div className="bg-white/90 rounded-lg shadow-xl p-4 w-full max-w-sm border border-neutral-200">
                             <div className="text-md font-semibold text-neutral-900 mb-2">
                                 Close editor?
                             </div>
@@ -4675,7 +4719,7 @@ export default function PreviewEditor({
                             <div className="flex justify-end gap-2 text-sm">
                                 <button
                                     type="button"
-                                    className="px-2.5 py-1.5 text-xs rounded border border-neutral-300 bg-white hover:bg-neutral-50 active:scale-[.98] font-semibold"
+                                    className="px-2.5 py-1.5 text-xs rounded border border-neutral-300 bg-white/90 hover:bg-neutral-50 active:scale-[.98] font-semibold"
                                     onClick={() => setClosePrompt(false)}
                                 >
                                     Cancel
@@ -4701,7 +4745,7 @@ export default function PreviewEditor({
 
                 {exportPrompt && (
                     <div className="fixed inset-0 z-[10010] flex items-center justify-center bg-black/40">
-                        <div className="bg-white rounded-lg shadow-xl p-4 w-full max-w-sm border border-neutral-200">
+                        <div className="bg-white/90 rounded-lg shadow-xl p-4 w-full max-w-sm border border-neutral-200">
                             <div className="text-md font-semibold text-neutral-900 mb-2">
                                 Deploy your Website?
                             </div>
@@ -4716,7 +4760,7 @@ export default function PreviewEditor({
                             <div className="flex justify-end gap-2 text-sm">
                                 <button
                                     type="button"
-                                    className="px-2.5 py-1.5 rounded border border-neutral-300 bg-white hover:bg-neutral-50 active:scale-[.98] disabled:opacity-60"
+                                    className="px-2.5 py-1.5 rounded border border-neutral-300 bg-white/90 hover:bg-neutral-50 active:scale-[.98] disabled:opacity-60"
                                     onClick={() => setExportPrompt(false)}
                                     disabled={exporting}
                                 >
@@ -4800,7 +4844,7 @@ function UiBtn({
                 onClick={onClick}
                 disabled={disabled}
                 aria-busy={ariaBusy}
-                className={`${base} rounded-md px-3 py-1.5 border border-neutral-300 bg-white hover:bg-neutral-50`}
+                className={`${base} rounded-md px-3 py-1.5 border border-neutral-300 bg-white/90 hover:bg-neutral-50`}
             >
                 {withBusy}
             </button>
@@ -4826,7 +4870,7 @@ function UiBtn({
             aria-busy={ariaBusy}
             className={`${base} rounded-full px-2.5 py-1 text-sm border ${pressed
                 ? "border-neutral-900 bg-neutral-900 text-white"
-                : "border-neutral-300 bg-white hover:bg-neutral-50"
+                : "border-neutral-300 bg-white/90 hover:bg-neutral-50"
                 }`}
         >
             {withBusy}

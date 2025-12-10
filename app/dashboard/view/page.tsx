@@ -586,7 +586,7 @@ function RenderCardInner({
                                 <button
                                     onClick={() => continueRender(r.id)}
                                     disabled={disableOpen || isDeleting || !r.html}
-                                    className="group inline-flex flex-1 items-center justify-center gap-2 rounded-md border border-neutral-400 px-3 py-1.5 font-medium text-neutral-800 shadow-sm disabled:opacity-60"
+                                    className="group inline-flex flex-1 items-center justify-center gap-2 rounded-md border border-neutral-400 px-3 py-1.5 font-medium text-neutral-600 shadow-sm disabled:opacity-60"
                                     title={
                                         isArchivedFlag
                                             ? "Unarchive to customize this preview"
@@ -2297,7 +2297,6 @@ export default function PreviewPage(): JSX.Element {
 
                 // FIX: pass the doc, not the id
                 const archivedPages = extractArchivedPageIdsFromRender(data);
-                console.log("archive pages: ", archivedPages);
                 setActiveArchivedPageIds(archivedPages);
 
                 const seoMetaByPage =

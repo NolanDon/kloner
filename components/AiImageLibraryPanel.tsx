@@ -106,12 +106,68 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId }: Props) {
     function handleInsert(item: AiLibraryItem) {
         const win = iframeRef.current?.contentWindow as any;
         const api = win?.__klonerApi;
-        if (!api || typeof api.imgInsertFromLibrary !== "function") return;
+        if (!api || typeof api.imgInsertFromLibrary !== "function") {
+            console.warn(
+                "[AiImageLibraryPanel] imgInsertFromLibrary not available on __klonerApi",
+                api,
+            );
+            return;
+        }
 
         try {
             api.imgInsertFromLibrary(item.url, item.path);
         } catch (err) {
             console.warn("[AiImageLibraryPanel] insert failed", err);
+        }
+    }
+
+    // Insert as background on selected block
+    function handleInsertAsBackground(item: AiLibraryItem) {
+        const win = iframeRef.current?.contentWindow as any;
+        const api = win?.__klonerApi;
+
+        if (!api) {
+            console.warn("[AiImageLibraryPanel] __klonerApi missing on iframe window");
+            return;
+        }
+
+        // Try a few likely method names so it hooks into whatever you already implemented
+        let method: string | null = null;
+
+        if (typeof api.blockSetBackgroundFromLibrary === "function") {
+            method = "blockSetBackgroundFromLibrary";
+        } else if (typeof api.blockSetBackgroundImageFromLibrary === "function") {
+            method = "blockSetBackgroundImageFromLibrary";
+        } else if (typeof api.blockSetBackgroundImage === "function") {
+            method = "blockSetBackgroundImage";
+        } else if (typeof api.blockSetBackground === "function") {
+            method = "blockSetBackground";
+        }
+
+        if (!method) {
+            console.warn(
+                "[AiImageLibraryPanel] no background method found on __klonerApi. Expected one of: blockSetBackgroundFromLibrary, blockSetBackgroundImageFromLibrary, blockSetBackgroundImage, blockSetBackground",
+                api,
+            );
+            return;
+        }
+
+        try {
+            // Methods that know about storage path
+            if (
+                method === "blockSetBackgroundFromLibrary" ||
+                method === "blockSetBackgroundImageFromLibrary"
+            ) {
+                api[method](item.url, item.path);
+            } else {
+                // Fallback: only URL
+                api[method](item.url);
+            }
+        } catch (err) {
+            console.warn(
+                `[AiImageLibraryPanel] insert-as-background failed via ${method}`,
+                err,
+            );
         }
     }
 
@@ -130,11 +186,16 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId }: Props) {
         <div className="flex h-full flex-col gap-3 border-l border-neutral-200 bg-white/95 px-4 py-3">
             <div className="flex items-center justify-between">
                 <div>
-                    <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-2">
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
                         AI Image Library
                     </div>
                     <div className="mt-1 text-[12px] text-neutral-500">
-                        Select a slot from your preview, then click an image to have it automatically inserted. <br /><br /> Make sure to click save after inserting, or use the undo buttons to remove it.
+                        Select a slot from your preview, then click an image to insert it.
+                        Or use the background action to set it as the section background.
+                        <br />
+                        <br />
+                        Make sure to click save after inserting, or use the undo buttons to
+                        remove it.
                     </div>
 
                     {error && (
@@ -151,7 +212,7 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId }: Props) {
                     if (!user || !renderId) return;
                     void loadImages(user.uid, renderId);
                 }}
-                className="inline-flex h-7 w-7 p-2 items-center justify-center rounded-full border border-neutral-300 text-neutral-500 hover:border-transparent hover:bg-neutral-900 hover:text-white"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-300 p-2 text-neutral-500 hover:border-transparent hover:bg-neutral-900 hover:text-white"
             >
                 <RefreshCcw className="h-3.5 w-3.5" />
             </button>
@@ -190,12 +251,29 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId }: Props) {
                                 {/* hover highlight ring */}
                                 <div className="pointer-events-none absolute inset-0 rounded-lg ring-2 ring-[#f55f2a] opacity-0 transition-opacity group-hover:opacity-100" />
 
-                                {/* strong, on-theme tooltip */}
-                                {/* <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                                    <div className="rounded-full bg-[#f55f2a] px-3 py-1.5 text-[11px] font-semibold tracking-wide text-white shadow-lg shadow-[#f55f2a]/40 opacity-0 transition-opacity group-hover:opacity-100">
-                                        Drag into image slot
-                                    </div>
-                                </div> */}
+                                {/* on-theme actions overlay */}
+                                <div className="pointer-events-none absolute inset-x-1 bottom-1 flex justify-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                                    <button
+                                        type="button"
+                                        className="pointer-events-auto flex-1 rounded-full border border-white/80 bg-white/90 px-2 py-1 text-[10px] font-medium text-neutral-800 shadow-sm hover:bg-white"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleInsert(item);
+                                        }}
+                                    >
+                                        Insert image
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="pointer-events-auto flex-1 rounded-full bg-[#f55f2a] px-2 py-1 text-[10px] font-semibold text-white shadow-sm shadow-[#f55f2a]/40 hover:bg-[#e55523]"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleInsertAsBackground(item);
+                                        }}
+                                    >
+                                        Background
+                                    </button>
+                                </div>
                             </div>
                             <div className="truncate px-2 py-1.5 text-[10px] text-neutral-600">
                                 {item.name}

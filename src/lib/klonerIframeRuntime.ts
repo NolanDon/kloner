@@ -1654,6 +1654,24 @@ export function installKlonerIframeApi(
         setBlockBackgroundImage(selected).catch(() => { });
     };
 
+    // background from library (no file picker; uses stored URL + path)
+    api.setBackgroundImageFromLibrary = (src: string, storagePath?: string) => {
+        if (!selected) {
+            const body = doc.body as HTMLElement;
+            showHint("Select a block, then choose a background image.", body);
+            return;
+        }
+        setBlockBackgroundImageFromLibrary(selected, src, storagePath);
+    };
+
+    api.replaceImage = () => {
+        if (!selected) return;
+        const img = getImageFromSelection(selected);
+        if (!img) return;
+        replaceImage(img);
+    };
+
+
     api.replaceImage = () => {
         if (!selected) return;
         const img = getImageFromSelection(selected);
@@ -1829,6 +1847,12 @@ export function installKlonerIframeApi(
     api.imgGrow = api.growImage;
     api.imgShrink = api.shrinkImage;
     api.imgInsertFromLibrary = api.insertImageFromLibrary;
+
+    // background-from-library aliases for panels
+    api.blockSetBackgroundFromLibrary = api.setBackgroundImageFromLibrary;
+    api.blockSetBackgroundImageFromLibrary = api.setBackgroundImageFromLibrary;
+    api.blockSetBackgroundImage = api.setBackgroundImageFromLibrary;
+    api.blockSetBackground = api.setBackgroundImageFromLibrary;
 
     api.textboxAdd = api.addTextBox;
     api.linkEdit = api.editLink;
@@ -2030,6 +2054,24 @@ export function installKlonerIframeApi(
         showHint("Image replaced (pending upload).", el);
     }
 
+    function applyBlockBackgroundTheme(block: HTMLElement, url: string) {
+        const cs = doc.defaultView!.getComputedStyle(block);
+        if (cs.position === "static") {
+            block.style.position = "relative";
+        }
+
+        block.style.backgroundImage = `url("${url}")`;
+        block.style.backgroundSize = "cover";
+        block.style.backgroundPosition = "center center";
+        block.style.backgroundRepeat = "no-repeat";
+
+        // slight theme harmonisation: keep existing background-color as overlay
+        // but ensure text stays readable if it was transparent
+        if (!block.style.backgroundColor || block.style.backgroundColor === "transparent") {
+            block.style.backgroundColor = "rgba(15,23,42,0.82)";
+        }
+    }
+
     async function setBlockBackgroundImage(block: HTMLElement) {
         const file = await pickLocalFile();
         if (!file) return;
@@ -2042,15 +2084,7 @@ export function installKlonerIframeApi(
             block.removeAttribute("data-kloner-bg-path");
         }
 
-        const cs = doc.defaultView!.getComputedStyle(block);
-        if (cs.position === "static") {
-            block.style.position = "relative";
-        }
-
-        block.style.backgroundImage = `url("${tempUrl}")`;
-        block.style.backgroundSize = "cover";
-        block.style.backgroundPosition = "center center";
-        block.style.backgroundRepeat = "no-repeat";
+        applyBlockBackgroundTheme(block, tempUrl);
 
         const localId =
             typeof crypto !== "undefined" && crypto.randomUUID
@@ -2064,6 +2098,37 @@ export function installKlonerIframeApi(
         notify();
         showHint("Background image set (pending upload).", block);
     }
+
+    function setBlockBackgroundImageFromLibrary(
+        block: HTMLElement,
+        src: string,
+        storagePath?: string,
+    ) {
+        if (!src) return;
+
+        const oldPath = block.getAttribute("data-kloner-bg-path") || undefined;
+        if (oldPath && oldPath !== storagePath) {
+            block.setAttribute("data-kloner-bg-old-path", oldPath);
+        }
+
+        if (storagePath) {
+            block.setAttribute("data-kloner-bg-path", storagePath);
+        }
+
+        if ((block.dataset as any).localImageId) {
+            delete (block.dataset as any).localImageId;
+        }
+        if ((block.dataset as any).localFilename) {
+            delete (block.dataset as any).localFilename;
+        }
+
+        applyBlockBackgroundTheme(block, src);
+
+        saveHistory();
+        notify();
+        showHint("Background image applied from your library.", block);
+    }
+
 
     function adjustBlockPadding(
         block: HTMLElement,
