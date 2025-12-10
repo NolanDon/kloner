@@ -151,6 +151,10 @@ export default function AiEditPanel(props: AiEditPanelProps) {
     const hasScopedBlock = !!selectionMeta?.has;
     const targetPath = selectionMeta?.path ?? null;
 
+    const [pendingSuggestionId, setPendingSuggestionId] = useState<string | null>(
+        null
+    );
+
     useEffect(() => {
         if (onAiHistoryChange) onAiHistoryChange(suggestions);
     }, [suggestions, onAiHistoryChange]);
@@ -280,6 +284,23 @@ export default function AiEditPanel(props: AiEditPanelProps) {
             ? `${basePrompt}\n\n[Attached image: ${attachedImage.name}]`
             : basePrompt;
 
+        // optimistic user bubble
+        const optimisticId = `pending-${Date.now()}`;
+        const optimisticCreatedAt = new Date().toISOString();
+        setPendingSuggestionId(optimisticId);
+        setSuggestions((prev) => [
+            ...prev,
+            {
+                id: optimisticId,
+                renderId: renderId ?? "",
+                prompt: basePrompt,
+                summary: "",
+                beforeHtml: blockHtml,
+                afterHtml: "",
+                createdAt: optimisticCreatedAt,
+            },
+        ]);
+
         setLoading(true);
         setError(null);
 
@@ -334,23 +355,31 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                 };
 
             setSuggestions((prev) => {
+                const baseList =
+                    pendingSuggestionId == null
+                        ? prev
+                        : prev.filter((s) => s.id !== pendingSuggestionId);
+
                 if (suggestionsFromApi && suggestionsFromApi.length) {
                     return suggestionsFromApi;
                 }
                 if (suggestionFromApi) {
-                    const exists = prev.some((s) => s.id === suggestionFromApi.id);
+                    const exists = baseList.some(
+                        (s) => s.id === suggestionFromApi.id
+                    );
                     if (exists) {
-                        return prev.map((s) =>
+                        return baseList.map((s) =>
                             s.id === suggestionFromApi.id ? suggestionFromApi : s
                         );
                     }
-                    return [...prev, suggestionFromApi];
+                    return [...baseList, suggestionFromApi];
                 }
-                return prev;
+                return baseList;
             });
 
             setPrompt("");
             setAttachedImage(null);
+            setPendingSuggestionId(null);
 
             applyCreditsMeta(j.meta);
 
@@ -481,40 +510,47 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                             </p>
                         </div>
                     ) : (
-                        orderedSuggestions.map((s) => (
-                            <div key={s.id} className="space-y-10">
-                                <div className="flex flex-col items-end gap-1">
-                                    <div className="max-w-[80%] rounded-2xl bg-[var(--accent,#f55f2a)] px-3 py-1.5 text-white shadow-sm">
-                                        <div className="text-[20px]">{s.prompt}</div>
+                        orderedSuggestions.map((s) => {
+                            const isOptimistic = s.id.startsWith("pending-");
+                            return (
+                                <div key={s.id} className="space-y-10">
+                                    {/* User bubble */}
+                                    <div className="flex flex-col items-end gap-1">
+                                        <div className="max-w-[80%] rounded-2xl bg-[var(--accent,#f55f2a)] px-3 py-1.5 text-white shadow-sm">
+                                            <div className="text-[20px]">{s.prompt}</div>
+                                        </div>
+                                        <div className="pr-2 text-[10px] text-neutral-400">
+                                            {formatCreatedAt(s.createdAt)}
+                                        </div>
                                     </div>
-                                    <div className="pr-2 text-[10px] text-neutral-400">
-                                        {formatCreatedAt(s.createdAt)}
-                                    </div>
-                                </div>
 
-                                <div className="flex flex-col items-start gap-1">
-                                    <div className="max-w-[85%] rounded-2xl border border-neutral-200 bg-white px-3 py-1.5 text-neutral-900 shadow-sm">
-                                        <div className="text-[20px] text-neutral-800">
-                                            {s.summary ||
-                                                "Updated the selected block based on your request."}
+                                    {/* AI bubble (hide while optimistic) */}
+                                    {!isOptimistic && (
+                                        <div className="flex flex-col items-start gap-1">
+                                            <div className="max-w-[85%] rounded-2xl border border-neutral-200 bg-white px-3 py-1.5 text-neutral-900 shadow-sm">
+                                                <div className="text-[20px] text-neutral-800">
+                                                    {s.summary ||
+                                                        "Updated the selected block based on your request."}
+                                                </div>
+                                                <div className="mt-1 flex items-center justify-between text-[20px] text-neutral-500">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDismiss(s.id)}
+                                                        className="text-[14px] font-medium text-neutral-500 hover:text-red-500"
+                                                        title="Remove this entry from the chatlog."
+                                                    >
+                                                        Dismiss
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div className="pl-2 text-[10px] text-neutral-400">
+                                                {formatCreatedAt(s.createdAt)}
+                                            </div>
                                         </div>
-                                        <div className="mt-1 flex items-center justify-between text-[20px] text-neutral-500">
-                                            <button
-                                                type="button"
-                                                onClick={() => handleDismiss(s.id)}
-                                                className="text-[14px] font-medium text-neutral-500 hover:text-red-500"
-                                                title="Remove this entry from the chatlog."
-                                            >
-                                                Dismiss
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div className="pl-2 text-[10px] text-neutral-400">
-                                        {formatCreatedAt(s.createdAt)}
-                                    </div>
+                                    )}
                                 </div>
-                            </div>
-                        ))
+                            );
+                        })
                     )}
                 </div>
 
@@ -543,8 +579,6 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                                 {prompt.length}/{MAX_PROMPT_CHARS}
                             </span>
                         )}
-
-
                     </div>
 
                     <div className="flex items-center gap-2">

@@ -2754,7 +2754,7 @@ export default function PreviewEditor({
             }
         }
     }
-    const [historyOpen, setHistoryOpen] = useState(false);
+    const [historyOpen, setHistoryOpen] = useState(true);
 
     // iframe messages: uploads + selection meta + delete-assets
     useEffect(() => {
@@ -4608,14 +4608,14 @@ export default function PreviewEditor({
                             </div>
                         )}
 
-                        {/* {aiEditing && !closing && (
-                            <div className="absolute inset-0 z-[95] bg-white/80 backdrop-blur-[2px] grid place-items-center pointer-events-auto">
+                        {aiEditing && !closing && (
+                            <div className="absolute inset-0 z-[95] backdrop-blur-[2px] grid place-items-center pointer-events-auto">
                                 <div className="flex items-center gap-3 rounded border px-3 py-2 bg-white text-md text-neutral-800 shadow-md">
                                     <Spinner />
                                     <span>Applying AI edit…</span>
                                 </div>
                             </div>
-                        )} */}
+                        )}
                     </section>
                 </div>
 

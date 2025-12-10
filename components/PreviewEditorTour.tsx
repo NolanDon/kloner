@@ -18,19 +18,19 @@ const steps: Step[] = [
         content: "Use the page switcher to jump between different pages like Home, Pricing, and About. Press Enter to continue.",
         disableBeacon: true,
     },
-    {
-        target: "#kloner-quick-undo",
-        content:
-            "Use undo to step back one change, or redo to move forward again. Both actions update the live preview instantly.",
-        disableBeacon: true,
-    },
+    // {
+    //     target: "#kloner-quick-undo",
+    //     content:
+    //         "Use undo to step back one change, or redo to move forward again. Both actions update the live preview instantly.",
+    //     disableBeacon: true,
+    // },
     {
         target: "#kloner-history",
-        content: "You can also revert to older versions by clicking tabs in the history section.",
+        content: "You can revert to older versions by clicking tabs in the history section.",
         disableBeacon: true,
     },
     {
-        target: "#kloner-ai-edit-panel",
+        target: "#kloner-style-sidebar",
         content: "Use AI Edit to rewrite, generate pictures, or refine copy and layout for the selected block.",
         disableBeacon: true,
     },
