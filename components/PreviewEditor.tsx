@@ -649,7 +649,7 @@ import { RenderDoc } from "@/app/dashboard/view/page";
 import { useAuth } from "@/src/hooks/useAuth";
 import { Camera, Code2, Eye, EyeOff, FileText, Images, Loader2, Maximize2, MessageSquare, Minimize2, Monitor, Palette, Redo2, Rocket, RotateCcw, RotateCw, Smartphone, Tablet, Undo2 } from "lucide-react";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
-import { sanitizeImageName } from "./helpers";
+import { EditorSessionCounters, EditorSessionMetrics, EditorSessionUser, ExportAnalyticsUser, recordEditorSessionAnalytics, recordExportAnalytics } from "./analytics";
 import AiEditPanel from "./editor/AiEditPanel";
 import { PreviewEditorTour } from "./PreviewEditorTour";
 import { injectEditableOverlay } from "@/src/lib/klonerIframeRuntime";
@@ -657,6 +657,7 @@ import { MetaSettings, UploadedAsset } from "./MetaSettings";
 import { FloatingBlockToolbar } from "@/src/lib/floatingToolbar";
 import { AiImageLibraryPanel } from "./AiImageLibraryPanel";
 import MiniToolbar from "@/src/lib/miniToolbar";
+import { sanitizeImageName } from "./helpers";
 
 const MAX_HISTORY_SNAPSHOTS = 40;
 
@@ -1156,6 +1157,121 @@ export default function PreviewEditor({
 
     const [isDraggingPreview, setIsDraggingPreview] = useState(false);
 
+    // 1) Per-session counters
+    const sessionCountersRef = useRef<EditorSessionCounters>({
+        save: 0,
+        export: 0,
+        autosave: 0,
+        pageSwitch: 0,
+        deviceSwitch: 0,
+        modeSwitch: 0,
+        archive: 0,
+        restore: 0,
+        historyRestore: 0,
+        aiEdit: 0,
+        aiApply: 0,
+        aiMiniToolbar: 0,
+    });
+
+    // Debug: see bumps in dev
+    function bumpSessionCounter<K extends keyof EditorSessionCounters>(key: K) {
+        const prev = sessionCountersRef.current[key] ?? 0;
+        const next = prev + 1;
+        sessionCountersRef.current[key] = next;
+
+        if (process.env.NODE_ENV === "development") {
+            // This should spam when you hit save / switch page / etc.
+            console.log("[editor-analytics] bump", key, "->", next);
+        }
+    }
+
+    // 2) Keep the latest user in a ref so we don't depend on [user]
+    const sessionUserRef = useRef<EditorSessionUser>(user);
+    useEffect(() => {
+        sessionUserRef.current = user;
+    }, [user]);
+
+    // 3) Timing + flush guards
+    const sessionStartRef = useRef<number | null>(null);
+    const sessionFlushedRef = useRef(false);
+
+    // 4) Session timing + flush effect (runs once per mount)
+    useEffect(() => {
+        // start timing when editor mounts
+        sessionStartRef.current = Date.now();
+        sessionFlushedRef.current = false;
+
+        // reset counters each mount so this session is isolated
+        sessionCountersRef.current = {
+            save: 0,
+            export: 0,
+            autosave: 0,
+            pageSwitch: 0,
+            deviceSwitch: 0,
+            modeSwitch: 0,
+            archive: 0,
+            restore: 0,
+            historyRestore: 0,
+            aiEdit: 0,
+            aiApply: 0,
+            aiMiniToolbar: 0,
+        };
+
+        const flushSession = (reason: string) => {
+            if (sessionFlushedRef.current) return;
+            sessionFlushedRef.current = true;
+
+            const start = sessionStartRef.current ?? Date.now();
+            const durationMs = Date.now() - start;
+            const counters = sessionCountersRef.current;
+            const u = sessionUserRef.current;
+
+            if (!u?.uid) {
+                if (process.env.NODE_ENV === "development") {
+                    console.log(
+                        "[editor-analytics] flush skipped (no user)",
+                        reason,
+                        counters,
+                        durationMs,
+                    );
+                }
+                return;
+            }
+
+            if (process.env.NODE_ENV === "development") {
+                console.log("[editor-analytics] flushing session", {
+                    reason,
+                    durationMs,
+                    counters,
+                });
+            }
+
+            // fire-and-forget; must not block navigation
+            void recordEditorSessionAnalytics(u, durationMs, reason, counters);
+        };
+
+        const handleBeforeUnload = () => flushSession("beforeunload");
+
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === "hidden") {
+                flushSession("visibility_hidden");
+            }
+        };
+
+        window.addEventListener("beforeunload", handleBeforeUnload);
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+
+        return () => {
+            window.removeEventListener("beforeunload", handleBeforeUnload);
+            document.removeEventListener("visibilitychange", handleVisibilityChange);
+
+            // catch route change / modal close / unmount
+            flushSession("unmount");
+        };
+    }, []); // IMPORTANT: run once per mount, not on [user]
+
+
+
     useEffect(() => {
         const handlePointerUp = () => {
             // Any pointer release ends drag and re-enables iframe events
@@ -1244,6 +1360,7 @@ export default function PreviewEditor({
             }
             return next;
         });
+        bumpSessionCounter("archive");
     }
 
     function archivePageInHtmlById(html: string, pageId: string): string {
@@ -1329,8 +1446,10 @@ export default function PreviewEditor({
 
 
     const restorePage = (pageId: string) => {
+
         // drop from archive list + propagate up
         pushArchivedIds((prev) => prev.filter((id) => id !== pageId));
+        bumpSessionCounter("restore");
 
         setHtmlDraft((prev) => {
             if (!prev) return prev;
@@ -1910,17 +2029,18 @@ export default function PreviewEditor({
             if (!html) return;
 
             setHistory((prev) => {
-                // avoid duplicate entry if HTML identical to the last snapshot
                 const last = prev[prev.length - 1];
                 if (last && last.html === html) return prev;
 
                 const snap: DraftSnapshot = {
-                    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                    id: `${Date.now()}-${Math.random()
+                        .toString(36)
+                        .slice(2, 8)}`,
                     createdAt: Date.now(),
                     source,
                     html,
                     summary: undefined,
-                    prompt: undefined
+                    prompt: undefined,
                 };
 
                 const merged = [...prev, snap];
@@ -1929,19 +2049,20 @@ export default function PreviewEditor({
                 return merged;
             });
 
-            // track “current” snapshot id
             setActiveHistoryId((prev) => prev || `${Date.now()}`);
         },
-        [snapshotFromIframeOrDraft]
+        [snapshotFromIframeOrDraft],
     );
+
 
     useEffect(() => {
         if (!draftId) return;
         if (typeof window === "undefined") return;
 
-        const intervalMs = 60_000; // 1 minute; change if you want
+        const intervalMs = 60_000;
         const id = window.setInterval(() => {
             snapshotDraft("auto");
+            bumpSessionCounter("autosave");
         }, intervalMs);
 
         return () => window.clearInterval(id);
@@ -1985,12 +2106,16 @@ export default function PreviewEditor({
         }
     }, []);
 
-    // NEW: Device toggle logic
-    const handleDeviceChange = useCallback((next: Device) => {
-        if (device === next) return;
-        setDevice(next);
-        tryClearIframeSelection();
-    }, [device, tryClearIframeSelection]);
+    const handleDeviceChange = useCallback(
+        (next: Device) => {
+            if (device === next) return;
+
+            bumpSessionCounter("deviceSwitch");
+            setDevice(next);
+            tryClearIframeSelection();
+        },
+        [device, tryClearIframeSelection],
+    );
 
 
     // ESC clears iframe selection
@@ -2015,12 +2140,7 @@ export default function PreviewEditor({
         (snap: DraftSnapshot) => {
             if (!snap) return;
 
-            const confirmRestore =
-                dirty
-                    ? window.confirm(
-                        "Replace the current draft with this version? Unsaved changes will be lost."
-                    )
-                    : true;
+            const confirmRestore = dirty ? window.confirm("Replace the current draft with this version? Unsaved changes will be lost.") : true;
 
             if (!confirmRestore) return;
 
@@ -2029,8 +2149,8 @@ export default function PreviewEditor({
             emitLive(snap.html);
             setDirty(false);
             setActiveHistoryId(snap.id);
-        },
-        [dirty, emitLive]
+            bumpSessionCounter("historyRestore")
+        }, [dirty, emitLive]
     );
 
 
@@ -2221,17 +2341,19 @@ export default function PreviewEditor({
     const handlePageSwitch = async (nextId: string) => {
         if (!nextId || nextId === activePageId) return;
 
+        bumpSessionCounter("pageSwitch");
+
         const doc = iframeRef.current?.contentDocument;
         const hasPendingImages = !!doc?.querySelector("img[data-local-image-id]");
 
         if (hasPendingImages) {
-            // open nice confirmation box instead of window.confirm
             setPageSwitchConfirm({ targetId: nextId });
             return;
         }
 
         setActivePageId(nextId);
     };
+
 
     const confirmPageSwitch = async () => {
         if (!pageSwitchConfirm) return;
@@ -2249,6 +2371,7 @@ export default function PreviewEditor({
             // still continue to switch, to avoid trapping the user
         } finally {
             setActivePageId(nextId);
+            bumpSessionCounter("pageSwitch");
             setPageSwitchConfirm(null);
         }
     };
@@ -2264,13 +2387,28 @@ export default function PreviewEditor({
         setExportNote("");
         setExporting(true);
 
+        const exportStartMs = Date.now();
+
         try {
             await doSave({ applyToPreview: true });
 
             const baseHtmlRaw = snapshotFromIframeOrDraft();
             const baseHtml = (baseHtmlRaw || previewHtml || "").trim();
             if (!baseHtml) {
-                throw new Error("No HTML available to export");
+                const msg = "No HTML available to export";
+                const durationMs = Date.now() - exportStartMs;
+
+                await recordExportAnalytics(
+                    user as ExportAnalyticsUser,
+                    draftId,
+                    {
+                        status: "error",
+                        error: msg,
+                        durationMs,
+                    },
+                );
+
+                throw new Error(msg);
             }
 
             // FINAL SAFETY PASS: strip any Kloner UI one last time
@@ -2284,11 +2422,38 @@ export default function PreviewEditor({
             });
 
             await onExport(finalHtml, nameHint || undefined);
+
+            const durationMs = Date.now() - exportStartMs;
+
+            bumpSessionCounter("export");
+
+            // analytics: first / last export, count, last draft, timing, status
+            await recordExportAnalytics(
+                user as ExportAnalyticsUser,
+                draftId,
+                {
+                    status: "success",
+                    error: null,
+                    durationMs,
+                },
+            );
         } catch (e: any) {
             const msg = String(e?.message || "");
+            const durationMs = Date.now() - exportStartMs;
+
+            await recordExportAnalytics(
+                user as ExportAnalyticsUser,
+                draftId,
+                {
+                    status: "error",
+                    error: msg,
+                    durationMs,
+                },
+            );
+
             if (/401|403|unauth/i.test(msg)) {
                 setExportNote(
-                    "Export blocked. Connect your Vercel account in Settings, then retry."
+                    "Export blocked. Connect your Vercel account in Settings, then retry.",
                 );
             } else {
                 setExportNote("Export failed. Retry shortly.");
@@ -2298,6 +2463,7 @@ export default function PreviewEditor({
             setExporting(false);
         }
     }
+
 
     /**
      * FINAL HTML SCRUB BEFORE EXPORT
@@ -3018,6 +3184,8 @@ export default function PreviewEditor({
                 if (!closing) {
                     await doSave();
                 }
+                bumpSessionCounter("aiApply");
+
             } catch (err) {
                 console.warn(
                     "[PreviewEditor] failed to save AI-edited HTML immediately",
@@ -3063,6 +3231,9 @@ export default function PreviewEditor({
                 console.warn("[MiniToolbar] no draftId / renderId for AI edit");
                 return;
             }
+
+            bumpSessionCounter("aiEdit");
+            bumpSessionCounter("aiMiniToolbar");
 
             setAiEditing(true);
             try {
@@ -3119,9 +3290,10 @@ export default function PreviewEditor({
         (next: ViewMode) => {
             if (closing || mode === next) return;
             setMode(next);
+            bumpSessionCounter("modeSwitch");
             tryClearIframeSelection();
         },
-        [closing, mode, tryClearIframeSelection]
+        [closing, mode, tryClearIframeSelection],
     );
 
     // kicks to preview if detects "code mode" in prod
@@ -4604,7 +4776,10 @@ export default function PreviewEditor({
 
                         <div className="hidden lg:block mb-3" id="kloner-apply-changes">
                             <button
-                                onClick={() => doSave()}
+                                onClick={() => {
+                                    bumpSessionCounter("save")
+                                    doSave()
+                                }}
                                 disabled={closing || savingDraft || !dirty}
                                 aria-busy={applyingPreview}
                                 className={`rounded px-4 py-4 w-full text-xl transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${dirty

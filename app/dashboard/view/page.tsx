@@ -77,6 +77,7 @@ import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 import { archiveRender, resolveStorageUrl, useResolvedImg } from "@/src/lib/renders";
 import { AnimatePresence, motion } from "framer-motion";
 import { extractArchivedPageIdsFromRender, fetchRenderForDeployment, getArchivedRoutesForRender, persistArchivedPageIds, scrubArchivedRoutes, withArchivedPageIds } from "@/components/helpers";
+import { recordDeployAnalytics } from "@/components/analytics";
 
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
@@ -2477,6 +2478,9 @@ export default function PreviewPage(): JSX.Element {
         name?: string;
         renderId?: string;
     }) {
+        // full funnel timer
+        const funnelStartMs = Date.now();
+
         setEditorOpen(false);
 
         const { html, name, renderId } = opts;
@@ -2485,8 +2489,28 @@ export default function PreviewPage(): JSX.Element {
         const trimmedNameInput = name?.trim() || "";
         const hasName = trimmedNameInput.length > 0;
 
+        // mark funnel start
+        await recordDeployAnalytics(user, {
+            lastExportFlowStartedAt: serverTimestamp(),
+            lastExportFlowRenderId: resolvedRenderId ?? null,
+            lastExportFlowUserTier: userTier ?? null,
+            lastExportFlowSource: "editor_export_button",
+        });
+
         // If no name, open wizard at step 1 and bail.
         if (!hasName) {
+            const durationMs = Date.now() - funnelStartMs;
+
+            await recordDeployAnalytics(
+                user,
+                {
+                    lastExportFlowStatus: "missing_name",
+                    lastExportFlowEndedAt: serverTimestamp(),
+                    lastExportFlowDurationMs: durationMs,
+                },
+                ["missingNameCount"],
+            );
+
             setDeployWizardBusy(false);
             setDeployWizardError(null);
             setDeployWizardStep(1);
@@ -2509,6 +2533,20 @@ export default function PreviewPage(): JSX.Element {
 
         // Free tier: force upgrade step, do NOT deploy.
         if (userTier === "free") {
+            const durationMs = Date.now() - funnelStartMs;
+
+            await recordDeployAnalytics(
+                user,
+                {
+                    lastExportFlowStatus: "paywall_blocked",
+                    lastPaywallShownAt: serverTimestamp(),
+                    lastExportFlowEndedAt: serverTimestamp(),
+                    lastExportFlowDurationMs: durationMs,
+                    lastPaywallReason: "export_to_vercel_free_tier",
+                },
+                ["paywallShownCount"],
+            );
+
             if (deployWizardStep !== 5) {
                 setDeployWizardBusy(false);
                 setDeployWizardError(null);
@@ -2597,6 +2635,9 @@ export default function PreviewPage(): JSX.Element {
             fallbackSeoMetaByPage: activeSeoMetaByPage as SeoMetaByPage | null,
         });
 
+        // deploy timer
+        const deployStartMs = Date.now();
+
         try {
             const r = await fetch("/api/user-deploy", {
                 method: "POST",
@@ -2616,6 +2657,23 @@ export default function PreviewPage(): JSX.Element {
 
             if (!r.ok || !j?.url) {
                 const msg = j?.error || "Vercel deploy failed";
+                const deployDurationMs = Date.now() - deployStartMs;
+                const funnelDurationMs = Date.now() - funnelStartMs;
+
+                await recordDeployAnalytics(
+                    user,
+                    {
+                        lastExportFlowStatus: "deploy_failed",
+                        lastDeployError: msg,
+                        lastDeployEndedAt: serverTimestamp(),
+                        lastDeployDurationMs: deployDurationMs,
+                        lastExportFlowEndedAt: serverTimestamp(),
+                        lastExportFlowDurationMs: funnelDurationMs,
+                        lastDeployProjectName: projectName,
+                    },
+                    ["deployErrorCount"],
+                );
+
                 setDeployWizardError(msg);
                 setDeployWizardLiveUrl(null);
                 push(msg, "err");
@@ -2667,11 +2725,30 @@ export default function PreviewPage(): JSX.Element {
                         lastExportedAt: serverTimestamp(),
                         lastDeployUrl: url,
                         vercelProjectId: apiProjectId ?? null,
-                        vercelProjectName:
-                            apiProjectName ?? projectName ?? null,
+                        vercelProjectName: apiProjectName ?? projectName ?? null,
                     },
                 );
             }
+
+            const deployDurationMs = Date.now() - deployStartMs;
+            const funnelDurationMs = Date.now() - funnelStartMs;
+
+            await recordDeployAnalytics(
+                user,
+                {
+                    lastExportFlowStatus: "deployed",
+                    lastDeployUrl: url,
+                    lastDeployProjectId: apiProjectId ?? null,
+                    lastDeployProjectName: apiProjectName ?? projectName ?? null,
+                    lastDeployCompletedAt: serverTimestamp(),
+                    lastDeployDurationMs: deployDurationMs,
+                    lastExportFlowEndedAt: serverTimestamp(),
+                    lastExportFlowDurationMs: funnelDurationMs,
+                    lastUserTierAtDeploy: userTier ?? null,
+                    lastRenderIdAtDeploy: resolvedRenderId ?? null,
+                },
+                ["deploySuccessCount"],
+            );
 
             navigator.clipboard?.writeText(url).catch(() => void 0);
 
@@ -2687,6 +2764,23 @@ export default function PreviewPage(): JSX.Element {
             await refreshRenders();
         } catch (err: any) {
             const msg = err?.message || "Vercel deploy failed";
+            const deployDurationMs = Date.now() - deployStartMs;
+            const funnelDurationMs = Date.now() - funnelStartMs;
+
+            await recordDeployAnalytics(
+                user,
+                {
+                    lastExportFlowStatus: "deploy_error",
+                    lastDeployError: msg,
+                    lastDeployEndedAt: serverTimestamp(),
+                    lastDeployDurationMs: deployDurationMs,
+                    lastExportFlowEndedAt: serverTimestamp(),
+                    lastExportFlowDurationMs: funnelDurationMs,
+                    lastDeployProjectName: projectName,
+                },
+                ["deployErrorCount"],
+            );
+
             setDeployWizardError(msg);
             setDeployWizardLiveUrl(null);
             push(msg, "err");
@@ -2696,6 +2790,7 @@ export default function PreviewPage(): JSX.Element {
             setDeployWizardBusy(false);
         }
     }
+
 
 
     const activeRender = useMemo(

@@ -1,3 +1,14 @@
+// components/helpers.ts
+import {
+    updateDoc, runTransaction, collection, DocumentData, getDocs, query, QueryDocumentSnapshot, where, QuerySnapshot, getFirestore,
+    doc,
+    serverTimestamp,
+    addDoc,
+} from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { SeoMeta } from "./PreviewEditor";
+import { DeploymentDoc } from "@/app/dashboard/deployments/page";
+
 export function sanitizeName(raw: string): string {
     if (!raw) return "";
 
@@ -120,7 +131,7 @@ export function scrubArchivedRoutes(html: string, archivedRoutes: string[]): str
 
 export function extractArchivedPageIdsFromRender(render: any): string[] {
 
-  
+
     if (!render) return [];
 
     const root = render as any;
@@ -141,11 +152,6 @@ export function extractArchivedPageIdsFromRender(render: any): string[] {
 }
 
 
-// src/lib/helpers/archiveHelpers.ts
-import { doc, updateDoc, serverTimestamp, collection, DocumentData, getDocs, query, QueryDocumentSnapshot, where, QuerySnapshot } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { SeoMeta } from "./PreviewEditor";
-import { DeploymentDoc } from "@/app/dashboard/deployments/page";
 
 export interface RenderLike {
     id: string;

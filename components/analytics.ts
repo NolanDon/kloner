@@ -1,0 +1,464 @@
+import { db } from "@/lib/firebase";
+import { doc, runTransaction, serverTimestamp, collection, addDoc } from "firebase/firestore";
+
+export type ExportAnalyticsUser = {
+    uid?: string;
+} | null;
+
+type ExportExtra = {
+    status?: "success" | "error";
+    error?: string | null;
+    durationMs?: number | null;
+};
+
+function msToMinutesRounded(ms: number | null | undefined): number | null {
+    if (typeof ms !== "number" || !Number.isFinite(ms) || ms <= 0) return null;
+    // one decimal place
+    return Math.round((ms / 1000 / 60) * 10) / 10;
+}
+
+/* =========================
+ * EXPORT ANALYTICS
+ * ========================= */
+
+export async function recordExportAnalytics(
+    user: ExportAnalyticsUser,
+    draftId?: string | null,
+    extra?: ExportExtra,
+) {
+    try {
+        if (!user || !user.uid) {
+            console.log("[recordExportAnalytics] skip – no user");
+            return;
+        }
+
+        const ref = doc(db, "kloner_users", user.uid, "meta", "editor");
+
+        const status: "success" | "error" =
+            extra?.status === "error" ? "error" : "success";
+
+        const durationMs =
+            typeof extra?.durationMs === "number" && extra.durationMs > 0
+                ? extra.durationMs
+                : null;
+
+        const durationMinutes = msToMinutesRounded(durationMs);
+
+        console.log("[recordExportAnalytics] start", {
+            uid: user.uid,
+            draftId,
+            status,
+            durationMs,
+            durationMinutes,
+        });
+
+        await runTransaction(db, async (tx) => {
+            const snap = await tx.get(ref);
+            const now = serverTimestamp();
+
+            const basePatch = {
+                lastExportAt: now,
+                lastDraftId: draftId ?? null,
+                lastExportStatus: status,
+                lastExportError: extra?.error ?? null,
+
+                // old ms field kept for backwards-compat
+                lastExportDurationMs: durationMs,
+
+                // new human-readable field
+                lastExportDurationMinutes: durationMinutes,
+            };
+
+            if (!snap.exists()) {
+                const isSuccess = status === "success";
+                const isError = status === "error";
+
+                tx.set(
+                    ref,
+                    {
+                        createdAt: now,
+                        updatedAt: now,
+                        firstExportAt: now,
+                        ...basePatch,
+                        exportCount: isSuccess ? 1 : 0,        // keep old meaning: successful exports
+                        exportAttemptCount: 1,                 // all attempts
+                        exportSuccessCount: isSuccess ? 1 : 0,
+                        exportErrorCount: isError ? 1 : 0,
+                    },
+                    { merge: true },
+                );
+            } else {
+                const data = (snap.data() || {}) as Record<string, any>;
+
+                const currentCount =
+                    typeof data.exportCount === "number" ? data.exportCount : 0;
+                const currentAttempt =
+                    typeof data.exportAttemptCount === "number"
+                        ? data.exportAttemptCount
+                        : 0;
+                const currentSuccess =
+                    typeof data.exportSuccessCount === "number"
+                        ? data.exportSuccessCount
+                        : 0;
+                const currentError =
+                    typeof data.exportErrorCount === "number"
+                        ? data.exportErrorCount
+                        : 0;
+
+                const isSuccess = status === "success";
+                const isError = status === "error";
+
+                tx.set(
+                    ref,
+                    {
+                        updatedAt: now,
+                        firstExportAt: data.firstExportAt || now,
+                        ...basePatch,
+                        exportCount: isSuccess
+                            ? currentCount + 1
+                            : currentCount,
+                        exportAttemptCount: currentAttempt + 1,
+                        exportSuccessCount: isSuccess
+                            ? currentSuccess + 1
+                            : currentSuccess,
+                        exportErrorCount: isError
+                            ? currentError + 1
+                            : currentError,
+                    },
+                    { merge: true },
+                );
+            }
+        });
+
+        console.log("[recordExportAnalytics] done");
+    } catch (err) {
+        // analytics failures should never block export
+        console.error("recordExportAnalytics failed", err);
+    }
+}
+
+/* =========================
+ * DEPLOY ANALYTICS
+ * ========================= */
+
+export type AnalyticsUser = { uid?: string } | null | undefined;
+
+export async function recordDeployAnalytics(
+    user: AnalyticsUser,
+    patch: Record<string, any>,
+    incrementFields: string[] = [],
+) {
+    try {
+        if (!user?.uid) {
+            console.log("[recordDeployAnalytics] skip – no user");
+            return;
+        }
+
+        const ref = doc(
+            db,
+            "kloner_users",
+            user.uid,
+            "meta",
+            "editor",
+        );
+
+        console.log("[recordDeployAnalytics] start", {
+            uid: user.uid,
+            patchKeys: Object.keys(patch || {}),
+            incrementFields,
+        });
+
+        await runTransaction(db, async (tx) => {
+            const snap = await tx.get(ref);
+            const now = serverTimestamp();
+
+            if (!snap.exists()) {
+                const baseCounters: Record<string, number> = {};
+                for (const f of incrementFields) {
+                    baseCounters[f] = 1;
+                }
+
+                tx.set(
+                    ref,
+                    {
+                        createdAt: now,
+                        updatedAt: now,
+                        ...baseCounters,
+                        ...patch,
+                    },
+                    { merge: true },
+                );
+            } else {
+                const data = (snap.data() || {}) as Record<string, any>;
+                const nextCounters: Record<string, number> = {};
+                for (const f of incrementFields) {
+                    const current = typeof data[f] === "number" ? data[f] : 0;
+                    nextCounters[f] = current + 1;
+                }
+
+                tx.set(
+                    ref,
+                    {
+                        updatedAt: now,
+                        ...nextCounters,
+                        ...patch,
+                    },
+                    { merge: true },
+                );
+            }
+        });
+
+        console.log("[recordDeployAnalytics] done");
+    } catch (err) {
+        console.error("recordDeployAnalytics failed", err);
+    }
+}
+
+/* =========================
+ * EDITOR SESSION ANALYTICS
+ * ========================= */
+
+export type EditorSessionMetrics = {
+    pageSwitchCount?: number;
+    saveCount?: number;          // manual saves
+    autosaveCount?: number;      // autosave snapshots
+    aiEditCount?: number;        // all AI invocations
+    aiMiniToolbarCount?: number; // subset: mini-toolbar
+    aiApplyCount?: number;       // when AI HTML is actually applied
+    exportCount?: number;
+    archiveCount?: number;
+    restoreCount?: number;
+    modeSwitchCount?: number;
+    deviceSwitchCount?: number;
+    historyRestoreCount?: number;
+};    
+
+export type EditorSessionCounters = {
+    save: number;
+    export: number;
+    autosave: number;
+    pageSwitch: number;
+    deviceSwitch: number;
+    modeSwitch: number;
+    archive: number;
+    restore: number;
+    historyRestore: number;
+    aiEdit: number;
+    aiApply: number;
+    aiMiniToolbar: number;
+};
+
+export type EditorSessionUser = { uid?: string } | null | undefined;
+
+export async function recordEditorSessionAnalytics(
+    user: EditorSessionUser,
+    durationMs: number,
+    reason: string,
+    counters?: EditorSessionCounters,
+) {
+    try {
+        if (!user?.uid) {
+            console.log("[recordEditorSessionAnalytics] skip – no user");
+            return;
+        }
+
+        const editorRef = doc(
+            db,
+            "kloner_users",
+            user.uid,
+            "meta",
+            "editor",
+        );
+
+        const safeDurationMs =
+            typeof durationMs === "number" && durationMs > 0
+                ? durationMs
+                : 0;
+
+        const durationMinutes = msToMinutesRounded(safeDurationMs) ?? 0;
+
+        const c: EditorSessionCounters = {
+            save: counters?.save ?? 0,
+            export: counters?.export ?? 0,
+            autosave: counters?.autosave ?? 0,
+            pageSwitch: counters?.pageSwitch ?? 0,
+            deviceSwitch: counters?.deviceSwitch ?? 0,
+            modeSwitch: counters?.modeSwitch ?? 0,
+            archive: counters?.archive ?? 0,
+            restore: counters?.restore ?? 0,
+            historyRestore: counters?.historyRestore ?? 0,
+            aiEdit: counters?.aiEdit ?? 0,
+            aiApply: counters?.aiApply ?? 0,
+            aiMiniToolbar: counters?.aiMiniToolbar ?? 0,
+        };
+
+        console.log("[recordEditorSessionAnalytics] start", {
+            uid: user.uid,
+            durationMs: safeDurationMs,
+            durationMinutes,
+            reason,
+            counters: c,
+        });
+
+        const now = serverTimestamp();
+
+        // 1) Aggregate doc: last session + totals
+        await runTransaction(db, async (tx) => {
+            const snap = await tx.get(editorRef);
+            const data = (snap.data() || {}) as Record<string, any>;
+
+            const prevSessionCount =
+                typeof data.editorSessionCount === "number"
+                    ? data.editorSessionCount
+                    : 0;
+
+            const prevTotalMs =
+                typeof data.editorSessionTotalMs === "number"
+                    ? data.editorSessionTotalMs
+                    : 0;
+
+            const prevTotalMinutes =
+                typeof data.editorSessionTotalMinutes === "number"
+                    ? data.editorSessionTotalMinutes
+                    : 0;
+
+            const safeNum = (v: any) =>
+                typeof v === "number" && Number.isFinite(v) ? v : 0;
+
+            // previous totals
+            const prevTotals = {
+                editorSaveTotal: safeNum(data.editorSaveTotal),
+                editorExportTotal: safeNum(data.editorExportTotal),
+                editorAutosaveTotal: safeNum(data.editorAutosaveTotal),
+                editorPageSwitchTotal: safeNum(data.editorPageSwitchTotal),
+                editorDeviceSwitchTotal: safeNum(data.editorDeviceSwitchTotal),
+                editorModeSwitchTotal: safeNum(data.editorModeSwitchTotal),
+                editorArchiveTotal: safeNum(data.editorArchiveTotal),
+                editorRestoreTotal: safeNum(data.editorRestoreTotal),
+                editorHistoryRestoreTotal: safeNum(
+                    data.editorHistoryRestoreTotal,
+                ),
+                editorAiEditTotal: safeNum(data.editorAiEditTotal),
+                editorAiApplyTotal: safeNum(data.editorAiApplyTotal),
+                editorAiMiniToolbarTotal: safeNum(
+                    data.editorAiMiniToolbarTotal,
+                ),
+            };
+
+            const totalsPatch = {
+                editorSaveTotal: prevTotals.editorSaveTotal + c.save,
+                editorExportTotal: prevTotals.editorExportTotal + c.export,
+                editorAutosaveTotal:
+                    prevTotals.editorAutosaveTotal + c.autosave,
+                editorPageSwitchTotal:
+                    prevTotals.editorPageSwitchTotal + c.pageSwitch,
+                editorDeviceSwitchTotal:
+                    prevTotals.editorDeviceSwitchTotal + c.deviceSwitch,
+                editorModeSwitchTotal:
+                    prevTotals.editorModeSwitchTotal + c.modeSwitch,
+                editorArchiveTotal: prevTotals.editorArchiveTotal + c.archive,
+                editorRestoreTotal: prevTotals.editorRestoreTotal + c.restore,
+                editorHistoryRestoreTotal:
+                    prevTotals.editorHistoryRestoreTotal + c.historyRestore,
+                editorAiEditTotal: prevTotals.editorAiEditTotal + c.aiEdit,
+                editorAiApplyTotal: prevTotals.editorAiApplyTotal + c.aiApply,
+                editorAiMiniToolbarTotal:
+                    prevTotals.editorAiMiniToolbarTotal + c.aiMiniToolbar,
+            };
+
+            const basePatch = {
+                updatedAt: now,
+                endedAt: now,
+
+                // old ms field (backwards-compat)
+                durationMs: safeDurationMs,
+                editorSessionTotalMs: prevTotalMs + safeDurationMs,
+
+                // new human-readable fields in minutes
+                durationMinutes: durationMinutes,
+                editorSessionTotalMinutes: prevTotalMinutes + durationMinutes,
+
+                reason: reason,
+
+                editorSessionCount: prevSessionCount + 1,
+
+                // per-session counts for the *last* session only
+                saveCount: c.save,
+                exportCount: c.export,
+                autosaveCount: c.autosave,
+                pageSwitchCount: c.pageSwitch,
+                deviceSwitchCount: c.deviceSwitch,
+                modeSwitchCount: c.modeSwitch,
+                archiveCount: c.archive,
+                restoreCount: c.restore,
+                historyRestoreCount: c.historyRestore,
+                aiEditCount: c.aiEdit,
+                aiApplyCount: c.aiApply,
+                aiMiniToolbarCount: c.aiMiniToolbar,
+
+                ...totalsPatch,
+            };
+
+            if (!snap.exists()) {
+                tx.set(
+                    editorRef,
+                    {
+                        createdAt: now,
+                        ...basePatch,
+                    },
+                    { merge: true },
+                );
+            } else {
+                tx.set(editorRef, basePatch, { merge: true });
+            }
+        });
+
+        console.log("[recordEditorSessionAnalytics] aggregate doc written");
+
+        // 2) Append-only per-session document
+        try {
+            const sessionsCol = collection(
+                db,
+                "kloner_users",
+                user.uid,
+                "meta",
+                "editor",
+                "sessions",
+            );
+
+            const approxStartedAt = new Date(
+                Date.now() - safeDurationMs,
+            ).toISOString();
+
+            await addDoc(sessionsCol, {
+                createdAt: serverTimestamp(),
+
+                // ms kept, but minutes is what you'll actually read
+                durationMs: safeDurationMs,
+                durationMinutes,
+
+                reason,
+                approxStartedAtIso: approxStartedAt,
+
+                saveCount: c.save,
+                exportCount: c.export,
+                autosaveCount: c.autosave,
+                pageSwitchCount: c.pageSwitch,
+                deviceSwitchCount: c.deviceSwitch,
+                modeSwitchCount: c.modeSwitch,
+                archiveCount: c.archive,
+                restoreCount: c.restore,
+                historyRestoreCount: c.historyRestore,
+                aiEditCount: c.aiEdit,
+                aiApplyCount: c.aiApply,
+                aiMiniToolbarCount: c.aiMiniToolbar,
+            });
+
+            console.log("[recordEditorSessionAnalytics] session doc added");
+        } catch (err) {
+            console.error("recordEditorSessionAnalytics session doc failed", err);
+        }
+    } catch (err) {
+        console.error("recordEditorSessionAnalytics failed", err);
+    }
+}
