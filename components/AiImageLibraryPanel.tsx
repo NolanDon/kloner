@@ -261,7 +261,7 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId }: Props) {
                                             handleInsert(item);
                                         }}
                                     >
-                                        Insert image
+                                    Insert image
                                     </button>
                                     <button
                                         type="button"

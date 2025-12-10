@@ -1857,6 +1857,22 @@ export function installKlonerIframeApi(
     api.textboxAdd = api.addTextBox;
     api.linkEdit = api.editLink;
 
+    api.getSelectionMeta = () => {
+        return selected
+            ? { has: true, tagName: selected.tagName }
+            : { has: false };
+    };
+
+    // new nav helpers for toolbar
+    api.blockGetHref = () => {
+        return getHrefForSelection();
+    };
+
+    api.blockSetHref = (href: string) => {
+        return setHrefForSelection(href);
+    };
+
+
     api.historyUndo = api.undo;
     api.historyRedo = api.redo;
 
@@ -1909,6 +1925,55 @@ export function installKlonerIframeApi(
             );
         }
     }
+
+    function findLinkFor(target: HTMLElement | null): HTMLAnchorElement | null {
+        if (!target) return null;
+        if (target.tagName === "A") return target as HTMLAnchorElement;
+        return target.closest("a") as HTMLAnchorElement | null;
+    }
+
+    function getHrefForSelection() {
+        const linkEl = findLinkFor(selected);
+        if (!linkEl) {
+            return { hasLink: false, href: "" };
+        }
+        return {
+            hasLink: true,
+            href: linkEl.getAttribute("href") || "",
+        };
+    }
+
+    function setHrefForSelection(nextHrefRaw: string) {
+        const linkEl = findLinkFor(selected);
+        if (!linkEl) {
+            if (selected) {
+                showHint("No link found on this block.", selected);
+            }
+            return;
+        }
+
+        const nextHref = (nextHrefRaw || "").trim();
+
+        // Basic safety: disallow javascript: URLs
+        if (/^\s*javascript:/i.test(nextHref)) {
+            showHint("This type of link is not allowed here.", linkEl);
+            return;
+        }
+
+        if (!nextHref) {
+            linkEl.removeAttribute("href");
+            saveHistory();
+            notify();
+            showHint("Link cleared.", linkEl);
+            return;
+        }
+
+        linkEl.setAttribute("href", nextHref);
+        saveHistory();
+        notify();
+        showHint("Link updated.", linkEl);
+    }
+
 
     const pendingImagePaths: Set<string> = new Set();
 

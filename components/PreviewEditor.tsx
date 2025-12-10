@@ -1149,7 +1149,7 @@ export default function PreviewEditor({
     const [saveNudgeArmed, setSaveNudgeArmed] = useState(false);
     const [history, setHistory] = useState<DraftSnapshot[]>([]);
     const [aiHistory, setAiHistory] = useState<AiEditSuggestion[]>([]);
-
+    const [historyOpen, setHistoryOpen] = useState(false);
     const [sidebarHidden, setSidebarHidden] = useState(false);
     // dragging iframe
     const previewDragControls = useDragControls();
@@ -2051,7 +2051,7 @@ export default function PreviewEditor({
         const ordered = [...snapshots].sort((a, b) => b.createdAt - a.createdAt);
 
         return (
-            <div className="flex flex-col gap-2 text-md h-full">
+            <div className="flex flex-col gap-2 text-md h-full bg-white">
                 <div className="flex-1 overflow-y-auto rounded-md border border-gray-200 bg-white/90">
                     {ordered.map((snap) => (
                         <button
@@ -2083,10 +2083,6 @@ export default function PreviewEditor({
                         </button>
                     ))}
                 </div>
-
-                <p className="text-[12px] text-gray-700 mt-1">
-                    Oldest versions are removed automatically once the list is full.
-                </p>
             </div>
         );
     }
@@ -2754,7 +2750,7 @@ export default function PreviewEditor({
             }
         }
     }
-    const [historyOpen, setHistoryOpen] = useState(true);
+
 
     // iframe messages: uploads + selection meta + delete-assets
     useEffect(() => {
@@ -4423,7 +4419,7 @@ export default function PreviewEditor({
                                                     setIsDraggingPreview(true);
                                                     previewDragControls.start(e);
                                                 }}
-                                                className="mx-auto cursor-move ounded-[28px] border border-neutral-700 bg-neutral-950/90 px-4 pt-4 pb-6 shadow-xl"
+                                                className="mx-auto cursor-move ounded-[28px] border rounded-[36px] border-neutral-700 bg-neutral-950/90 px-4 pt-4 pb-6 shadow-xl"
                                             >
                                                 <div className="flex items-center justify-end gap-1.5">
                                                     {/* UNDO
@@ -4521,18 +4517,18 @@ export default function PreviewEditor({
                                     />
                                 </div>
 
-                                <MiniToolbar
-                                    iframeRef={iframeRef}
-                                    wrapperRef={iframeWrapperRef}
-                                    selectionMeta={selectionMeta}
-                                    uiScale={uiScale}
-                                    aiEditing={aiEditing}
-                                    onAiEditRequest={runAiEditFromMiniToolbar}
-                                />
                             </div>
                         )}
 
 
+                        <MiniToolbar
+                            iframeRef={iframeRef}
+                            wrapperRef={iframeWrapperRef}
+                            selectionMeta={selectionMeta}
+                            uiScale={uiScale}
+                            aiEditing={aiEditing}
+                            onAiEditRequest={runAiEditFromMiniToolbar}
+                        />
                         {mode === "screenshot" && (
                             <div className="flex-1 overflow-auto p-6">
                                 <div

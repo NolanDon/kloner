@@ -26,6 +26,11 @@ type FloatingBlockToolbarProps = {
 
 type ToolbarPos = { top: number; left: number } | null;
 
+type BlockHrefInfo = {
+    hasLink: boolean;
+    href: string;
+} | null;
+
 function BlockToolbar({
     style,
     callApi,
@@ -33,27 +38,79 @@ function BlockToolbar({
     onDragStart,
 }: {
     style: React.CSSProperties;
-    callApi: (method: string, ...args: any[]) => void;
+    callApi: (method: string, ...args: any[]) => any;
     selectionMeta: SelectionMeta;
     onDragStart: (e: React.MouseEvent<HTMLDivElement>) => void;
 }) {
     const tagName =
         selectionMeta.tagName?.toUpperCase?.() || (selectionMeta as any).tagName || "DIV";
 
+    const [hasNavLink, setHasNavLink] = useState(false);
+    const [navHref, setNavHref] = useState("");
+
+    // Fetch current href when selection changes
+    useEffect(() => {
+        try {
+            const info = callApi("blockGetHref") as BlockHrefInfo;
+            if (info && typeof info === "object") {
+                setHasNavLink(!!info.hasLink);
+                setNavHref(info.href || "");
+            } else {
+                setHasNavLink(false);
+                setNavHref("");
+            }
+        } catch {
+            setHasNavLink(false);
+            setNavHref("");
+        }
+    }, [selectionMeta, callApi]);
+
+    const commitNavHref = (value: string) => {
+        const trimmed = (value || "").trim();
+        callApi("blockSetHref", trimmed);
+    };
+
+    const handleNavInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setNavHref(e.target.value);
+    };
+
+    const handleNavInputBlur = () => {
+        commitNavHref(navHref);
+    };
+
+    const handleNavInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            commitNavHref(navHref);
+            (e.currentTarget as HTMLInputElement).blur();
+        }
+        if (e.key === "Escape") {
+            e.preventDefault();
+            try {
+                const info = callApi("blockGetHref") as BlockHrefInfo;
+                if (info && typeof info === "object") {
+                    setHasNavLink(!!info.hasLink);
+                    setNavHref(info.href || "");
+                }
+            } catch {
+                // swallow
+            }
+            (e.currentTarget as HTMLInputElement).blur();
+        }
+    };
+
     return (
         <div className="bg-neutral-100">
             <div
                 style={style}
-                className="cursor-move flex h-[560px] w-[380px] p-4 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white text-[12px] text-neutral-800 shadow-2xl"
-                onMouseDown={onDragStart}
+                className="cursor-default flex h-[560px] w-[380px] p-4 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white text-[12px] text-neutral-800 shadow-2xl"
             >
-
-                {/* Header – drag handle */}
-                <div className="flex items-center justify-between border-b border-neutral-200 px-3.5 py-2.5 ">
+                {/* Header – drag handle (ONLY header is draggable) */}
+                <div
+                    className="flex items-center justify-between border-b border-neutral-200 px-3.5 py-2.5 cursor-move"
+                    onMouseDown={onDragStart}
+                >
                     <div className="flex items-center gap-2">
-                        {/* <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-white">
-                            {tagName.slice(0, 5)}
-                        </span> */}
                         <div className="flex flex-col">
                             <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
                                 Selected block
@@ -68,29 +125,65 @@ function BlockToolbar({
                         className="m-1 inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 shadow-sm hover:bg-neutral-100 pb-1"
                         title="Deselect block"
                         onClick={() => callApi("clear")}
+                        onMouseDown={(e) => e.stopPropagation()}
                     >
                         <span className="text-[20px] leading-none">×</span>
                     </button>
                 </div>
 
-                {/* Delete block */}
-                <div>
-                    <div className="my-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
-                        Danger
+                {/* Navigation link editor (only when a link exists on this block) */}
+                {hasNavLink && (
+                    <div className="border-b border-neutral-200 px-3.5 py-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                            <div className="flex flex-col flex-1">
+                                <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                                    <Link2 className="h-3 w-3" />
+                                    Navigation link
+                                </span>
+                                <input
+                                    type="text"
+                                    className="mt-1 w-full rounded-md border border-neutral-200 bg-white px-2.5 py-1.5 text-[11px] text-neutral-800 shadow-sm outline-none focus:border-neutral-400 focus:ring-0"
+                                    placeholder="/about or /pricing"
+                                    value={navHref}
+                                    onChange={handleNavInputChange}
+                                    onBlur={handleNavInputBlur}
+                                    onKeyDown={handleNavInputKeyDown}
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                />
+                            </div>
+                            <button
+                                type="button"
+                                className="mt-5 inline-flex h-7 w-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] text-neutral-500 hover:bg-neutral-50"
+                                title="Clear link"
+                                onClick={() => {
+                                    setNavHref("");
+                                    commitNavHref("");
+                                }}
+                                onMouseDown={(e) => e.stopPropagation()}
+                            >
+                                <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                        </div>
                     </div>
-                    <button
-                        type="button"
-                        onClick={() => callApi("blockDelete")}
-                        className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-[11px] text-rose-700 hover:bg-rose-100"
-                    >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        <span>Delete block</span>
-                    </button>
-                </div>
+                )}
 
-
-                {/* Body sections */}
+                {/* Body scroll area */}
                 <div className="mt-2 flex-1 space-y-4 overflow-y-auto px-3.5 py-3.5 text-[12px]">
+                    {/* Danger */}
+                    <div>
+                        <div className="my-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                            Danger
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => callApi("blockDelete")}
+                            className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-[11px] text-rose-700 hover:bg-rose-100"
+                        >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            <span>Delete block</span>
+                        </button>
+                    </div>
+
                     {/* Layout */}
                     <div>
                         <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
@@ -189,7 +282,6 @@ function BlockToolbar({
                         </div>
                     </div>
 
-
                     {/* Margin */}
                     <div>
                         <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
@@ -250,8 +342,6 @@ function BlockToolbar({
                             </button>
                         </div>
                     </div>
-
-
 
                     {/* Size */}
                     <div>
@@ -331,7 +421,6 @@ function BlockToolbar({
                             </button>
                         </div>
                     </div>
-
 
                     {/* Text & links */}
                     <div>
@@ -461,7 +550,6 @@ export function FloatingBlockToolbar({
     const [toolbarPos, setToolbarPos] = useState<ToolbarPos>(null);
     const toolbarPosRef = useRef<ToolbarPos>(null);
 
-    // new: track dragging so we can temporarily disable iframe pointer events
     const [isDraggingToolbar, setIsDraggingToolbar] = useState(false);
     const iframePrevPointerEventsRef = useRef<string | null>(null);
 
@@ -469,7 +557,6 @@ export function FloatingBlockToolbar({
         toolbarPosRef.current = toolbarPos;
     }, [toolbarPos]);
 
-    // Disable iframe pointer events while dragging toolbar so mouseup can't be swallowed
     useEffect(() => {
         const iframe = iframeRef.current;
         if (!iframe) return;
@@ -554,13 +641,12 @@ export function FloatingBlockToolbar({
         const api = win?.__klonerApi;
         if (!api || typeof api[method] !== "function") return;
         try {
-            api[method](...args);
+            return api[method](...args);
         } catch {
-            // swallow
+            return;
         }
     }
 
-    // Drag handler
     const handleDragStart = (e: React.MouseEvent<HTMLDivElement>) => {
         e.preventDefault();
         const wrapperEl = wrapperRef.current;
