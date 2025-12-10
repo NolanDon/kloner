@@ -50,6 +50,7 @@ export function MiniToolbar({
     onAiEditRequest,
 }: MiniToolbarProps) {
     const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+    const [visible, setVisible] = useState(true);
     const [aiOpen, setAiOpen] = useState(false);
     const [prompt, setPrompt] = useState("");
     const [imageFile, setImageFile] = useState<File | null>(null); // still allowed for UX, not sent to backend
@@ -60,6 +61,7 @@ export function MiniToolbar({
     const computePosition = useCallback(() => {
         if (!hasSelection) {
             setPos(null);
+            setVisible(false);
             return;
         }
 
@@ -67,6 +69,7 @@ export function MiniToolbar({
         const wrapperEl = wrapperRef.current;
         if (!iframeEl || !wrapperEl) {
             setPos(null);
+            setVisible(false);
             return;
         }
 
@@ -86,13 +89,13 @@ export function MiniToolbar({
             wrapperEl.scrollTop +
             (iframeBox.top - wrapperBox.top) +
             rect.top * scale -
-            -180;
+            -230;
 
         const blockLeftInWrapper =
             wrapperEl.scrollLeft +
             (iframeBox.left - wrapperBox.left) +
             rect.left * scale -
-            -105;
+            -140;
 
         let top = blockTopInWrapper - 26;
         let left = blockLeftInWrapper;
@@ -107,6 +110,7 @@ export function MiniToolbar({
         if (left > maxLeft) left = maxLeft;
 
         setPos({ top, left });
+        setVisible(true);
     }, [hasSelection, iframeRef, wrapperRef, selectionMeta, uiScale]);
 
     useEffect(() => {
@@ -117,13 +121,21 @@ export function MiniToolbar({
         const wrapperEl = wrapperRef.current;
         if (!wrapperEl) return;
 
-        const handler = () => computePosition();
-        wrapperEl.addEventListener("scroll", handler, { passive: true });
-        window.addEventListener("resize", handler);
+        const handleScroll = () => {
+            // Immediately fade out on scroll
+            setVisible(false);
+        };
+
+        const handleResize = () => {
+            computePosition();
+        };
+
+        wrapperEl.addEventListener("scroll", handleScroll, { passive: true });
+        window.addEventListener("resize", handleResize);
 
         return () => {
-            wrapperEl.removeEventListener("scroll", handler);
-            window.removeEventListener("resize", handler);
+            wrapperEl.removeEventListener("scroll", handleScroll);
+            window.removeEventListener("resize", handleResize);
         };
     }, [computePosition, wrapperRef]);
 
@@ -134,7 +146,7 @@ export function MiniToolbar({
         top: pos.top,
         left: pos.left,
         zIndex: 160,
-        pointerEvents: "auto",
+        pointerEvents: visible ? "auto" : "none",
     };
 
     const disabled = aiEditing;
@@ -177,54 +189,11 @@ export function MiniToolbar({
     };
 
     return (
-        <div style={containerStyle} className="flex flex-col gap-2">
-            <div className="inline-flex items-center gap-1 text-[11px] font-semibold text-white shadow-lg px-1.5 py-1">
-                <button
-                    type="button"
-                    onClick={handleMoveUp}
-                    disabled={disabled}
-                    className={`bg-accent inline-flex h-6 min-w-[24px] items-center justify-center px-2 py-2 bg-accent/90 hover:bg-accent/80 ${disabled ? "opacity-60 cursor-not-allowed" : ""
-                        }`}
-                    title="Move section up"
-                >
-                    <ArrowUp className="h-3.5 w-3.5" />
-                </button>
-                <button
-                    type="button"
-                    onClick={handleMoveDown}
-                    disabled={disabled}
-                    className={`bg-accent inline-flex h-6 min-w-[24px] items-center justify-center px-2 py-2 bg-accent/90 hover:bg-accent/80 ${disabled ? "opacity-60 cursor-not-allowed" : ""
-                        }`}
-                    title="Move section down"
-                >
-                    <ArrowDown className="h-3.5 w-3.5" />
-                </button>
-                <button
-                    type="button"
-                    onClick={handleInsertBelowSimple}
-                    disabled={disabled}
-                    className={`bg-accent inline-flex h-6 min-w-[24px] items-center justify-center px-2 py-2 bg-emerald-500 hover:bg-emerald-400 text-[11px] ${disabled ? "opacity-60 cursor-not-allowed" : ""
-                        }`}
-                    title="Duplicate this block"
-                >
-                    <Plus className="h-3.5 w-3.5" />
-                </button>
-                <button
-                    type="button"
-                    onClick={() => {
-                        if (disabled) return;
-                        setAiOpen((v) => !v);
-                    }}
-                    disabled={disabled}
-                    className={`inline-flex h-6 min-w-[30px] items-center justify-center px-2 py-2 bg-white text-[10px] font-semibold text-accent hover:bg-neutral-100 gap-1 ${disabled ? "opacity-60 cursor-not-allowed" : ""
-                        }`}
-                    title="Use AI to edit this block"
-                >
-                    <Sparkles className="h-3.5 w-3.5" />
-                    <span>AI</span>
-                </button>
-            </div>
-
+        <div
+            style={containerStyle}
+            className={`flex flex-col gap-2 transition-opacity duration-150 ${visible ? "opacity-100" : "opacity-0"
+                }`}
+        >
             {aiOpen && !disabled && (
                 <div className="w-[260px] rounded-2xl border border-neutral-200 bg-white shadow-2xl p-3 text-[12px] text-neutral-800">
                     <div className="mb-2 flex items-center justify-between gap-2">
@@ -286,6 +255,55 @@ export function MiniToolbar({
                     </button>
                 </div>
             )}
+            <div className="inline-flex items-center gap-1 text-[11px] font-semibold text-white shadow-lg px-1.5 py-1">
+                <button
+                    type="button"
+                    onClick={handleMoveUp}
+                    disabled={disabled}
+                    className={`bg-accent inline-flex h-6 min-w-[24px] items-center justify-center px-2 py-2 bg-accent/90 hover:bg-accent/80 ${disabled ? "opacity-60 cursor-not-allowed" : ""
+                        }`}
+                    title="Move section up"
+                >
+                    <ArrowUp className="h-3.5 w-3.5" />
+                </button>
+                <button
+                    type="button"
+                    onClick={handleMoveDown}
+                    disabled={disabled}
+                    className={`bg-accent inline-flex h-6 min-w-[24px] items-center justify-center px-2 py-2 bg-accent/90 hover:bg-accent/80 ${disabled ? "opacity-60 cursor-not-allowed" : ""
+                        }`}
+                    title="Move section down"
+                >
+                    <ArrowDown className="h-3.5 w-3.5" />
+                </button>
+                <button
+                    type="button"
+                    onClick={handleInsertBelowSimple}
+                    disabled={disabled}
+                    className={`bg-accent inline-flex h-6 min-w-[24px] items-center justify-center px-2 py-2 bg-emerald-500 hover:bg-emerald-400 text-[11px] ${disabled ? "opacity-60 cursor-not-allowed" : ""
+                        }`}
+                    title="Duplicate this block"
+                >
+                    <Plus className="h-3.5 w-3.5" />
+                </button>
+                <button
+                    type="button"
+                    onClick={() => {
+                        if (disabled) return;
+                        setAiOpen((v) => !v);
+                    }}
+                    disabled={disabled}
+                    className={`inline-flex h-6 min-w-[30px] items-center justify-center px-2 py-2 text-[10px] font-semibold gap-1 bg-accent text-white border border-transparent
+                        ${disabled
+                            ? "opacity-60 cursor-not-allowed hover:border-transparent"
+                            : ""
+                        }`}
+                    title="Use AI to edit this block"
+                >
+                    <Sparkles className="h-3.5 w-3.5 text-accent" />
+                    <span className="text-accent">AI</span>
+                </button>
+            </div>
         </div>
     );
 }

@@ -1118,6 +1118,7 @@ export default function PreviewEditor({
     initialSeoMetaByPage,
     onArchivedPageIdsChange,
 }: Props) {
+    const { user } = useAuth();
     const isDevCodeMode = process.env.NODE_ENV === "development";
     const [nameHint, setNameHint] = useState<string>("");
     const [version, setVersion] = useState<number>(1);
@@ -1134,12 +1135,12 @@ export default function PreviewEditor({
     const [controlsCollapsed, setControlsCollapsed] = useState<boolean>(false);
     const [sidePanelMode, setSidePanelMode] = useState<
         "style" | "meta" | "code" | "ai-library" | "revision-chat"
-    >("style"); const [htmlDraft, setHtmlDraft] = useState<string>("");
+    >("revision-chat");
+    const [htmlDraft, setHtmlDraft] = useState<string>("");
     const [previewHtml, setPreviewHtml] = useState<string>("");
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const [iframeKey, setIframeKey] = useState<number>(0);
-    const { user } = useAuth();
     const [activePageId, setActivePageId] = useState<string>("");
     const [derivedPages, setDerivedPages] = useState<EditorPage[]>([]);
     const [pageSwitchConfirm, setPageSwitchConfirm] = useState<{ targetId: string } | null>(null);
@@ -1149,6 +1150,7 @@ export default function PreviewEditor({
     const [history, setHistory] = useState<DraftSnapshot[]>([]);
     const [aiHistory, setAiHistory] = useState<AiEditSuggestion[]>([]);
 
+    const [sidebarHidden, setSidebarHidden] = useState(false);
     // dragging iframe
     const previewDragControls = useDragControls();
 
@@ -1377,62 +1379,85 @@ export default function PreviewEditor({
     };
 
 
-    const HISTORY_STORAGE_KEY = (draftId?: string | null) =>
-        draftId ? `kloner:history:${draftId}` : "kloner:history:temp";
+    // const HISTORY_STORAGE_KEY = (draftId?: string | null) =>
+    //     draftId ? `kloner:history:${draftId}` : "kloner:history:temp";
+
+    // // load history from localStorage when draftId changes
+    // useEffect(() => {
+    //     if (!draftId) return;
+
+    //     let cancelled = false;
+
+    //     async function loadAiHistory() {
+    //         try {
+    //             const res = await fetch(
+    //                 `/api/ai-edit?renderId=${encodeURIComponent(draftId as any)}`,
+    //                 { credentials: "include" }
+    //             );
+    //             if (!res.ok) return;
+
+    //             const j = await res.json();
+    //             if (cancelled) return;
+
+    //             const all: AiEditSuggestion[] = Array.isArray(j.suggestions)
+    //                 ? j.suggestions
+    //                 : [];
+
+    //             const limited = [...all]
+    //                 .sort((a, b) => {
+    //                     const aT = new Date(a.createdAt).getTime();
+    //                     const bT = new Date(b.createdAt).getTime();
+    //                     return bT - aT;
+    //                 })
+    //                 .slice(0, 10);
+
+    //             setAiHistory(limited);
+    //         } catch {
+    //             // ignore
+    //         }
+    //     }
+
+    //     loadAiHistory();
+
+    //     return () => {
+    //         cancelled = true;
+    //     };
+    // }, [draftId]);
+
+
+    // // persist history to localStorage
+    // useEffect(() => {
+    //     if (typeof window === "undefined") return;
+    //     const key = HISTORY_STORAGE_KEY(draftId);
+    //     try {
+    //         window.localStorage.setItem(key, JSON.stringify(history));
+    //     } catch {
+    //         // ignore quota errors
+    //     }
+    // }, [history, draftId]);
 
     // load history from localStorage when draftId changes
-    useEffect(() => {
-        if (!draftId) return;
+    // useEffect(() => {
+    //     if (typeof window === "undefined") return;
+    //     const key = HISTORY_STORAGE_KEY(draftId);
+    //     const raw = window.localStorage.getItem(key);
+    //     if (!raw) return;
 
-        let cancelled = false;
+    //     try {
+    //         const parsed = JSON.parse(raw) as DraftSnapshot[];
+    //         if (!Array.isArray(parsed)) return;
 
-        async function loadAiHistory() {
-            try {
-                const res = await fetch(
-                    `/api/ai-edit?renderId=${encodeURIComponent(draftId as any)}`,
-                    { credentials: "include" }
-                );
-                if (!res.ok) return;
+    //         // keep only the last 10 by createdAt
+    //         const limited = [...parsed]
+    //             .sort((a, b) => b.createdAt - a.createdAt)
+    //             .slice(0, 10);
 
-                const j = await res.json();
-                if (cancelled) return;
+    //         setHistory(limited);
+    //     } catch {
+    //         // ignore bad data
+    //     }
+    // }, [draftId]);
 
-                const all: AiEditSuggestion[] = Array.isArray(j.suggestions)
-                    ? j.suggestions
-                    : [];
-
-                const limited = [...all]
-                    .sort((a, b) => {
-                        const aT = new Date(a.createdAt).getTime();
-                        const bT = new Date(b.createdAt).getTime();
-                        return bT - aT;
-                    })
-                    .slice(0, 10);
-
-                setAiHistory(limited);
-            } catch {
-                // ignore
-            }
-        }
-
-        loadAiHistory();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [draftId]);
-
-
-    // persist history to localStorage
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-        const key = HISTORY_STORAGE_KEY(draftId);
-        try {
-            window.localStorage.setItem(key, JSON.stringify(history));
-        } catch {
-            // ignore quota errors
-        }
-    }, [history, draftId]);
 
     function addSnapshot(opts: { id: string, createdAt: any, html: string; source: DraftSnapshotSource }) {
         const trimmed = opts.html.trim();
@@ -1475,27 +1500,7 @@ export default function PreviewEditor({
     }
 
 
-    // load history from localStorage when draftId changes
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-        const key = HISTORY_STORAGE_KEY(draftId);
-        const raw = window.localStorage.getItem(key);
-        if (!raw) return;
 
-        try {
-            const parsed = JSON.parse(raw) as DraftSnapshot[];
-            if (!Array.isArray(parsed)) return;
-
-            // keep only the last 10 by createdAt
-            const limited = [...parsed]
-                .sort((a, b) => b.createdAt - a.createdAt)
-                .slice(0, 10);
-
-            setHistory(limited);
-        } catch {
-            // ignore bad data
-        }
-    }, [draftId]);
 
     // Dont remove
     const localImageStore: Map<string, File> = new Map();
@@ -1797,8 +1802,6 @@ export default function PreviewEditor({
         () => Array.from(new Set([...(theme.textColors || []), ...(theme.bgColors || [])])),
         [theme.textColors, theme.bgColors]
     );
-
-    const [sidebarHidden, setSidebarHidden] = useState(true);
 
     // inject route-specific CSS into the monolithic HTML for iframe preview
     const renderHtml = useMemo(() => {
@@ -4605,14 +4608,14 @@ export default function PreviewEditor({
                             </div>
                         )}
 
-                        {aiEditing && !closing && (
+                        {/* {aiEditing && !closing && (
                             <div className="absolute inset-0 z-[95] bg-white/80 backdrop-blur-[2px] grid place-items-center pointer-events-auto">
                                 <div className="flex items-center gap-3 rounded border px-3 py-2 bg-white text-md text-neutral-800 shadow-md">
                                     <Spinner />
                                     <span>Applying AI edit…</span>
                                 </div>
                             </div>
-                        )}
+                        )} */}
                     </section>
                 </div>
 
