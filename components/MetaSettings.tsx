@@ -1,21 +1,28 @@
 import { useState, useRef, useEffect, ChangeEvent } from "react";
-import { SeoMeta } from "./PreviewEditor";
 
-type MetaWithJsonLd = SeoMeta & {
-    jsonLd?: unknown;
-};
+// meta-settings.ts
 
-export type UploadedAsset = {
+// Exposed so PreviewEditor can import it
+export interface UploadedAsset {
     url: string;
-    path: string;
-};
+    path?: string | null;
+}
 
-type MetaSettingsProps = {
+export interface MetaWithJsonLd {
+    title?: string;
+    description?: string;
+    faviconUrl?: string;
+    jsonLd?: unknown;
+}
+
+export interface MetaSettingsProps {
     draftId?: string;
     meta: MetaWithJsonLd;
-    uploadFileToUserBlob: (file: File, draftId: string) => Promise<UploadedAsset>;
+    uploadFileToUserBlob?: (
+        file: File
+    ) => Promise<{ url: string; path?: string }>;
     onSaveMeta?: (meta: MetaWithJsonLd) => Promise<void> | void;
-};
+}
 
 export function MetaSettings({
     draftId,
@@ -43,6 +50,8 @@ export function MetaSettings({
     const [jsonText, setJsonText] = useState<string>(() =>
         meta.jsonLd ? JSON.stringify(meta.jsonLd, null, 2) : ""
     );
+
+    const faviconInputRef = useRef<HTMLInputElement | null>(null);
 
     // when page / meta changes, re-seed form + JSON editor
     useEffect(() => {
@@ -153,6 +162,13 @@ export function MetaSettings({
         }
         if (generating) return;
 
+        if (!isMetaEmpty) {
+            const ok = window.confirm(
+                "Regenerating meta will replace the current title, description, and JSON-LD for this page. Continue?"
+            );
+            if (!ok) return;
+        }
+
         setGenerating(true);
         try {
             const res = await fetch("/api/render-meta", {
@@ -198,74 +214,217 @@ export function MetaSettings({
         }
     };
 
+    const hasFavicon = !!draftMeta.faviconUrl?.trim();
+
+    const handlePickFavicon = () => {
+        if (uploading) return;
+        faviconInputRef.current?.click();
+    };
+
+    const handleFaviconFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        if (!uploadFileToUserBlob) {
+            alert("Upload handler is not wired up.");
+            e.target.value = "";
+            return;
+        }
+
+        try {
+            setUploading(true);
+            const { url } = await uploadFileToUserBlob(file);
+            setDraftMeta((prev) => ({
+                ...prev,
+                faviconUrl: url,
+            }));
+        } catch (err: any) {
+            console.error("Favicon upload failed", err);
+            alert("Failed to upload favicon. Try again.");
+        } finally {
+            setUploading(false);
+            e.target.value = "";
+        }
+    };
+
+    const generateLabel = isMetaEmpty ? "Generate meta" : "Regenerate meta";
+
     return (
-        <div className="flex flex-col gap-4">
-            {isMetaEmpty ? (
-                <div className="flex flex-1 items-center justify-center pt-[150px]">
-                    <div className="inline-flex min-h-[120px] max-w-sm flex-col items-center justify-center rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-center text-xs text-amber-900">
-                        <div className="mb-2 font-medium">
+        <div className="flex h-full flex-col">
+            <div className="flex-1 overflow-y-auto px-4 pt-6 pb-4">
+                {isMetaEmpty && (
+                    <div className="mb-5 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+                        <div className="mb-1 font-medium">
                             No SEO metadata found for this page.
                         </div>
-                        <button
-                            type="button"
-                            onClick={handleGenerateMetaClick}
-                            disabled={generating}
-                            className="mt-1 inline-flex items-center rounded-full bg-accent px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
-                        >
-                            {generating ? "Generating meta…" : "Generate Meta with AI"}
-                        </button>
-                        {lastSavedAt && (
-                            <div className="mt-2 text-[11px] text-neutral-600">
-                                Last updated at{" "}
-                                {lastSavedAt.toLocaleTimeString([], {
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                    second: "2-digit",
-                                })}
+                        <div className="text-[11px] text-amber-800">
+                            Generate a starting point with AI or fill the fields
+                            below.
+                        </div>
+                    </div>
+                )}
+
+                {/* Favicon block */}
+                <div className="mb-6 rounded-lg border border-neutral-200 bg-white/80 p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-center gap-4">
+                            <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-md border border-neutral-200 bg-neutral-50">
+                                {hasFavicon ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                        src={draftMeta.faviconUrl}
+                                        alt="Current favicon"
+                                        className="h-full w-full object-contain"
+                                    />
+                                ) : (
+                                    <span className="px-2 text-center text-[10px] text-neutral-400">
+                                        No favicon
+                                    </span>
+                                )}
                             </div>
-                        )}
+                            <div className="flex flex-col gap-1">
+                                <span className="text-[11px] font-medium uppercase tracking-wide text-neutral-700">
+                                    Favicon
+                                </span>
+                                <span className="text-[11px] text-neutral-500">
+                                    Square PNG, SVG, or ICO. At least 64×64
+                                    recommended.
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col items-end gap-1">
+                            <button
+                                type="button"
+                                onClick={handlePickFavicon}
+                                disabled={uploading}
+                                className="inline-flex items-center rounded-full bg-accent px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
+                            >
+                                {uploading
+                                    ? "Uploading…"
+                                    : hasFavicon
+                                        ? "Replace favicon"
+                                        : "Upload favicon"}
+                            </button>
+                            {draftMeta.faviconUrl && (
+                                <span className="max-w-[200px] truncate text-[10px] text-neutral-400">
+                                    {draftMeta.faviconUrl}
+                                </span>
+                            )}
+                        </div>
+                    </div>
+
+                    <input
+                        ref={faviconInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleFaviconFileChange}
+                    />
+                </div>
+
+                {/* Main form fields */}
+                <div className="flex flex-col gap-4">
+                    <div className="flex flex-col gap-1.5">
+                        <label className="text-[11px] font-medium text-neutral-700">
+                            Page title
+                        </label>
+                        <input
+                            type="text"
+                            value={draftMeta.title ?? ""}
+                            onChange={(e) =>
+                                handleMetaChange("title", e.target.value)
+                            }
+                            className="w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-400"
+                            placeholder="SEO title for this page"
+                        />
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                        <label className="text-[11px] font-medium text-neutral-700">
+                            Meta description
+                        </label>
+                        <textarea
+                            value={draftMeta.description ?? ""}
+                            onChange={(e) =>
+                                handleMetaChange("description", e.target.value)
+                            }
+                            rows={4}
+                            className="w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-400"
+                            placeholder="Concise, benefit-driven summary for search results"
+                        />
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                        <label className="text-[11px] font-medium text-neutral-700">
+                            JSON-LD (optional)
+                        </label>
+                        <textarea
+                            value={jsonText}
+                            onChange={(e) => setJsonText(e.target.value)}
+                            rows={10}
+                            className="w-full rounded-md border border-neutral-200 bg-white px-3 py-2 font-mono text-[11px] leading-[1.4] text-neutral-900 outline-none focus:border-neutral-400"
+                            placeholder='{"@context": "https://schema.org", "@type": "WebPage", ...}'
+                        />
                     </div>
                 </div>
-            ) : (
-                <div className="mt-2 flex flex-col gap-1">
-                    <div className="flex items-center gap-2">
+
+                {/* Buttons directly under the last block */}
+                <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-neutral-200 pt-3">
+                    <div className="flex items-center gap-3">
                         <button
                             type="button"
                             onClick={handleMetaSaveClick}
                             disabled={saving}
-                            className="inline-flex items-center rounded-full bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
+                            className="inline-flex items-center rounded-full bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
                         >
                             {saving ? "Saving…" : "Save meta"}
                         </button>
-                        {justSaved && (
-                            <span className="text-[11px] text-emerald-600">
-                                Saved
-                                {lastSavedAt && (
-                                    <>
-                                        {" "}
-                                        at{" "}
-                                        {lastSavedAt.toLocaleTimeString([], {
-                                            hour: "2-digit",
-                                            minute: "2-digit",
-                                            second: "2-digit",
-                                        })}
-                                    </>
-                                )}
-                            </span>
-                        )}
+                        <div className="flex flex-col text-[11px] text-neutral-500">
+                            {justSaved && (
+                                <span className="text-emerald-600">
+                                    Saved
+                                    {lastSavedAt && (
+                                        <>
+                                            {" "}
+                                            at{" "}
+                                            {lastSavedAt.toLocaleTimeString(
+                                                [],
+                                                {
+                                                    hour: "2-digit",
+                                                    minute: "2-digit",
+                                                    second: "2-digit",
+                                                }
+                                            )}
+                                        </>
+                                    )}
+                                </span>
+                            )}
+                            {!justSaved && lastSavedAt && (
+                                <span>
+                                    Last saved at{" "}
+                                    {lastSavedAt.toLocaleTimeString([], {
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                        second: "2-digit",
+                                    })}
+                                </span>
+                            )}
+                        </div>
                     </div>
-                    {lastSavedAt && (
-                        <span className="text-[11px] text-neutral-500">
-                            Last saved at{" "}
-                            {lastSavedAt.toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                                second: "2-digit",
-                            })}
-                        </span>
-                    )}
+
+                    <button
+                        type="button"
+                        onClick={handleGenerateMetaClick}
+                        disabled={generating}
+                        className="inline-flex items-center rounded-full bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
+                    >
+                        {generating
+                            ? "Generating meta…"
+                            : `${generateLabel} with AI`}
+                    </button>
                 </div>
-            )}
+            </div>
         </div>
     );
 }

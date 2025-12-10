@@ -1228,12 +1228,14 @@ export default function PreviewEditor({
 
             if (!u?.uid) {
                 if (process.env.NODE_ENV === "development") {
-                    console.log(
-                        "[editor-analytics] flush skipped (no user)",
-                        reason,
-                        counters,
-                        durationMs,
-                    );
+                    if (process.env.NODE_ENV === "development") {
+                        console.log(
+                            "[editor-analytics] flush skipped (no user)",
+                            reason,
+                            counters,
+                            durationMs,
+                        );
+                    }
                 }
                 return;
             }
@@ -1840,10 +1842,15 @@ export default function PreviewEditor({
     // this now does BOTH: updates local state AND writes to Firestore
     const handleSaveMetaForCurrentPage = useCallback(
         async (meta: SeoMeta) => {
-            const pageKey =
+            // Decide which logical page we are saving for
+            const rawPageKey =
                 currentPageKey && currentPageKey !== "single"
                     ? currentPageKey
                     : SINGLE_PAGE_KEY;
+
+            // Firestore-safe key: NEVER allow "__single__" to be persisted
+            const pageKey =
+                rawPageKey === "__single__" ? "single" : rawPageKey || "single";
 
             const faviconUrl = meta.faviconUrl?.trim() || "";
 
@@ -1863,10 +1870,21 @@ export default function PreviewEditor({
                 ) as SeoMetaByPage;
             }
 
+            // HARD GUARD: never let "__single__" survive into Firestore
+            if ("__single__" in next) {
+                const anyNext: any = next;
+                const singleMeta = anyNext.__single__;
+                delete anyNext.__single__;
+                // prefer explicitly under "single" key if not already present
+                if (!anyNext.single && singleMeta) {
+                    anyNext.single = singleMeta;
+                }
+                next = anyNext;
+            }
+
             // update local state so the editor reflects the latest SEO immediately
             setSeoMetaByPage(next);
             setActiveSeoMetaByPage(next);
-
 
             // write to Firestore so exports and other clients see the latest meta
             if (user && resolvedRenderId) {
@@ -1896,7 +1914,7 @@ export default function PreviewEditor({
             // optional: still propagate up to any parent hook if you had one
             if (onSaveMeta) {
                 void onSaveMeta(
-                    pageKey === SINGLE_PAGE_KEY ? null : pageKey,
+                    pageKey === "single" ? null : pageKey,
                     meta,
                     next,
                 );
@@ -1908,8 +1926,11 @@ export default function PreviewEditor({
             user,
             resolvedRenderId,
             onSaveMeta,
+            // if SINGLE_PAGE_KEY is a constant in scope, add it here too:
+            // SINGLE_PAGE_KEY,
         ],
     );
+
 
 
     const theme = useMemo(
@@ -2566,12 +2587,14 @@ export default function PreviewEditor({
         file: File,
         draftId: string
     ): Promise<UploadedAsset> {
-        console.log("[uploadFileToUserBlob] start", {
-            draftId,
-            originalName: file.name,
-            originalBytes: file.size,
-            originalType: file.type,
-        });
+        if (process.env.NODE_ENV === "development") {
+            console.log("[uploadFileToUserBlob] start", {
+                draftId,
+                originalName: file.name,
+                originalBytes: file.size,
+                originalType: file.type,
+            });
+        }
 
         // 1) compress on the client first (if helpful)
         let fileForUpload = file;
@@ -2579,23 +2602,27 @@ export default function PreviewEditor({
             const compressed = await compressImageForUpload(file);
 
             if (compressed !== file) {
-                console.log("[uploadFileToUserBlob] compression applied", {
-                    originalName: file.name,
-                    originalBytes: file.size,
-                    compressedName: compressed.name,
-                    compressedBytes: compressed.size,
-                    bytesSaved: file.size - compressed.size,
-                    ratio: compressed.size / file.size,
-                    originalType: file.type,
-                    compressedType: compressed.type,
-                });
+                if (process.env.NODE_ENV === "development") {
+                    console.log("[uploadFileToUserBlob] compression applied", {
+                        originalName: file.name,
+                        originalBytes: file.size,
+                        compressedName: compressed.name,
+                        compressedBytes: compressed.size,
+                        bytesSaved: file.size - compressed.size,
+                        ratio: compressed.size / file.size,
+                        originalType: file.type,
+                        compressedType: compressed.type,
+                    });
+                }
                 fileForUpload = compressed;
             } else {
-                console.log("[uploadFileToUserBlob] compression skipped or not beneficial", {
-                    name: file.name,
-                    size: file.size,
-                    type: file.type,
-                });
+                if (process.env.NODE_ENV === "development") {
+                    console.log("[uploadFileToUserBlob] compression skipped or not beneficial", {
+                        name: file.name,
+                        size: file.size,
+                        type: file.type,
+                    });
+                }
             }
         } catch (e) {
             console.warn(
@@ -2611,13 +2638,15 @@ export default function PreviewEditor({
             safeName
         )}&renderId=${encodeURIComponent(draftId)}`;
 
-        console.log("[uploadFileToUserBlob] POST", {
-            url,
-            hasCsrf: !!csrf,
-            uploadName: fileForUpload.name,
-            uploadBytes: fileForUpload.size,
-            uploadType: fileForUpload.type,
-        });
+        if (process.env.NODE_ENV === "development") {
+            console.log("[uploadFileToUserBlob] POST", {
+                url,
+                hasCsrf: !!csrf,
+                uploadName: fileForUpload.name,
+                uploadBytes: fileForUpload.size,
+                uploadType: fileForUpload.type,
+            });
+        }
 
         const res = await fetch(url, {
             method: "POST",
@@ -2631,11 +2660,13 @@ export default function PreviewEditor({
 
         const j = await res.json().catch(() => ({} as any));
 
-        console.log("[uploadFileToUserBlob] response", {
-            ok: res.ok,
-            status: res.status,
-            bodyKeys: Object.keys(j || {}),
-        });
+        if (process.env.NODE_ENV === "development") {
+            console.log("[uploadFileToUserBlob] response", {
+                ok: res.ok,
+                status: res.status,
+                bodyKeys: Object.keys(j || {}),
+            });
+        }
 
         if (!res.ok || !j?.url || !j?.path) {
             console.error("[uploadFileToUserBlob] error", {
@@ -2650,11 +2681,13 @@ export default function PreviewEditor({
             path: j.path as string,
         };
 
-        console.log("[uploadFileToUserBlob] success", {
-            ...asset,
-            uploadedBytes: fileForUpload.size,
-            uploadedType: fileForUpload.type,
-        });
+        if (process.env.NODE_ENV === "development") {
+            console.log("[uploadFileToUserBlob] success", {
+                ...asset,
+                uploadedBytes: fileForUpload.size,
+                uploadedType: fileForUpload.type,
+            });
+        }
 
         return asset;
     }
@@ -2666,7 +2699,9 @@ export default function PreviewEditor({
     }) {
         const { doc, draftId } = args;
 
-        console.log("[flushPendingImagesBeforeSave] start", { draftId });
+        if (process.env.NODE_ENV === "development") {
+            console.log("[flushPendingImagesBeforeSave] start", { draftId });
+        }
 
         // 0) Backwards-compat: delete any stale data-kloner-old-path assets (foreground)
         const imgsWithOldPath = Array.from(
@@ -2692,10 +2727,12 @@ export default function PreviewEditor({
         }
 
         if (stalePaths.length) {
-            console.log("[flushPendingImagesBeforeSave] deleting stale old paths", {
-                count: stalePaths.length,
-                stalePaths,
-            });
+            if (process.env.NODE_ENV === "development") {
+                console.log("[flushPendingImagesBeforeSave] deleting stale old paths", {
+                    count: stalePaths.length,
+                    stalePaths,
+                });
+            }
             try {
                 // fire-and-forget; host listener will call the actual delete API
                 requestDeleteAssetsByPaths(stalePaths);
@@ -2713,10 +2750,11 @@ export default function PreviewEditor({
         const imgs = Array.from(
             doc.querySelectorAll<HTMLImageElement>("img[data-local-image-id]")
         );
-
-        console.log("[flushPendingImagesBeforeSave] found img elements", {
-            count: imgs.length,
-        });
+        if (process.env.NODE_ENV === "development") {
+            console.log("[flushPendingImagesBeforeSave] found img elements", {
+                count: imgs.length,
+            });
+        }
 
         for (const img of imgs) {
             const localId = img.dataset.localImageId;
@@ -2732,10 +2770,12 @@ export default function PreviewEditor({
             }
 
             try {
-                console.log("[flushPendingImagesBeforeSave] fetching blob URL (img)", {
-                    localId,
-                    tempUrl,
-                });
+                if (process.env.NODE_ENV === "development") {
+                    console.log("[flushPendingImagesBeforeSave] fetching blob URL (img)", {
+                        localId,
+                        tempUrl,
+                    });
+                }
 
                 const res = await fetch(tempUrl);
                 if (!res.ok) {
@@ -2751,12 +2791,14 @@ export default function PreviewEditor({
                     type: blob.type || "application/octet-stream",
                 });
 
-                console.log("[flushPendingImagesBeforeSave] uploading image (img)", {
-                    localId,
-                    fileName: file.name,
-                    fileSize: file.size,
-                    type: file.type,
-                });
+                if (process.env.NODE_ENV === "development") {
+                    console.log("[flushPendingImagesBeforeSave] uploading image (img)", {
+                        localId,
+                        fileName: file.name,
+                        fileSize: file.size,
+                        type: file.type,
+                    });
+                }
 
                 const asset = await uploadFileToUserBlob(file, draftId);
 
@@ -2770,19 +2812,23 @@ export default function PreviewEditor({
                     img.setAttribute("data-kloner-path", asset.path);
                 }
 
-                console.log("[flushPendingImagesBeforeSave] img updated", {
-                    localId,
-                    oldTempUrl,
-                    newUrl: asset.url,
-                    path: asset.path,
-                });
+                if (process.env.NODE_ENV === "development") {
+                    console.log("[flushPendingImagesBeforeSave] img updated", {
+                        localId,
+                        oldTempUrl,
+                        newUrl: asset.url,
+                        path: asset.path,
+                    });
+                }
 
                 try {
                     URL.revokeObjectURL(oldTempUrl);
-                    console.log(
-                        "[flushPendingImagesBeforeSave] revoked temp URL (img)",
-                        { localId }
-                    );
+                    if (process.env.NODE_ENV === "development") {
+                        console.log(
+                            "[flushPendingImagesBeforeSave] revoked temp URL (img)",
+                            { localId }
+                        );
+                    }
                 } catch (e) {
                     console.warn(
                         "[flushPendingImagesBeforeSave] revokeObjectURL failed (img)",
@@ -2824,9 +2870,11 @@ export default function PreviewEditor({
             doc.querySelectorAll<HTMLElement>("[data-local-image-id]")
         ).filter((el) => el.tagName !== "IMG");
 
-        console.log("[flushPendingImagesBeforeSave] found bg blocks with local image", {
-            count: bgBlocks.length,
-        });
+        if (process.env.NODE_ENV === "development") {
+            console.log("[flushPendingImagesBeforeSave] found bg blocks with local image", {
+                count: bgBlocks.length,
+            });
+        }
 
         for (const el of bgBlocks) {
             const localId = (el.dataset as any).localImageId as string | undefined;
@@ -2844,10 +2892,12 @@ export default function PreviewEditor({
             }
 
             try {
-                console.log(
-                    "[flushPendingImagesBeforeSave] fetching blob URL (bg block)",
-                    { localId, tempUrl }
-                );
+                if (process.env.NODE_ENV === "development") {
+                    console.log(
+                        "[flushPendingImagesBeforeSave] fetching blob URL (bg block)",
+                        { localId, tempUrl }
+                    );
+                }
 
                 const res = await fetch(tempUrl);
                 if (!res.ok) {
@@ -2863,13 +2913,14 @@ export default function PreviewEditor({
                     type: blob.type || "application/octet-stream",
                 });
 
-                console.log("[flushPendingImagesBeforeSave] uploading image (bg block)", {
-                    localId,
-                    fileName: file.name,
-                    fileSize: file.size,
-                    type: file.type,
-                });
-
+                if (process.env.NODE_ENV === "development") {
+                    console.log("[flushPendingImagesBeforeSave] uploading image (bg block)", {
+                        localId,
+                        fileName: file.name,
+                        fileSize: file.size,
+                        type: file.type,
+                    });
+                }
                 const asset = await uploadFileToUserBlob(file, draftId);
 
                 const oldTempUrl = tempUrl;
@@ -2885,20 +2936,22 @@ export default function PreviewEditor({
                 if (asset.path) {
                     el.setAttribute("data-kloner-bg-path", asset.path);
                 }
-
-                console.log("[flushPendingImagesBeforeSave] bg block updated", {
-                    localId,
-                    oldTempUrl,
-                    newUrl: asset.url,
-                    path: asset.path,
-                });
-
+                if (process.env.NODE_ENV === "development") {
+                    console.log("[flushPendingImagesBeforeSave] bg block updated", {
+                        localId,
+                        oldTempUrl,
+                        newUrl: asset.url,
+                        path: asset.path,
+                    });
+                }
                 try {
                     URL.revokeObjectURL(oldTempUrl);
-                    console.log(
-                        "[flushPendingImagesBeforeSave] revoked temp URL (bg block)",
-                        { localId }
-                    );
+                    if (process.env.NODE_ENV === "development") {
+                        console.log(
+                            "[flushPendingImagesBeforeSave] revoked temp URL (bg block)",
+                            { localId }
+                        );
+                    }
                 } catch (e) {
                     console.warn(
                         "[flushPendingImagesBeforeSave] revokeObjectURL failed (bg block)",
@@ -3684,7 +3737,7 @@ export default function PreviewEditor({
                     {!sidebarHidden && (
                         <motion.aside
                             id="kloner-style-sidebar"
-                            className="pointer-events-auto fixed left-16 h-full z-40 flex w-[500px] flex-col overflow-auto rounded-xl border border-neutral-200 bg-white/90/90 px-3 py-3 shadow-lg backdrop-blur-sm"
+                            className="pointer-events-auto bg-neutral-50 fixed left-16 h-full z-40 flex w-[500px] flex-col overflow-auto rounded-xl border border-neutral-200 bg-white/90/90 px-3 py-3 shadow-lg backdrop-blur-sm"
                             initial={{ x: -16, opacity: 0 }}
                             animate={{ x: 0, opacity: 1 }}
                             exit={{ x: -16, opacity: 0 }}
@@ -4314,7 +4367,7 @@ export default function PreviewEditor({
                                     key={currentPageKey}
                                     draftId={draftId}
                                     meta={currentSeoMeta}
-                                    uploadFileToUserBlob={uploadFileToUserBlob}
+                                    uploadFileToUserBlob={uploadFileToUserBlob as any}
                                     onSaveMeta={handleSaveMetaForCurrentPage}
                                 />
                             )}
