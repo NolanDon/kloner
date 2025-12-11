@@ -1,7 +1,11 @@
-// app/(app-shell)/layout.tsx
 "use client";
 
-import { ReactNode, useEffect, useMemo, useState } from "react";
+import {
+    ReactNode,
+    useEffect,
+    useMemo,
+    useState,
+} from "react";
 import { useRouter, usePathname } from "next/navigation";
 import {
     onAuthStateChanged,
@@ -24,6 +28,8 @@ import {
     Hammer,
     Archive,
     Rocket,
+    Headphones,
+    BarChart3,
 } from "lucide-react";
 import KlonerLoader from "@/components/KlonerLoader";
 
@@ -33,6 +39,8 @@ type NavItemConfig = {
     href: string;
     label: string;
     icon?: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+    adminOnly?: boolean;
+    supportOnly?: boolean; // supportAgent or admin
 };
 
 type NavSectionConfig = {
@@ -40,7 +48,7 @@ type NavSectionConfig = {
     items: NavItemConfig[];
 };
 
-const NAV_SECTIONS: NavSectionConfig[] = [
+const BASE_NAV_SECTIONS: NavSectionConfig[] = [
     {
         label: "General",
         items: [{ href: "/", label: "Home", icon: Home }],
@@ -84,12 +92,53 @@ const NAV_SECTIONS: NavSectionConfig[] = [
             { href: "/dashboard/docs", label: "Docs", icon: BookText },
         ],
     },
+    // Support + Admin sections are filtered by claims below
+    {
+        label: "Support",
+        items: [
+            {
+                href: "/support/agent",
+                label: "Support Inbox",
+                icon: Headphones,
+                supportOnly: true,
+            },
+        ],
+    },
+    {
+        label: "Admin",
+        items: [
+            {
+                href: "/admin/analytics",
+                label: "Analytics",
+                icon: BarChart3,
+                adminOnly: true,
+            },
+        ],
+    },
 ];
 
 // STRICT match now – no startsWith for dashboard etc.
 function navItemIsActive(pathname: string, href: string): boolean {
     if (href === "/") return pathname === "/";
     return pathname === href;
+}
+
+function filterNavSections(
+    pathname: string,
+    isAdmin: boolean,
+    isSupportAgent: boolean,
+): NavSectionConfig[] {
+    return BASE_NAV_SECTIONS
+        .map((section) => {
+            const visibleItems = section.items.filter((item) => {
+                if (item.adminOnly && !isAdmin) return false;
+                if (item.supportOnly && !(isSupportAgent || isAdmin)) return false;
+                return true;
+            });
+
+            return { ...section, items: visibleItems };
+        })
+        .filter((section) => section.items.length > 0);
 }
 
 function NavItem({
@@ -116,8 +165,8 @@ function NavItem({
             onClick={handleClick}
             aria-disabled={active}
             className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${active
-                ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
-                : "text-neutral-700 hover:bg-neutral-50"
+                    ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
+                    : "text-neutral-700 hover:bg-neutral-50"
                 }`}
         >
             {Icon && (
@@ -200,8 +249,18 @@ function AccountBlock() {
     );
 }
 
-function SidebarShell() {
+function SidebarShell({
+    isAdmin,
+    isSupportAgent,
+}: {
+    isAdmin: boolean;
+    isSupportAgent: boolean;
+}) {
     const pathname = usePathname();
+    const navSections = useMemo(
+        () => filterNavSections(pathname, isAdmin, isSupportAgent),
+        [pathname, isAdmin, isSupportAgent],
+    );
 
     return (
         <div className="flex h-full flex-col w-full">
@@ -223,7 +282,7 @@ function SidebarShell() {
             </div>
 
             <nav className="flex-1 p-3 text-sm overflow-y-auto">
-                {NAV_SECTIONS.map((section) => (
+                {navSections.map((section) => (
                     <div key={section.label} className="mb-1">
                         <SectionLabel>{section.label}</SectionLabel>
                         <div className="space-y-1">
@@ -246,7 +305,13 @@ function SidebarShell() {
     );
 }
 
-function MobileHeader() {
+function MobileHeader({
+    isAdmin,
+    isSupportAgent,
+}: {
+    isAdmin: boolean;
+    isSupportAgent: boolean;
+}) {
     const router = useRouter();
     const pathname = usePathname();
     const [open, setOpen] = useState(false);
@@ -262,7 +327,13 @@ function MobileHeader() {
 
     const close = () => setOpen(false);
 
-    const flatItems: NavItemConfig[] = NAV_SECTIONS.flatMap((s) => s.items);
+    const flatItems: NavItemConfig[] = useMemo(
+        () =>
+            filterNavSections(pathname, isAdmin, isSupportAgent).flatMap(
+                (s) => s.items,
+            ),
+        [pathname, isAdmin, isSupportAgent],
+    );
 
     const onSignOut = async (): Promise<void> => {
         try {
@@ -364,8 +435,8 @@ function MobileHeader() {
                                                 onClick={handleClick}
                                                 aria-disabled={active}
                                                 className={`flex items-center gap-3 rounded-xl px-3 py-3 text-[15px] ${active
-                                                    ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
-                                                    : "text-neutral-800 hover:bg-neutral-50"
+                                                        ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
+                                                        : "text-neutral-800 hover:bg-neutral-50"
                                                     }`}
                                             >
                                                 {Icon && (
@@ -405,13 +476,26 @@ function MobileHeader() {
 export default function AppShellLayout({ children }: { children: ReactNode }) {
     const router = useRouter();
     const [ready, setReady] = useState(false);
+    const [isAdmin, setIsAdmin] = useState(false);
+    const [isSupportAgent, setIsSupportAgent] = useState(false);
 
     useEffect(() => {
-        const off = onAuthStateChanged(auth, (u) => {
+        const off = onAuthStateChanged(auth, async (u) => {
             if (!u) {
                 router.replace("/login?next=/dashboard");
                 return;
             }
+
+            try {
+                const tokenResult = await u.getIdTokenResult();
+                const claims = tokenResult.claims as any;
+                setIsAdmin(!!claims.admin);
+                setIsSupportAgent(!!claims.supportAgent);
+            } catch {
+                setIsAdmin(false);
+                setIsSupportAgent(false);
+            }
+
             setReady(true);
         });
         return () => off();
@@ -425,11 +509,17 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
         <main className="bg-white h-screen overflow-hidden">
             <div className="mx-auto max-w-[1400px] h-full grid grid-cols-1 md:grid-cols-[auto,1fr]">
                 <aside className="hidden md:block md:w-64 lg:w-72 shrink-0 border-r border-neutral-200 bg-white h-full sticky top-0">
-                    <SidebarShell />
+                    <SidebarShell
+                        isAdmin={isAdmin}
+                        isSupportAgent={isSupportAgent}
+                    />
                 </aside>
 
                 <section className="min-h-screen overflow-y-scroll scrollbar-hide">
-                    <MobileHeader />
+                    <MobileHeader
+                        isAdmin={isAdmin}
+                        isSupportAgent={isSupportAgent}
+                    />
                     <div className="flex-1">{children}</div>
                 </section>
             </div>

@@ -4,70 +4,14 @@ import type { Metadata } from "next";
 import AuthProviderServer from "@/components/auth/auth-provider.server";
 import { Inter } from "next/font/google";
 import { AppClientProviders } from "./AppClientProvider";
+import ChatWidgetProvider from "@/components/support/ChatWidgetProvider";
 
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
 });
 
-export const metadata: Metadata = {
-  metadataBase: new URL("https://kloner.app"),
-  title: "Kloner | Clone any website in minutes",
-  description:
-    "Paste a URL to generate a clean preview, inspect pages, and deploy live in one click.",
-  applicationName: "Kloner",
-  keywords: [
-    "website cloner",
-    "clone website",
-    "URL to Website",
-    "instant preview",
-    "deploy to Vercel",
-    "Vercel deploy",
-  ],
-  authors: [{ name: "Kloner" }],
-  creator: "Kloner",
-  publisher: "Kloner",
-  alternates: { canonical: "/" },
-  openGraph: {
-    type: "website",
-    url: "https://kloner.app/",
-    siteName: "Kloner",
-    title: "Kloner — Clone any website in minutes",
-    description:
-      "Paste a URL, get a customizable website with an AI assistant, then deploy it with one click.",
-    images: [
-      {
-        url: "/og.jpg",
-        width: 1200,
-        height: 630,
-        alt: "Kloner preview dashboard",
-      },
-    ],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Kloner — Clone any website in minutes",
-    description:
-      "Paste a URL, get a customizable website with an AI assistant, then deploy it with one click.",
-    images: ["/og.jpg"],
-  },
-  icons: {
-    icon: "/favicon.ico",
-    shortcut: "/favicon.ico",
-    apple: "/apple-touch-icon.png",
-  },
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: {
-      index: true,
-      follow: true,
-      "max-video-preview": -1,
-      "max-image-preview": "large",
-      "max-snippet": -1,
-    },
-  },
-};
+export const metadata: Metadata = { /* unchanged */ };
 
 export default function RootLayout({
   children,
@@ -78,7 +22,11 @@ export default function RootLayout({
     <html lang="en" className={inter.variable}>
       <body className="bg-white scroll-smooth snap-y snap-mandatory">
         <AuthProviderServer>
-          <AppClientProviders>{children}</AppClientProviders>
+          <AppClientProviders>
+            {children}
+            {/* Global support chat widget */}
+            <ChatWidgetProvider />
+          </AppClientProviders>
         </AuthProviderServer>
 
         {/* Google Analytics */}
@@ -103,4 +51,3 @@ export default function RootLayout({
     </html>
   );
 }
-

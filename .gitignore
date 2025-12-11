@@ -4,3 +4,5 @@ node_modules
 app/.DS_Store
 serviceAccount.json
 public/images/transparent_logo.png
+scripts/setSupportAgent.js
+scripts/setRoleClaims.js
