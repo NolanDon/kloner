@@ -1,4 +1,3 @@
-// app/layout.tsx
 import "./globals.css";
 import type { Metadata } from "next";
 import AuthProviderServer from "@/components/auth/auth-provider.server";
@@ -11,7 +10,27 @@ const inter = Inter({
   variable: "--font-inter",
 });
 
-export const metadata: Metadata = { /* unchanged */ };
+export const metadata: Metadata = {
+  title: {
+    default: "Kloner – AI Website Cloner, Builder and Preview Tool",
+    template: "%s | Kloner",
+  },
+  description:
+    "Kloner lets you capture, edit, and redeploy high-fidelity website layouts with AI. Start a free preview, customize sections, and launch production-ready sites quickly.",
+  metadataBase: new URL("https://kloner.app"),
+  openGraph: {
+    title: "Kloner – AI Website Builder and Preview Tool",
+    description:
+      "Capture, edit, and redeploy high-fidelity website layouts with AI. Start a free preview and launch sites faster.",
+    url: "https://kloner.app",
+    siteName: "Kloner",
+    type: "website",
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
+};
 
 export default function RootLayout({
   children,
@@ -24,7 +43,6 @@ export default function RootLayout({
         <AuthProviderServer>
           <AppClientProviders>
             {children}
-            {/* Global support chat widget */}
             <ChatWidgetProvider />
           </AppClientProviders>
         </AuthProviderServer>
