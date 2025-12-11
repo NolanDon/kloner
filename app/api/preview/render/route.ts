@@ -18,6 +18,11 @@ type Body = {
     nameHint?: string;
     url?: string; // optional: trigger generation if no keys
     controllerVersion?: string; // optional: forwarded
+    // NEW: passed through to backend so it can reuse render doc on retry
+    retry?: boolean | string;
+    renderId?: string;
+    // optional from client; if absent we infer it
+    urlHash?: string;
 };
 
 function isNonEmptyString(s: unknown): s is string {
@@ -97,9 +102,6 @@ export async function POST(req: NextRequest) {
             try {
                 const peek = await peekUserCredit(decoded.uid, tier, "preview");
 
-                // Block when:
-                // - peek.ok is false (we treat that as "cannot safely allow")
-                // - remaining is a concrete number and < 1 (no full preview run available)
                 if (!peek.ok || (peek.remaining !== null && peek.remaining < 1)) {
                     return NextResponse.json(
                         {
@@ -122,6 +124,14 @@ export async function POST(req: NextRequest) {
             }
 
             const json = (await req.json().catch(() => ({}))) as Body;
+
+            // NEW: normalize retry + renderId from client
+            const isRetry =
+                json.retry === true || json.retry === "true";
+            const renderId =
+                typeof json.renderId === "string" && json.renderId.trim().length
+                    ? json.renderId.trim()
+                    : undefined;
 
             // Normalize inputs
             const controllerVersion = isNonEmptyString(json.controllerVersion)
@@ -213,10 +223,14 @@ export async function POST(req: NextRequest) {
                 }
             }
 
-            // Infer urlHash and nameHint if possible
-            const urlHash = incomingUrl
+            // Infer urlHash, but let client-provided value win if present
+            const inferredHash = incomingUrl
                 ? hash64(incomingUrl)
                 : extractHashFromKey(outKeys[0]) || undefined;
+
+            const urlHash = isNonEmptyString(json.urlHash)
+                ? json.urlHash.trim()
+                : inferredHash;
 
             const nameHint =
                 incomingNameHint ||
@@ -231,8 +245,11 @@ export async function POST(req: NextRequest) {
                         keys: outKeys,
                         nameHint: nameHint ?? null,
                         urlHint: incomingUrl, // allows backend to persist url
-                        urlHash: urlHash, // allows backend to persist urlHash
-                        controllerVersion, // transparent forward if provided
+                        urlHash,              // allows backend to persist urlHash
+                        controllerVersion,    // transparent forward if provided
+                        // NEW: forward retry + renderId so backend can reuse doc
+                        retry: isRetry || undefined,
+                        renderId: renderId || undefined,
                     },
                     timeoutMs: 240_000,
                     acceptOnTimeout: true,
@@ -252,26 +269,15 @@ export async function POST(req: NextRequest) {
                         ? 202
                         : r.status;
 
-                // More defensive: only treat as a fully billable preview if:
-                // - HTTP-level success
-                // - we mapped to 200
-                // - backend payload is not explicitly ok:false
-                // - backend claims a renderId
-                // - backend either says status=ready or at least progress >= 90
                 const shouldChargePreview =
                     r.upstream.ok &&
                     status === 200 &&
                     okJson &&
                     okJson.ok !== false &&
                     typeof okJson.renderId === "string" &&
-                    (
-                        !("status" in okJson) ||
-                        okJson.status === "ready"
-                    ) &&
-                    (
-                        typeof okJson.progress !== "number" ||
-                        okJson.progress >= 90
-                    );
+                    (!("status" in okJson) || okJson.status === "ready") &&
+                    (typeof okJson.progress !== "number" ||
+                        okJson.progress >= 90);
 
                 if (shouldChargePreview) {
                     try {
@@ -281,7 +287,6 @@ export async function POST(req: NextRequest) {
                             uid: decoded.uid,
                             err: err?.message || String(err),
                         });
-                        // Do not fail the render just because credit write failed.
                     }
                 }
 

@@ -61,6 +61,7 @@ import {
     Archive,
     Share2,
     ScanFace,
+    WrenchIcon,
 } from "lucide-react";
 import {
     isHttpUrl,
@@ -130,7 +131,7 @@ const RenderCard = memo(
         return (
             a.id === b.id &&
             a.status === b.status &&
-            (a.reason || "") === (b.reason || "") && // <— add this
+            (a.reason || "") === (b.reason || "") &&
             (a.html || "") === (b.html || "") &&
             (a.key || "") === (b.key || "") &&
             (a.nameHint || "") === (b.nameHint || "") &&
@@ -159,6 +160,7 @@ export type RenderDoc = {
     key?: string | null;
     referenceImage?: string | null;
     html?: string;
+    reason?: string | null;
     nameHint?: string | null;
     // NOTE: add "error" here
     status: "ready" | "queued" | "failed" | "processing" | "error";
@@ -201,38 +203,42 @@ type RenderCardProps = {
     startDeployWizard: (opts: { id: string; nameHint?: string | null }) => void;
     setShowCreditsPaywall: (mode: "deploy" | null) => void;
     push: (message: string, level?: string) => void;
+    retryRender: (render: { id: string; key?: string | null }) => void; // ← new
 };
 
 function RenderCardInner({
     r,
     isDeleting,
     isOpening,
-    hardLocked, // no-op for locking logic now
     isDeploying,
     deployLocked,
     urlHash,
     continueRender,
+    retryRender,
     discardRender,
     startDeployWizard,
     archiveRender,
     unarchiveRender,
     onShareWithCommunity,
-    push, // <— use the existing push prop for toasts
 }: RenderCardProps) {
     const router = useRouter();
 
     const isQueued = r.status === "queued" || r.status === "processing";
 
-    // Treat both "failed" and "error" as failure states
-    const isFailed = r.status === "failed" || r.status === "error";
+    const reason =
+        typeof (r as any).reason === "string" ? (r as any).reason : null;
+
+    // “failed” = timeout-style error, regardless of html
+    const isFailed =
+        (r.status === "error" || r.status === "failed") &&
+        (reason === "timeout_or_worker_shutdown" || reason === "timeout");
+
+    console.log("status ", status)
+    console.log("reason ", reason)
+    console.log("isFailedL ", isFailed)
 
     const isDeployed = !!r.lastExportedAt;
     const isArchived = !!r.archived;
-
-    // Detect the specific timeout / worker shutdown case
-    const isTimeoutError =
-        r.status === "error" &&
-        (r as any).reason === "timeout_or_worker_shutdown";
 
     // progress normalization: prefer explicit percent, then raw `progress`
     const rawPercent =
@@ -272,7 +278,6 @@ function RenderCardInner({
 
     const disableOpen =
         isOpening ||
-        isFailed ||
         isDeploying ||
         isArchived ||
         isThisCardLockedForBuild;
@@ -299,9 +304,6 @@ function RenderCardInner({
     const isDev = process.env.NODE_ENV === "development";
     const [shareProjectName, setShareProjectName] = useState("");
     const hasEditedShareNameRef = useRef(false);
-
-    // local loading state for retry
-    const [retrying, setRetrying] = useState(false);
 
     const srcDoc = useMemo(() => {
         if (!r.html) return "";
@@ -367,51 +369,6 @@ function RenderCardInner({
         if (!ok) return;
 
         archiveRender(r.id);
-    };
-
-    // NEW: retry handler for timeout_or_worker_shutdown
-    const handleRetryRender = async () => {
-        if (!r.id || retrying) return;
-
-        setRetrying(true);
-        try {
-            push?.("Retrying render. This may take a minute.", "ok");
-
-            const res = await fetch(
-                `/api/renders/${encodeURIComponent(r.id)}/requeue`,
-                {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                },
-            );
-
-            const data = await res.json().catch(() => ({} as any));
-
-            if (!res.ok || (data as any).error) {
-                console.error("Failed to requeue render", {
-                    status: res.status,
-                    data,
-                });
-                push?.(
-                    (data as any).error ||
-                    "Failed to retry this render. Please try again.",
-                    "err",
-                );
-                return;
-            }
-
-            // Once Firestore updates status to queued/processing, the
-            // existing progress UI will pick it up through snapshots.
-            push?.("Render requeued. Rebuilding preview now.", "ok");
-        } catch (err: any) {
-            console.error("Error retrying render", err);
-            push?.(
-                err?.message || "Network error while retrying render.",
-                "err",
-            );
-        } finally {
-            setRetrying(false);
-        }
     };
 
     async function handleShareClick() {
@@ -541,7 +498,7 @@ function RenderCardInner({
                 </span>
             )}
 
-            {/* model badge – bottom left */}
+            {/* controller version badge – top left */}
             {(controllerVersion && isDev) && (
                 <span
                     className="absolute left-2 bottom-1 z-30 inline-flex items-center gap-1 rounded-md bg-neutral-900/85 px-2 py-0.5 text-[10px] font-medium text-neutral-50 shadow-sm"
@@ -646,50 +603,46 @@ function RenderCardInner({
 
                             {!isDeployedFlag && (
                                 <button
-                                    onClick={() => continueRender(r.id)}
-                                    disabled={disableOpen || isDeleting || !r.html}
-                                    className="group inline-flex flex-1 items-center justify-center gap-2 rounded-md border border-neutral-400 px-3 py-1.5 font-medium text-neutral-600 shadow-sm disabled:opacity-60"
+                                    onClick={async () => {
+                                        if (isFailed) {
+                                            // reuse this card, do NOT create a new optimistic render
+                                            retryRender({ id: r.id, key: r.key || null });
+                                        } else {
+                                            continueRender(r.id);
+                                        }
+                                    }}
+                                    // allow click when timeout error, even if html is empty
+                                    disabled={(disableOpen || isDeleting || !r.html) && !isFailed}
+                                    className="group inline-flex flex-1 items-center justify-center gap-2 rounded-md border border-neutral-700 px-3 py-1.5 font-medium text-neutral-600 shadow-sm disabled:opacity-60"
                                     title={
                                         isArchivedFlag
                                             ? "Unarchive to customize this preview"
                                             : isBuilding || isQueued
                                                 ? "Still building preview"
                                                 : isFailed
-                                                    ? "Open editor to fix"
+                                                    ? "Retry the render operation"
                                                     : "Open editor to customize"
                                     }
                                 >
                                     {isBuilding || isQueued
                                         ? "Building…"
                                         : isFailed
-                                            ? "Customize (fix)"
+                                            ? "Retry"
                                             : "Customize"}
-                                    <BrushIcon className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
+
+                                    {isFailed ? (
+                                        <WrenchIcon className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
+                                    ) : (
+                                        <BrushIcon className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
+                                    )}
                                 </button>
                             )}
-                        </div>
 
-                        {/* NEW: timeout / worker-shutdown retry banner */}
-                        {isTimeoutError && (
-                            <div className="mt-1 flex w-full items-center justify-between gap-2 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] text-amber-900">
-                                <span className="max-w-[65%] truncate">
-                                    Render worker was interrupted. You can retry this preview.
-                                </span>
-                                <button
-                                    type="button"
-                                    onClick={handleRetryRender}
-                                    disabled={
-                                        retrying ||
-                                        isDeleting ||
-                                        isDeploying ||
-                                        isQueued ||
-                                        isBuilding
-                                    }
-                                    className="inline-flex items-center gap-1 rounded-md bg-accent px-2 py-0.5 text-[11px] font-medium text-white hover:bg-accent/90 disabled:opacity-60"
-                                >
-                                    {retrying ? "Retrying…" : "Retry render"}
-                                </button>
-                            </div>
+                        </div>
+                        {isFailed && !r.html && (
+                            <p className="mt-1 text-[11px] text-amber-500">
+                                This preview hit a timeout. Click "Retry" to try again.
+                            </p>
                         )}
 
                         {/* progress bar / status – only for the active build/deploy and never at 100% */}
@@ -1910,8 +1863,9 @@ export default function PreviewPage(): JSX.Element {
             key: data.key ?? data.referenceImage ?? null,
             referenceImage: data.referenceImage ?? null,
             html: data.html ?? "",
+            status: (data.status as RenderDoc["status"]) ?? "ready",
+            reason: (data.reason as string | null) ?? null,
             nameHint: data.nameHint ?? null,
-            status: (data.status as any) ?? "ready",
             archived: data.archived ?? false,
             createdAt: data.createdAt,
             updatedAt: data.updatedAt,
@@ -2348,7 +2302,6 @@ export default function PreviewPage(): JSX.Element {
         ],
     );
 
-
     const continueRender = useCallback(
         async (renderId: string) => {
             if (!user) return;
@@ -2412,6 +2365,98 @@ export default function PreviewPage(): JSX.Element {
         },
         [user, shots, push],
     );
+
+
+
+    const retryRender = useCallback(
+        async ({ id, key }: { id: string; key?: string | null }) => {
+            if (!user) return;
+            if (!key) return;
+
+            // Optimistic: clear error + mark as queued on the SAME card
+            setRenders((prev) =>
+                prev.map((r) =>
+                    r.id === id
+                        ? {
+                            ...r,
+                            status: "queued",
+                            reason: "requeued_after_timeout",
+                            progress: 5,
+                        }
+                        : r,
+                ),
+            );
+
+            try {
+                const body: any = {
+                    keys: [key],
+                    retry: true,
+                    renderId: id,
+                };
+
+                // if this render had url metadata, send it along
+                const existing = renders.find((r) => r.id === id);
+                if (existing?.url) {
+                    body.url = existing.url;
+                    body.urlHash = existing.urlHash;
+                    body.nameHint =
+                        existing.nameHint ||
+                        (() => {
+                            try {
+                                return new URL(existing.url as string).hostname;
+                            } catch {
+                                return null;
+                            }
+                        })();
+                }
+
+                const resp = await fetch("/api/preview/render", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify(body),
+                });
+
+                const j = (await resp.json().catch(() => ({}))) as any;
+
+                if (resp.status === 202) {
+                    push("Server accepted retry job", "ok");
+                    await refreshRenders();
+                    return;
+                }
+
+                if (!resp.ok || !j?.ok) {
+                    const msg = j?.error || "Retry failed";
+                    throw new Error(msg);
+                }
+
+                // Success path: refresh to pick up updated progress/status
+                await refreshRenders();
+                push("Retry started for this preview.", "ok");
+            } catch (e: any) {
+                const msg = e?.message || "Failed to retry render.";
+
+                // Roll back optimistic change minimally back to error
+                setRenders((prev) =>
+                    prev.map((r) =>
+                        r.id === id
+                            ? {
+                                ...r,
+                                status: "error",
+                                reason: "timeout_or_worker_shutdown",
+                            }
+                            : r,
+                    ),
+                );
+
+                console.error("retryRender error", e);
+                setErr?.(msg);
+                push("Failed to retry render.", "err");
+            }
+        },
+        [user, renders, refreshRenders, setRenders, setErr, push],
+    );
+
 
 
     const discardRender = useCallback(
@@ -3776,8 +3821,7 @@ export default function PreviewPage(): JSX.Element {
                                         isDeleting={!!deletingRender[r.id] || !!archivingRender[r.id]}
                                         isOpening={loading}
                                         hardLocked={
-                                            !!lockUntilByRender[r.id] &&
-                                            lockUntilByRender[r.id] > Date.now()
+                                            !!lockUntilByRender[r.id] && lockUntilByRender[r.id] > Date.now()
                                         }
                                         isDeploying={deployingRenderId === r.id}
                                         deployLocked={userTier === "free"}
@@ -3790,7 +3834,9 @@ export default function PreviewPage(): JSX.Element {
                                         archiveRender={handleArchiveRender}
                                         unarchiveRender={handleUnarchiveRender}
                                         onShareWithCommunity={handleShareWithCommunity}
+                                        retryRender={retryRender}
                                     />
+
                                 ))}
 
                                 {groupedShots.map((group, groupIndex) => {
