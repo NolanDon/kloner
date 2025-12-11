@@ -18,6 +18,7 @@ type MessageDoc = {
 
 const CHAT_COLLECTION = "support_chats";
 const SUPPORT_DOC_COLLECTION = "support_doc";
+const INBOX_COLLECTION = "support_inbox";
 
 // ---------- small helpers ----------
 
@@ -43,7 +44,9 @@ function cosineSim(a: number[], b: number[]): number {
     return dot / (Math.sqrt(na) * Math.sqrt(nb));
 }
 
-async function loadSupportDocs(db: FirebaseFirestore.Firestore): Promise<SupportDoc[]> {
+async function loadSupportDocs(
+    db: FirebaseFirestore.Firestore,
+): Promise<SupportDoc[]> {
     const snap = await db.collection(SUPPORT_DOC_COLLECTION).get();
     return snap.docs
         .map((d) => {
@@ -93,7 +96,7 @@ async function buildContextFromDocs(question: string): Promise<string | null> {
         .map(
             (d) =>
                 `### ${d.id}\n` +
-                d.text.trim().slice(0, 3000) // hard cap per section
+                d.text.trim().slice(0, 3000), // hard cap per section
         )
         .join("\n\n---\n\n");
 }
@@ -107,7 +110,7 @@ export async function GET(req: NextRequest) {
         if (!chatId) {
             return NextResponse.json(
                 { ok: false, error: "Missing chatId" },
-                { status: 400 }
+                { status: 400 },
             );
         }
 
@@ -117,7 +120,7 @@ export async function GET(req: NextRequest) {
         if (!chatSnap.exists) {
             return NextResponse.json(
                 { ok: false, error: "Chat not found" },
-                { status: 404 }
+                { status: 404 },
             );
         }
 
@@ -150,7 +153,7 @@ export async function GET(req: NextRequest) {
         console.error("support chat GET failed", err);
         return NextResponse.json(
             { ok: false, error: "Failed to load chat" },
-            { status: 500 }
+            { status: 500 },
         );
     }
 }
@@ -167,12 +170,13 @@ export async function POST(req: NextRequest) {
         if (!textRaw) {
             return NextResponse.json(
                 { ok: false, error: "Missing message text" },
-                { status: 400 }
+                { status: 400 },
             );
         }
 
         const db = getAdminDb();
 
+        // optional – you may be attaching user on req via middleware
         const uid = (req as any).user?.uid || null;
 
         // create or load chat
@@ -184,29 +188,50 @@ export async function POST(req: NextRequest) {
         }
 
         const now = admin.firestore.FieldValue.serverTimestamp();
+
+        // upsert base chat doc, but don't overwrite existing mode
         await chatRef.set(
             {
                 userId: uid,
                 createdAt: now,
                 updatedAt: now,
-                mode: admin.firestore.FieldValue.delete(), // preserve existing mode
+                mode: admin.firestore.FieldValue.delete(), // preserve existing mode if already set
                 status: "open",
             },
-            { merge: true }
+            { merge: true },
         );
 
-        // reload mode
+        // reload mode after potential previous escalation
         const chatSnap = await chatRef.get();
         const chatData = chatSnap.data() || {};
         const mode = (chatData.mode as "ai" | "agent") || "ai";
 
-        // store user message
+        // store user message in messages subcollection
         const userMsg: MessageDoc = {
             sender: "user",
             text: textRaw,
             createdAt: now,
         };
         const userMsgRef = await chatRef.collection("messages").add(userMsg);
+
+        // if this chat is already escalated, keep support_inbox in sync
+        if (mode === "agent") {
+            const inboxRef = db.collection(INBOX_COLLECTION).doc(chatRef.id);
+
+            await inboxRef.set(
+                {
+                    mode: "agent",
+                    status: "open",
+                    userId: uid ?? chatData.userId ?? null,
+                    lastMessage: textRaw,
+                    lastMessageFrom: "user",
+                    createdAt: chatData.createdAt || now,
+                    updatedAt: now,
+                    unreadCount: admin.firestore.FieldValue.increment(1),
+                },
+                { merge: true },
+            );
+        }
 
         let aiMsgId: string | null = null;
 
@@ -295,14 +320,16 @@ export async function POST(req: NextRequest) {
             }
         }
 
+        // bump chat meta
         await chatRef.set(
             {
                 updatedAt: now,
                 lastMessageFrom: "user",
             },
-            { merge: true }
+            { merge: true },
         );
 
+        // return latest 100 messages
         const finalSnap = await chatRef
             .collection("messages")
             .orderBy("createdAt", "asc")
@@ -331,7 +358,7 @@ export async function POST(req: NextRequest) {
         console.error("support chat POST failed", err);
         return NextResponse.json(
             { ok: false, error: "Failed to send message" },
-            { status: 500 }
+            { status: 500 },
         );
     }
 }
