@@ -18,7 +18,6 @@ type MessageDoc = {
 
 const CHAT_COLLECTION = "support_chats";
 const SUPPORT_DOC_COLLECTION = "support_doc";
-const INBOX_COLLECTION = "support_inbox";
 
 // ---------- small helpers ----------
 
@@ -63,7 +62,6 @@ async function buildContextFromDocs(question: string): Promise<string | null> {
     const docs = await loadSupportDocs(db);
     if (!docs.length) return null;
 
-    // embed the question
     let queryEmbedding: number[] | null = null;
     try {
         const embRes = await client.embeddings.create({
@@ -78,7 +76,6 @@ async function buildContextFromDocs(question: string): Promise<string | null> {
 
     if (!queryEmbedding) return null;
 
-    // rank docs by similarity
     const ranked = docs
         .map((doc) => ({
             ...doc,
@@ -86,17 +83,14 @@ async function buildContextFromDocs(question: string): Promise<string | null> {
         }))
         .sort((a, b) => b.score - a.score);
 
-    const top = ranked.slice(0, 3); // top 3 sections
-    if (!top.length || top[0].score < 0.1) {
-        // really low similarity: treat as "no relevant docs"
-        return null;
-    }
+    const top = ranked.slice(0, 3);
+    if (!top.length || top[0].score < 0.1) return null;
 
     return top
         .map(
             (d) =>
                 `### ${d.id}\n` +
-                d.text.trim().slice(0, 3000), // hard cap per section
+                d.text.trim().slice(0, 3000),
         )
         .join("\n\n---\n\n");
 }
@@ -175,38 +169,52 @@ export async function POST(req: NextRequest) {
         }
 
         const db = getAdminDb();
-
-        // optional – you may be attaching user on req via middleware
         const uid = (req as any).user?.uid || null;
 
-        // create or load chat
         let chatRef: FirebaseFirestore.DocumentReference;
+        let existingData: any | null = null;
+
         if (existingChatId) {
             chatRef = db.collection(CHAT_COLLECTION).doc(existingChatId);
+            const snap = await chatRef.get();
+            existingData = snap.exists ? snap.data() : null;
         } else {
             chatRef = db.collection(CHAT_COLLECTION).doc();
         }
 
         const now = admin.firestore.FieldValue.serverTimestamp();
 
-        // upsert base chat doc, but don't overwrite existing mode
-        await chatRef.set(
-            {
-                userId: uid,
-                createdAt: now,
-                updatedAt: now,
-                mode: admin.firestore.FieldValue.delete(), // preserve existing mode if already set
-                status: "open",
-            },
-            { merge: true },
-        );
+        // new chat – initialise mode as "ai"
+        if (!existingData) {
+            await chatRef.set(
+                {
+                    userId: uid,
+                    createdAt: now,
+                    updatedAt: now,
+                    mode: "ai",
+                    status: "open",
+                    lastMessageFrom: "user",
+                },
+                { merge: true },
+            );
+        } else {
+            // existing chat – DO NOT touch `mode` here
+            await chatRef.set(
+                {
+                    userId: existingData.userId ?? uid ?? null,
+                    updatedAt: now,
+                    status: existingData.status || "open",
+                    lastMessageFrom: "user",
+                },
+                { merge: true },
+            );
+        }
 
-        // reload mode after potential previous escalation
+        // reload chat to get latest mode (including "agent" after escalation)
         const chatSnap = await chatRef.get();
         const chatData = chatSnap.data() || {};
         const mode = (chatData.mode as "ai" | "agent") || "ai";
 
-        // store user message in messages subcollection
         const userMsg: MessageDoc = {
             sender: "user",
             text: textRaw,
@@ -214,29 +222,9 @@ export async function POST(req: NextRequest) {
         };
         const userMsgRef = await chatRef.collection("messages").add(userMsg);
 
-        // if this chat is already escalated, keep support_inbox in sync
-        if (mode === "agent") {
-            const inboxRef = db.collection(INBOX_COLLECTION).doc(chatRef.id);
-
-            await inboxRef.set(
-                {
-                    mode: "agent",
-                    status: "open",
-                    userId: uid ?? chatData.userId ?? null,
-                    lastMessage: textRaw,
-                    lastMessageFrom: "user",
-                    createdAt: chatData.createdAt || now,
-                    updatedAt: now,
-                    unreadCount: admin.firestore.FieldValue.increment(1),
-                },
-                { merge: true },
-            );
-        }
-
         let aiMsgId: string | null = null;
 
         if (mode === "ai") {
-            // load last messages (including the one we just wrote)
             const msgsSnap = await chatRef
                 .collection("messages")
                 .orderBy("createdAt", "asc")
@@ -258,7 +246,6 @@ export async function POST(req: NextRequest) {
                 };
             });
 
-            // build context from support docs for the *latest* user message
             const contextBlob = await buildContextFromDocs(textRaw);
 
             const messagesForModel: any[] = [];
@@ -285,9 +272,6 @@ export async function POST(req: NextRequest) {
                 });
             }
 
-            // map chat history to correct content types:
-            // - user/system -> input_text
-            // - assistant (ai/agent) -> output_text
             for (const msg of history) {
                 const isAssistant = msg.role === "assistant";
                 const contentType = isAssistant ? "output_text" : "input_text";
@@ -320,7 +304,6 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        // bump chat meta
         await chatRef.set(
             {
                 updatedAt: now,
@@ -329,7 +312,6 @@ export async function POST(req: NextRequest) {
             { merge: true },
         );
 
-        // return latest 100 messages
         const finalSnap = await chatRef
             .collection("messages")
             .orderBy("createdAt", "asc")
