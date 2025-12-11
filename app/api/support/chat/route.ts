@@ -2,19 +2,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import admin from "firebase-admin";
 import OpenAI from "openai";
+import { getAdminDb } from "../../_lib/auth";
 
 const client = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
-
-function getDb() {
-    if (!admin.apps.length) {
-        admin.initializeApp({
-            credential: admin.credential.applicationDefault(),
-        });
-    }
-    return admin.firestore();
-}
 
 type Sender = "user" | "ai" | "agent" | "system";
 
@@ -64,7 +56,7 @@ async function loadSupportDocs(db: FirebaseFirestore.Firestore): Promise<Support
 }
 
 async function buildContextFromDocs(question: string): Promise<string | null> {
-    const db = getDb();
+    const db = getAdminDb();
     const docs = await loadSupportDocs(db);
     if (!docs.length) return null;
 
@@ -119,7 +111,7 @@ export async function GET(req: NextRequest) {
             );
         }
 
-        const db = getDb();
+        const db = getAdminDb();
         const chatRef = db.collection(CHAT_COLLECTION).doc(chatId);
         const chatSnap = await chatRef.get();
         if (!chatSnap.exists) {
@@ -179,7 +171,7 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const db = getDb();
+        const db = getAdminDb();
 
         const uid = (req as any).user?.uid || null;
 
