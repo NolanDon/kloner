@@ -38,9 +38,9 @@ export default function ChatWidgetProvider() {
         const saved = window.localStorage.getItem(STORAGE_KEY);
         if (saved) {
             setChatId(saved);
-            // Optional: fetch existing messages in the background
             void fetchExisting(saved);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
@@ -54,7 +54,6 @@ export default function ChatWidgetProvider() {
                 method: "GET",
             });
 
-            // If chat no longer exists, reset local state + storage
             if (res.status === 404) {
                 console.warn(
                     "[support] chat not found, clearing stored chatId",
@@ -81,12 +80,59 @@ export default function ChatWidgetProvider() {
             const data: ApiSendResponse = await res.json();
             setMessages(data.messages);
             setMode(data.mode);
-            if (!chatId) setChatId(data.chatId);
+            setChatId(data.chatId);
         } catch (err) {
             console.warn("[support] fetchExisting threw", err);
         }
     }
 
+    // Poll for new messages while in agent mode so the user sees agent replies
+    useEffect(() => {
+        if (!chatId || mode !== "agent") return;
+
+        let cancelled = false;
+        let timeoutId: NodeJS.Timeout | null = null;
+
+        const tick = async () => {
+            if (cancelled) return;
+            try {
+                const res = await fetch(
+                    "/api/support/chat?chatId=" + encodeURIComponent(chatId),
+                    { method: "GET" },
+                );
+
+                if (res.status === 404) {
+                    if (typeof window !== "undefined") {
+                        window.localStorage.removeItem(STORAGE_KEY);
+                    }
+                    setChatId(null);
+                    setMessages([]);
+                    setMode("ai");
+                    return;
+                }
+
+                if (!res.ok) return;
+
+                const data: ApiSendResponse = await res.json();
+                setMessages(data.messages);
+                setMode(data.mode);
+                setChatId(data.chatId);
+            } catch {
+                // ignore transient errors
+            } finally {
+                if (!cancelled) {
+                    timeoutId = setTimeout(tick, 4000);
+                }
+            }
+        };
+
+        tick();
+
+        return () => {
+            cancelled = true;
+            if (timeoutId) clearTimeout(timeoutId);
+        };
+    }, [chatId, mode]);
 
     async function handleSend() {
         const text = input.trim();
@@ -95,7 +141,6 @@ export default function ChatWidgetProvider() {
         setError(null);
         setLoading(true);
 
-        // Optimistic user message
         const tempId = `local-${Date.now()}`;
         const optimistic: ChatMessage = {
             id: tempId,
@@ -131,7 +176,6 @@ export default function ChatWidgetProvider() {
             }
         } catch (err: any) {
             setError(err.message || "Something went wrong");
-            // roll back optimistic message if you want
         } finally {
             setLoading(false);
         }
@@ -157,7 +201,6 @@ export default function ChatWidgetProvider() {
             const data: { ok: boolean; mode: ChatMode } = await res.json();
             setMode(data.mode);
 
-            // Add a system message to show escalation
             setMessages((prev) => [
                 ...prev,
                 {
@@ -177,7 +220,6 @@ export default function ChatWidgetProvider() {
 
     return (
         <>
-            {/* Floating button */}
             <button
                 type="button"
                 onClick={() => setOpen((o) => !o)}
@@ -186,7 +228,6 @@ export default function ChatWidgetProvider() {
                 {open ? "Close chat" : "Chat with us"}
             </button>
 
-            {/* Panel */}
             {open && (
                 <div className="fixed bottom-16 right-6 z-50 w-[320px] max-w-[90vw] rounded-2xl border border-neutral-200 bg-white shadow-xl flex flex-col overflow-hidden">
                     <div className="px-4 py-3 border-b border-neutral-200 flex items-center justify-between">
@@ -230,10 +271,10 @@ export default function ChatWidgetProvider() {
                             >
                                 <div
                                     className={`max-w-[80%] rounded-2xl px-3 py-2 ${m.sender === "user"
-                                        ? "bg-accent text-white"
-                                        : m.sender === "system"
-                                            ? "bg-neutral-100 text-neutral-700 text-xs"
-                                            : "bg-neutral-100 text-neutral-900"
+                                            ? "bg-accent text-white"
+                                            : m.sender === "system"
+                                                ? "bg-neutral-100 text-neutral-700 text-xs"
+                                                : "bg-neutral-100 text-neutral-900"
                                         }`}
                                 >
                                     <p className="whitespace-pre-wrap break-words">{m.text}</p>
