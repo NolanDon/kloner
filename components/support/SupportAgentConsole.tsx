@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { db } from "@/lib/firebase";
 import {
@@ -59,9 +58,10 @@ export function SupportAgentConsole() {
         "all",
     );
 
-    // for notification sound on new / updated chats
+    // sound only on *new* chats
     const audioRef = useRef<HTMLAudioElement | null>(null);
-    const latestUpdateRef = useRef<number>(0);
+    const knownChatIdsRef = useRef<Set<string>>(new Set());
+    const isInitialSnapshotRef = useRef(true);
 
     useEffect(() => {
         const audio = new Audio("/sounds/support-new-message.mp3");
@@ -76,14 +76,16 @@ export function SupportAgentConsole() {
             qInbox,
             (snap) => {
                 const next: InboxItem[] = [];
-                let snapshotLatest = latestUpdateRef.current;
+                const currentIds = new Set<string>();
+                let hasNewChat = false;
 
                 snap.forEach((doc) => {
                     const data = doc.data() as DocumentData;
                     const updatedAt = data.updatedAt as Timestamp | undefined;
-                    if (updatedAt) {
-                        const ms = updatedAt.toMillis();
-                        if (ms > snapshotLatest) snapshotLatest = ms;
+
+                    currentIds.add(doc.id);
+                    if (!knownChatIdsRef.current.has(doc.id)) {
+                        hasNewChat = true;
                     }
 
                     next.push({
@@ -92,20 +94,24 @@ export function SupportAgentConsole() {
                         lastMessage: data.lastMessage || "",
                         updatedAt: updatedAt ?? null,
                         status: (data.status as InboxItem["status"]) || "open",
-                        unreadCount: typeof data.unreadCount === "number" ? data.unreadCount : 0,
+                        unreadCount:
+                            typeof data.unreadCount === "number"
+                                ? data.unreadCount
+                                : 0,
                         assignedTo: data.assignedTo || null,
                     });
                 });
 
                 setInbox(next);
 
-                // play sound if there is a newer updatedAt than we’ve seen before
-                if (snapshotLatest > latestUpdateRef.current) {
-                    latestUpdateRef.current = snapshotLatest;
-                    if (audioRef.current) {
-                        // fire-and-forget, ignore play errors
-                        audioRef.current.play().catch(() => { });
-                    }
+                // skip first snapshot (initial load)
+                if (!isInitialSnapshotRef.current && hasNewChat && audioRef.current) {
+                    audioRef.current.play().catch(() => { });
+                }
+
+                knownChatIdsRef.current = currentIds;
+                if (isInitialSnapshotRef.current) {
+                    isInitialSnapshotRef.current = false;
                 }
             },
             (err) => {
@@ -167,7 +173,7 @@ export function SupportAgentConsole() {
                             onClick={() => setFilter("all")}
                             className={
                                 filter === "all"
-                                    ? "rounded-full bg-neutral-900 px-2 py-0.5 text-[11px] font-semibold text-white"
+                                    ? "rounded-full bg-accent px-2 py-0.5 text-[11px] font-semibold text-white"
                                     : "rounded-full px-2 py-0.5 text-[11px] text-neutral-700 hover:bg-white"
                             }
                         >
@@ -178,7 +184,7 @@ export function SupportAgentConsole() {
                             onClick={() => setFilter("open")}
                             className={
                                 filter === "open"
-                                    ? "rounded-full bg-neutral-900 px-2 py-0.5 text-[11px] font-semibold text-white"
+                                    ? "rounded-full bg-accent px-2 py-0.5 text-[11px] font-semibold text-white"
                                     : "rounded-full px-2 py-0.5 text-[11px] text-neutral-700 hover:bg-white"
                             }
                         >
@@ -189,7 +195,7 @@ export function SupportAgentConsole() {
                             onClick={() => setFilter("pending")}
                             className={
                                 filter === "pending"
-                                    ? "rounded-full bg-neutral-900 px-2 py-0.5 text-[11px] font-semibold text-white"
+                                    ? "rounded-full bg-accent px-2 py-0.5 text-[11px] font-semibold text-white"
                                     : "rounded-full px-2 py-0.5 text-[11px] text-neutral-700 hover:bg-white"
                             }
                         >
@@ -200,7 +206,7 @@ export function SupportAgentConsole() {
                             onClick={() => setFilter("closed")}
                             className={
                                 filter === "closed"
-                                    ? "rounded-full bg-neutral-900 px-2 py-0.5 text-[11px] font-semibold text-white"
+                                    ? "rounded-full bg-accent px-2 py-0.5 text-[11px] font-semibold text-white"
                                     : "rounded-full px-2 py-0.5 text-[11px] text-neutral-700 hover:bg-white"
                             }
                         >
@@ -230,7 +236,9 @@ export function SupportAgentConsole() {
                                     <li key={chat.id}>
                                         <button
                                             type="button"
-                                            onClick={() => router.push(`/support/agent/${chat.id}`)}
+                                            onClick={() =>
+                                                router.push(`/support/agent/${chat.id}`)
+                                            }
                                             className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-neutral-50"
                                         >
                                             <div className="min-w-0 flex-1">
@@ -242,17 +250,22 @@ export function SupportAgentConsole() {
                                                         className={`inline-flex items-center gap-1 rounded-full border px-2 py-[2px] text-[10px] font-semibold ${statusClass}`}
                                                     >
                                                         <span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
-                                                        <span className="capitalize">{status}</span>
-                                                    </span>
-                                                    {status === "open" && chat.unreadCount && chat.unreadCount > 0 && (
-                                                        <span className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-emerald-500 px-1.5 py-[1px] text-[10px] font-semibold text-white">
-                                                            {chat.unreadCount}
+                                                        <span className="capitalize">
+                                                            {status}
                                                         </span>
-                                                    )}
+                                                    </span>
+                                                    {status === "open" &&
+                                                        chat.unreadCount &&
+                                                        chat.unreadCount > 0 && (
+                                                            <span className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-emerald-500 px-1.5 py-[1px] text-[10px] font-semibold text-white">
+                                                                {chat.unreadCount}
+                                                            </span>
+                                                        )}
                                                 </div>
                                                 <div className="mt-1 flex items-center gap-2 text-[11px] text-neutral-500">
                                                     <span className="line-clamp-1">
-                                                        {chat.lastMessage || "No recent message"}
+                                                        {chat.lastMessage ||
+                                                            "No recent message"}
                                                     </span>
                                                 </div>
                                             </div>

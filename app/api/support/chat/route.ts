@@ -119,6 +119,10 @@ export async function GET(req: NextRequest) {
         }
 
         const chatData = chatSnap.data() || {};
+
+        const status =
+            (chatData.status as "open" | "pending" | "closed" | undefined) || "open";
+
         const mode = (chatData.mode as "ai" | "agent") || "ai";
 
         const msgsSnap = await chatRef
@@ -132,6 +136,7 @@ export async function GET(req: NextRequest) {
             return {
                 id: d.id,
                 sender: data.sender as Sender,
+                status,
                 text: data.text as string,
                 createdAt: (data.createdAt?.toDate?.() || new Date()).toISOString(),
             };
@@ -160,6 +165,21 @@ export async function POST(req: NextRequest) {
         const textRaw = typeof body.text === "string" ? body.text.trim() : "";
         const existingChatId =
             typeof body.chatId === "string" ? body.chatId.trim() : "";
+
+        const status =
+            (textRaw.status as "open" | "pending" | "closed" | undefined) || "open";
+
+        if (status === "closed") {
+            return NextResponse.json(
+                {
+                    ok: false,
+                    error:
+                        "This conversation has been closed. Please start a new chat if you need more help.",
+                    status: "closed",
+                },
+                { status: 409 },
+            );
+        }
 
         if (!textRaw) {
             return NextResponse.json(
@@ -334,6 +354,7 @@ export async function POST(req: NextRequest) {
             mode,
             messages,
             lastUserId: userMsgRef.id,
+            status,
             lastAiId: aiMsgId,
         });
     } catch (err: any) {

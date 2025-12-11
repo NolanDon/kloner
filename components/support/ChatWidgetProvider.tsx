@@ -17,6 +17,7 @@ type ApiSendResponse = {
     chatId: string;
     mode: ChatMode;
     messages: ChatMessage[];
+    status?: "open" | "pending" | "closed";
 };
 
 const STORAGE_KEY = "kloner_support_chat_id";
@@ -30,6 +31,7 @@ export default function ChatWidgetProvider() {
     const [loading, setLoading] = useState(false);
     const [escalating, setEscalating] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [chatClosed, setChatClosed] = useState(false);
     const bottomRef = useRef<HTMLDivElement | null>(null);
 
     // Restore chatId from localStorage
@@ -65,6 +67,7 @@ export default function ChatWidgetProvider() {
                 setChatId(null);
                 setMessages([]);
                 setMode("ai");
+                setChatClosed(false);
                 return;
             }
 
@@ -81,6 +84,7 @@ export default function ChatWidgetProvider() {
             setMessages(data.messages);
             setMode(data.mode);
             setChatId(data.chatId);
+            setChatClosed(data.status === "closed");
         } catch (err) {
             console.warn("[support] fetchExisting threw", err);
         }
@@ -108,6 +112,7 @@ export default function ChatWidgetProvider() {
                     setChatId(null);
                     setMessages([]);
                     setMode("ai");
+                    setChatClosed(false);
                     return;
                 }
 
@@ -117,6 +122,7 @@ export default function ChatWidgetProvider() {
                 setMessages(data.messages);
                 setMode(data.mode);
                 setChatId(data.chatId);
+                setChatClosed(data.status === "closed");
             } catch {
                 // ignore transient errors
             } finally {
@@ -134,11 +140,30 @@ export default function ChatWidgetProvider() {
         };
     }, [chatId, mode]);
 
+    function pushClosedSystemMessage() {
+        const sys: ChatMessage = {
+            id: `sys-closed-${Date.now()}`,
+            sender: "system",
+            text:
+                "This conversation has been closed. To start a new chat, click “Leave chat” above and then open Chat with us again.",
+            createdAt: new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, sys]);
+    }
+
     async function handleSend() {
         const text = input.trim();
         if (!text || loading) return;
 
         setError(null);
+
+        // If chat is already known closed, do not even hit the API.
+        if (chatClosed) {
+            setInput("");
+            pushClosedSystemMessage();
+            return;
+        }
+
         setLoading(true);
 
         const tempId = `local-${Date.now()}`;
@@ -161,6 +186,29 @@ export default function ChatWidgetProvider() {
                 }),
             });
 
+            // Special case: backend says chat is closed (409)
+            if (res.status === 409) {
+                const body = await res.json().catch(() => ({} as any));
+
+                setChatClosed(true);
+
+                // remove optimistic user message and show system notice instead
+                setMessages((prev) => {
+                    const withoutTemp = prev.filter((m) => m.id !== tempId);
+                    const sys: ChatMessage = {
+                        id: `sys-closed-${Date.now()}`,
+                        sender: "system",
+                        text:
+                            body?.error ||
+                            "This conversation has been closed. To start a new chat, click “Leave chat” above and then open Chat with us again.",
+                        createdAt: new Date().toISOString(),
+                    };
+                    return [...withoutTemp, sys];
+                });
+
+                return;
+            }
+
             if (!res.ok) {
                 const body = await res.json().catch(() => ({}));
                 throw new Error(body?.error || "Failed to send message");
@@ -170,6 +218,7 @@ export default function ChatWidgetProvider() {
             setChatId(data.chatId);
             setMessages(data.messages);
             setMode(data.mode);
+            setChatClosed(data.status === "closed" || false);
 
             if (typeof window !== "undefined") {
                 window.localStorage.setItem(STORAGE_KEY, data.chatId);
@@ -182,7 +231,7 @@ export default function ChatWidgetProvider() {
     }
 
     async function handleEscalate() {
-        if (!chatId || mode === "agent" || escalating) return;
+        if (!chatId || mode === "agent" || escalating || chatClosed) return;
         setEscalating(true);
         setError(null);
 
@@ -220,9 +269,9 @@ export default function ChatWidgetProvider() {
 
     async function handleLeaveChat() {
         if (!chatId) {
-            // just reset local state
             setMessages([]);
             setMode("ai");
+            setChatClosed(false);
             if (typeof window !== "undefined") {
                 window.localStorage.removeItem(STORAGE_KEY);
             }
@@ -239,15 +288,14 @@ export default function ChatWidgetProvider() {
             // ignore; leaving is best-effort
         }
 
-        // reset local widget: user has "left"
         setMessages([]);
         setMode("ai");
         setChatId(null);
+        setChatClosed(false);
         if (typeof window !== "undefined") {
             window.localStorage.removeItem(STORAGE_KEY);
         }
     }
-
 
     return (
         <>
@@ -268,6 +316,7 @@ export default function ChatWidgetProvider() {
                             </div>
                             <div className="text-sm font-medium text-neutral-900">
                                 {mode === "ai" ? "AI assistant" : "Live agent"}
+                                {chatClosed ? " · Closed" : ""}
                             </div>
                         </div>
                         {chatId && (
@@ -279,7 +328,7 @@ export default function ChatWidgetProvider() {
                                 Leave chat
                             </button>
                         )}
-                        {mode === "ai" && (
+                        {mode === "ai" && !chatClosed && (
                             <button
                                 type="button"
                                 onClick={handleEscalate}
@@ -311,10 +360,10 @@ export default function ChatWidgetProvider() {
                             >
                                 <div
                                     className={`max-w-[80%] rounded-2xl px-3 py-2 ${m.sender === "user"
-                                        ? "bg-accent text-white"
-                                        : m.sender === "system"
-                                            ? "bg-neutral-100 text-neutral-700 text-xs"
-                                            : "bg-neutral-100 text-neutral-900"
+                                            ? "bg-accent text-white"
+                                            : m.sender === "system"
+                                                ? "bg-neutral-100 text-neutral-700 text-xs"
+                                                : "bg-neutral-100 text-neutral-900"
                                         }`}
                                 >
                                     <p className="whitespace-pre-wrap break-words">{m.text}</p>
@@ -349,9 +398,11 @@ export default function ChatWidgetProvider() {
                         <input
                             className="flex-1 text-sm border border-neutral-200 rounded-xl px-3 py-2 outline-none focus:border-neutral-400"
                             placeholder={
-                                mode === "ai"
-                                    ? "Ask anything about Kloner"
-                                    : "Write to the team"
+                                chatClosed
+                                    ? "Chat closed. Click Leave chat to start a new one."
+                                    : mode === "ai"
+                                        ? "Ask anything about Kloner"
+                                        : "Write to the team"
                             }
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
