@@ -486,7 +486,7 @@ function RenderCardInner({
             {/* controller version badge – top left */}
             {(controllerVersion && isDev) && (
                 <span
-                    className="absolute left-2 top-1 z-30 inline-flex items-center gap-1 rounded-md bg-neutral-900/85 px-2 py-0.5 text-[10px] font-medium text-neutral-50 shadow-sm"
+                    className="absolute left-2 top-1 z-30 inline-flex items-center gap-1 rounded-full bg-neutral-900/85 px-2 py-0.5 text-[10px] text-neutral-50 shadow-sm"
                     title={`Controller version ${controllerVersion}`}
                 >
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
@@ -497,7 +497,7 @@ function RenderCardInner({
             {/* controller version badge – top left */}
             {(controllerVersion && isDev) && (
                 <span
-                    className="absolute left-2 bottom-1 z-30 inline-flex items-center gap-1 rounded-md bg-neutral-900/85 px-2 py-0.5 text-[10px] font-medium text-neutral-50 shadow-sm"
+                    className="absolute left-2 bottom-1 z-30 inline-flex items-center gap-1 rounded-full bg-neutral-900/85 px-2 py-0.5 text-[10px] text-neutral-50 shadow-sm"
                     title={`Model ${model}`}
                 >
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
@@ -507,7 +507,7 @@ function RenderCardInner({
 
             {isArchivedFlag && (
                 <span
-                    className="absolute left-2 top-7 z-30 mt-1 rounded-md bg-amber-200/90 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900 shadow"
+                    className="absolute left-2 top-7 z-30 mt-1 rounded-full bg-amber-200/90 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900 shadow"
                     title="Archived previews are hidden from the main dashboard"
                 >
                     Archived
@@ -565,7 +565,7 @@ function RenderCardInner({
                                     isDeploying ||
                                     isThisCardLockedForBuild
                                 }
-                                className={`group inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium ${isArchivedFlag
+                                className={`group inline-flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-xs ${isArchivedFlag
                                     ? "cursor-not-allowed bg-neutral-50 text-neutral-400"
                                     : "bg-accent text-white shadow-sm hover:bg-accent/90 disabled:opacity-60"
                                     }`}
@@ -609,7 +609,7 @@ function RenderCardInner({
                                     }}
                                     // allow click when timeout error, even if html is empty
                                     disabled={(disableOpen || isDeleting || !r.html) && !isFailed}
-                                    className="group inline-flex flex-1 items-center justify-center gap-2 rounded-md border border-neutral-700 px-3 py-1.5 font-medium text-neutral-600 shadow-sm disabled:opacity-60"
+                                    className="group inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-neutral-700 px-3 py-1.5 text-neutral-600 shadow-sm disabled:opacity-60"
                                     title={
                                         isArchivedFlag
                                             ? "Unarchive to customize this preview"
@@ -673,7 +673,7 @@ function RenderCardInner({
                                 <button
                                     onClick={() => router.push(`/site/${r.siteConfigId}`)}
                                     disabled={isDeleting}
-                                    className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white/70 px-2.5 py-1 text-[11px] text-neutral-800 shadow-sm hover:border-neutral-400 disabled:opacity-60"
+                                    className="inline-flex items-center gap-1.5 rounded-full border border-neutral-300 bg-white/70 px-2.5 py-1 text-[11px] text-neutral-800 shadow-sm hover:border-neutral-400 disabled:opacity-60"
                                     title="Open generated layout site"
                                 >
                                     <span>Open site</span>
@@ -698,7 +698,7 @@ function RenderCardInner({
                                                     isQueued ||
                                                     isFailed
                                                 }
-                                                className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white/60 px-2.5 py-1 text-[11px] text-neutral-600 hover:border-neutral-400 disabled:opacity-50"
+                                                className="inline-flex items-center gap-1.5 rounded-full border border-neutral-300 bg-white/60 px-2.5 py-1 text-[11px] text-neutral-600 hover:border-neutral-400 disabled:opacity-50"
                                                 title={
                                                     alreadyShared
                                                         ? "This build is already shared to the community gallery"
@@ -724,7 +724,7 @@ function RenderCardInner({
                                                     isQueued ||
                                                     isFailed
                                                 }
-                                                className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] shadow-sm
+                                                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] shadow-sm
         disabled:opacity-50 disabled:cursor-not-allowed
         ${isArchivedFlag
                                                         ? "border-amber-500 bg-amber-50 text-amber-900 hover:bg-amber-100"
@@ -749,7 +749,7 @@ function RenderCardInner({
                         {onShareWithCommunity && (
                             <div className="mt-1 w-full">
                                 {shareOpen && !alreadyShared && (
-                                    <div className="mt-1 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-[10px] text-neutral-700">
+                                    <div className="mt-1 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-2 text-[10px] text-neutral-700">
                                         <p className="mb-2">
                                             Publishing to Kloner community. Name your
                                             project and optionally allow other users to
@@ -757,7 +757,7 @@ function RenderCardInner({
                                         </p>
 
                                         <div className="mb-2">
-                                            <label className="mb-1 block text-[10px] font-medium text-neutral-700">
+                                            <label className="mb-1 block text-[10px] text-neutral-700">
                                                 Project name
                                             </label>
 
@@ -794,7 +794,7 @@ function RenderCardInner({
                                                     setShareProjectName(v);
                                                 }}
                                                 placeholder="e.g. cookie gift landing, portfolio v2"
-                                                className={`w-full rounded-md border px-2 py-1 text-[10px] bg-white text-neutral-800 placeholder:text-neutral-400 focus:outline-none focus:ring-1 ${shareError
+                                                className={`w-full rounded-full border px-2 py-1 text-[10px] bg-white text-neutral-800 placeholder:text-neutral-400 focus:outline-none focus:ring-1 ${shareError
                                                     ? "border-red-500 focus:ring-red-500"
                                                     : "border-neutral-300 focus:ring-accent"
                                                     }`}
@@ -825,7 +825,7 @@ function RenderCardInner({
                                             <button
                                                 type="button"
                                                 onClick={() => setShareOpen(false)}
-                                                className="rounded-md px-2 py-1 text-[10px] text-neutral-500 hover:bg-neutral-100"
+                                                className="rounded-full px-2 py-1 text-[10px] text-neutral-500 hover:bg-neutral-100"
                                             >
                                                 Cancel
                                             </button>
@@ -833,7 +833,7 @@ function RenderCardInner({
                                                 type="button"
                                                 onClick={handleShareClick}
                                                 disabled={shareBusy}
-                                                className="inline-flex items-center gap-1 rounded-md bg-accent px-3 py-1 text-[10px] font-medium text-white hover:opacity-80 disabled:opacity-60"
+                                                className="inline-flex items-center gap-1 rounded-full bg-accent px-3 py-1 text-[10px] text-white hover:opacity-80 disabled:opacity-60"
                                             >
                                                 {shareBusy ? "Sharing…" : "Share build"}
                                             </button>
@@ -3592,7 +3592,7 @@ export default function PreviewPage(): JSX.Element {
                             <div className="relative group">
                                 <button
                                     type="button"
-                                    className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-50 hover:border-neutral-300 transition-colors"
+                                    className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-xs text-neutral-800 hover:bg-neutral-50 hover:border-neutral-300 transition-colors"
                                 >
                                     Earn free credits
                                 </button>
@@ -3608,7 +3608,7 @@ export default function PreviewPage(): JSX.Element {
                 {/* Step 1: URL selection */}
                 <section className="mb-8 rounded-3xl border border-neutral-200 bg-white/70 px-4 py-4 sm:px-5 sm:py-5 shadow-sm">
                     <div className="flex items-center justify-between gap-3 flex-wrap">
-                        <div className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/80 px-3 py-1.5 text-xs sm:text-sm font-medium text-neutral-700 shadow-sm">
+                        <div className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/80 px-3 py-1.5 text-xs sm:text-sm text-neutral-700 shadow-sm">
                             <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-white shadow-sm">
                                 1
                             </span>
@@ -3727,7 +3727,7 @@ export default function PreviewPage(): JSX.Element {
                 <section className="mt-10 rounded-3xl border border-neutral-200 bg-white/70 px-4 py-5 sm:px-5 sm:py-6 shadow-sm">
                     <div className="mb-3 flex items-center justify-between">
                         <div className="space-y-1">
-                            <div className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/80 px-3 py-1.5 text-xs sm:text-sm font-medium text-neutral-700 shadow-sm">
+                            <div className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/80 px-3 py-1.5 text-xs sm:text-sm text-neutral-700 shadow-sm">
                                 <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-white shadow-sm">
                                     2
                                 </span>
@@ -3821,7 +3821,7 @@ export default function PreviewPage(): JSX.Element {
 
                                         <button
                                             type="button"
-                                            className="ml-1 inline-flex items-center rounded-md border border-neutral-400 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm"
+                                            className="ml-1 inline-flex items-center rounded-full border border-neutral-400 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm"
                                             disabled
                                         >
                                             Deploy
@@ -4002,7 +4002,7 @@ export default function PreviewPage(): JSX.Element {
                                                     <Rocket className="h-4 w-4 text-white" />
                                                 </div>
                                                 <div>
-                                                    <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-400">
+                                                    <p className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
                                                         First deploy wizard
                                                     </p>
                                                     <p className="text-sm font-semibold text-neutral-900">
@@ -4010,7 +4010,7 @@ export default function PreviewPage(): JSX.Element {
                                                     </p>
                                                 </div>
                                             </div>
-                                            <span className="mt-6 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-[11px] font-medium text-neutral-600">
+                                            <span className="mt-6 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-[11px] text-neutral-600">
                                                 Step {deployWizardStep === 5 ? "2" : deployWizardStep} of 3
                                             </span>
                                         </div>
@@ -4030,7 +4030,7 @@ export default function PreviewPage(): JSX.Element {
                                                     </p>
 
                                                     <div className="space-y-1">
-                                                        <label className="text-[11px] font-medium text-neutral-700">
+                                                        <label className="text-[11px] text-neutral-700">
                                                             Project name
                                                         </label>
 
@@ -4073,7 +4073,7 @@ export default function PreviewPage(): JSX.Element {
                                                                     }
                                                                 }}
                                                                 placeholder="e.g. kloner-landing, client-site-01"
-                                                                className={`mt-0.5 w-full rounded-lg border px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 ${deployWizardError
+                                                                className={`mt-0.5 w-full rounded-full border px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 ${deployWizardError
                                                                     ? "border-red-500 focus:ring-red-500"
                                                                     : "border-neutral-300 focus:ring-[rgba(245,95,42,0.6)] focus:border-transparent"
                                                                     }`}
@@ -4096,7 +4096,7 @@ export default function PreviewPage(): JSX.Element {
                                                         <button
                                                             type="button"
                                                             onClick={closeDeployWizard}
-                                                            className="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-semibold text-neutral-600 hover:bg-neutral-50"
+                                                            className="rounded-full border border-neutral-200 px-3 py-1.5 text-sm font-semibold text-neutral-600 hover:bg-neutral-50"
                                                         >
                                                             Close
                                                         </button>
@@ -4117,7 +4117,7 @@ export default function PreviewPage(): JSX.Element {
                                                                 !!deployWizardError ||
                                                                 deployWizardBusy
                                                             }
-                                                            className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                                                            className="rounded-full px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60 disabled:cursor-not-allowed"
                                                             style={{ backgroundColor: ACCENT }}
                                                         >
                                                             Continue
@@ -4142,7 +4142,7 @@ export default function PreviewPage(): JSX.Element {
                                                                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
                                                             </div>
                                                             <div>
-                                                                <p className="font-medium text-neutral-900">
+                                                                <p className="text-neutral-900">
                                                                     Vercel successfully connected
                                                                 </p>
                                                                 <p className="text-[11px] text-emerald-700">
@@ -4165,7 +4165,7 @@ export default function PreviewPage(): JSX.Element {
                                                                 type="button"
                                                                 onClick={closeDeployWizard}
                                                                 disabled={deployWizardBusy}
-                                                                className="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-semibold text-neutral-600 hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                                className="rounded-full border border-neutral-200 px-3 py-1.5 text-sm font-semibold text-neutral-600 hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
                                                             >
                                                                 Close
                                                             </button>
@@ -4173,7 +4173,7 @@ export default function PreviewPage(): JSX.Element {
                                                                 type="button"
                                                                 onClick={handleConnectVercelFromWizard}
                                                                 disabled={deployWizardBusy}
-                                                                className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                                                                className="rounded-full px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed"
                                                                 style={{ backgroundColor: ACCENT }}
                                                             >
                                                                 Connect Vercel
@@ -4207,7 +4207,7 @@ export default function PreviewPage(): JSX.Element {
                                                             )}
                                                         </div>
                                                         <div>
-                                                            <p className="font-medium text-neutral-900">
+                                                            <p className="text-neutral-900">
                                                                 {deployWizardError
                                                                     ? "Deploy failed"
                                                                     : deployWizardBusy
@@ -4235,7 +4235,7 @@ export default function PreviewPage(): JSX.Element {
                                                         <button
                                                             type="button"
                                                             onClick={closeDeployWizard}
-                                                            className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-600 hover:bg-neutral-50"
+                                                            className="rounded-full border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-600 hover:bg-neutral-50"
                                                         >
                                                             Close
                                                         </button>
@@ -4247,7 +4247,7 @@ export default function PreviewPage(): JSX.Element {
                                                                     href={deployWizardLiveUrl}
                                                                     target="_blank"
                                                                     rel="noreferrer"
-                                                                    className="group flex flex-inline items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-semibold text-white"
+                                                                    className="group flex flex-inline items-center gap-1 rounded-full px-3 py-1.5 text-sm font-semibold text-white"
                                                                     style={{ backgroundColor: ACCENT }}
                                                                 >
                                                                     <span>View Site</span>
@@ -4283,7 +4283,7 @@ export default function PreviewPage(): JSX.Element {
                                                                 <MessageCircleWarning className="text-white h-3.5 w-3.5" />
                                                             </div>
                                                             <div className="space-y-1">
-                                                                <p className="mb-4 text-md font-medium text-neutral-900">
+                                                                <p className="mb-4 text-md text-neutral-900">
                                                                     What you get on Pro
                                                                 </p>
                                                                 <ul className="space-y-1.5 text-[14px] text-neutral-600">
@@ -4370,7 +4370,7 @@ export default function PreviewPage(): JSX.Element {
                                                             )}
                                                         </div>
                                                         <div>
-                                                            <p className="font-medium text-neutral-900">
+                                                            <p className="text-neutral-900">
                                                                 {deployWizardBusy
                                                                     ? "Checking your plan…"
                                                                     : deployWizardError
@@ -4392,7 +4392,7 @@ export default function PreviewPage(): JSX.Element {
                                                         <button
                                                             type="button"
                                                             onClick={closeDeployWizard}
-                                                            className="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-semibold text-neutral-600 hover:bg-neutral-50"
+                                                            className="rounded-full border border-neutral-200 px-3 py-1.5 text-sm font-semibold text-neutral-600 hover:bg-neutral-50"
                                                         >
                                                             Close
                                                         </button>
@@ -4558,13 +4558,13 @@ export default function PreviewPage(): JSX.Element {
                                                     <Crown className="h-4 w-4 text-amber-400" />
                                                 </div>
                                                 <div>
-                                                    <p className="mb-1 text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-400">
+                                                    <p className="mb-1 text-[11px] uppercase tracking-[0.16em] text-neutral-400">
                                                         You just customized a live preview
                                                     </p>
                                                 </div>
                                             </div>
 
-                                            <span className="whitespace-nowrap rounded-full border border-white/10 bg-neutral-900/80 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-400">
+                                            <span className="whitespace-nowrap rounded-full border border-white/10 bg-neutral-900/80 px-3 py-1 text-[10px] uppercase tracking-[0.16em] text-neutral-400">
                                                 Pro upgrade
                                             </span>
                                         </div>
@@ -4580,7 +4580,7 @@ export default function PreviewPage(): JSX.Element {
                                                     style={{ backgroundColor: ACCENT }}
                                                 />
                                                 <div>
-                                                    <p className="font-medium text-white">
+                                                    <p className="text-white">
                                                         Publish in minutes
                                                     </p>
                                                     <p className="text-[11px] text-neutral-400">
@@ -4596,7 +4596,7 @@ export default function PreviewPage(): JSX.Element {
                                                     style={{ backgroundColor: ACCENT }}
                                                 />
                                                 <div>
-                                                    <p className="font-medium text-white">
+                                                    <p className="text-white">
                                                         Your domain, your branding
                                                     </p>
                                                     <p className="text-[11px] text-neutral-400">
@@ -4612,7 +4612,7 @@ export default function PreviewPage(): JSX.Element {
                                                     style={{ backgroundColor: ACCENT }}
                                                 />
                                                 <div>
-                                                    <p className="font-medium text-white">
+                                                    <p className="text-white">
                                                         Keep editing visually
                                                     </p>
                                                     <p className="text-[11px] text-neutral-400">
@@ -4625,7 +4625,7 @@ export default function PreviewPage(): JSX.Element {
 
                                         {/* What happens next strip */}
                                         <div className="mb-5 rounded-2xl border border-white/10 bg-neutral-900/80 px-3 py-2.5 text-[14px] text-neutral-300">
-                                            <p className="mb-1 font-medium text-neutral-100">
+                                            <p className="mb-1 text-neutral-100">
                                                 What happens when you continue
                                             </p>
                                             <p className="text-[12px] text-neutral-200">
@@ -4653,7 +4653,7 @@ export default function PreviewPage(): JSX.Element {
                                                 onClick={() =>
                                                     setShowUpgradeAfterCustomize(false)
                                                 }
-                                                className="flex w-full items-center justify-center rounded-xl px-4 py-2 text-[11px] font-medium text-neutral-400 hover:bg-neutral-900/70 hover:text-neutral-200 transition"
+                                                className="flex w-full items-center justify-center rounded-xl px-4 py-2 text-[11px] text-neutral-400 hover:bg-neutral-900/70 hover:text-neutral-200 transition"
                                             >
                                                 Keep editing for now
                                             </button>
