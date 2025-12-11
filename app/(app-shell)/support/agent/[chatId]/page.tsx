@@ -45,9 +45,17 @@ type AgentSession = {
 };
 
 export default function AgentChatPage() {
+
     const params = useParams();
     const router = useRouter();
     const chatId = params?.chatId as string | undefined;
+
+    useEffect(() => {
+        if (!chatId) return;
+        const ref = doc(db, "support_inbox", chatId);
+        // fire-and-forget; ignore errors
+        updateDoc(ref, { unreadCount: 0 }).catch(() => { });
+    }, [chatId]);
 
     const [agent, setAgent] = useState<AgentSession | null>(null);
     const [loadingAuth, setLoadingAuth] = useState(true);
@@ -216,8 +224,9 @@ export default function AgentChatPage() {
         }
     }
 
-    async function handleSend(e: React.FormEvent) {
-        e.preventDefault();
+    const handleSend = async (e?: React.FormEvent<HTMLFormElement>) => {
+        e?.preventDefault();
+        if (sending || !input.trim()) return;
         if (!agent || !chatId) return;
         const trimmed = input.trim();
         if (!trimmed) return;
@@ -344,9 +353,24 @@ export default function AgentChatPage() {
 
     const isAssignedToMe = meta.assignedTo === agent.uid;
 
+    async function handleCloseAsAgent() {
+        try {
+            await fetch("/api/support/close", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ chatId, by: "agent" }),
+            });
+        } catch {
+            // ignore
+        }
+        router.push("/support/agent");
+    }
+
+
     return (
         <div className="flex h-screen w-full bg-neutral-50">
             <div className="m-4 flex h-[calc(100%-32px)] w-full max-w-6xl overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
+
                 {/* Left strip: back + meta */}
                 <div className="flex w-64 flex-col border-r border-neutral-200 bg-neutral-50/60">
                     <div className="flex items-center gap-2 border-b border-neutral-200 px-3 py-3">
@@ -360,6 +384,13 @@ export default function AgentChatPage() {
                     </div>
 
                     <div className="flex flex-1 flex-col gap-3 px-3 py-4 text-xs text-neutral-700">
+                        <button
+                            type="button"
+                            onClick={handleCloseAsAgent}
+                            className="rounded-full border bg-accent text-white border-neutral-300 px-3 py-1 text-xs font-semibold hover:brightness-80"
+                        >
+                            Close chat
+                        </button>
                         <div>
                             <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
                                 Conversation
@@ -500,7 +531,6 @@ export default function AgentChatPage() {
                             <div ref={bottomRef} />
                         </div>
                     </div>
-
                     <form
                         onSubmit={handleSend}
                         className="border-t border-neutral-200 bg-white px-4 py-3"
@@ -512,6 +542,14 @@ export default function AgentChatPage() {
                                 rows={2}
                                 placeholder="Reply as agent…"
                                 className="flex-1 resize-none rounded-xl border border-neutral-300 bg-neutral-50 px-3 py-2 text-sm text-neutral-900 outline-none focus:border-indigo-400 focus:bg-white focus:ring-1 focus:ring-indigo-300"
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter" && !e.shiftKey) {
+                                        e.preventDefault();
+                                        if (!sending && input.trim()) {
+                                            handleSend();
+                                        }
+                                    }
+                                }}
                             />
                             <button
                                 type="submit"

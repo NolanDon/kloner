@@ -167,7 +167,7 @@ export function SupportAgentConsole() {
                             onClick={() => setFilter("all")}
                             className={
                                 filter === "all"
-                                    ? "rounded-full bg-accent px-2 py-0.5 text-[11px] font-semibold text-white"
+                                    ? "rounded-full bg-neutral-900 px-2 py-0.5 text-[11px] font-semibold text-white"
                                     : "rounded-full px-2 py-0.5 text-[11px] text-neutral-700 hover:bg-white"
                             }
                         >
@@ -178,7 +178,7 @@ export function SupportAgentConsole() {
                             onClick={() => setFilter("open")}
                             className={
                                 filter === "open"
-                                    ? "rounded-full bg-accent px-2 py-0.5 text-[11px] font-semibold text-white"
+                                    ? "rounded-full bg-neutral-900 px-2 py-0.5 text-[11px] font-semibold text-white"
                                     : "rounded-full px-2 py-0.5 text-[11px] text-neutral-700 hover:bg-white"
                             }
                         >
@@ -189,7 +189,7 @@ export function SupportAgentConsole() {
                             onClick={() => setFilter("pending")}
                             className={
                                 filter === "pending"
-                                    ? "rounded-full bg-accent px-2 py-0.5 text-[11px] font-semibold text-white"
+                                    ? "rounded-full bg-neutral-900 px-2 py-0.5 text-[11px] font-semibold text-white"
                                     : "rounded-full px-2 py-0.5 text-[11px] text-neutral-700 hover:bg-white"
                             }
                         >
@@ -200,7 +200,7 @@ export function SupportAgentConsole() {
                             onClick={() => setFilter("closed")}
                             className={
                                 filter === "closed"
-                                    ? "rounded-full bg-accent px-2 py-0.5 text-[11px] font-semibold text-white"
+                                    ? "rounded-full bg-neutral-900 px-2 py-0.5 text-[11px] font-semibold text-white"
                                     : "rounded-full px-2 py-0.5 text-[11px] text-neutral-700 hover:bg-white"
                             }
                         >
@@ -244,7 +244,7 @@ export function SupportAgentConsole() {
                                                         <span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
                                                         <span className="capitalize">{status}</span>
                                                     </span>
-                                                    {chat.unreadCount && chat.unreadCount > 0 && (
+                                                    {status === "open" && chat.unreadCount && chat.unreadCount > 0 && (
                                                         <span className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-emerald-500 px-1.5 py-[1px] text-[10px] font-semibold text-white">
                                                             {chat.unreadCount}
                                                         </span>

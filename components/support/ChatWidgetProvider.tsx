@@ -218,6 +218,37 @@ export default function ChatWidgetProvider() {
         }
     }
 
+    async function handleLeaveChat() {
+        if (!chatId) {
+            // just reset local state
+            setMessages([]);
+            setMode("ai");
+            if (typeof window !== "undefined") {
+                window.localStorage.removeItem(STORAGE_KEY);
+            }
+            return;
+        }
+
+        try {
+            await fetch("/api/support/close", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ chatId, by: "user" }),
+            });
+        } catch {
+            // ignore; leaving is best-effort
+        }
+
+        // reset local widget: user has "left"
+        setMessages([]);
+        setMode("ai");
+        setChatId(null);
+        if (typeof window !== "undefined") {
+            window.localStorage.removeItem(STORAGE_KEY);
+        }
+    }
+
+
     return (
         <>
             <button
@@ -239,6 +270,15 @@ export default function ChatWidgetProvider() {
                                 {mode === "ai" ? "AI assistant" : "Live agent"}
                             </div>
                         </div>
+                        {chatId && (
+                            <button
+                                type="button"
+                                onClick={handleLeaveChat}
+                                className="text-[11px] font-medium text-neutral-400 hover:text-neutral-600"
+                            >
+                                Leave chat
+                            </button>
+                        )}
                         {mode === "ai" && (
                             <button
                                 type="button"
@@ -271,10 +311,10 @@ export default function ChatWidgetProvider() {
                             >
                                 <div
                                     className={`max-w-[80%] rounded-2xl px-3 py-2 ${m.sender === "user"
-                                            ? "bg-accent text-white"
-                                            : m.sender === "system"
-                                                ? "bg-neutral-100 text-neutral-700 text-xs"
-                                                : "bg-neutral-100 text-neutral-900"
+                                        ? "bg-accent text-white"
+                                        : m.sender === "system"
+                                            ? "bg-neutral-100 text-neutral-700 text-xs"
+                                            : "bg-neutral-100 text-neutral-900"
                                         }`}
                                 >
                                     <p className="whitespace-pre-wrap break-words">{m.text}</p>
