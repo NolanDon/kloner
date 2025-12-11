@@ -51,7 +51,7 @@ export function MiniToolbar({
 }: MiniToolbarProps) {
     const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
     const [visible, setVisible] = useState(true);
-    const [aiOpen, setAiOpen] = useState(false);
+    const [aiOpen, setAiOpen] = useState(true);
     const [prompt, setPrompt] = useState("");
     const [imageFile, setImageFile] = useState<File | null>(null); // still allowed for UX, not sent to backend
 
@@ -141,12 +141,16 @@ export function MiniToolbar({
 
     if (!hasSelection || !pos) return null;
 
+    const scaleFactor = 0.9;
+
     const containerStyle: CSSProperties = {
         position: "absolute",
-        top: pos.top,
+        top: pos.top + 4,
         left: pos.left,
         zIndex: 160,
         pointerEvents: visible ? "auto" : "none",
+        transform: `translate3d(0,0,0) scale(${scaleFactor})`,
+        transformOrigin: "top left",
     };
 
     const disabled = aiEditing;
@@ -191,46 +195,55 @@ export function MiniToolbar({
     return (
         <div
             style={containerStyle}
-            className={`flex flex-col gap-2 transition-opacity duration-150 ${visible ? "opacity-100" : "opacity-0"
+            className={`flex flex-col gap-1 transition-opacity duration-150 ${visible ? "opacity-100" : "opacity-0"
                 }`}
         >
             {aiOpen && !disabled && (
-                <div className="w-[260px] rounded-2xl border border-neutral-200 bg-white shadow-2xl p-3 text-[12px] text-neutral-800">
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                <div
+                    className={`rounded-xl border border-neutral-200 bg-white shadow-2xl p-2 text-[11px] text-neutral-800 w-[220px]"
+                        }`}
+                >
+                    <div className="mb-1.5 flex items-center justify-between gap-2">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
                             AI edit block
                         </div>
                         <button
                             type="button"
                             onClick={() => setAiOpen(false)}
-                            className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-100"
+                            className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-100"
                             title="Close"
                         >
-                            <X className="h-3.5 w-3.5" />
+                            <X className="h-3 w-3" />
                         </button>
                     </div>
 
-                    <p className="mb-2 text-[11px] text-neutral-600">
+                    <p className="mb-2 text-[10px] text-neutral-600">
                         Describe how this section should change. Small edits work best.
                     </p>
 
                     <textarea
-                        rows={3}
+                        rows={2}
                         value={prompt}
                         onChange={(e) => setPrompt(e.target.value)}
-                        placeholder="E.g. soften the headline, keep layout, make copy more benefit-focused…"
-                        className="mb-2 w-full rounded-md border border-neutral-300 px-2 py-1.5 text-[12px] outline-none focus:ring-1 focus:ring-accent/70"
+                        placeholder="Softly adjust copy, keep layout…"
+                        className="mb-1.5 w-full rounded-md border border-neutral-300 px-1.5 py-1 text-[11px] outline-none focus:ring-1 focus:ring-accent/70"
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault();
+                                handleAiSubmit();
+                            }
+                        }}
                     />
 
-                    <label className="mb-2 inline-flex w-full cursor-pointer items-center justify-between gap-2 rounded-md border border-dashed border-neutral-300 bg-neutral-50 px-2 py-1.5 text-[11px] text-neutral-600 hover:bg-neutral-100">
-                        <span className="inline-flex items-center gap-1.5">
-                            <ImageIcon className="h-3.5 w-3.5" />
+                    <label className="mb-1.5 inline-flex w-full cursor-pointer items-center justify-between gap-1.5 rounded-md border border-dashed border-neutral-300 bg-neutral-50 px-1.5 py-1 text-[10px] text-neutral-600 hover:bg-neutral-100">
+                        <span className="inline-flex items-center gap-1">
+                            <ImageIcon className="h-3 w-3" />
                             {imageFile ? (
-                                <span className="truncate max-w-[150px]">
+                                <span className="truncate max-w-[130px]">
                                     {imageFile.name}
                                 </span>
                             ) : (
-                                <span>Attach reference image (optional)</span>
+                                <span>Ref image (optional)</span>
                             )}
                         </span>
                         <input
@@ -248,19 +261,21 @@ export function MiniToolbar({
                         type="button"
                         onClick={handleAiSubmit}
                         disabled={!prompt.trim() || disabled}
-                        className="mt-1 inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm hover:brightness-105 disabled:opacity-60 disabled:cursor-not-allowed"
+                        className="mt-0.5 inline-flex w-full items-center justify-center gap-1 rounded-md bg-accent px-2 py-1 text-[11px] font-semibold text-white shadow-sm hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                        <Sparkles className="h-3.5 w-3.5" />
-                        <span>Apply AI edit</span>
+                        <Sparkles className="h-3 w-3" />
+                        <span>Apply</span>
                     </button>
                 </div>
             )}
-            <div className="inline-flex items-center gap-1 text-[11px] font-semibold text-white shadow-lg px-1.5 py-1">
+
+            {/* EXTREMELY COMPACT MAIN TOOLBAR */}
+            <div className="inline-flex items-center gap-0.5 rounded-full bg-neutral-900/95 px-1 py-0.5 text-[10px] font-semibold text-white shadow-xl">
                 <button
                     type="button"
                     onClick={handleMoveUp}
                     disabled={disabled}
-                    className={`bg-accent inline-flex h-6 min-w-[24px] items-center justify-center px-2 py-2 bg-accent/90 hover:bg-accent/80 ${disabled ? "opacity-60 cursor-not-allowed" : ""
+                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent/90 hover:bg-accent ${disabled ? "cursor-not-allowed opacity-50" : ""
                         }`}
                     title="Move section up"
                 >
@@ -270,7 +285,7 @@ export function MiniToolbar({
                     type="button"
                     onClick={handleMoveDown}
                     disabled={disabled}
-                    className={`bg-accent inline-flex h-6 min-w-[24px] items-center justify-center px-2 py-2 bg-accent/90 hover:bg-accent/80 ${disabled ? "opacity-60 cursor-not-allowed" : ""
+                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent/90 hover:bg-accent ${disabled ? "cursor-not-allowed opacity-50" : ""
                         }`}
                     title="Move section down"
                 >
@@ -280,7 +295,7 @@ export function MiniToolbar({
                     type="button"
                     onClick={handleInsertBelowSimple}
                     disabled={disabled}
-                    className={`bg-accent inline-flex h-6 min-w-[24px] items-center justify-center px-2 py-2 bg-emerald-500 hover:bg-emerald-400 text-[11px] ${disabled ? "opacity-60 cursor-not-allowed" : ""
+                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full  hover:bg-accent ${disabled ? "cursor-not-allowed opacity-50" : ""
                         }`}
                     title="Duplicate this block"
                 >
@@ -293,15 +308,11 @@ export function MiniToolbar({
                         setAiOpen((v) => !v);
                     }}
                     disabled={disabled}
-                    className={`inline-flex h-6 min-w-[30px] items-center justify-center px-2 py-2 text-[10px] font-semibold gap-1 bg-accent text-white border border-transparent
-                        ${disabled
-                            ? "opacity-60 cursor-not-allowed hover:border-transparent"
-                            : ""
+                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent/95 hover:bg-accent ${disabled ? "cursor-not-allowed opacity-50" : ""
                         }`}
-                    title="Use AI to edit this block"
+                    title="AI edit this block"
                 >
-                    <Sparkles className="h-3.5 w-3.5 text-accent" />
-                    <span className="text-accent">AI</span>
+                    <Sparkles className="h-3.5 w-3.5" />
                 </button>
             </div>
         </div>

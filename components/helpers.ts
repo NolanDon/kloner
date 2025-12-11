@@ -397,3 +397,8 @@ export async function fetchRenderForDeployment(opts: {
         "No reference render found for this deployment. Open this site in the Preview Builder and export at least one render."
     );
 }
+
+export const IS_MOBILE =
+    typeof window !== "undefined" &&
+    /Android|iPhone|iPod|Mobile/i.test(navigator.userAgent) &&
+    !/iPad|Tablet/i.test(navigator.userAgent);

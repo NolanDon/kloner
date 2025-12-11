@@ -277,7 +277,7 @@ async function materializeAiImages(
             buf = await compressImageBuffer(buf);
 
             const now = Date.now();
-            const filePath = `kloner_ai_images/${opts.uid}/${opts.renderId}/${now}_slot_${slot.index}.jpg`;
+            const filePath = `kloner_ai_images/${opts.renderId}/${now}_slot_${slot.index}.jpg`;
             const file = bucket.file(filePath);
 
             await file.save(buf, {

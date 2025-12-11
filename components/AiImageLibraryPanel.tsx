@@ -42,7 +42,9 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId }: Props) {
 
         try {
             const paths = [
-                `kloner_ai_images/${uid}/${rid}`,
+                // NEW STRUCTURE: images are stored under kloner_ai_images/{renderId}
+                `kloner_ai_images/${rid}`,
+                // keep home images per user
                 `kloner_ai_home/${uid}`,
             ];
 
@@ -253,7 +255,7 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId }: Props) {
 
                                 {/* on-theme actions overlay */}
                                 <div className="pointer-events-none absolute inset-x-1 bottom-1 flex justify-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                                    <button
+                                    <a
                                         type="button"
                                         className="pointer-events-auto flex-1 rounded-full border border-white/80 bg-white/90 px-2 py-1 text-[10px] font-medium text-neutral-800 shadow-sm hover:bg-white"
                                         onClick={(e) => {
@@ -261,9 +263,9 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId }: Props) {
                                             handleInsert(item);
                                         }}
                                     >
-                                    Insert image
-                                    </button>
-                                    <button
+                                        Insert image
+                                    </a>
+                                    <a
                                         type="button"
                                         className="pointer-events-auto flex-1 rounded-full bg-[#f55f2a] px-2 py-1 text-[10px] font-semibold text-white shadow-sm shadow-[#f55f2a]/40 hover:bg-[#e55523]"
                                         onClick={(e) => {
@@ -272,7 +274,7 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId }: Props) {
                                         }}
                                     >
                                         Background
-                                    </button>
+                                    </a>
                                 </div>
                             </div>
                             <div className="truncate px-2 py-1.5 text-[10px] text-neutral-600">

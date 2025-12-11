@@ -233,10 +233,6 @@ function RenderCardInner({
         (r.status === "error" || r.status === "failed") &&
         (reason === "timeout_or_worker_shutdown" || reason === "timeout");
 
-    console.log("status ", status)
-    console.log("reason ", reason)
-    console.log("isFailedL ", isFailed)
-
     const isDeployed = !!r.lastExportedAt;
     const isArchived = !!r.archived;
 
@@ -2348,9 +2344,38 @@ export default function PreviewPage(): JSX.Element {
                     refSrc = byKey?.url || shots[0]?.url || "";
                 }
 
-                const html = data.html || "";
+                const rawHtml = data.html || "";
 
-                setEditorHtml(html);
+                // Strip everything before <!DOCTYPE html>
+                let cleaned = rawHtml;
+                const doctypeIndex = cleaned.indexOf("<!DOCTYPE html>");
+                if (doctypeIndex !== -1) {
+                    cleaned = cleaned.slice(doctypeIndex);
+                }
+
+                // Strip everything after the final </html>
+                const lastHtmlClose = cleaned.lastIndexOf("</html>");
+                if (lastHtmlClose !== -1) {
+                    cleaned = cleaned.slice(0, lastHtmlClose + "</html>".length);
+                }
+
+                // Fallback: don't replace with empty document
+                if (!cleaned.trim()) cleaned = rawHtml;
+
+                // Persist sanitized document back to Firestore
+                if (cleaned.trim() !== rawHtml.trim()) {
+                    try {
+                        await updateDoc(dref, {
+                            html: cleaned,
+                            updatedAt: serverTimestamp(),
+                        });
+                        console.log("Sanitized HTML persisted for render:", renderId);
+                    } catch (err) {
+                        console.warn("Failed to persist sanitized HTML", err);
+                    }
+                }
+
+                setEditorHtml(cleaned);
                 setEditorRefImg(refSrc);
                 setActiveRenderId(renderId);
                 setActiveSeoMetaByPage(seoMetaByPage);

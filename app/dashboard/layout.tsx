@@ -178,13 +178,13 @@ function AccountBlock() {
         <div className="mt-auto p-4 border-t border-neutral-200">
             <div className="flex items-center gap-3">
                 <div
-                    className="h-10 w-10 rounded-full grid place-items-center font-semibold text-white"
+                    className="h-10 w-10 rounded-full grid place-items-center text-white"
                     style={{ backgroundColor: ACCENT }}
                 >
                     {initials}
                 </div>
                 <div className="min-w-0">
-                    <div className="text-sm font-medium text-neutral-800 truncate">
+                    <div className="text-sm text-neutral-800 truncate">
                         {user?.displayName || user?.email || "Signed in"}
                     </div>
                     <div className="text-xs text-neutral-500 truncate">Account</div>

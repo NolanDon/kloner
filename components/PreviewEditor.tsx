@@ -657,7 +657,7 @@ import { MetaSettings, UploadedAsset } from "./MetaSettings";
 import { FloatingBlockToolbar } from "@/src/lib/floatingToolbar";
 import { AiImageLibraryPanel } from "./AiImageLibraryPanel";
 import MiniToolbar from "@/src/lib/miniToolbar";
-import { sanitizeImageName } from "./helpers";
+import { IS_MOBILE, sanitizeImageName } from "./helpers";
 
 const MAX_HISTORY_SNAPSHOTS = 40;
 
@@ -1962,9 +1962,9 @@ export default function PreviewEditor({
     }, [previewHtml, activePageId, allPages]);
 
     const [uiScale, setUiScale] = useState<number>(() => {
-        if (typeof window === "undefined") return 0.75
+        if (typeof window === "undefined") return (IS_MOBILE ? 1.05 : 0.75)
         const v = Number(localStorage.getItem("kloner:uiScale"));
-        return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : 0.75
+        return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : (IS_MOBILE ? 1.05 : 0.75)
     });
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -3371,7 +3371,15 @@ export default function PreviewEditor({
             ref={iframeRef}
             className="w-full h-[70vh] sm:h-[80vh] border-0"
             title="KlonerPreview"
-            sandbox="allow-same-origin"
+            // sandbox: allow scripts but still keep it in a sandbox box
+            sandbox="
+      allow-scripts
+      allow-same-origin
+      allow-forms
+      allow-popups
+      allow-modals
+      allow-popups-to-escape-sandbox
+    "
             srcDoc={
                 aiPreviewHtml ||
                 renderHtml ||
@@ -3380,16 +3388,24 @@ export default function PreviewEditor({
             onLoad={() => {
                 const doc = iframeRef.current?.contentDocument;
                 if (!doc) return;
+
+                // clean existing editor chrome
                 doc.querySelectorAll(".kloner-toolbar").forEach((n) => n.remove());
                 doc.querySelectorAll(".kloner-style-panel").forEach((n) => n.remove());
+
                 if (mode === "preview") {
-                    injectEditableOverlay(doc, (updated) => {
-                        setHtmlDraft(updated);
-                    }, device);
+                    injectEditableOverlay(
+                        doc,
+                        (updated) => {
+                            setHtmlDraft(updated);
+                        },
+                        device,
+                    );
                     iframeRef.current?.contentWindow?.focus();
                 }
             }}
         />
+
     );
 
     // ARCHIVING PAGES
@@ -3415,7 +3431,7 @@ export default function PreviewEditor({
             tabIndex={-1}
             className="fixed inset-0 z-[9999] bg-black/50"
         >
-            <PreviewEditorTour />
+            {!IS_MOBILE && (<PreviewEditorTour />)}
 
             <div className="absolute inset-4 overflow-hidden">
 
@@ -3428,7 +3444,7 @@ export default function PreviewEditor({
                     }}
                     disabled={closing}
                     aria-label="Close editor"
-                    className={`absolute top-5 right-5 z-[100] inline-flex h-6 w-6 items-center justify-center rounded-full border border-neutral-300 bg-white/90/90 text-neutral-700 shadow-md transition ${closing
+                    className={`absolute ${IS_MOBILE ? 'bottom-6' : 'top-5'} right-5 z-[100] inline-flex h-6 w-6 items-center justify-center rounded-full border border-neutral-300 bg-white/90/90 text-neutral-700 shadow-md transition ${closing
                         ? "cursor-not-allowed opacity-60"
                         : "hover:bg-neutral-100 hover:text-neutral-900"
                         }`}
@@ -3453,8 +3469,8 @@ export default function PreviewEditor({
                 {/* FLOATING DEVICE SELECTOR – TOP CENTER */}
                 <div
                     id="kloner-device-toggle"
-                    className="absolute top-5 left-1/2 z-[101] -translate-x-1/2">
-                    <div className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white/90/95 px-2 py-1 shadow-md">
+                    className={`absolute ${IS_MOBILE ? 'bottom-5 left-1/2 z-[101]' : 'top-5 left-1/2 z-[101] '} -translate-x-1/2`}>
+                    <div className={`inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white/90/95 px-2 py-1 shadow-md`}>
                         <motion.button
                             type="button"
                             onClick={() => handleDeviceChange("desktop")}
@@ -3501,18 +3517,19 @@ export default function PreviewEditor({
 
                 {/* UI scale – top left */}
                 {sidebarHidden && (
-                    <div className="absolute top-5 left-5 z-10 flex items-center gap-2 rounded-full border border-neutral-200 bg-white/90/95 px-3 py-1 shadow-md">
-                        <span className="text-[11px] font-medium text-neutral-600">UI scale</span>
-
+                    <div className={`absolute ${IS_MOBILE ? 'bottom-5 left-3' : 'top-5 left-5'} z-10 flex items-center gap-2 rounded-full ${IS_MOBILE ? '' : 'border border-neutral-200 bg-white/90/95 shadow-md'} px-3 py-1 `}>
+                        {!IS_MOBILE && (
+                            <span className="text-[11px] font-medium text-neutral-600">UI scale</span>
+                        )}
                         <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-600">
                             <button
-                                className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-white/90 text-neutral-600 shadow-sm hover:bg-neutral-100"
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-white/90 text-neutral-600 shadow-sm hover:bg-neutral-100"
                                 onClick={() => setUiScale((s) => Math.max(0.5, +(s - 0.05).toFixed(2)))}
                                 disabled={closing}
                             >
                                 −
                             </button>
-                            <span className="w-10 text-center">{Math.round(uiScale * 100)}%</span>
+                            {!IS_MOBILE && (<span className="w-10 text-center">{Math.round(uiScale * 100)}%</span>)}
                             <button
                                 className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-white/90 text-neutral-600 shadow-sm hover:bg-neutral-100"
                                 onClick={() => setUiScale((s) => Math.min(1.25, +(s + 0.05).toFixed(2)))}
@@ -3535,7 +3552,7 @@ export default function PreviewEditor({
                 >
 
                     {/* FLOATING LEFT ICON RAIL (META / CODE / DEPLOY / SCREENSHOT / STYLES) */}
-                    <div className="pointer-events-auto fixed left-4 top-1/2 z-40 -translate-y-1/2 hidden lg:block">
+                    <div className="pointer-events-auto fixed left-4 top-1/2 z-40 -translate-y-1/2">
                         <div className="flex flex-col gap-2 rounded-full border border-neutral-200 bg-white/90/80 p-1 shadow-md backdrop-blur-sm">
                             {/* Styles */}
                             <button
@@ -3553,7 +3570,7 @@ export default function PreviewEditor({
                                         }
                                     }
                                 }}
-                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "style" && mode === "preview"
+                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full bg-white/90 border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "style" && mode === "preview"
                                     ? "border-transparent bg-[#f55f2a] text-white"
                                     : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
                                     }`}
@@ -3582,7 +3599,7 @@ export default function PreviewEditor({
                                         }
                                     }
                                 }}
-                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "meta"
+                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full bg-white/90 border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "meta"
                                     ? "border-transparent bg-[#f55f2a] text-white"
                                     : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
                                     }`}
@@ -3613,7 +3630,7 @@ export default function PreviewEditor({
                                         }
                                     }
                                 }}
-                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "revision-chat"
+                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full bg-white/90 border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "revision-chat"
                                     ? "border-transparent bg-[#f55f2a] text-white"
                                     : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
                                     }`}
@@ -3642,7 +3659,7 @@ export default function PreviewEditor({
                                         }
                                     }
                                 }}
-                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "ai-library"
+                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full bg-white/90 border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "ai-library"
                                     ? "border-transparent bg-[#f55f2a] text-white"
                                     : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
                                     }`}
@@ -3679,7 +3696,7 @@ export default function PreviewEditor({
                                         handleModeClick("code");
                                     }
                                 }}
-                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${mode === "code" && sidePanelMode === "code" && !sidebarHidden
+                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full bg-white/90 border text-[11px] shadow-sm transition ${mode === "code" && sidePanelMode === "code" && !sidebarHidden
                                     ? "border-transparent bg-[#f55f2a] text-white"
                                     : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
                                     }`}
@@ -3699,7 +3716,7 @@ export default function PreviewEditor({
                                 type="button"
                                 onClick={() => setExportPrompt(true)}
                                 disabled={exporting}
-                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${exporting
+                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full bg-white/90 border text-[11px] shadow-sm transition ${exporting
                                     ? "border-transparent bg-[#f55f2a]/70 text-white cursor-not-allowed"
                                     : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
                                     }`}
@@ -3719,7 +3736,7 @@ export default function PreviewEditor({
                                     setSidePanelMode("style");
                                     handleModeClick("screenshot");
                                 }}
-                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${mode === "screenshot"
+                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full bg-white/90 border text-[11px] shadow-sm transition ${mode === "screenshot"
                                     ? "border-transparent bg-[#f55f2a] text-white"
                                     : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
                                     }`}
@@ -4408,8 +4425,20 @@ export default function PreviewEditor({
                         )}
 
                         {allPages && allPages.length > 0 && (
-                            <div className="mt-20">
-                                <div className="flex justify-center">
+                            <div
+                                className={
+                                    IS_MOBILE
+                                        ? "mt-2 overflow-x-auto -mx-4 px-4" // phone: allow horizontal scroll, edge-to-edge
+                                        : "mt-20"                            // non-mobile: keep your existing spacing
+                                }
+                            >
+                                <div
+                                    className={
+                                        IS_MOBILE
+                                            ? "inline-flex min-w-max"        // let content be wider than viewport
+                                            : "flex justify-center"          // desktop/tablet: centered
+                                    }
+                                >
                                     {/* Outer pill: Layers button + all pages in one horizontal row */}
                                     <div
                                         id="kloner-page-switcher"
@@ -4866,23 +4895,33 @@ export default function PreviewEditor({
 
                         {aiEditing && !closing && (
                             <div className="absolute inset-0 z-[95] backdrop-blur-[2px] grid place-items-center pointer-events-auto">
-                                <div className="flex items-center gap-3 bg-white rounded border px-3 py-2 text-md text-neutral-800 shadow-md inline-flex items-center gap-2 rounded-2xl border border-neutral-200 px-3 py-1 text-[16px] text-neutral-700 shadow-sm">
-                                    <Loader2
-                                        className="h-3.5 w-3.5 animate-spin"
-                                        style={{ color: "linear-gradient(90deg,#4f46e5,#ec4899,#f97316)]" }}
-                                    />
-                                    <span
-                                        className="bg-clip-text text-transparent"
-                                        style={{
-                                            backgroundImage:
-                                                "linear-gradient(90deg,#4f46e5,#ec4899,#f97316)",
-                                            backgroundSize: "200% 200%",
-                                            animation:
-                                                "kloner-ai-gradient-move 3s linear infinite",
-                                        }}
-                                    >
-                                        Applying AI Edit...
-                                    </span>
+                                {/* gradient border wrapper */}
+                                <div
+                                    className="inline-flex rounded-2xl p-[3px] shadow-sm"
+                                    style={{
+                                        backgroundImage: "linear-gradient(90deg,#4f46e5,#ec4899,#f97316)",
+                                        backgroundSize: "200% 200%",
+                                        animation: "kloner-ai-gradient-move 3s linear infinite",
+                                    }}
+                                >
+                                    {/* inner content with solid background */}
+                                    <div className="flex items-center gap-2 rounded-2xl bg-white px-3 py-1 text-[16px] text-neutral-700">
+                                        <Loader2
+                                            className="h-3.5 w-3.5 animate-spin"
+                                        // keep a solid color or leave default; gradient on color won't work
+                                        />
+                                        <span
+                                            className="bg-clip-text text-transparent"
+                                            style={{
+                                                backgroundImage:
+                                                    "linear-gradient(90deg,#4f46e5,#ec4899,#f97316)",
+                                                backgroundSize: "200% 200%",
+                                                animation: "kloner-ai-gradient-move 3s linear infinite",
+                                            }}
+                                        >
+                                            Applying AI Edit...
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                         )}

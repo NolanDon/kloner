@@ -130,7 +130,7 @@ function normalizeUrlStatus(
 
 function StatusBadge({ status }: { status: UrlStatusUi }) {
     const base =
-        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium";
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs";
     switch (status) {
         case "ready":
             return (
@@ -290,7 +290,7 @@ function UrlForm({ uid, onAdded, disabled }: UrlFormProps) {
                 <button
                     type="submit"
                     disabled={effectiveDisabled}
-                    className="inline-flex items-center justify-center rounded-xl px-5 py-3 text-sm font-medium text-white shadow-sm disabled:opacity-60"
+                    className="inline-flex items-center justify-center rounded-xl px-5 py-3 text-sm text-white shadow-sm disabled:opacity-60"
                     style={{ backgroundColor: ACCENT }}
                 >
                     {busy ? "Saving…" : disabled ? "Processing…" : "Add URL"}
@@ -309,7 +309,7 @@ function UrlRowSkeleton() {
     return (
         <div className="rounded-xl border border-neutral-200 bg-white p-4 sm:p-5 shadow-sm animate-pulse">
             <div className="flex items-start gap-3">
-                <div className="h-14 w-14 rounded-lg bg-neutral-200" />
+                <div className="h-14 w-14 rounded-full bg-neutral-200" />
                 <div className="flex-1 space-y-3">
                     <div className="flex items-center justify-between gap-3">
                         <div className="h-3 w-40 rounded bg-neutral-200" />
@@ -317,9 +317,9 @@ function UrlRowSkeleton() {
                     </div>
                     <div className="h-2.5 w-56 rounded bg-neutral-100" />
                     <div className="flex flex-wrap gap-2 justify-end sm:justify-start">
-                        <div className="h-8 w-20 rounded-lg bg-neutral-100" />
-                        <div className="h-8 w-20 rounded-lg bg-neutral-100" />
-                        <div className="h-8 w-20 rounded-lg bg-neutral-100" />
+                        <div className="h-8 w-20 rounded-full bg-neutral-100" />
+                        <div className="h-8 w-20 rounded-full bg-neutral-100" />
+                        <div className="h-8 w-20 rounded-full bg-neutral-100" />
                     </div>
                 </div>
             </div>
@@ -510,7 +510,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
 
             <div className="flex flex-col sm:flex-row gap-4 sm:gap-5">
                 {thumbUrl && (
-                    <div className="h-12 w-12 rounded-lg overflow-hidden border border-neutral-200 bg-neutral-100 shrink-0">
+                    <div className="h-12 w-12 rounded-full overflow-hidden border border-neutral-200 bg-neutral-100 shrink-0">
                         <img
                             src={thumbUrl}
                             alt=""
@@ -551,7 +551,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
                             <button
                                 onClick={() => void handleRescanClick()}
                                 disabled={busy || locked}
-                                className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                                className="rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
                             >
                                 {busy ? "Working…" : "Retry"}
                             </button>
@@ -572,7 +572,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
                                                 r.url
                                             )}`
                                     }
-                                    className={`rounded-lg bg-accent text-white px-3 py-1.5 text-xs text-white font-medium ${locked
+                                    className={`rounded-full bg-accent text-white px-3 py-1.5 text-xs text-white ${locked
                                         ? "pointer-events-none"
                                         : ""
                                         }`}
@@ -730,7 +730,7 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="rounded-3xl border border-neutral-200 bg-gradient-to-br from-white via-neutral-50 to-neutral-100 px-6 py-8 sm:px-8 sm:py-10 shadow-sm">
-                    <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-neutral-900">
+                    <h1 className="text-3xl sm:text-4xl tracking-tight text-neutral-900">
                         Dashboard
                     </h1>
                     <p className="mt-1 text-sm text-neutral-600">
@@ -739,7 +739,7 @@ export default function DashboardPage() {
 
                     {billingMsg && (
                         <div
-                            className={`mt-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${billingMsg.type === "success"
+                            className={`mt-3 flex items-start gap-2 rounded-full border px-3 py-2 text-sm ${billingMsg.type === "success"
                                 ? "border-emerald-200 bg-emerald-50 text-emerald-800"
                                 : "border-amber-200 bg-amber-50 text-amber-800"
                                 }`}
@@ -754,7 +754,7 @@ export default function DashboardPage() {
                     )}
 
                     {bootstrapErr ? (
-                        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                        <div className="mt-3 rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                             {bootstrapErr}
                         </div>
                     ) : null}
@@ -771,7 +771,7 @@ export default function DashboardPage() {
 
                     <div className="mt-8">
                         <div className="flex items-center justify-between gap-2">
-                            <h2 className="text-sm font-semibold text-neutral-700">
+                            <h2 className="text-sm text-neutral-700">
                                 Tracked URLs
                             </h2>
                             {rows.length > 0 && (

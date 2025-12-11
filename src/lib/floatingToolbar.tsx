@@ -43,12 +43,13 @@ function BlockToolbar({
     onDragStart: (e: React.MouseEvent<HTMLDivElement>) => void;
 }) {
     const tagName =
-        selectionMeta.tagName?.toUpperCase?.() || (selectionMeta as any).tagName || "DIV";
+        selectionMeta.tagName?.toUpperCase?.() ||
+        (selectionMeta as any).tagName ||
+        "DIV";
 
     const [hasNavLink, setHasNavLink] = useState(false);
     const [navHref, setNavHref] = useState("");
 
-    // Fetch current href when selection changes
     useEffect(() => {
         try {
             const info = callApi("blockGetHref") as BlockHrefInfo;
@@ -103,47 +104,47 @@ function BlockToolbar({
         <div className="bg-neutral-100">
             <div
                 style={style}
-                className="cursor-default flex h-[560px] w-[380px] p-4 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white text-[12px] text-neutral-800 shadow-2xl"
+                className="cursor-default flex h-[340px] w-[280px] p-2 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white text-[11px] text-neutral-800 shadow-2xl"
             >
                 {/* Header – drag handle (ONLY header is draggable) */}
                 <div
-                    className="flex items-center justify-between border-b border-neutral-200 px-3.5 py-2.5 cursor-move"
+                    className="flex items-center justify-between border-b border-neutral-200 px-2 py-1.5 cursor-move"
                     onMouseDown={onDragStart}
                 >
-                    <div className="flex items-center gap-2">
-                        <div className="flex flex-col">
-                            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
-                                Selected block
+                    <div className="flex items-center gap-1.5">
+                        <div className="flex flex-col leading-tight">
+                            <span className="text-[9px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                                Selected
                             </span>
-                            <span className="text-[20px] font-semibold text-neutral-500 my-2">
+                            <span className="text-[13px] font-semibold text-neutral-600">
                                 &lt;{tagName.toLowerCase()}&gt;
                             </span>
                         </div>
                     </div>
                     <button
                         type="button"
-                        className="m-1 inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 shadow-sm hover:bg-neutral-100 pb-1"
+                        className="ml-1 inline-flex h-6 w-6 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 shadow-sm hover:bg-neutral-100"
                         title="Deselect block"
                         onClick={() => callApi("clear")}
                         onMouseDown={(e) => e.stopPropagation()}
                     >
-                        <span className="text-[20px] leading-none">×</span>
+                        <span className="text-[16px] leading-none">×</span>
                     </button>
                 </div>
 
                 {/* Navigation link editor (only when a link exists on this block) */}
                 {hasNavLink && (
-                    <div className="border-b border-neutral-200 px-3.5 py-2.5">
-                        <div className="flex items-center justify-between gap-2">
+                    <div className="border-b border-neutral-200 px-2 py-1.5">
+                        <div className="flex items-center justify-between gap-1.5">
                             <div className="flex flex-col flex-1">
-                                <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                                <span className="flex items-center gap-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
                                     <Link2 className="h-3 w-3" />
-                                    Navigation link
+                                    Link
                                 </span>
                                 <input
                                     type="text"
-                                    className="mt-1 w-full rounded-md border border-neutral-200 bg-white px-2.5 py-1.5 text-[11px] text-neutral-800 shadow-sm outline-none focus:border-neutral-400 focus:ring-0"
-                                    placeholder="/about or /pricing"
+                                    className="mt-0.5 w-full rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] text-neutral-800 shadow-sm outline-none focus:border-neutral-400 focus:ring-0"
+                                    placeholder="/about"
                                     value={navHref}
                                     onChange={handleNavInputChange}
                                     onBlur={handleNavInputBlur}
@@ -153,7 +154,7 @@ function BlockToolbar({
                             </div>
                             <button
                                 type="button"
-                                className="mt-5 inline-flex h-7 w-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] text-neutral-500 hover:bg-neutral-50"
+                                className="mt-4 inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50"
                                 title="Clear link"
                                 onClick={() => {
                                     setNavHref("");
@@ -161,205 +162,217 @@ function BlockToolbar({
                                 }}
                                 onMouseDown={(e) => e.stopPropagation()}
                             >
-                                <Trash2 className="h-3.5 w-3.5" />
+                                <Trash2 className="h-3 w-3" />
                             </button>
                         </div>
                     </div>
                 )}
 
                 {/* Body scroll area */}
-                <div className="mt-2 flex-1 space-y-4 overflow-y-auto px-3.5 py-3.5 text-[12px]">
+                <div className="mt-1 flex-1 space-y-1.5 overflow-y-auto px-2 py-1.5 text-[10px]">
                     {/* Danger */}
                     <div>
-                        <div className="my-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                        <div className="mb-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
                             Danger
                         </div>
                         <button
                             type="button"
                             onClick={() => callApi("blockDelete")}
-                            className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-[11px] text-rose-700 hover:bg-rose-100"
+                            className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2 py-1.5 text-[10px] text-rose-700 hover:bg-rose-100"
                         >
                             <Trash2 className="h-3.5 w-3.5" />
-                            <span>Delete block</span>
+                            <span>Delete</span>
                         </button>
                     </div>
 
                     {/* Layout */}
                     <div>
-                        <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                        <div className="mb-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
                             Layout
                         </div>
-                        <div className="grid grid-cols-2 gap-1.5">
+                        <div className="grid grid-cols-4 gap-1">
                             <button
                                 type="button"
                                 onClick={() => callApi("blockMoveUp")}
-                                className="flex h-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                                className="flex h-6 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                title="Move block up"
                             >
-                                <ArrowUp className="h-3.5 w-3.5" />
+                                <ArrowUp className="h-3 w-3" />
                             </button>
                             <button
                                 type="button"
                                 onClick={() => callApi("blockMoveDown")}
-                                className="flex h-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                                className="flex h-6 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                title="Move block down"
                             >
-                                <ArrowDown className="h-3.5 w-3.5" />
+                                <ArrowDown className="h-3 w-3" />
                             </button>
                             <button
                                 type="button"
                                 onClick={() => callApi("blockMoveLeft")}
-                                className="flex h-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                                className="flex h-6 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                title="Move left"
                             >
-                                <ArrowLeft className="h-3.5 w-3.5" />
+                                <ArrowLeft className="h-3 w-3" />
                             </button>
                             <button
                                 type="button"
                                 onClick={() => callApi("blockMoveRight")}
-                                className="flex h-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                                className="flex h-6 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                title="Move right"
                             >
-                                <ArrowRight className="h-3.5 w-3.5" />
+                                <ArrowRight className="h-3 w-3" />
                             </button>
                         </div>
                     </div>
 
                     {/* Padding */}
                     <div>
-                        <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                        <div className="mb-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
                             Padding
                         </div>
-                        <div className="grid grid-cols-2 gap-1.5">
+                        <div className="grid grid-cols-4 gap-1">
                             <button
                                 type="button"
                                 onClick={() => callApi("blockPad", "top", 8)}
-                                className="flex h-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                                className="flex h-6 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                title="Pad top"
                             >
-                                <ArrowUp className="h-3.5 w-3.5" />
+                                <ArrowUp className="h-3 w-3" />
                             </button>
                             <button
                                 type="button"
                                 onClick={() => callApi("blockPad", "bottom", 8)}
-                                className="flex h-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                                className="flex h-6 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                title="Pad bottom"
                             >
-                                <ArrowDown className="h-3.5 w-3.5" />
+                                <ArrowDown className="h-3 w-3" />
                             </button>
                             <button
                                 type="button"
                                 onClick={() => callApi("blockPad", "left", 8)}
-                                className="flex h-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                                className="flex h-6 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                title="Pad left"
                             >
-                                <ArrowLeft className="h-3.5 w-3.5" />
+                                <ArrowLeft className="h-3 w-3" />
                             </button>
                             <button
                                 type="button"
                                 onClick={() => callApi("blockPad", "right", 8)}
-                                className="flex h-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                                className="flex h-6 items-center justifycenter rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                title="Pad right"
                             >
-                                <ArrowRight className="h-3.5 w-3.5" />
+                                <ArrowRight className="h-3 w-3" />
                             </button>
                         </div>
-                        <div className="mt-1 flex items-center gap-1.5">
+                        <div className="mt-1 flex items-center gap-1">
                             <button
                                 type="button"
                                 onClick={() => callApi("blockPad", "all", -8)}
-                                className="flex-1 rounded-md border border-neutral-200 bg-white px-2 py-1 text-[11px] hover:bg-neutral-50"
+                                className="flex-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
                             >
                                 Less
                             </button>
                             <button
                                 type="button"
                                 onClick={() => callApi("blockPad", "all", 8)}
-                                className="flex-1 rounded-md border border-neutral-200 bg-white px-2 py-1 text-[11px] hover:bg-neutral-50"
+                                className="flex-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
                             >
                                 More
                             </button>
                             <button
                                 type="button"
                                 onClick={() => callApi("blockPadReset")}
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
                                 title="Reset padding for this device"
                             >
-                                <RotateCcw className="h-3.5 w-3.5" />
+                                <RotateCcw className="h-3 w-3" />
                             </button>
                         </div>
                     </div>
 
                     {/* Margin */}
                     <div>
-                        <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                        <div className="mb-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
                             Margin
                         </div>
-                        <div className="grid grid-cols-2 gap-1.5">
+                        <div className="grid grid-cols-4 gap-1">
                             <button
                                 type="button"
                                 onClick={() => callApi("blockMargin", "top", 8)}
-                                className="flex h-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                                className="flex h-6 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                title="Margin top"
                             >
-                                <ArrowUp className="h-3.5 w-3.5" />
+                                <ArrowUp className="h-3 w-3" />
                             </button>
                             <button
                                 type="button"
                                 onClick={() => callApi("blockMargin", "bottom", 8)}
-                                className="flex h-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                                className="flex h-6 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                title="Margin bottom"
                             >
-                                <ArrowDown className="h-3.5 w-3.5" />
+                                <ArrowDown className="h-3 w-3" />
                             </button>
                             <button
                                 type="button"
                                 onClick={() => callApi("blockMargin", "left", 8)}
-                                className="flex h-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                                className="flex h-6 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                title="Margin left"
                             >
-                                <ArrowLeft className="h-3.5 w-3.5" />
+                                <ArrowLeft className="h-3 w-3" />
                             </button>
                             <button
                                 type="button"
                                 onClick={() => callApi("blockMargin", "right", 8)}
-                                className="flex h-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                                className="flex h-6 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                title="Margin right"
                             >
-                                <ArrowRight className="h-3.5 w-3.5" />
+                                <ArrowRight className="h-3 w-3" />
                             </button>
                         </div>
-                        <div className="mt-1 flex items-center gap-1.5">
+                        <div className="mt-1 flex items-center gap-1">
                             <button
                                 type="button"
                                 onClick={() => callApi("blockMargin", "all", -8)}
-                                className="flex-1 rounded-md border border-neutral-200 bg-white px-2 py-1 text-[11px] hover:bg-neutral-50"
+                                className="flex-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
                             >
                                 Less
                             </button>
                             <button
                                 type="button"
                                 onClick={() => callApi("blockMargin", "all", 8)}
-                                className="flex-1 rounded-md border border-neutral-200 bg-white px-2 py-1 text-[11px] hover:bg-neutral-50"
+                                className="flex-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
                             >
                                 More
                             </button>
                             <button
                                 type="button"
                                 onClick={() => callApi("blockMarginReset")}
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
                                 title="Reset margin for this device"
                             >
-                                <RotateCcw className="h-3.5 w-3.5" />
+                                <RotateCcw className="h-3 w-3" />
                             </button>
                         </div>
                     </div>
 
                     {/* Size */}
                     <div>
-                        <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                        <div className="mb-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
                             Size
                         </div>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1">
                             <button
                                 type="button"
                                 onClick={() => callApi("blockShrink")}
-                                className="flex-1 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] hover:bg-neutral-50"
+                                className="flex-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
                             >
                                 Shrink
                             </button>
                             <button
                                 type="button"
                                 onClick={() => callApi("blockGrow")}
-                                className="flex-1 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] hover:bg-neutral-50"
+                                className="flex-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
                             >
                                 Grow
                             </button>
@@ -368,95 +381,95 @@ function BlockToolbar({
 
                     {/* Corners */}
                     <div>
-                        <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                        <div className="mb-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
                             Corners
                         </div>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1">
                             <button
                                 type="button"
                                 onClick={() => callApi("blockRadius", -4)}
-                                className="flex-1 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] hover:bg-neutral-50"
+                                className="flex-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
                             >
-                                Straighter
+                                Straight
                             </button>
                             <button
                                 type="button"
                                 onClick={() => callApi("blockRadius", 4)}
-                                className="flex-1 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] hover:bg-neutral-50"
+                                className="flex-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
                             >
-                                Rounder
+                                Round
                             </button>
                             <button
                                 type="button"
                                 onClick={() => callApi("blockRadiusReset")}
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
+                                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
                                 title="Reset radius for this device"
                             >
-                                <RotateCcw className="h-3.5 w-3.5" />
+                                <RotateCcw className="h-3 w-3" />
                             </button>
                         </div>
                     </div>
 
                     {/* Layering */}
                     <div>
-                        <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
-                            Layering
+                        <div className="mb-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                            Layer
                         </div>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1">
                             <button
                                 type="button"
                                 onClick={() => callApi("bringBlockForward")}
-                                className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] hover:bg-neutral-50"
+                                className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
                             >
-                                <ArrowUp className="h-3.5 w-3.5" />
-                                <span>Bring forward</span>
+                                <ArrowUp className="h-3 w-3" />
+                                <span>Front</span>
                             </button>
                             <button
                                 type="button"
                                 onClick={() => callApi("sendBlockBackward")}
-                                className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] hover:bg-neutral-50"
+                                className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
                             >
-                                <ArrowDown className="h-3.5 w-3.5" />
-                                <span>Send backward</span>
+                                <ArrowDown className="h-3 w-3" />
+                                <span>Back</span>
                             </button>
                         </div>
                     </div>
 
                     {/* Text & links */}
                     <div>
-                        <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                        <div className="mb-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
                             Text & links
                         </div>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1">
                             <button
                                 type="button"
                                 onClick={() => callApi("textboxAdd")}
-                                className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] hover:bg-neutral-50"
+                                className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
                             >
                                 <TypeIcon className="h-3.5 w-3.5" />
-                                <span>Add text</span>
+                                <span>Text</span>
                             </button>
                             <button
                                 type="button"
                                 onClick={() => callApi("linkEdit")}
-                                className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] hover:bg-neutral-50"
+                                className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
                             >
                                 <Link2 className="h-3.5 w-3.5" />
-                                <span>Edit link</span>
+                                <span>Link</span>
                             </button>
                         </div>
                     </div>
 
                     {/* Images */}
                     <div>
-                        <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                        <div className="mb-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
                             Images
                         </div>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1">
                             <button
                                 type="button"
                                 onClick={() => callApi("imgInsert")}
-                                className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] hover:bg-neutral-50"
+                                className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
                             >
                                 <ImageIcon className="h-3.5 w-3.5" />
                                 <span>Add</span>
@@ -464,64 +477,64 @@ function BlockToolbar({
                             <button
                                 type="button"
                                 onClick={() => callApi("imgBg")}
-                                className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] hover:bg-neutral-50"
+                                className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
                             >
                                 <Layers className="h-3.5 w-3.5" />
-                                <span>As background</span>
+                                <span>BG</span>
                             </button>
                             <button
                                 type="button"
                                 onClick={() => callApi("imgDelete")}
-                                className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-[11px] text-rose-700 hover:bg-rose-100"
+                                className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-1.5 py-1 text-[10px] text-rose-700 hover:bg-rose-100"
                             >
                                 <Trash2 className="h-3.5 w-3.5" />
                                 <span>Remove</span>
                             </button>
                         </div>
-                        <div className="mt-2 flex items-center gap-1.5">
+                        <div className="mt-1 flex items-center gap-1">
                             <button
                                 type="button"
                                 onClick={() => callApi("imgShrink")}
-                                className="flex-1 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] hover:bg-neutral-50"
+                                className="flex-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
                             >
                                 Smaller
                             </button>
                             <button
                                 type="button"
                                 onClick={() => callApi("imgGrow")}
-                                className="flex-1 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] hover:bg-neutral-50"
+                                className="flex-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
                             >
                                 Larger
                             </button>
                             <button
                                 type="button"
                                 onClick={() => callApi("bringImageForward")}
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
-                                title="Bring forward"
+                                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                title="Bring image forward"
                             >
-                                <ArrowUp className="h-3.5 w-3.5" />
+                                <ArrowUp className="h-3 w-3" />
                             </button>
                             <button
                                 type="button"
                                 onClick={() => callApi("sendImageBackward")}
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-neutral-200 bg-white text-[11px] hover:bg-neutral-50"
-                                title="Send backward"
+                                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                title="Send image backward"
                             >
-                                <ArrowDown className="h-3.5 w-3.5" />
+                                <ArrowDown className="h-3 w-3" />
                             </button>
                         </div>
                     </div>
 
                     {/* History */}
                     <div>
-                        <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                        <div className="mb-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
                             History
                         </div>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1">
                             <button
                                 type="button"
                                 onClick={() => callApi("historyUndo")}
-                                className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] hover:bg-neutral-50"
+                                className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
                             >
                                 <Undo2 className="h-3.5 w-3.5" />
                                 <span>Undo</span>
@@ -529,7 +542,7 @@ function BlockToolbar({
                             <button
                                 type="button"
                                 onClick={() => callApi("historyRedo")}
-                                className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] hover:bg-neutral-50"
+                                className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
                             >
                                 <Redo2 className="h-3.5 w-3.5" />
                                 <span>Redo</span>
@@ -574,7 +587,6 @@ export function FloatingBlockToolbar({
         }
     }, [isDraggingToolbar, iframeRef]);
 
-    // Dock to the right of iframe on first selection
     useEffect(() => {
         const iframe = iframeRef.current;
         const wrapper = wrapperRef.current;
@@ -585,8 +597,8 @@ export function FloatingBlockToolbar({
         const iframeBox = iframe.getBoundingClientRect();
         const wrapperBox = wrapper.getBoundingClientRect();
 
-        const panelWidth = 380;
-        const panelHeight = 560;
+        const panelWidth = 280;
+        const panelHeight = 340;
         const padding = 16;
 
         const rawTop =
@@ -631,7 +643,7 @@ export function FloatingBlockToolbar({
             : {
                 position: "absolute",
                 top: wrapper.scrollTop + 80,
-                left: wrapper.scrollLeft + wrapper.clientWidth - 380 - 16,
+                left: wrapper.scrollLeft + wrapper.clientWidth - 280 - 16,
                 zIndex: 120,
                 pointerEvents: "auto",
             };
@@ -659,12 +671,12 @@ export function FloatingBlockToolbar({
 
         const start = toolbarPosRef.current || {
             top: wrapper.scrollTop + 80,
-            left: wrapper.scrollLeft + wrapper.clientWidth - 380 - 16,
+            left: wrapper.scrollLeft + wrapper.clientWidth - 280 - 16,
         };
 
         const padding = 8;
-        const panelWidth = 380;
-        const panelHeight = 560;
+        const panelWidth = 280;
+        const panelHeight = 340;
 
         setIsDraggingToolbar(true);
 
