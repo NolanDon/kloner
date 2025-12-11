@@ -130,6 +130,7 @@ const RenderCard = memo(
         return (
             a.id === b.id &&
             a.status === b.status &&
+            (a.reason || "") === (b.reason || "") && // <— add this
             (a.html || "") === (b.html || "") &&
             (a.key || "") === (b.key || "") &&
             (a.nameHint || "") === (b.nameHint || "") &&
@@ -151,6 +152,7 @@ const RenderCard = memo(
     },
 );
 
+
 export type RenderDoc = {
     url?: string | null;
     urlHash?: string | null;
@@ -158,7 +160,8 @@ export type RenderDoc = {
     referenceImage?: string | null;
     html?: string;
     nameHint?: string | null;
-    status: "ready" | "queued" | "failed" | "processing";
+    // NOTE: add "error" here
+    status: "ready" | "queued" | "failed" | "processing" | "error";
     archived?: boolean;
     createdAt?: any;
     updatedAt?: any;
@@ -214,13 +217,22 @@ function RenderCardInner({
     archiveRender,
     unarchiveRender,
     onShareWithCommunity,
+    push, // <— use the existing push prop for toasts
 }: RenderCardProps) {
     const router = useRouter();
 
     const isQueued = r.status === "queued" || r.status === "processing";
-    const isFailed = r.status === "failed";
+
+    // Treat both "failed" and "error" as failure states
+    const isFailed = r.status === "failed" || r.status === "error";
+
     const isDeployed = !!r.lastExportedAt;
     const isArchived = !!r.archived;
+
+    // Detect the specific timeout / worker shutdown case
+    const isTimeoutError =
+        r.status === "error" &&
+        (r as any).reason === "timeout_or_worker_shutdown";
 
     // progress normalization: prefer explicit percent, then raw `progress`
     const rawPercent =
@@ -288,6 +300,9 @@ function RenderCardInner({
     const [shareProjectName, setShareProjectName] = useState("");
     const hasEditedShareNameRef = useRef(false);
 
+    // local loading state for retry
+    const [retrying, setRetrying] = useState(false);
+
     const srcDoc = useMemo(() => {
         if (!r.html) return "";
         let safeHtml = r.html.trim();
@@ -352,6 +367,51 @@ function RenderCardInner({
         if (!ok) return;
 
         archiveRender(r.id);
+    };
+
+    // NEW: retry handler for timeout_or_worker_shutdown
+    const handleRetryRender = async () => {
+        if (!r.id || retrying) return;
+
+        setRetrying(true);
+        try {
+            push?.("Retrying render. This may take a minute.", "ok");
+
+            const res = await fetch(
+                `/api/renders/${encodeURIComponent(r.id)}/requeue`,
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                },
+            );
+
+            const data = await res.json().catch(() => ({} as any));
+
+            if (!res.ok || (data as any).error) {
+                console.error("Failed to requeue render", {
+                    status: res.status,
+                    data,
+                });
+                push?.(
+                    (data as any).error ||
+                    "Failed to retry this render. Please try again.",
+                    "err",
+                );
+                return;
+            }
+
+            // Once Firestore updates status to queued/processing, the
+            // existing progress UI will pick it up through snapshots.
+            push?.("Render requeued. Rebuilding preview now.", "ok");
+        } catch (err: any) {
+            console.error("Error retrying render", err);
+            push?.(
+                err?.message || "Network error while retrying render.",
+                "err",
+            );
+        } finally {
+            setRetrying(false);
+        }
     };
 
     async function handleShareClick() {
@@ -481,7 +541,7 @@ function RenderCardInner({
                 </span>
             )}
 
-            {/* controller version badge – top left */}
+            {/* model badge – bottom left */}
             {(controllerVersion && isDev) && (
                 <span
                     className="absolute left-2 bottom-1 z-30 inline-flex items-center gap-1 rounded-md bg-neutral-900/85 px-2 py-0.5 text-[10px] font-medium text-neutral-50 shadow-sm"
@@ -608,6 +668,29 @@ function RenderCardInner({
                                 </button>
                             )}
                         </div>
+
+                        {/* NEW: timeout / worker-shutdown retry banner */}
+                        {isTimeoutError && (
+                            <div className="mt-1 flex w-full items-center justify-between gap-2 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] text-amber-900">
+                                <span className="max-w-[65%] truncate">
+                                    Render worker was interrupted. You can retry this preview.
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={handleRetryRender}
+                                    disabled={
+                                        retrying ||
+                                        isDeleting ||
+                                        isDeploying ||
+                                        isQueued ||
+                                        isBuilding
+                                    }
+                                    className="inline-flex items-center gap-1 rounded-md bg-accent px-2 py-0.5 text-[11px] font-medium text-white hover:bg-accent/90 disabled:opacity-60"
+                                >
+                                    {retrying ? "Retrying…" : "Retry render"}
+                                </button>
+                            </div>
+                        )}
 
                         {/* progress bar / status – only for the active build/deploy and never at 100% */}
                         {hasProgressInfo && (

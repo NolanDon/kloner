@@ -16,8 +16,8 @@ type Body = {
     key?: string;
     keys?: string[];
     nameHint?: string;
-    url?: string;                // optional: trigger generation if no keys
-    controllerVersion?: string;  // optional: forwarded
+    url?: string; // optional: trigger generation if no keys
+    controllerVersion?: string; // optional: forwarded
 };
 
 function isNonEmptyString(s: unknown): s is string {
@@ -245,14 +245,35 @@ export async function POST(req: NextRequest) {
 
                 const okJson =
                     r.json && Object.keys(r.json).length ? r.json : { ok: true };
+
                 const status = r.upstream.ok
                     ? 200
                     : r.status === 504 || r.status === 524
                         ? 202
                         : r.status;
 
-                // Burn ONE preview credit only on real success (200 from backend).
-                if (r.upstream.ok && status === 200) {
+                // More defensive: only treat as a fully billable preview if:
+                // - HTTP-level success
+                // - we mapped to 200
+                // - backend payload is not explicitly ok:false
+                // - backend claims a renderId
+                // - backend either says status=ready or at least progress >= 90
+                const shouldChargePreview =
+                    r.upstream.ok &&
+                    status === 200 &&
+                    okJson &&
+                    okJson.ok !== false &&
+                    typeof okJson.renderId === "string" &&
+                    (
+                        !("status" in okJson) ||
+                        okJson.status === "ready"
+                    ) &&
+                    (
+                        typeof okJson.progress !== "number" ||
+                        okJson.progress >= 90
+                    );
+
+                if (shouldChargePreview) {
                     try {
                         await consumeUserCredit(decoded.uid, tier, "preview");
                     } catch (err: any) {
