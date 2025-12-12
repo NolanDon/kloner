@@ -4400,7 +4400,7 @@ export default function PreviewPage(): JSX.Element {
                                                                     : "Go Pro and Deploy Your Site"}
                                                             </span>
                                                             <span
-                                                                className="inline-flex items-center justify-center overflow-hidden text-base opacity-0 translate-x-[-4px] transition-all duration-150 group-hover:opacity-100 group-hover:translate-x-0"
+                                                                className="inline-flex items-center justify-center overflow-hidden text-base opacity-0 translate-x-[-4px] transition-all duration-150 opacity-100 translate-x-0"
                                                                 aria-hidden="true"
                                                             >
                                                                 →
@@ -4408,7 +4408,7 @@ export default function PreviewPage(): JSX.Element {
                                                         </span>
                                                     </motion.button>
 
-                                                    <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-sm text-neutral-700 flex items-center gap-3">
+                                                    <div className="rounded-xl px-3 py-3 text-sm text-neutral-700 flex items-center gap-3">
                                                         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-900">
                                                             {deployWizardBusy ? (
                                                                 <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />

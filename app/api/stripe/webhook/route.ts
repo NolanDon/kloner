@@ -37,6 +37,10 @@ if (!admin.apps.length) {
 }
 const db = admin.firestore();
 
+const AFF_RATE = 0.30;
+const AFF_CAP_MONTHS = 12;
+const AFF_PENDING_DAYS = 14;
+
 /** Fallback: find uid by stripeCustomerId field if mapping doc is missing */
 async function findUidByCustomerId(customerId: string): Promise<string | null> {
     const snap = await db
@@ -47,6 +51,204 @@ async function findUidByCustomerId(customerId: string): Promise<string | null> {
 
     if (snap.empty) return null;
     return snap.docs[0]!.id;
+}
+
+/** Resolve uid from mapping table or fallback query */
+async function resolveUidForCustomerId(customerId: string): Promise<string | null> {
+    // 1) try mapping table
+    let uid = await getUidForStripeCustomer(customerId);
+
+    // 2) fall back to kloner_users where stripeCustomerId == customerId
+    if (!uid) {
+        uid = await findUidByCustomerId(customerId);
+        if (uid) {
+            await linkCustomerToUid(customerId, uid);
+        }
+    }
+
+    return uid;
+}
+
+function cleanStr(v: unknown, max = 128): string {
+    return typeof v === "string" ? v.trim().slice(0, max) : "";
+}
+
+function monthKeyFromUnix(tsSec: number): string {
+    const d = new Date(tsSec * 1000);
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+    return `${y}-${m}`;
+}
+
+function addMonths(date: Date, months: number): Date {
+    const d = new Date(date.getTime());
+    d.setUTCMonth(d.getUTCMonth() + months);
+    return d;
+}
+
+/**
+ * Stripe TS types differ across versions: Invoice may not declare `.subscription`.
+ * Webhook payloads often still include it, so we safely read via `any` with fallbacks.
+ */
+function getInvoiceSubscriptionId(invoice: Stripe.Invoice): string | null {
+    const anyInv = invoice as any;
+
+    const direct =
+        typeof anyInv.subscription === "string"
+            ? anyInv.subscription
+            : typeof anyInv.subscription?.id === "string"
+                ? anyInv.subscription.id
+                : null;
+
+    if (direct) return direct;
+
+    const line0 = anyInv.lines?.data?.[0];
+    const fromLine =
+        typeof line0?.subscription === "string"
+            ? line0.subscription
+            : typeof line0?.subscription?.id === "string"
+                ? line0.subscription.id
+                : null;
+
+    return fromLine || null;
+}
+
+async function resolveAffiliateRefForInvoice(
+    invoice: Stripe.Invoice
+): Promise<{ affiliateRef: string; affiliateSource: string }> {
+    // 1) Prefer subscription metadata
+    try {
+        const subId = getInvoiceSubscriptionId(invoice);
+        if (subId) {
+            const sub = await stripe.subscriptions.retrieve(subId);
+            const affiliateRef = cleanStr((sub.metadata as any)?.affiliateRef);
+            const affiliateSource = cleanStr((sub.metadata as any)?.affiliateSource);
+            if (affiliateRef) return { affiliateRef, affiliateSource };
+        }
+    } catch {
+        // ignore
+    }
+
+    // 2) Fallback to customer metadata
+    try {
+        const custId =
+            typeof invoice.customer === "string"
+                ? invoice.customer
+                : invoice.customer?.id;
+
+        if (custId) {
+            const cust = await stripe.customers.retrieve(custId);
+            const meta = (cust as any)?.metadata || {};
+            const affiliateRef = cleanStr(meta?.affiliateRef);
+            const affiliateSource = cleanStr(meta?.affiliateSource);
+            if (affiliateRef) return { affiliateRef, affiliateSource };
+        }
+    } catch {
+        // ignore
+    }
+
+    return { affiliateRef: "", affiliateSource: "" };
+}
+
+async function writeAffiliateLedgerForInvoicePaid(invoice: Stripe.Invoice): Promise<void> {
+    const customerId =
+        typeof invoice.customer === "string"
+            ? invoice.customer
+            : invoice.customer?.id;
+
+    if (!customerId) return;
+
+    const uid = await resolveUidForCustomerId(customerId);
+    if (!uid) return;
+
+    const { affiliateRef, affiliateSource } = await resolveAffiliateRefForInvoice(invoice);
+    if (!affiliateRef) return;
+
+    // Idempotency: use invoice.id as entry doc id
+    const entryRef = db
+        .collection("affiliate_ledger")
+        .doc(affiliateRef)
+        .collection("entries")
+        .doc(invoice.id);
+
+    const existing = await entryRef.get();
+    if (existing.exists) return;
+
+    const netCollectedCents = Number((invoice as any).amount_paid ?? 0);
+    if (!Number.isFinite(netCollectedCents) || netCollectedCents <= 0) return;
+
+    const commissionCents = Math.round(netCollectedCents * AFF_RATE);
+
+    const paidAtSec =
+        typeof (invoice as any).status_transitions?.paid_at === "number"
+            ? (invoice as any).status_transitions.paid_at
+            : typeof (invoice as any).created === "number"
+                ? (invoice as any).created
+                : Math.floor(Date.now() / 1000);
+
+    const paidAtDate = new Date(paidAtSec * 1000);
+    const periodKey = monthKeyFromUnix(paidAtSec);
+
+    // 12-month cap enforcement anchored to affiliateFirstPaidAt on the USER doc.
+    const userRef = db.collection("kloner_users").doc(uid);
+    const userSnap = await userRef.get();
+    const userData = userSnap.exists ? (userSnap.data() as any) : {};
+
+    let firstPaidAt: admin.firestore.Timestamp | null =
+        userData?.affiliateFirstPaidAt instanceof admin.firestore.Timestamp
+            ? userData.affiliateFirstPaidAt
+            : null;
+
+    if (!firstPaidAt) {
+        try {
+            await userRef.set(
+                { affiliateFirstPaidAt: admin.firestore.Timestamp.fromDate(paidAtDate) },
+                { merge: true }
+            );
+            firstPaidAt = admin.firestore.Timestamp.fromDate(paidAtDate);
+        } catch {
+            // ignore
+        }
+    }
+
+    if (firstPaidAt) {
+        const capEnd = addMonths(firstPaidAt.toDate(), AFF_CAP_MONTHS);
+        if (paidAtDate.getTime() > capEnd.getTime()) {
+            return; // past cap window
+        }
+    }
+
+    const eligibleAt = admin.firestore.Timestamp.fromDate(
+        new Date(paidAtDate.getTime() + AFF_PENDING_DAYS * 24 * 60 * 60 * 1000)
+    );
+
+    await entryRef.set(
+        {
+            affiliateRef,
+            affiliateSource: affiliateSource || "unknown",
+
+            uid,
+            customerId,
+            subscriptionId: getInvoiceSubscriptionId(invoice),
+
+            invoiceId: invoice.id,
+            invoiceNumber: (invoice as any).number || null,
+
+            netCollectedCents,
+            commissionRate: AFF_RATE,
+            commissionCents,
+
+            currency: (invoice as any).currency || "usd",
+            periodKey,
+
+            paidAt: admin.firestore.Timestamp.fromDate(paidAtDate),
+            eligibleAt,
+
+            status: "pending",
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: false }
+    );
 }
 
 export async function POST(req: NextRequest) {
@@ -63,10 +265,7 @@ export async function POST(req: NextRequest) {
     try {
         event = stripe.webhooks.constructEvent(body, sig, webhookSecret);
     } catch (err: any) {
-        console.error(
-            "Stripe webhook signature verification failed",
-            err?.message || err
-        );
+        console.error("Stripe webhook signature verification failed", err?.message || err);
         return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
     }
 
@@ -75,9 +274,7 @@ export async function POST(req: NextRequest) {
             case "checkout.session.completed": {
                 const session = event.data.object as Stripe.Checkout.Session;
 
-                const firebaseUid = session.metadata?.firebaseUid as
-                    | string
-                    | undefined;
+                const firebaseUid = session.metadata?.firebaseUid as string | undefined;
 
                 const customerId =
                     typeof session.customer === "string"
@@ -109,23 +306,11 @@ export async function POST(req: NextRequest) {
                         : sub.customer.id;
 
                 if (!customerId) {
-                    console.warn(
-                        "subscription event without customerId; ignoring",
-                        event.id
-                    );
+                    console.warn("subscription event without customerId; ignoring", event.id);
                     break;
                 }
 
-                // 1) try mapping table
-                let uid = await getUidForStripeCustomer(customerId);
-
-                // 2) fall back to kloner_users where stripeCustomerId == customerId
-                if (!uid) {
-                    uid = await findUidByCustomerId(customerId);
-                    if (uid) {
-                        await linkCustomerToUid(customerId, uid);
-                    }
-                }
+                const uid = await resolveUidForCustomerId(customerId);
 
                 if (!uid) {
                     console.warn(
@@ -137,9 +322,7 @@ export async function POST(req: NextRequest) {
 
                 const firstItem = sub.items?.data?.[0];
                 const priceId =
-                    typeof firstItem?.price?.id === "string"
-                        ? firstItem.price.id
-                        : null;
+                    typeof firstItem?.price?.id === "string" ? firstItem.price.id : null;
 
                 const tier = mapPriceToTier(priceId);
 
@@ -156,6 +339,12 @@ export async function POST(req: NextRequest) {
                     cancelAtPeriodEnd: (sub as any).cancel_at_period_end ?? undefined,
                 });
 
+                break;
+            }
+
+            case "invoice.paid": {
+                const invoice = event.data.object as Stripe.Invoice;
+                await writeAffiliateLedgerForInvoicePaid(invoice);
                 break;
             }
 

@@ -4,6 +4,7 @@ import AuthProviderServer from "@/components/auth/auth-provider.server";
 import { Inter } from "next/font/google";
 import { AppClientProviders } from "./AppClientProvider";
 import ChatWidgetProvider from "@/components/support/ChatWidgetProvider";
+import AffiliateRefCapture from "@/components/AffiliateRefCapture";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -42,6 +43,7 @@ export default function RootLayout({
       <body className="bg-white scroll-smooth snap-y snap-mandatory">
         <AuthProviderServer>
           <AppClientProviders>
+            <AffiliateRefCapture />
             {children}
             <ChatWidgetProvider />
           </AppClientProviders>

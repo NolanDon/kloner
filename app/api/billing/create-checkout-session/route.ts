@@ -12,7 +12,6 @@ const stripe = getStripe();
 const db = admin.firestore();
 
 async function handler({ req, uid }: { req: NextRequest; uid: string }) {
-
     const body = await req.json().catch(() => ({}));
     const { plan, returnRenderId, returnStep } = body as any;
     if (!plan) {
@@ -30,9 +29,6 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
                 ? process.env.STRIPE_PRICE_PRO_AGENCY
                 : process.env.STRIPE_PRICE_AGENCY_TEST;
 
-    // delete-me
-    // const priceId = plan === "pro" ? process.env.STRIPE_PRICE_PRO_TEST : process.env.STRIPE_PRICE_AGENCY_TEST;
-
     if (!priceId) {
         return NextResponse.json(
             { error: "Stripe price not configured for current environment" },
@@ -43,6 +39,12 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
     const userRef = db.collection("kloner_users").doc(uid);
     const snap = await userRef.get();
     const userData = snap.exists ? (snap.data() as any) : {};
+
+    const affiliateRef: string =
+        typeof userData?.affiliateRef === "string" ? userData.affiliateRef.trim() : "";
+    const affiliateSource: string =
+        typeof userData?.affiliateSource === "string" ? userData.affiliateSource.trim() : "";
+
     let customerId: string | undefined = userData.stripeCustomerId;
 
     if (!customerId) {
@@ -51,7 +53,11 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
 
         const customer = await stripe.customers.create({
             email,
-            metadata: { firebaseUid: uid },
+            metadata: {
+                firebaseUid: uid,
+                ...(affiliateRef ? { affiliateRef } : {}),
+                ...(affiliateSource ? { affiliateSource } : {}),
+            },
         });
 
         customerId = customer.id;
@@ -64,42 +70,51 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         );
 
         await linkCustomerToUid(customerId, uid);
+    } else {
+        // Keep customer metadata up to date (safe, non-destructive)
+        if (affiliateRef || affiliateSource) {
+            try {
+                await stripe.customers.update(customerId, {
+                    metadata: {
+                        firebaseUid: uid,
+                        ...(affiliateRef ? { affiliateRef } : {}),
+                        ...(affiliateSource ? { affiliateSource } : {}),
+                    },
+                });
+            } catch {
+                // ignore
+            }
+        }
     }
-
 
     const appOrigin = isProd
         ? process.env.NEXT_PUBLIC_APP_ORIGIN || "https://kloner.app"
         : process.env.NEXT_PUBLIC_APP_ORIGIN || "http://localhost:3000";
 
-    // delete-me
-    // const appOrigin = "https://kloner.app"
-
     let successUrl: string;
 
     if (returnRenderId && returnStep) {
-        // always go through /dashboard/view for wizard flows
         const step = returnStep || 2;
         successUrl = `${appOrigin}/dashboard/view?wizard=1&step=${step}&render=${encodeURIComponent(
-            returnRenderId || "",
+            returnRenderId || ""
         )}&billing=success`;
     } else {
-        // generic billing success
         successUrl = `${appOrigin}/dashboard/view?billing=success`;
     }
 
-    // const cancelUrl = isProd
-    //     ? process.env.STRIPE_CANCEL_URL_PROD ||
-    //     "https://kloner.app/price?billing=cancelled"
-    //     : process.env.STRIPE_CANCEL_URL_TEST ||
-    //     "http://localhost:3000/price?billing=cancelled";
+    const cancelUrl = "https://kloner.app/price?billing=cancelled";
 
-
-    // delete-me
-    const cancelUrl = "https://kloner.app/price?billing=cancelled"
+    const baseMeta = {
+        firebaseUid: uid,
+        plan,
+        ...(affiliateRef ? { affiliateRef } : {}),
+        ...(affiliateSource ? { affiliateSource } : {}),
+    };
 
     const session = await stripe.checkout.sessions.create({
         mode: "subscription",
         customer: customerId,
+        client_reference_id: uid,
         line_items: [
             {
                 price: priceId,
@@ -108,15 +123,9 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         ],
         success_url: successUrl,
         cancel_url: cancelUrl,
-        metadata: {
-            firebaseUid: uid,
-            plan,
-        },
+        metadata: baseMeta,
         subscription_data: {
-            metadata: {
-                firebaseUid: uid,
-                plan,
-            },
+            metadata: baseMeta,
         },
     });
 

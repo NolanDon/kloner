@@ -26,6 +26,9 @@ import {
     where,
     addDoc,
     serverTimestamp,
+    doc,
+    setDoc,
+    getDoc,
 } from "firebase/firestore";
 import Image from "next/image";
 
@@ -81,6 +84,106 @@ function hash64(s: string): string {
         h |= 0;
     }
     return Math.abs(h).toString(36);
+}
+
+/* ───────── Affiliate helpers ───────── */
+
+function readCookie(name: string): string | null {
+    if (typeof document === "undefined") return null;
+    const m = document.cookie.match(new RegExp("(^| )" + name + "=([^;]+)"));
+    return m ? decodeURIComponent(m[2]) : null;
+}
+
+function cleanAff(v: unknown): string {
+    if (typeof v !== "string") return "";
+    return v.trim().slice(0, 128);
+}
+
+function getAffiliateFromClient(): { affiliateRef: string; affiliateCode: string } {
+    const cookieRef = cleanAff(readCookie("kl_aff_ref") || "");
+    const cookieCode = cleanAff(readCookie("kl_aff_code") || "");
+
+    let lsRef = "";
+    let lsCode = "";
+    try {
+        lsRef = cleanAff(localStorage.getItem("kl_aff_ref") || "");
+        lsCode = cleanAff(localStorage.getItem("kl_aff_code") || "");
+    } catch {
+        // ignore
+    }
+
+    return {
+        affiliateRef: cookieRef || lsRef,
+        affiliateCode: cookieCode || lsCode,
+    };
+}
+
+/**
+ * Ensure the user has createdAt set (and keep updatedAt fresh).
+ * - If createdAt missing, set it.
+ * - Always set updatedAt.
+ */
+async function ensureUserCreatedAt(u: User): Promise<void> {
+    const userRef = doc(db, "kloner_users", u.uid);
+    try {
+        const snap = await getDoc(userRef);
+        const existing = snap.exists() ? (snap.data() as any) : null;
+
+        const updates: Record<string, any> = {
+            updatedAt: serverTimestamp(),
+        };
+
+        if (!existing?.createdAt) {
+            updates.createdAt = serverTimestamp();
+        }
+
+        await setDoc(userRef, updates, { merge: true });
+    } catch (e) {
+        console.error("Failed to ensure createdAt on user doc", e);
+    }
+}
+
+/**
+ * Attach affiliate attribution to the user's root doc.
+ * Non-destructive: won't overwrite existing affiliate fields.
+ */
+async function attachAffiliateToUserDoc(u: User): Promise<void> {
+    const { affiliateRef, affiliateCode } = getAffiliateFromClient();
+    if (!affiliateRef && !affiliateCode) return;
+
+    const userRef = doc(db, "kloner_users", u.uid);
+
+    try {
+        const snap = await getDoc(userRef);
+        const existing = snap.exists() ? (snap.data() as any) : null;
+
+        const updates: Record<string, any> = {
+            affiliateLastSeenAt: serverTimestamp(),
+        };
+
+        if (affiliateRef && !existing?.affiliateRef) {
+            updates.affiliateRef = affiliateRef;
+            updates.affiliateCapturedAt = serverTimestamp();
+            updates.affiliateSource = "query_param";
+        }
+
+        if (affiliateCode && !existing?.affiliateCode) {
+            updates.affiliateCode = affiliateCode;
+            updates.affiliateCodeCapturedAt = serverTimestamp();
+            updates.affiliateCodeSource = "query_param";
+        }
+
+        const hasAny =
+            "affiliateRef" in updates ||
+            "affiliateCode" in updates ||
+            "affiliateLastSeenAt" in updates;
+
+        if (!hasAny) return;
+
+        await setDoc(userRef, updates, { merge: true });
+    } catch (e) {
+        console.error("Failed to attach affiliate attribution", e);
+    }
 }
 
 /* ───────── CSRF helper ───────── */
@@ -281,6 +384,10 @@ export default function LoginPage(): JSX.Element {
             try {
                 await setSessionCookie();
 
+                // Ensure createdAt exists (and keep updatedAt fresh) for any signed-in user.
+                // This fixes the "createdAt didn't seem to work" issue when other flows created the doc first.
+                await ensureUserCreatedAt(u);
+
                 const pending = pendingUrl?.trim();
                 if (pending) {
                     try {
@@ -336,6 +443,8 @@ export default function LoginPage(): JSX.Element {
             await setSessionCookie();
 
             if (isNew) {
+                await ensureUserCreatedAt(cred.user);
+                await attachAffiliateToUserDoc(cred.user);
                 await notifyKlonerSignup(cred.user, "google");
             }
         } catch (e) {
@@ -362,12 +471,10 @@ export default function LoginPage(): JSX.Element {
                 await signInWithEmailAndPassword(auth, email.trim(), pw);
                 await setSessionCookie();
             } else {
-                const cred = await createUserWithEmailAndPassword(
-                    auth,
-                    email.trim(),
-                    pw
-                );
+                const cred = await createUserWithEmailAndPassword(auth, email.trim(), pw);
                 await setSessionCookie();
+                await ensureUserCreatedAt(cred.user);
+                await attachAffiliateToUserDoc(cred.user);
                 await notifyKlonerSignup(cred.user, "email");
             }
         } catch (e2) {
@@ -404,8 +511,8 @@ export default function LoginPage(): JSX.Element {
                                 setErr("");
                             }}
                             className={`px-3 py-1.5 rounded-full font-medium transition ${mode === "signin"
-                                ? "bg-accent text-white"
-                                : "text-neutral-600 hover:text-black"
+                                    ? "bg-accent text-white"
+                                    : "text-neutral-600 hover:text-black"
                                 }`}
                         >
                             Sign in
@@ -417,8 +524,8 @@ export default function LoginPage(): JSX.Element {
                                 setErr("");
                             }}
                             className={`px-3 py-1.5 rounded-full font-medium transition ${mode === "signup"
-                                ? "bg-accent text-white"
-                                : "text-neutral-600 hover:text-black"
+                                    ? "bg-accent text-white"
+                                    : "text-neutral-600 hover:text-black"
                                 }`}
                         >
                             Create account
@@ -453,7 +560,6 @@ export default function LoginPage(): JSX.Element {
                             ×
                         </button>
                     </div>
-
                 ) : null}
 
                 <form onSubmit={submitEmail} className="space-y-3">
@@ -592,7 +698,9 @@ export default function LoginPage(): JSX.Element {
                         className="font-medium"
                         style={{ color: ACCENT }}
                     >
-                        {mode === "signin" ? "Create an account" : "Have an account? Sign in"}
+                        {mode === "signin"
+                            ? "Create an account"
+                            : "Have an account? Sign in"}
                     </button>
                     <button
                         type="button"
