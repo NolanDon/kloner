@@ -97,7 +97,6 @@ const BASE_NAV_SECTIONS: NavSectionConfig[] = [
             { href: "/dashboard/docs", label: "Docs", icon: BookText },
         ],
     },
-    // Support + Admin sections are filtered by claims below
     {
         label: "Support",
         items: [
@@ -118,9 +117,16 @@ const BASE_NAV_SECTIONS: NavSectionConfig[] = [
                 icon: BarChart3,
                 adminOnly: true,
             },
+            {
+                href: "/admin/support-docs",
+                label: "Support docs",
+                icon: BookText,          // or any icon you prefer
+                adminOnly: true,
+            },
         ],
     },
 ];
+
 
 // STRICT match now – no startsWith for dashboard etc.
 function navItemIsActive(pathname: string, href: string): boolean {
@@ -175,8 +181,8 @@ function NavItem({
             onClick={handleClick}
             aria-disabled={active}
             className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${active
-                    ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
-                    : "text-neutral-700 hover:bg-neutral-50"
+                ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
+                : "text-neutral-700 hover:bg-neutral-50"
                 }`}
         >
             {Icon && (
