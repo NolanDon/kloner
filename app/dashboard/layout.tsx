@@ -12,7 +12,12 @@ import {
     type User as FirebaseUser,
     signOut,
 } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
+import {
+    collection,
+    onSnapshot,
+    DocumentData,
+} from "firebase/firestore";
 import Link from "next/link";
 import Image from "next/image";
 import logo from "@/public/images/orange_logo.png";
@@ -146,11 +151,13 @@ function NavItem({
     label,
     icon: Icon,
     active,
+    unreadCount,
 }: {
     href: string;
     label: string;
     icon?: React.ComponentType<React.SVGProps<SVGSVGElement>>;
     active: boolean;
+    unreadCount?: number;
 }) {
     const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
         if (active) {
@@ -158,6 +165,9 @@ function NavItem({
             e.stopPropagation();
         }
     };
+
+    const showBadge =
+        typeof unreadCount === "number" && unreadCount > 0;
 
     return (
         <Link
@@ -175,9 +185,15 @@ function NavItem({
                 </span>
             )}
             <span className="truncate">{label}</span>
+            {showBadge && (
+                <span className="ml-auto inline-flex min-w-[18px] items-center justify-center rounded-full bg-emerald-500 px-1.5 py-[1px] text-[6px] font-semibold text-white">
+                    {unreadCount}
+                </span>
+            )}
         </Link>
     );
 }
+
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
     return (
@@ -252,9 +268,11 @@ function AccountBlock() {
 function SidebarShell({
     isAdmin,
     isSupportAgent,
+    supportUnreadCount,
 }: {
     isAdmin: boolean;
     isSupportAgent: boolean;
+    supportUnreadCount: number;
 }) {
     const pathname = usePathname();
     const navSections = useMemo(
@@ -293,6 +311,11 @@ function SidebarShell({
                                     label={item.label}
                                     icon={item.icon}
                                     active={navItemIsActive(pathname, item.href)}
+                                    unreadCount={
+                                        item.href === "/support/agent"
+                                            ? supportUnreadCount
+                                            : undefined
+                                    }
                                 />
                             ))}
                         </div>
@@ -435,8 +458,8 @@ function MobileHeader({
                                                 onClick={handleClick}
                                                 aria-disabled={active}
                                                 className={`flex items-center gap-3 rounded-xl px-3 py-3 text-[15px] ${active
-                                                        ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
-                                                        : "text-neutral-800 hover:bg-neutral-50"
+                                                    ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
+                                                    : "text-neutral-800 hover:bg-neutral-50"
                                                     }`}
                                             >
                                                 {Icon && (
@@ -478,6 +501,7 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
     const [ready, setReady] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
     const [isSupportAgent, setIsSupportAgent] = useState(false);
+    const [supportUnreadCount, setSupportUnreadCount] = useState(0);
 
     useEffect(() => {
         const off = onAuthStateChanged(auth, async (u) => {
@@ -501,6 +525,42 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
         return () => off();
     }, [router]);
 
+    // unread count listener for support inbox (only for support/admin)
+    useEffect(() => {
+        if (!isAdmin && !isSupportAgent) {
+            setSupportUnreadCount(0);
+            return;
+        }
+
+        const inboxCol = collection(db, "support_inbox");
+
+        const unsub = onSnapshot(
+            inboxCol,
+            (snap) => {
+                let total = 0;
+                snap.forEach((doc) => {
+                    const data = doc.data() as DocumentData;
+                    const status = (data.status as string) || "open";
+                    const unread =
+                        typeof data.unreadCount === "number"
+                            ? data.unreadCount
+                            : 0;
+
+                    // if you only want unread on non-closed threads:
+                    if (status !== "closed") {
+                        total += unread;
+                    }
+                });
+                setSupportUnreadCount(total);
+            },
+            (err) => {
+                console.error("[AppShell] support_inbox onSnapshot failed", err);
+            },
+        );
+
+        return () => unsub();
+    }, [isAdmin, isSupportAgent]);
+
     if (!ready) {
         return <KlonerLoader />;
     }
@@ -512,6 +572,7 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
                     <SidebarShell
                         isAdmin={isAdmin}
                         isSupportAgent={isSupportAgent}
+                        supportUnreadCount={supportUnreadCount}
                     />
                 </aside>
 

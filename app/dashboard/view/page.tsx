@@ -62,6 +62,7 @@ import {
     Share2,
     ScanFace,
     WrenchIcon,
+    DeleteIcon,
 } from "lucide-react";
 import {
     isHttpUrl,
@@ -520,9 +521,17 @@ function RenderCardInner({
                     disabled={isDeleting || isBuilding}
                     aria-label="Discard preview"
                     title="Delete this editable preview"
-                    className="absolute right-1 top-1 z-40 inline-flex h-7 w-7 items-center justify-center rounded-full border border-red-200 bg-white/95 pb-1 text-[18px] font-bold leading-none text-red-600 shadow-sm hover:border-red-500 hover:bg-red-600 hover:text-white disabled:opacity-60"
+                    className={[
+                        "absolute -right-3 -top-3 z-40 inline-flex h-6 w-6 items-center justify-center rounded-full border shadow-sm",
+                        "transition-all duration-150",
+                        "bg-white/85 border-neutral-200 text-neutral-400",                 // default: visible, subtle
+                        "hover:bg-red-600 hover:border-red-600 hover:text-white hover:shadow-md hover:scale-[1.04]", // hover: red + white icon
+                        "active:scale-[0.98]",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 focus-visible:ring-offset-2",
+                        "disabled:opacity-60 disabled:pointer-events-none",
+                    ].join(" ")}
                 >
-                    ×
+                    <DeleteIcon className="h-3.5 w-3.5 transition-colors" />
                 </button>
             )}
 
@@ -861,20 +870,22 @@ function RenderCardInner({
                 )}
             </div>
 
-            {showIframe && (
-                <div className="relative h-0 overflow-hidden" aria-hidden>
-                    <iframe
-                        title={`r-${r.id}`}
-                        className="h-0 w-full"
-                        sandbox="allow-same-origin"
-                        referrerPolicy="no-referrer"
-                        allow="clipboard-read; clipboard-write"
-                        key={`frame-${r.id}`}
-                        srcDoc={srcDoc}
-                    />
-                </div>
-            )}
-        </div>
+            {
+                showIframe && (
+                    <div className="relative h-0 overflow-hidden" aria-hidden>
+                        <iframe
+                            title={`r-${r.id}`}
+                            className="h-0 w-full"
+                            sandbox="allow-same-origin"
+                            referrerPolicy="no-referrer"
+                            allow="clipboard-read; clipboard-write"
+                            key={`frame-${r.id}`}
+                            srcDoc={srcDoc}
+                        />
+                    </div>
+                )
+            }
+        </div >
     );
 }
 

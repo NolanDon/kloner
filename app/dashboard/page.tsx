@@ -27,7 +27,7 @@ import {
     type ListResult,
 } from "firebase/storage";
 import { auth, db, storage } from "@/lib/firebase";
-import { CheckCircle2, Clock3, AlertTriangle, Loader2 } from "lucide-react";
+import { CheckCircle2, Clock3, AlertTriangle, Loader2, CrossIcon, DeleteIcon } from "lucide-react";
 
 const ACCENT = "#f55f2a";
 
@@ -431,6 +431,12 @@ function UrlRow({ uid, r }: UrlRowProps) {
 
     async function remove() {
         if (locked) return;
+
+        const ok = window.confirm(
+            `Delete this tracked URL?\n\n${r.url}\n\nThis removes the URL and its screenshots and renders.`
+        );
+        if (!ok) return;
+
         setErr("");
         setBusy(true);
         try {
@@ -443,42 +449,32 @@ function UrlRow({ uid, r }: UrlRowProps) {
                 );
             } else {
                 const folderRef = sRef(storage, prefix);
-                const listed: ListResult | null = await listAll(folderRef).catch(
-                    () => null
-                );
+                const listed: ListResult | null = await listAll(folderRef).catch(() => null);
                 if (listed) {
-                    await Promise.allSettled(
-                        listed.items.map((it) => deleteObject(it))
-                    );
+                    await Promise.allSettled(listed.items.map((it) => deleteObject(it)));
                     await Promise.allSettled(
                         listed.prefixes.map(async (sub) => {
                             const sublist = await listAll(sub);
-                            await Promise.allSettled(
-                                sublist.items.map((it) => deleteObject(it))
-                            );
+                            await Promise.allSettled(sublist.items.map((it) => deleteObject(it)));
                         })
                     );
                 }
             }
 
-            const rendersCol = collection(
-                db,
-                "kloner_users",
-                uid,
-                "kloner_renders"
-            );
+            const rendersCol = collection(db, "kloner_users", uid, "kloner_renders");
             const qHash = query(rendersCol, where("urlHash", "==", urlHash));
             const qUrl = query(rendersCol, where("url", "==", r.url));
             const [snapHash, snapUrl] = await Promise.all([getDocs(qHash), getDocs(qUrl)]);
+
             const toDeleteIds = new Set<string>();
             snapHash.forEach((d) => toDeleteIds.add(d.id));
             snapUrl.forEach((d) => toDeleteIds.add(d.id));
+
             if (toDeleteIds.size > 0) {
                 const batch = writeBatch(db);
-                for (const id of toDeleteIds)
-                    batch.delete(
-                        doc(db, "kloner_users", uid, "kloner_renders", id)
-                    );
+                for (const id of toDeleteIds) {
+                    batch.delete(doc(db, "kloner_users", uid, "kloner_renders", id));
+                }
                 await batch.commit();
             }
 
@@ -489,6 +485,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
             setBusy(false);
         }
     }
+
 
     return (
         <div
@@ -503,9 +500,17 @@ function UrlRow({ uid, r }: UrlRowProps) {
                 disabled={busy || locked}
                 aria-label="Delete tracked URL"
                 title="Delete this tracked URL"
-                className="absolute -right-3 -top-3 z-40 pb-1 inline-flex h-5 w-5 items-center justify-center rounded-full border border-red-200 bg-white/95 text-[12px] font-bold leading-none text-red-600 shadow-sm hover:bg-red-600 hover:text-white hover:border-red-500 disabled:opacity-60"
+                className={[
+                    "absolute -right-3 -top-3 z-40 inline-flex h-6 w-6 items-center justify-center rounded-full border shadow-sm",
+                    "transition-all duration-150",
+                    "bg-white/85 border-neutral-200 text-neutral-400",                 // default: visible, subtle
+                    "hover:bg-red-600 hover:border-red-600 hover:text-white hover:shadow-md hover:scale-[1.04]", // hover: red + white icon
+                    "active:scale-[0.98]",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 focus-visible:ring-offset-2",
+                    "disabled:opacity-60 disabled:pointer-events-none",
+                ].join(" ")}
             >
-                ×
+                <DeleteIcon className="h-3.5 w-3.5 transition-colors" />
             </button>
 
             <div className="flex flex-col sm:flex-row gap-4 sm:gap-5">
