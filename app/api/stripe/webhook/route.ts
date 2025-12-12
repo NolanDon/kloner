@@ -102,6 +102,7 @@ function getInvoiceSubscriptionId(invoice: Stripe.Invoice): string | null {
 
     if (direct) return direct;
 
+    // fallback: sometimes present on line items
     const line0 = anyInv.lines?.data?.[0];
     const fromLine =
         typeof line0?.subscription === "string"
@@ -110,12 +111,60 @@ function getInvoiceSubscriptionId(invoice: Stripe.Invoice): string | null {
                 ? line0.subscription.id
                 : null;
 
-    return fromLine || null;
+    // newer payloads: parent.subscription_details.subscription
+    const fromParent =
+        typeof anyInv.parent?.subscription_details?.subscription === "string"
+            ? anyInv.parent.subscription_details.subscription
+            : null;
+
+    return direct || fromLine || fromParent || null;
+}
+
+/** Best-effort: pull firebaseUid from invoice payload (line metadata or parent.subscription_details.metadata) */
+function getInvoiceFirebaseUid(invoice: Stripe.Invoice): string {
+    const anyInv = invoice as any;
+
+    const fromLine = cleanStr(anyInv?.lines?.data?.[0]?.metadata?.firebaseUid, 256);
+    if (fromLine) return fromLine;
+
+    const fromParent = cleanStr(
+        anyInv?.parent?.subscription_details?.metadata?.firebaseUid,
+        256
+    );
+    if (fromParent) return fromParent;
+
+    return "";
+}
+
+function getInvoiceAffiliateFromPayload(
+    invoice: Stripe.Invoice
+): { affiliateRef: string; affiliateSource: string } {
+    const anyInv = invoice as any;
+
+    const mLine = anyInv?.lines?.data?.[0]?.metadata || {};
+    const affiliateRefLine = cleanStr(mLine?.affiliateRef);
+    const affiliateSourceLine = cleanStr(mLine?.affiliateSource);
+    if (affiliateRefLine) {
+        return { affiliateRef: affiliateRefLine, affiliateSource: affiliateSourceLine };
+    }
+
+    const mParent = anyInv?.parent?.subscription_details?.metadata || {};
+    const affiliateRefParent = cleanStr(mParent?.affiliateRef);
+    const affiliateSourceParent = cleanStr(mParent?.affiliateSource);
+    if (affiliateRefParent) {
+        return { affiliateRef: affiliateRefParent, affiliateSource: affiliateSourceParent };
+    }
+
+    return { affiliateRef: "", affiliateSource: "" };
 }
 
 async function resolveAffiliateRefForInvoice(
     invoice: Stripe.Invoice
 ): Promise<{ affiliateRef: string; affiliateSource: string }> {
+    // 0) Prefer invoice payload (fast, reliable, no extra Stripe calls)
+    const fromPayload = getInvoiceAffiliateFromPayload(invoice);
+    if (fromPayload.affiliateRef) return fromPayload;
+
     // 1) Prefer subscription metadata
     try {
         const subId = getInvoiceSubscriptionId(invoice);
@@ -134,7 +183,7 @@ async function resolveAffiliateRefForInvoice(
         const custId =
             typeof invoice.customer === "string"
                 ? invoice.customer
-                : invoice.customer?.id;
+                : (invoice.customer as any)?.id;
 
         if (custId) {
             const cust = await stripe.customers.retrieve(custId);
@@ -154,26 +203,42 @@ async function writeAffiliateLedgerForInvoicePaid(invoice: Stripe.Invoice): Prom
     const customerId =
         typeof invoice.customer === "string"
             ? invoice.customer
-            : invoice.customer?.id;
+            : (invoice.customer as any)?.id;
 
     if (!customerId) return;
 
-    const uid = await resolveUidForCustomerId(customerId);
+    // Prefer UID from invoice payload to avoid missing mapping edge cases
+    const uidFromInvoice = getInvoiceFirebaseUid(invoice);
+    const uid = uidFromInvoice || (await resolveUidForCustomerId(customerId));
     if (!uid) return;
+
+    // best-effort: ensure mapping + user doc have stripeCustomerId for future events
+    if (uidFromInvoice) {
+        try {
+            await linkCustomerToUid(customerId, uidFromInvoice);
+            await db
+                .collection("kloner_users")
+                .doc(uidFromInvoice)
+                .set({ stripeCustomerId: customerId }, { merge: true });
+        } catch {
+            // ignore
+        }
+    }
 
     const { affiliateRef, affiliateSource } = await resolveAffiliateRefForInvoice(invoice);
     if (!affiliateRef) return;
 
-    // Idempotency: use invoice.id as entry doc id
     const entryRef = db
         .collection("affiliate_ledger")
         .doc(affiliateRef)
         .collection("entries")
         .doc(invoice.id);
 
+    // Idempotent
     const existing = await entryRef.get();
     if (existing.exists) return;
 
+    // Net collected revenue only (Stripe: amount_paid)
     const netCollectedCents = Number((invoice as any).amount_paid ?? 0);
     if (!Number.isFinite(netCollectedCents) || netCollectedCents <= 0) return;
 
@@ -189,7 +254,7 @@ async function writeAffiliateLedgerForInvoicePaid(invoice: Stripe.Invoice): Prom
     const paidAtDate = new Date(paidAtSec * 1000);
     const periodKey = monthKeyFromUnix(paidAtSec);
 
-    // 12-month cap enforcement anchored to affiliateFirstPaidAt on the USER doc.
+    // 12-month cap enforcement anchored to affiliateFirstPaidAt on the USER doc
     const userRef = db.collection("kloner_users").doc(uid);
     const userSnap = await userRef.get();
     const userData = userSnap.exists ? (userSnap.data() as any) : {};
@@ -201,11 +266,9 @@ async function writeAffiliateLedgerForInvoicePaid(invoice: Stripe.Invoice): Prom
 
     if (!firstPaidAt) {
         try {
-            await userRef.set(
-                { affiliateFirstPaidAt: admin.firestore.Timestamp.fromDate(paidAtDate) },
-                { merge: true }
-            );
-            firstPaidAt = admin.firestore.Timestamp.fromDate(paidAtDate);
+            const ts = admin.firestore.Timestamp.fromDate(paidAtDate);
+            await userRef.set({ affiliateFirstPaidAt: ts }, { merge: true });
+            firstPaidAt = ts;
         } catch {
             // ignore
         }
@@ -213,9 +276,7 @@ async function writeAffiliateLedgerForInvoicePaid(invoice: Stripe.Invoice): Prom
 
     if (firstPaidAt) {
         const capEnd = addMonths(firstPaidAt.toDate(), AFF_CAP_MONTHS);
-        if (paidAtDate.getTime() > capEnd.getTime()) {
-            return; // past cap window
-        }
+        if (paidAtDate.getTime() > capEnd.getTime()) return;
     }
 
     const eligibleAt = admin.firestore.Timestamp.fromDate(
@@ -279,7 +340,7 @@ export async function POST(req: NextRequest) {
                 const customerId =
                     typeof session.customer === "string"
                         ? session.customer
-                        : session.customer?.id;
+                        : (session.customer as any)?.id;
 
                 if (!firebaseUid || !customerId) {
                     console.warn(
@@ -290,6 +351,11 @@ export async function POST(req: NextRequest) {
                 }
 
                 await linkCustomerToUid(customerId, firebaseUid);
+                await db
+                    .collection("kloner_users")
+                    .doc(firebaseUid)
+                    .set({ stripeCustomerId: customerId }, { merge: true });
+
                 // subscription.* events will perform the tier update
                 break;
             }
@@ -301,9 +367,7 @@ export async function POST(req: NextRequest) {
                 const sub = event.data.object as Stripe.Subscription;
 
                 const customerId =
-                    typeof sub.customer === "string"
-                        ? sub.customer
-                        : sub.customer.id;
+                    typeof sub.customer === "string" ? sub.customer : (sub.customer as any)?.id;
 
                 if (!customerId) {
                     console.warn("subscription event without customerId; ignoring", event.id);

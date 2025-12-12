@@ -4318,8 +4318,9 @@ export default function PreviewPage(): JSX.Element {
                                                 >
                                                     <div className="space-y-1.5">
                                                         <p className="text-sm font-semibold text-neutral-900">
-                                                            Upgrade required to publish this site
+                                                            Almost there. Upgrade to deploy your site in one click.
                                                         </p>
+
                                                         <p className="text-[11px] text-neutral-600 leading-relaxed">
                                                             Deploying previews to Vercel is a paid feature. Upgrading unlocks instant
                                                             publishing, higher limits, and full multi-site workflows.
