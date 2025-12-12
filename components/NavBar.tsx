@@ -212,9 +212,9 @@ export default function NavBar(): JSX.Element {
                     onClick={() => setUserMenuOpen((v) => !v)}
                     aria-haspopup="menu"
                     aria-expanded={userMenuOpen}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-full text-white ring-1 ring-white/20 hover:bg-white/10"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-full text-white ring-1 ring-white/20 hover:bg-white/10"
                   >
-                    <span className="text-sm">{initials || "ME"}</span>
+                    <span className="text-[11px]">{initials || "ME"}</span>
                   </button>
                   <AnimatePresence>
                     {userMenuOpen && (
