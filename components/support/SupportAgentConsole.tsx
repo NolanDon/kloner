@@ -10,6 +10,9 @@ import {
     query,
     Timestamp,
     DocumentData,
+    doc,
+    serverTimestamp,
+    updateDoc,
 } from "firebase/firestore";
 import {
     MessageCircle,
@@ -18,6 +21,9 @@ import {
     Clock,
     Filter,
     ArrowRight,
+    CheckCircle2,
+    RotateCcw,
+    XCircle,
 } from "lucide-react";
 
 type InboxItem = {
@@ -55,7 +61,7 @@ export function SupportAgentConsole() {
     const router = useRouter();
     const [inbox, setInbox] = useState<InboxItem[]>([]);
     const [filter, setFilter] = useState<"all" | "open" | "pending" | "closed">(
-        "all",
+        "open",
     );
 
     // sound only on *new* chats
@@ -131,6 +137,15 @@ export function SupportAgentConsole() {
         () => inbox.reduce((sum, c) => sum + (c.unreadCount || 0), 0),
         [inbox],
     );
+
+    async function setChatStatus(chatId: string, status: "open" | "pending" | "closed") {
+        if (!chatId) return;
+
+        await updateDoc(doc(db, "support_inbox", chatId), {
+            status,
+            updatedAt: serverTimestamp(),
+        });
+    }
 
     return (
         <div className="h-screen bg-white">
@@ -231,6 +246,7 @@ export function SupportAgentConsole() {
                             {filteredInbox.map((chat) => {
                                 const status = chat.status || "open";
                                 const statusClass = STATUS_COLORS[status];
+                                const unread = typeof chat.unreadCount === "number" ? chat.unreadCount : 0;
 
                                 return (
                                     <li key={chat.id}>
@@ -250,17 +266,65 @@ export function SupportAgentConsole() {
                                                         className={`inline-flex items-center gap-1 rounded-full border px-2 py-[2px] text-[10px] font-semibold ${statusClass}`}
                                                     >
                                                         <span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
-                                                        <span className="capitalize">
-                                                            {status}
-                                                        </span>
+                                                        <span className="capitalize">{status}</span>
                                                     </span>
-                                                    {status === "open" &&
-                                                        chat.unreadCount &&
-                                                        chat.unreadCount > 0 && (
-                                                            <span className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-emerald-500 px-1.5 py-[1px] text-[10px] font-semibold text-white">
-                                                                {chat.unreadCount}
-                                                            </span>
+
+                                                    {/* status actions */}
+                                                    <div
+                                                        className="inline-flex items-center gap-1"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        {status !== "closed" ? (
+                                                            <button
+                                                                type="button"
+                                                                title="Close"
+                                                                aria-label="Close conversation"
+                                                                onClick={() => void setChatStatus(chat.id, "closed")}
+                                                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
+                                                            >
+                                                                <XCircle className="h-4 w-4" />
+                                                            </button>
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                title="Reopen"
+                                                                aria-label="Reopen conversation"
+                                                                onClick={() => void setChatStatus(chat.id, "open")}
+                                                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
+                                                            >
+                                                                <RotateCcw className="h-4 w-4" />
+                                                            </button>
                                                         )}
+
+                                                        {status !== "pending" ? (
+                                                            <button
+                                                                type="button"
+                                                                title="Mark pending"
+                                                                aria-label="Mark conversation as pending"
+                                                                onClick={() => void setChatStatus(chat.id, "pending")}
+                                                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
+                                                            >
+                                                                <Clock className="h-4 w-4" />
+                                                            </button>
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                title="Mark open"
+                                                                aria-label="Mark conversation as open"
+                                                                onClick={() => void setChatStatus(chat.id, "open")}
+                                                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
+                                                            >
+                                                                <CheckCircle2 className="h-4 w-4" />
+                                                            </button>
+                                                        )}
+                                                    </div>
+
+
+                                                    {status === "open" && unread > 0 ? (
+                                                        <span className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-emerald-500 px-1.5 py-[1px] text-[10px] font-semibold text-white">
+                                                            {unread}
+                                                        </span>
+                                                    ) : null}
                                                 </div>
                                                 <div className="mt-1 flex items-center gap-2 text-[11px] text-neutral-500">
                                                     <span className="line-clamp-1">

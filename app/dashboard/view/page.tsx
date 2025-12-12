@@ -159,6 +159,7 @@ export type RenderDoc = {
     url?: string | null;
     urlHash?: string | null;
     key?: string | null;
+    source?: string | null;
     referenceImage?: string | null;
     html?: string;
     reason?: string | null;
@@ -237,11 +238,11 @@ function RenderCardInner({
     const isDeployed = !!r.lastExportedAt;
     const isArchived = !!r.archived;
 
+    const isCommunityBuild = r.source === "community_remix"
+
     // progress normalization: prefer explicit percent, then raw `progress`
     const rawPercent =
-        typeof (r as any).progress === "number"
-            ? (r as any).progress
-            : null;
+        typeof (r as any).progress === "number" ? (r as any).progress : null;
 
     const normalizedProgressPercent =
         typeof rawPercent === "number" && !Number.isNaN(rawPercent)
@@ -274,10 +275,7 @@ function RenderCardInner({
     const isThisCardLockedForBuild = hasActiveProgress;
 
     const disableOpen =
-        isOpening ||
-        isDeploying ||
-        isArchived ||
-        isThisCardLockedForBuild;
+        isOpening || isDeploying || isArchived || isThisCardLockedForBuild;
 
     const { src: refImgUrl, onError: refImgErr } = useResolvedImg(r.key || "");
 
@@ -289,8 +287,7 @@ function RenderCardInner({
     const controllerVersion =
         typeof r.controllerVersion === "string" ? r.controllerVersion : "";
 
-    const model =
-        typeof r.model === "string" ? r.model : "";
+    const model = typeof r.model === "string" ? r.model : "";
 
     const [shareOpen, setShareOpen] = useState(false);
     const [shareRemixable, setShareRemixable] = useState(true);
@@ -306,16 +303,8 @@ function RenderCardInner({
         if (!r.html) return "";
         let safeHtml = r.html.trim();
 
-        safeHtml = safeHtml.replace(
-            /<script\b[^>]*>[\s\S]*?<\/script>/gi,
-            "",
-        );
-
-        safeHtml = safeHtml.replace(
-            /\son\w+\s*=\s*(['"]).*?\1/gi,
-            "",
-        );
-
+        safeHtml = safeHtml.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
+        safeHtml = safeHtml.replace(/\son\w+\s*=\s*(['"]).*?\1/gi, "");
         safeHtml = safeHtml.replace(
             /href\s*=\s*(['"])\s*javascript:[^'"]*\1/gi,
             'href="#"',
@@ -333,10 +322,7 @@ function RenderCardInner({
     ">
 `.trim();
 
-        const base = r.html
-            ? `<base target="_blank" rel="noopener noreferrer">`
-            : "";
-
+        const base = r.html ? `<base target="_blank" rel="noopener noreferrer">` : "";
         return `${csp}${base}${safeHtml}`;
     }, [r.html]);
 
@@ -479,13 +465,68 @@ function RenderCardInner({
 
     return (
         <div
-            className={`relative flex flex-col overflow-visible rounded-xl border bg-white shadow-sm ${isArchivedFlag
-                ? "border-amber-300/70 bg-amber-50/50"
-                : "border-neutral-200"
-                }`}
+            className={[
+                "relative flex flex-col overflow-visible rounded-xl border bg-white shadow-sm",
+                isArchivedFlag ? "border-amber-300/70 bg-amber-50/50" : "border-neutral-200",
+                // ✅ add border + ring only for community rebuild/remix
+                isCommunityBuild && !isArchivedFlag
+                    ? "border-[rgba(245,95,42,0.55)] ring-1 ring-[rgba(245,95,42,0.18)] shadow-[0_14px_32px_rgba(245,95,42,0.12)]"
+                    : "",
+            ].join(" ")}
         >
+            {/* ✅ community badge (unchanged) */}
+            {isCommunityBuild && (
+                <span
+                    className="absolute left-2 bottom-2 z-40 inline-flex items-center gap-1.5 rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm"
+                    title="Created from a community build"
+                >
+                    <svg
+                        className="h-4 w-4"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        aria-hidden="true"
+                    >
+                        <path
+                            d="M7 7h6a4 4 0 0 1 4 4v1"
+                            stroke="currentColor"
+                            strokeWidth="2.25"
+                            strokeLinecap="round"
+                        />
+                        <path
+                            d="M17 7l2 2-2 2"
+                            stroke="currentColor"
+                            strokeWidth="2.25"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                        />
+                        <path
+                            d="M17 17H11a4 4 0 0 1-4-4v-1"
+                            stroke="currentColor"
+                            strokeWidth="2.25"
+                            strokeLinecap="round"
+                        />
+                        <path
+                            d="M7 17l-2-2 2-2"
+                            stroke="currentColor"
+                            strokeWidth="2.25"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                        />
+                    </svg>
+                    remixed
+                </span>
+            )}
+
+            {/* ✅ render id badge (new, small, unique) */}
+            <span
+                className="absolute left-2 top-2 z-40 inline-flex items-center rounded-full border border-neutral-200 bg-white/85 px-2 py-0.5 text-[10px] font-mono text-neutral-700 shadow-sm"
+                title={`Render ID: ${String(r?.id || "").slice(0, 10)}`}
+            >
+                {String(r?.id || "").slice(0, 10)}
+            </span>
+
             {/* controller version badge – top left */}
-            {(controllerVersion && isDev) && (
+            {controllerVersion && isDev && (
                 <span
                     className="absolute left-2 top-1 z-30 inline-flex items-center gap-1 rounded-full bg-neutral-900/85 px-2 py-0.5 text-[10px] text-neutral-50 shadow-sm"
                     title={`Controller version ${controllerVersion}`}
@@ -495,8 +536,9 @@ function RenderCardInner({
                 </span>
             )}
 
-            {/* controller version badge – top left */}
-            {(controllerVersion && isDev) && (
+
+            {/* model badge – bottom left */}
+            {model && isDev && (
                 <span
                     className="absolute left-2 bottom-1 z-30 inline-flex items-center gap-1 rounded-full bg-neutral-900/85 px-2 py-0.5 text-[10px] text-neutral-50 shadow-sm"
                     title={`Model ${model}`}
@@ -1865,6 +1907,7 @@ export default function PreviewPage(): JSX.Element {
             id: d.id,
             // base fields
             url: data.url ?? null,
+            source: data.source ?? null,
             urlHash: data.urlHash ?? null,
             key: data.key ?? data.referenceImage ?? null,
             referenceImage: data.referenceImage ?? null,
@@ -2053,22 +2096,32 @@ export default function PreviewPage(): JSX.Element {
             where("archived", "in", [false, null]),
             orderBy("createdAt", "desc"),
             limit(100)
-        );
+        )
 
         const unsub = onSnapshot(qs, (snap) => {
             const all = snap.docs.map(mapRenderDoc);
 
             const filtered = all.filter((r) => {
+
                 const byUrl = (r.url || "") === targetUrl;
-                const byHash =
-                    !!targetHash && r.urlHash === targetHash;
+
+                const byHash = !!targetHash && r.urlHash === targetHash;
+
                 const byKeyHash =
-                    !!targetHash &&
-                    extractHashFromKey(r.key) === targetHash;
-                // Include renders that match an optimistic key, even if URL doesn't match
+                    !!targetHash && extractHashFromKey(r.key) === targetHash;
+
                 const byOptimisticKey =
-                    r.key && Object.keys(optimisticByKey).includes(r.key);
-                return byUrl || byHash || byKeyHash || byOptimisticKey;
+                    !!r.key && Object.keys(optimisticByKey).includes(r.key);
+
+                const byCommunityRemix = r.source === "community_remix";
+
+                return (
+                    byUrl ||
+                    byHash ||
+                    byKeyHash ||
+                    byOptimisticKey ||
+                    byCommunityRemix
+                );
             });
 
             const now = Date.now();
@@ -2379,7 +2432,6 @@ export default function PreviewPage(): JSX.Element {
                             html: cleaned,
                             updatedAt: serverTimestamp(),
                         });
-                        console.log("Sanitized HTML persisted for render:", renderId);
                     } catch (err) {
                         console.warn("Failed to persist sanitized HTML", err);
                     }

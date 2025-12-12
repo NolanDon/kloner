@@ -481,7 +481,7 @@ export default function AgentChatPage() {
                                 const isSystem = m.sender === "system";
 
                                 const bubbleBase =
-                                    "inline-block max-w-[75%] rounded-2xl px-3 py-2 text-sm";
+                                    "inline-block rounded-2xl px-3 py-2 text-sm";
                                 const bubbleClass = isSystem
                                     ? "bg-neutral-100 text-neutral-600"
                                     : isMine

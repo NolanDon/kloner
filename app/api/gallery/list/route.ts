@@ -11,6 +11,11 @@ type CommunityBuildPage = {
     html: string;
 };
 
+function toNum(v: unknown, fallback = 0) {
+    const n = typeof v === "number" ? v : Number(v);
+    return Number.isFinite(n) ? n : fallback;
+}
+
 export async function GET() {
     try {
         const db = await getAdminDb();
@@ -42,6 +47,7 @@ export async function GET() {
                 id: doc.id,
                 renderId: data.sourceRenderId ?? data.renderId ?? null,
                 name: data.name || "Untitled build",
+                author: data.author ?? null,
                 createdAt: data.createdAt?.toMillis?.() ?? null,
                 remixable: !!data.remixable,
                 approved: !!data.approved,
@@ -49,6 +55,14 @@ export async function GET() {
                 screenshotUrl: data.screenshotUrl ?? null,
                 html: data.html ?? null,
                 pages,
+
+                // ✅ FIX: include stored counters so the UI can render initial values
+                views: toNum(data.views, 0),
+                likes: toNum(data.likes, 0),
+                remixes: toNum(data.remixes, 0),
+
+                // optional; keep consistent with your client type
+                likedByMe: false,
             };
         });
 
