@@ -1151,7 +1151,7 @@ export default function PreviewEditor({
     const [history, setHistory] = useState<DraftSnapshot[]>([]);
     const [aiHistory, setAiHistory] = useState<AiEditSuggestion[]>([]);
     const [historyOpen, setHistoryOpen] = useState(false);
-    const [sidebarHidden, setSidebarHidden] = useState(true);
+    const [sidebarHidden, setSidebarHidden] = useState(false);
     // dragging iframe
     const previewDragControls = useDragControls();
 
