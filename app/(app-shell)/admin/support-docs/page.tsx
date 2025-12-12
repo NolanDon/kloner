@@ -1,15 +1,9 @@
 // app/admin/support-docs/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { db } from "@/lib/firebase";
-import {
-    collection,
-    doc,
-    getDocs,
-    updateDoc,
-    setDoc,
-} from "firebase/firestore";
+import { collection, doc, getDocs, updateDoc, setDoc } from "firebase/firestore";
 
 import { Loader2 } from "lucide-react";
 
@@ -33,6 +27,10 @@ export default function AdminSupportDocsPage() {
     // collapsed / expanded state per doc
     const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
+    // copy all state
+    const [copyingAll, setCopyingAll] = useState(false);
+    const [copiedAll, setCopiedAll] = useState(false);
+
     useEffect(() => {
         const loadDocs = async () => {
             try {
@@ -45,14 +43,11 @@ export default function AdminSupportDocsPage() {
                     list.push({
                         id: d.id,
                         text: data.text ?? "",
-                        updatedAt:
-                            data.updatedAt?.toDate?.().toISOString?.() ?? null,
+                        updatedAt: data.updatedAt?.toDate?.().toISOString?.() ?? null,
                     });
                 });
 
-                // optional: sort by id for consistency
                 list.sort((a, b) => a.id.localeCompare(b.id));
-
                 setDocs(list);
             } finally {
                 setLoading(false);
@@ -86,15 +81,12 @@ export default function AdminSupportDocsPage() {
 
             await setDoc(ref, {
                 text,
-                embedding: [],          // ensure field exists immediately
+                embedding: [],
                 updatedAt: now,
             });
 
             setDocs((prev) => {
-                const next = [
-                    ...prev,
-                    { id, text, updatedAt: now.toISOString() },
-                ];
+                const next = [...prev, { id, text, updatedAt: now.toISOString() }];
                 next.sort((a, b) => a.id.localeCompare(b.id));
                 return next;
             });
@@ -106,17 +98,35 @@ export default function AdminSupportDocsPage() {
         }
     }
 
-
     async function runEmbedding() {
         setEmbedding(true);
         try {
-            const res = await fetch("/api/support-docs/embed", {
-                method: "POST",
-            });
+            const res = await fetch("/api/support-docs/embed", { method: "POST" });
             const json = await res.json();
             console.log("Embedding output:", json);
         } finally {
             setEmbedding(false);
+        }
+    }
+
+    const allDocsText = useMemo(() => {
+        // Compact, LLM-friendly block. No JSON noise. Deterministic separators.
+        return docs
+            .map((d) => `### ${d.id}\n${(d.text ?? "").trim()}\n`)
+            .join("\n");
+    }, [docs]);
+
+    async function copyAll() {
+        setCopyingAll(true);
+        setCopiedAll(false);
+        try {
+            await navigator.clipboard.writeText(allDocsText);
+            setCopiedAll(true);
+            window.setTimeout(() => setCopiedAll(false), 1200);
+        } catch (err) {
+            console.error("[SupportDocs] copy all failed", err);
+        } finally {
+            setCopyingAll(false);
         }
     }
 
@@ -143,26 +153,35 @@ export default function AdminSupportDocsPage() {
                             Support Documentation
                         </h1>
                         <p className="mt-1 text-xs text-neutral-600">
-                            Context for AI assistance. Run embedding after saving to
-                            refresh vector data.
+                            Context for AI assistance. Run embedding after saving to refresh vector data.
                         </p>
+
+                        <div className="mt-4 flex flex-wrap items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={copyAll}
+                                disabled={copyingAll || docs.length === 0}
+                                className="rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-800 disabled:opacity-50"
+                                title="Copies every section (title + text) into one block"
+                            >
+                                {copyingAll ? "Copying…" : copiedAll ? "Copied" : "Copy all"}
+                            </button>
+
+                            <button
+                                onClick={runEmbedding}
+                                disabled={embedding}
+                                className="rounded-full bg-accent text-white px-4 py-2 text-sm font-semibold disabled:opacity-50 whitespace-nowrap"
+                            >
+                                {embedding ? "Embedding…" : "Run Embedding"}
+                            </button>
+                        </div>
                     </div>
                 </section>
-
-                <button
-                    onClick={runEmbedding}
-                    disabled={embedding}
-                    className="rounded-full bg-accent text-white px-4 py-2 text-sm font-semibold disabled:opacity-50 whitespace-nowrap h-fit"
-                >
-                    {embedding ? "Embedding…" : "Run Embedding"}
-                </button>
             </div>
 
             {/* Create new section */}
             <div className="rounded-2xl border border-dashed border-neutral-300 bg-neutral-50/80 p-4 space-y-3">
-                <div className="text-sm font-semibold text-neutral-800">
-                    Add new section
-                </div>
+                <div className="text-sm font-semibold text-neutral-800">Add new section</div>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                     <input
                         type="text"
@@ -173,11 +192,7 @@ export default function AdminSupportDocsPage() {
                     />
                     <button
                         onClick={createDoc}
-                        disabled={
-                            creating ||
-                            !newId.trim() ||
-                            !newText.trim()
-                        }
+                        disabled={creating || !newId.trim() || !newText.trim()}
                         className="rounded-lg bg-emerald-500 text-white px-4 py-2 text-sm font-semibold disabled:opacity-50"
                     >
                         {creating ? "Creating…" : "Create section"}
@@ -194,10 +209,7 @@ export default function AdminSupportDocsPage() {
             {/* Existing docs */}
             {docs.map((d) => {
                 const isOpen = !!expanded[d.id];
-                const snippet =
-                    d.text.length > 160
-                        ? d.text.slice(0, 160) + "..."
-                        : d.text;
+                const snippet = d.text.length > 160 ? d.text.slice(0, 160) + "..." : d.text;
 
                 return (
                     <div
@@ -206,12 +218,8 @@ export default function AdminSupportDocsPage() {
                     >
                         <div className="flex items-start justify-between gap-3">
                             <div>
-                                <div className="text-sm font-semibold text-neutral-800">
-                                    {d.id}
-                                </div>
-                                <p className="mt-1 text-[11px] text-neutral-500">
-                                    {snippet}
-                                </p>
+                                <div className="text-sm font-semibold text-neutral-800">{d.id}</div>
+                                <p className="mt-1 text-[11px] text-neutral-500">{snippet}</p>
                             </div>
                             <button
                                 type="button"
@@ -241,10 +249,7 @@ export default function AdminSupportDocsPage() {
                                         const next = [...docs];
                                         const idx = next.findIndex((x) => x.id === d.id);
                                         if (idx !== -1) {
-                                            next[idx] = {
-                                                ...next[idx],
-                                                text: e.target.value,
-                                            };
+                                            next[idx] = { ...next[idx], text: e.target.value };
                                             setDocs(next);
                                         }
                                     }}
