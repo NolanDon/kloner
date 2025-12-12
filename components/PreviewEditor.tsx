@@ -3754,7 +3754,7 @@ export default function PreviewEditor({
                     {!sidebarHidden && (
                         <motion.aside
                             id="kloner-style-sidebar"
-                            className="pointer-events-auto bg-neutral-50 fixed left-16 h-full z-40 flex w-[500px] flex-col overflow-auto rounded-xl border border-neutral-200 bg-white/90/90 px-3 py-3 shadow-lg backdrop-blur-sm"
+                            className="pointer-events-auto max-h-[1150px] top-20 bg-neutral-50 fixed left-16 h-full z-40 flex w-[500px] flex-col overflow-auto rounded-xl border border-neutral-200 bg-white/90/90 px-3 py-3 shadow-lg backdrop-blur-sm"
                             initial={{ x: -16, opacity: 0 }}
                             animate={{ x: 0, opacity: 1 }}
                             exit={{ x: -16, opacity: 0 }}
