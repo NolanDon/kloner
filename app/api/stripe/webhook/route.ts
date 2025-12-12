@@ -1,22 +1,55 @@
 // app/api/stripe/webhook/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { getStripe } from "@/lib/stripe";
+import Stripe from "stripe";
+import admin from "firebase-admin";
 import {
     getUidForStripeCustomer,
     linkCustomerToUid,
     mapPriceToTier,
     setUserTierFromStripe,
 } from "../../_lib/billing";
-import admin from "firebase-admin";
-import type Stripe from "stripe";
 
-const stripe = getStripe();
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+// ------------------------
+// Stripe clients (support test + live safely)
+// ------------------------
+const STRIPE_API_VERSION: Stripe.LatestApiVersion = "2025-10-29.clover";
 
-// minimal admin init
+const STRIPE_LIVE_KEY =
+    process.env.STRIPE_SECRET_KEY_LIVE || process.env.STRIPE_SECRET_KEY || "";
+const STRIPE_TEST_KEY =
+    process.env.STRIPE_SECRET_KEY_TEST || process.env.STRIPE_SECRET_KEY || "";
+
+const stripeLive = STRIPE_LIVE_KEY
+    ? new Stripe(STRIPE_LIVE_KEY, { apiVersion: STRIPE_API_VERSION })
+    : null;
+
+const stripeTest = STRIPE_TEST_KEY
+    ? new Stripe(STRIPE_TEST_KEY, { apiVersion: STRIPE_API_VERSION })
+    : null;
+
+function stripeForMode(livemode: boolean): Stripe {
+    const s = livemode ? stripeLive : stripeTest;
+    if (!s) {
+        // last-resort fallback (better than crashing)
+        const k = process.env.STRIPE_SECRET_KEY || "";
+        if (!k) throw new Error("Stripe API key missing");
+        return new Stripe(k, { apiVersion: STRIPE_API_VERSION });
+    }
+    return s;
+}
+
+// Webhook secrets (support test + live; verify against both)
+const WH_LIVE =
+    process.env.STRIPE_WEBHOOK_SECRET_LIVE || process.env.STRIPE_WEBHOOK_SECRET || "";
+const WH_TEST =
+    process.env.STRIPE_WEBHOOK_SECRET_TEST || process.env.STRIPE_WEBHOOK_SECRET || "";
+
+// ------------------------
+// Firebase Admin init
+// ------------------------
 if (!admin.apps.length) {
     const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
     if (!raw) throw new Error("FIREBASE_SERVICE_ACCOUNT missing for webhook");
@@ -33,40 +66,18 @@ if (!admin.apps.length) {
         credential: admin.credential.cert(credJson),
     });
 }
-
 const db = admin.firestore();
 
+// ------------------------
+// Affiliate constants
+// ------------------------
 const AFF_RATE = 0.3;
 const AFF_CAP_MONTHS = 12;
 const AFF_PENDING_DAYS = 14;
 
-// Reverse lookup collections (direct doc reads, no collectionGroup queries)
-const REV_INVOICE = "affiliate_reverse_invoice";
-const REV_CHARGE = "affiliate_reverse_charge";
-const REV_PI = "affiliate_reverse_payment_intent";
-
-async function findUidByCustomerId(customerId: string): Promise<string | null> {
-    const snap = await db
-        .collection("kloner_users")
-        .where("stripeCustomerId", "==", customerId)
-        .limit(1)
-        .get();
-
-    if (snap.empty) return null;
-    return snap.docs[0]!.id;
-}
-
-async function resolveUidForCustomerId(customerId: string): Promise<string | null> {
-    let uid = await getUidForStripeCustomer(customerId);
-
-    if (!uid) {
-        uid = await findUidByCustomerId(customerId);
-        if (uid) await linkCustomerToUid(customerId, uid);
-    }
-
-    return uid;
-}
-
+// ------------------------
+// Helpers
+// ------------------------
 function cleanStr(v: unknown, max = 128): string {
     return typeof v === "string" ? v.trim().slice(0, max) : "";
 }
@@ -119,12 +130,14 @@ function getInvoiceSubscriptionId(invoice: Stripe.Invoice): string | null {
                 ? line0.subscription.id
                 : null;
 
-    const fromParent =
+    const parentSub =
         typeof anyInv?.parent?.subscription_details?.subscription === "string"
             ? anyInv.parent.subscription_details.subscription
-            : null;
+            : typeof anyInv?.parent?.subscription_details?.subscription?.id === "string"
+                ? anyInv.parent.subscription_details.subscription.id
+                : null;
 
-    return direct || fromLine || fromParent || null;
+    return fromLine || parentSub || null;
 }
 
 function getInvoiceChargeId(invoice: Stripe.Invoice): string | null {
@@ -143,24 +156,54 @@ function getInvoicePaymentIntentId(invoice: Stripe.Invoice): string | null {
     return null;
 }
 
+/** Fallback: find uid by stripeCustomerId field if mapping doc is missing */
+async function findUidByCustomerId(customerId: string): Promise<string | null> {
+    const snap = await db
+        .collection("kloner_users")
+        .where("stripeCustomerId", "==", customerId)
+        .limit(1)
+        .get();
+
+    if (snap.empty) return null;
+    return snap.docs[0]!.id;
+}
+
+/** Resolve uid from mapping table or fallback query */
+async function resolveUidForCustomerId(customerId: string): Promise<string | null> {
+    let uid = await getUidForStripeCustomer(customerId);
+
+    if (!uid) {
+        uid = await findUidByCustomerId(customerId);
+        if (uid) await linkCustomerToUid(customerId, uid);
+    }
+
+    return uid;
+}
+
 /**
- * Prefer metadata from invoice payload first, then subscription metadata, then customer metadata.
+ * Prefer metadata from the invoice payload itself, then subscription metadata, then customer metadata.
+ * Works both on webhook invoice payload and on expanded invoice from retrieve().
  */
-async function resolveAffiliateRefForInvoice(
-    invoice: Stripe.Invoice
-): Promise<{ affiliateRef: string; affiliateSource: string }> {
+async function resolveAffiliateRefForInvoice(params: {
+    stripe: Stripe;
+    invoice: Stripe.Invoice;
+}): Promise<{ affiliateRef: string; affiliateSource: string }> {
+    const { stripe, invoice } = params;
     const anyInv = invoice as any;
 
+    // 0) invoice.parent.subscription_details.metadata (newer payloads)
     const parentMeta = anyInv?.parent?.subscription_details?.metadata;
     const pRef = cleanStr(parentMeta?.affiliateRef);
     const pSrc = cleanStr(parentMeta?.affiliateSource);
     if (pRef) return { affiliateRef: pRef, affiliateSource: pSrc };
 
+    // 0.5) first line item metadata
     const lineMeta = anyInv?.lines?.data?.[0]?.metadata;
     const lRef = cleanStr(lineMeta?.affiliateRef);
     const lSrc = cleanStr(lineMeta?.affiliateSource);
     if (lRef) return { affiliateRef: lRef, affiliateSource: lSrc };
 
+    // 1) subscription metadata
     try {
         const subId = getInvoiceSubscriptionId(invoice);
         if (subId) {
@@ -173,6 +216,7 @@ async function resolveAffiliateRefForInvoice(
         // ignore
     }
 
+    // 2) customer metadata
     try {
         const custId =
             typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id;
@@ -192,17 +236,20 @@ async function resolveAffiliateRefForInvoice(
 }
 
 /**
- * Lock affiliate at first successful paid invoice.
- * Guard ONLY by affiliateRefLockedAt (not by affiliateRefLocked).
+ * Hard rule:
+ * - Lock is guarded by affiliateRefLockedAt.
+ * - If affiliateFirstPaidAt already exists but lock fields are missing, we complete the lock.
+ * - Future invoices always use locked values.
  */
 async function ensureAffiliateLockOnFirstPaid(params: {
     uid: string;
+    stripe: Stripe;
     invoice: Stripe.Invoice;
     paidAtDate: Date;
 }): Promise<{ affiliateRefLocked: string; affiliateSourceLocked: string } | null> {
-    const { uid, invoice, paidAtDate } = params;
-    const userRef = db.collection("kloner_users").doc(uid);
+    const { uid, stripe, invoice, paidAtDate } = params;
 
+    const userRef = db.collection("kloner_users").doc(uid);
     const snap = await userRef.get();
     const data = snap.exists ? (snap.data() as any) : {};
 
@@ -217,66 +264,79 @@ async function ensureAffiliateLockOnFirstPaid(params: {
         );
         return {
             affiliateRefLocked: lockedRefExisting,
-            affiliateSourceLocked: lockedSrcExisting || "unknown",
+            affiliateSourceLocked: lockedSrcExisting || cleanStr(data?.affiliateSource || "") || "unknown",
         };
     }
 
-    const resolved = await resolveAffiliateRefForInvoice(invoice);
-    if (!resolved.affiliateRef) return null;
+    const resolved = await resolveAffiliateRefForInvoice({ stripe, invoice });
+    const affiliateRef = resolved.affiliateRef;
+    const affiliateSource =
+        resolved.affiliateSource || cleanStr(data?.affiliateSource || "") || "unknown";
+
+    if (!affiliateRef) return null;
+
+    const existingFirstPaid =
+        data?.affiliateFirstPaidAt instanceof admin.firestore.Timestamp
+            ? (data.affiliateFirstPaidAt as admin.firestore.Timestamp)
+            : null;
 
     await userRef.set(
         {
             affiliateRefLockedAt: admin.firestore.FieldValue.serverTimestamp(),
-            affiliateRefLocked: resolved.affiliateRef,
-            affiliateSourceLocked: resolved.affiliateSource || "unknown",
+            affiliateRefLocked: affiliateRef,
+            affiliateSourceLocked: affiliateSource || "unknown",
             affiliateLastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
-            affiliateFirstPaidAt:
-                data?.affiliateFirstPaidAt instanceof admin.firestore.Timestamp
-                    ? data.affiliateFirstPaidAt
-                    : admin.firestore.Timestamp.fromDate(paidAtDate),
+
+            // Do not overwrite if already set
+            affiliateFirstPaidAt: existingFirstPaid
+                ? existingFirstPaid
+                : admin.firestore.Timestamp.fromDate(paidAtDate),
         },
         { merge: true }
     );
 
     return {
-        affiliateRefLocked: resolved.affiliateRef,
-        affiliateSourceLocked: resolved.affiliateSource || "unknown",
+        affiliateRefLocked: affiliateRef,
+        affiliateSourceLocked: affiliateSource || "unknown",
     };
 }
 
+/**
+ * Reverse lookup docs to avoid collectionGroup queries (prevents FAILED_PRECONDITION + avoids missing indexes).
+ * We store docs with IDs:
+ * - inv_{invoiceId}
+ * - ch_{chargeId}
+ * - pi_{paymentIntentId}
+ */
 async function writeReverseLookupDocs(params: {
     affiliateRef: string;
     entryId: string; // invoice.id
-    invoiceId: string;
-    chargeId: string | null;
-    paymentIntentId: string | null;
-}) {
-    const { affiliateRef, entryId, invoiceId, chargeId, paymentIntentId } = params;
+    chargeId?: string | null;
+    paymentIntentId?: string | null;
+}): Promise<void> {
+    const { affiliateRef, entryId, chargeId, paymentIntentId } = params;
     const now = admin.firestore.FieldValue.serverTimestamp();
 
     const batch = db.batch();
 
-    // Always write invoice -> (affiliateRef, entryId)
     batch.set(
-        db.collection(REV_INVOICE).doc(invoiceId),
+        db.collection("affiliate_reverse_invoice").doc(`inv_${entryId}`),
         { affiliateRef, entryId, updatedAt: now },
         { merge: true }
     );
 
-    // Optional charge -> (affiliateRef, entryId)
     if (chargeId) {
         batch.set(
-            db.collection(REV_CHARGE).doc(chargeId),
-            { affiliateRef, entryId, invoiceId, updatedAt: now },
+            db.collection("affiliate_reverse_invoice").doc(`ch_${chargeId}`),
+            { affiliateRef, entryId, updatedAt: now },
             { merge: true }
         );
     }
 
-    // Optional payment_intent -> (affiliateRef, entryId)
     if (paymentIntentId) {
         batch.set(
-            db.collection(REV_PI).doc(paymentIntentId),
-            { affiliateRef, entryId, invoiceId, updatedAt: now },
+            db.collection("affiliate_reverse_invoice").doc(`pi_${paymentIntentId}`),
+            { affiliateRef, entryId, updatedAt: now },
             { merge: true }
         );
     }
@@ -284,12 +344,57 @@ async function writeReverseLookupDocs(params: {
     await batch.commit();
 }
 
-/**
- * Main ledger write.
- * IMPORTANT: expects invoice to be "full" when possible (expanded via retrieve),
- * but still works with a partial payload.
- */
-async function writeAffiliateLedgerForInvoicePaid(invoice: Stripe.Invoice): Promise<void> {
+async function reverseEntryDirect(params: {
+    affiliateRef: string;
+    entryId: string;
+    reason: "refund" | "dispute" | "voided" | "failed";
+}): Promise<void> {
+    const { affiliateRef, entryId, reason } = params;
+    const ref = db.collection("affiliate_ledger").doc(affiliateRef).collection("entries").doc(entryId);
+
+    const snap = await ref.get();
+    if (!snap.exists) return;
+
+    const cur = snap.data() as any;
+    if (cur?.status === "reversed") return;
+
+    const now = admin.firestore.FieldValue.serverTimestamp();
+
+    await ref.set(
+        {
+            status: "reversed",
+            reversedAt: now,
+            reversalReason: reason,
+            updatedAt: now,
+        },
+        { merge: true }
+    );
+}
+
+async function reverseByLookupId(params: {
+    lookupId: string; // doc id inside affiliate_reverse_invoice
+    reason: "refund" | "dispute" | "voided" | "failed";
+}): Promise<void> {
+    const { lookupId, reason } = params;
+
+    const snap = await db.collection("affiliate_reverse_invoice").doc(lookupId).get();
+    if (!snap.exists) return;
+
+    const data = snap.data() as any;
+    const affiliateRef = cleanStr(data?.affiliateRef || "");
+    const entryId = cleanStr(data?.entryId || "");
+
+    if (!affiliateRef || !entryId) return;
+
+    await reverseEntryDirect({ affiliateRef, entryId, reason });
+}
+
+async function writeAffiliateLedgerForInvoicePaid(params: {
+    stripe: Stripe;
+    invoice: Stripe.Invoice;
+}): Promise<void> {
+    const { stripe, invoice } = params;
+
     const customerId =
         typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id;
     if (!customerId) return;
@@ -301,15 +406,21 @@ async function writeAffiliateLedgerForInvoicePaid(invoice: Stripe.Invoice): Prom
     if (!Number.isFinite(netCollectedCents) || netCollectedCents <= 0) return;
 
     const paidAtSec = getInvoicePaidAtSec(invoice);
-    const paidAtDate = new Date(paidAtSec * 1000);
+    const paidAtDate = getInvoicePaidAtDate(invoice);
 
-    const locked = await ensureAffiliateLockOnFirstPaid({ uid, invoice, paidAtDate });
+    // Ensure lock exists, always attribute using locked values
+    const locked = await ensureAffiliateLockOnFirstPaid({
+        uid,
+        stripe,
+        invoice,
+        paidAtDate,
+    });
     if (!locked?.affiliateRefLocked) return;
 
     const affiliateRefUsed = locked.affiliateRefLocked;
     const affiliateSourceUsed = locked.affiliateSourceLocked || "unknown";
 
-    // 12-month cap anchored to affiliateFirstPaidAt
+    // 12-month cap anchored to affiliateFirstPaidAt on user doc
     const userRef = db.collection("kloner_users").doc(uid);
     const userSnap = await userRef.get();
     const userData = userSnap.exists ? (userSnap.data() as any) : {};
@@ -323,16 +434,19 @@ async function writeAffiliateLedgerForInvoicePaid(invoice: Stripe.Invoice): Prom
         if (paidAtDate.getTime() > capEnd.getTime()) return;
     }
 
-    const entryId = invoice.id;
-
+    // Entry idempotency: invoice.id
     const entryRef = db
         .collection("affiliate_ledger")
         .doc(affiliateRefUsed)
         .collection("entries")
-        .doc(entryId);
+        .doc(invoice.id);
 
     const existing = await entryRef.get();
     if (existing.exists) return;
+
+    const chargeId = getInvoiceChargeId(invoice);
+    const paymentIntentId = getInvoicePaymentIntentId(invoice);
+    const subscriptionId = getInvoiceSubscriptionId(invoice);
 
     const commissionCents = Math.round(netCollectedCents * AFF_RATE);
     const periodKey = monthKeyFromUnix(paidAtSec);
@@ -341,9 +455,7 @@ async function writeAffiliateLedgerForInvoicePaid(invoice: Stripe.Invoice): Prom
         new Date(paidAtDate.getTime() + AFF_PENDING_DAYS * 24 * 60 * 60 * 1000)
     );
 
-    const chargeId = getInvoiceChargeId(invoice);
-    const paymentIntentId = getInvoicePaymentIntentId(invoice);
-    const subscriptionId = getInvoiceSubscriptionId(invoice);
+    const now = admin.firestore.FieldValue.serverTimestamp();
 
     await entryRef.set(
         {
@@ -371,128 +483,57 @@ async function writeAffiliateLedgerForInvoicePaid(invoice: Stripe.Invoice): Prom
             eligibleAt,
 
             status: "pending",
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdAt: now,
+            updatedAt: now,
         },
         { merge: false }
     );
 
-    // Write lookup docs so refunds/disputes can reverse without collectionGroup queries
+    // Reverse lookup docs (so refunds/disputes/voids can find the entry without any query)
     await writeReverseLookupDocs({
         affiliateRef: affiliateRefUsed,
-        entryId,
-        invoiceId: invoice.id,
+        entryId: invoice.id,
         chargeId: chargeId || null,
         paymentIntentId: paymentIntentId || null,
     });
 }
 
-async function reverseByAffiliateEntry(params: {
-    affiliateRef: string;
-    entryId: string;
-    reason: "refund" | "dispute" | "voided";
-}) {
-    const { affiliateRef, entryId, reason } = params;
-
-    const ref = db.collection("affiliate_ledger").doc(affiliateRef).collection("entries").doc(entryId);
-    const snap = await ref.get();
-    if (!snap.exists) return;
-
-    const cur = snap.data() as any;
-    if (cur?.status === "reversed") return;
-
-    const now = admin.firestore.FieldValue.serverTimestamp();
-
-    await ref.set(
-        {
-            status: "reversed",
-            reversedAt: now,
-            reversalReason: reason,
-            updatedAt: now,
-        },
-        { merge: true }
-    );
-}
-
-async function reverseFromLookup(params: {
-    invoiceId?: string | null;
-    chargeId?: string | null;
-    paymentIntentId?: string | null;
-    reason: "refund" | "dispute" | "voided";
-}) {
-    const { invoiceId, chargeId, paymentIntentId, reason } = params;
-
-    // Prefer charge lookup first (refunds/disputes), then PI, then invoice
-    if (chargeId) {
-        const snap = await db.collection(REV_CHARGE).doc(chargeId).get();
-        if (snap.exists) {
-            const d = snap.data() as any;
-            const affiliateRef = cleanStr(d?.affiliateRef);
-            const entryId = cleanStr(d?.entryId);
-            if (affiliateRef && entryId) {
-                await reverseByAffiliateEntry({ affiliateRef, entryId, reason });
-                return;
-            }
-        }
-    }
-
-    if (paymentIntentId) {
-        const snap = await db.collection(REV_PI).doc(paymentIntentId).get();
-        if (snap.exists) {
-            const d = snap.data() as any;
-            const affiliateRef = cleanStr(d?.affiliateRef);
-            const entryId = cleanStr(d?.entryId);
-            if (affiliateRef && entryId) {
-                await reverseByAffiliateEntry({ affiliateRef, entryId, reason });
-                return;
-            }
-        }
-    }
-
-    if (invoiceId) {
-        const snap = await db.collection(REV_INVOICE).doc(invoiceId).get();
-        if (snap.exists) {
-            const d = snap.data() as any;
-            const affiliateRef = cleanStr(d?.affiliateRef);
-            const entryId = cleanStr(d?.entryId);
-            if (affiliateRef && entryId) {
-                await reverseByAffiliateEntry({ affiliateRef, entryId, reason });
-                return;
-            }
-        }
-    }
-}
-
-async function safeRetrieveExpandedInvoice(invoiceId: string): Promise<Stripe.Invoice | null> {
-    try {
-        // expand ensures charge/payment_intent/subscription populate consistently
-        const inv = await stripe.invoices.retrieve(invoiceId, {
-            expand: ["charge", "payment_intent", "subscription", "lines.data.price"],
-        });
-        return inv as Stripe.Invoice;
-    } catch (e) {
-        // Key mismatch (test vs live) or missing invoice should not 500 your webhook.
-        return null;
-    }
-}
-
+// ------------------------
+// Webhook handler
+// ------------------------
 export async function POST(req: NextRequest) {
     const sig = req.headers.get("stripe-signature");
-
-    if (!webhookSecret || !sig) {
-        console.error("Stripe webhook: missing secret or signature");
-        return NextResponse.json({ error: "Webhook misconfigured" }, { status: 400 });
-    }
+    if (!sig) return NextResponse.json({ error: "Missing stripe-signature" }, { status: 400 });
 
     const body = await req.text();
-    let event: Stripe.Event;
 
-    try {
-        event = stripe.webhooks.constructEvent(body, sig, webhookSecret);
-    } catch (err: any) {
-        console.error("Stripe webhook signature verification failed", err?.message || err);
+    // Verify against live then test (prevents live/test mismatch 500s)
+    let event: Stripe.Event | null = null;
+    let usedSecret: string | null = null;
+
+    if (WH_LIVE) {
+        try {
+            event = stripeForMode(true).webhooks.constructEvent(body, sig, WH_LIVE);
+            usedSecret = WH_LIVE;
+        } catch {
+            // ignore, try test
+        }
+    }
+
+    if (!event && WH_TEST) {
+        try {
+            event = stripeForMode(false).webhooks.constructEvent(body, sig, WH_TEST);
+            usedSecret = WH_TEST;
+        } catch {
+            // ignore
+        }
+    }
+
+    if (!event || !usedSecret) {
         return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
     }
+
+    const stripe = stripeForMode(!!event.livemode);
 
     try {
         switch (event.type) {
@@ -503,9 +544,9 @@ export async function POST(req: NextRequest) {
                 const customerId =
                     typeof session.customer === "string" ? session.customer : session.customer?.id;
 
-                if (!firebaseUid || !customerId) break;
-
-                await linkCustomerToUid(customerId, firebaseUid);
+                if (firebaseUid && customerId) {
+                    await linkCustomerToUid(customerId, firebaseUid);
+                }
                 break;
             }
 
@@ -514,7 +555,8 @@ export async function POST(req: NextRequest) {
             case "customer.subscription.deleted":
             case "customer.subscription.trial_will_end": {
                 const sub = event.data.object as Stripe.Subscription;
-                const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer.id;
+
+                const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer?.id;
                 if (!customerId) break;
 
                 const uid = await resolveUidForCustomerId(customerId);
@@ -524,7 +566,6 @@ export async function POST(req: NextRequest) {
                 const priceId = typeof firstItem?.price?.id === "string" ? firstItem.price.id : null;
 
                 const tier = mapPriceToTier(priceId);
-
                 const status = sub.status;
                 const effectiveTier = status === "active" || status === "trialing" ? tier : "free";
 
@@ -541,54 +582,74 @@ export async function POST(req: NextRequest) {
             }
 
             case "invoice.paid": {
-                const invoice = event.data.object as Stripe.Invoice;
+                const inv = event.data.object as Stripe.Invoice;
 
-                // Try to fetch a full invoice (so chargeId/paymentIntentId/subscriptionId are not null)
-                const expanded = await safeRetrieveExpandedInvoice(invoice.id);
-                await writeAffiliateLedgerForInvoicePaid(expanded || invoice);
+                // Re-fetch expanded invoice so IDs are not null in Firestore.
+                // This also fixes "null chargeId / paymentIntentId / subscriptionId" in ledger entries.
+                let invFull: Stripe.Invoice = inv;
+                try {
+                    invFull = await stripe.invoices.retrieve(inv.id, {
+                        expand: ["charge", "payment_intent", "subscription"],
+                    });
+                } catch {
+                    // If retrieve fails (shouldn’t if keys + mode are consistent), fall back to payload.
+                    invFull = inv;
+                }
 
+                await writeAffiliateLedgerForInvoicePaid({ stripe, invoice: invFull });
                 break;
             }
 
-            // Invoice-level reversal fallback (works even when chargeId is missing)
+            // Invoice-level reversal fallback (covers cases where charge webhook arrives without a matching entry)
             case "invoice.voided": {
-                const invoice = event.data.object as Stripe.Invoice;
-                await reverseFromLookup({
-                    invoiceId: invoice.id,
-                    reason: "voided",
-                });
+                const inv = event.data.object as Stripe.Invoice;
+                await reverseByLookupId({ lookupId: `inv_${inv.id}`, reason: "voided" });
+                break;
+            }
+
+            case "invoice.payment_failed": {
+                const inv = event.data.object as Stripe.Invoice;
+                await reverseByLookupId({ lookupId: `inv_${inv.id}`, reason: "failed" });
                 break;
             }
 
             case "charge.refunded": {
                 const charge = event.data.object as Stripe.Charge;
-                const anyC = charge as any;
-                const chargeId = typeof anyC.id === "string" ? anyC.id : null;
-                const paymentIntentId =
-                    typeof anyC.payment_intent === "string"
-                        ? anyC.payment_intent
-                        : typeof anyC.payment_intent?.id === "string"
-                            ? anyC.payment_intent.id
+                const chId = typeof charge.id === "string" ? charge.id : null;
+                const piId =
+                    typeof (charge as any).payment_intent === "string"
+                        ? (charge as any).payment_intent
+                        : typeof (charge as any).payment_intent?.id === "string"
+                            ? (charge as any).payment_intent.id
                             : null;
 
-                await reverseFromLookup({
-                    chargeId,
-                    paymentIntentId,
-                    reason: "refund",
-                });
+                // Prefer direct lookup by charge id (no Firestore queries)
+                if (chId) {
+                    await reverseByLookupId({ lookupId: `ch_${chId}`, reason: "refund" });
+                }
+
+                // Secondary fallback by payment_intent id
+                if (piId) {
+                    await reverseByLookupId({ lookupId: `pi_${piId}`, reason: "refund" });
+                }
 
                 break;
             }
 
             case "charge.dispute.created": {
                 const dispute = event.data.object as Stripe.Dispute;
-                const anyD = dispute as any;
-                const chargeId = typeof anyD.charge === "string" ? anyD.charge : anyD.charge?.id || null;
 
-                await reverseFromLookup({
-                    chargeId,
-                    reason: "dispute",
-                });
+                const chId =
+                    typeof (dispute as any).charge === "string"
+                        ? (dispute as any).charge
+                        : typeof (dispute as any).charge?.id === "string"
+                            ? (dispute as any).charge.id
+                            : null;
+
+                // Dispute webhooks often give you the charge id reliably
+                if (chId) {
+                    await reverseByLookupId({ lookupId: `ch_${chId}`, reason: "dispute" });
+                }
 
                 break;
             }
@@ -598,7 +659,7 @@ export async function POST(req: NextRequest) {
         }
 
         return NextResponse.json({ received: true });
-    } catch (err) {
+    } catch (err: any) {
         console.error("Stripe webhook handler error", err);
         return NextResponse.json({ error: "Webhook handler error" }, { status: 500 });
     }
