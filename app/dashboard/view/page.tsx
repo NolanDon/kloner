@@ -1786,7 +1786,6 @@ export default function PreviewPage(): JSX.Element {
                 const snap = await getDocs(qy);
 
                 if (snap.empty) {
-                    setErr("No record for this URL under your account.");
                     setLoading(false);
                     return;
                 }
@@ -3522,88 +3521,78 @@ export default function PreviewPage(): JSX.Element {
     return (
         <main className="min-h-screen bg-white">
             <div className="mx-auto max-w-[1200px] px-4 sm:px-6 lg:px-10 py-8">
-                <div className="mb-4 flex items-center gap-2">
-                    <div className="h-px flex-1 bg-neutral-200/70" />
-                    <div className="h-px flex-1 bg-neutral-200/70" />
-                </div>
-                {/* plan + credits banner */}
-                <div className="mb-6 rounded-2xl border border-neutral-200 bg-gradient-to-r from-neutral-50 to-white px-4 py-3 sm:px-5 sm:py-4 text-sm sm:text-sm text-neutral-700 shadow-sm">
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                        <div className="space-y-2">
-                            <div className="flex items-center gap-2">
-                                <div className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1">
-                                    <Crown className="h-3.5 w-3.5 text-amber-500" />
-                                    <span className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">
-                                        Current plan
+                <section className="mb-10">
+                    <div className="inline-flex items-center gap-2 rounded-full bg-accent text-neutral-50 px-3 py-1 text-[11px] mb-4">
+                        <span>Kloner · Builder</span>
+                    </div>
+
+                    <div className="rounded-3xl border border-neutral-200 bg-gradient-to-br from-white via-neutral-50 to-neutral-100 px-6 py-8 sm:px-8 sm:py-10 shadow-sm">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="min-w-0">
+                                <div className="flex items-end gap-2">
+                                    <h1 className="text-3xl sm:text-4xl tracking-tight text-neutral-900">
+                                        Builder
+                                    </h1>
+                                    <div className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-1">
+                                        <Crown className="h-3.5 w-3.5 text-amber-500" />
+                                        <span className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                                            {planLabel}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div className="mt-3 flex flex-wrap gap-2 text-xs gap-2">
+                                    <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-neutral-700">
+                                        Screenshots:&nbsp;
+                                        <span className="font-semibold text-neutral-900">
+                                            {screenshotRemaining === null || !screenshotLimitDisplay
+                                                ? "-"
+                                                : `${screenshotRemaining}/${screenshotLimitDisplay}`}
+                                        </span>
+                                    </span>
+
+                                    <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-neutral-700">
+                                        Previews:&nbsp;
+                                        <span className="font-semibold text-neutral-900">
+                                            {previewRemaining === null || !previewLimitDisplay
+                                                ? "-"
+                                                : `${previewRemaining}/${previewLimitDisplay}`}
+                                        </span>
                                     </span>
                                 </div>
-                                <span className="text-sm font-semibold text-neutral-900">
-                                    {planLabel}
-                                </span>
+
+                                {userTier === "free" && (
+                                    <p className="mt-2 text-sm text-neutral-600 pl-2">
+                                        Upgrade for higher limits and one click deploy, credits reset monthly.
+                                    </p>
+                                )}
                             </div>
-                            <div className="flex flex-wrap gap-2">
-                                <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-xs text-neutral-700">
-                                    Screenshots Remaining:&nbsp;
-                                    <span className="font-semibold text-neutral-900">
-                                        {screenshotRemaining === null || !screenshotLimitDisplay
-                                            ? "-"
-                                            : `${screenshotRemaining}/${screenshotLimitDisplay}`}
-                                    </span>
-                                </span>
 
-                                <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-xs text-neutral-700">
-                                    Previews Remaining:&nbsp;
-                                    <span className="font-semibold text-neutral-900">
-                                        {previewRemaining === null || !previewLimitDisplay
-                                            ? "-"
-                                            : `${previewRemaining}/${previewLimitDisplay}`}
-                                    </span>
-                                </span>
-
-                                <span className="basis-full text-[11px] text-neutral-500 px-2.5">
-                                    Credits reset monthly.
-                                </span>
-                            </div>
-                            {userTier === "free" && (
-                                <p className="text-[11px] leading-relaxed text-neutral-500">
-                                    Free plans include a limited number of screenshots and
-                                    previews per day. Upgrading unlocks higher limits and
-                                    one-click deploy.
-                                </p>
-                            )}
-                        </div>
-
-                        {/* actions: upgrade + earn free credits */}
-                        <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
-                            <button
-                                type="button"
-                                onClick={() => router.push("/price")}
-                                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 hover:border-amber-300 transition-colors"
-                            >
-                                <Crown className="h-3.5 w-3.5" />
-                                <span>
-                                    {userTier === "free"
-                                        ? "View upgrade options"
-                                        : "Manage plan"}
-                                </span>
-                            </button>
-
-                            {/* Earn free credits + tooltip */}
-                            <div className="relative group">
+                            <div className="flex flex-col items-start gap-2 sm:items-end sm:flex-row sm:mt-1">
                                 <button
                                     type="button"
-                                    className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-xs text-neutral-800 hover:bg-neutral-50 hover:border-neutral-300 transition-colors"
+                                    onClick={() => router.push("/price")}
+                                    className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 hover:border-amber-300 transition-colors"
                                 >
-                                    Earn free credits
+                                    <Crown className="h-3.5 w-3.5 text-amber-500" />
+                                    <span>{userTier === "free" ? "View upgrades" : "Manage plan"}</span>
                                 </button>
-                                <div className="pointer-events-none absolute right-0 z-20 mt-1 w-64 translate-y-1 rounded-md bg-neutral-900/95 px-3 py-2 text-[11px] text-neutral-100 opacity-0 shadow-lg ring-1 ring-black/10 transition group-hover:opacity-100 group-hover:translate-y-0">
-                                    Share your build with the community. If it&apos;s approved, you&apos;ll earn 100 free preview credits.
-                                </div>
+
+                                {/* <div className="relative group">
+                                    <button
+                                        type="button"
+                                        className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-xs text-neutral-800 hover:bg-neutral-50 hover:border-neutral-300 transition-colors"
+                                    >
+                                        Earn credits
+                                    </button>
+                                    <div className="pointer-events-none absolute right-0 z-20 mt-1 w-64 translate-y-1 rounded-md bg-neutral-900/95 px-3 py-2 text-[11px] text-neutral-100 opacity-0 shadow-lg ring-1 ring-black/10 transition group-hover:opacity-100 group-hover:translate-y-0">
+                                        Share a build. If approved, you earn 100 preview credits.
+                                    </div>
+                                </div> */}
                             </div>
                         </div>
                     </div>
-                </div>
-
+                </section>
 
                 {/* Step 1: URL selection */}
                 <section className="mb-8 rounded-3xl border border-neutral-200 bg-white/70 px-4 py-4 sm:px-5 sm:py-5 shadow-sm">
@@ -3629,7 +3618,7 @@ export default function PreviewPage(): JSX.Element {
                             <div className="h-10 rounded-xl bg-neutral-100 animate-pulse" />
                         ) : urls.length === 0 ? (
                             <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-2 text-sm text-neutral-700 my-2 flex items-center gap-2">
-                                <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1">
+                                <strong className="text-neutral-800 font-semibold inline-flex items-center gap-2">
                                     {step1Done ? (
                                         <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                                     ) : (
@@ -3637,7 +3626,7 @@ export default function PreviewPage(): JSX.Element {
                                     )}
                                     Step 1
                                 </strong>{" "}
-                                — Add a URL in<a className="underline font-semibold tracking-wide text-amber-500" href="/dashboard">Dashboard</a>
+                                — Add a URL in Dashboard.
                             </div>
                         ) : (
                             <div className="relative inline-block" ref={urlMenuRef}>
@@ -3744,7 +3733,7 @@ export default function PreviewPage(): JSX.Element {
                     </div>
 
                     <p className="mt-1 mb-2 text-sm text-neutral-500">
-                        {(renders.length === 0 ? 'This section will host your editable previews'
+                        {(renders.length === 0 ? 'This section will host your editable websites'
                             :
                             'These are the website previews generated from your url.')}
                     </p>
@@ -3752,7 +3741,7 @@ export default function PreviewPage(): JSX.Element {
                     {(renders.length === 0 || hasGhostPending) ? (
                         <>
                             <div className="mt-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-2 text-sm text-neutral-700 flex flex-wrap items-center gap-2 my-4">
-                                <div className="flex items-center gap-1 p-2">
+                                <div className="flex items-center gap-1">
                                     <strong className="inline-flex items-center gap-2 text-neutral-800 font-semibold">
                                         {step3Done ? (
                                             <CheckCircle2 className="h-4 w-4 text-emerald-500" />
@@ -3762,10 +3751,7 @@ export default function PreviewPage(): JSX.Element {
                                         <span>Step 2</span>
                                     </strong>
                                     <span className="text-neutral-800">
-                                        {`${step2Done
-                                            ? "— Generate a preview."
-                                            : "—  Below will host your website previews."
-                                            }`}
+                                        — Generate a preview.
                                     </span>
                                 </div>
                             </div>

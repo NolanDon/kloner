@@ -510,9 +510,10 @@ export default function SettingsPage(): JSX.Element {
     return (
         <>
             {/* <NavBar /> */}
-            <main className="min-h-screen bg-white pt-[15px] pb-[30px] overflow-y-auto">
+            <main className="min-h-screen bg-white pb-[30px] overflow-y-auto">
 
-                <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-10 py-16">
+                <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-10 py-8">
+                    
                     {/* Hero */}
                     <section className="mb-10">
                         <div className="inline-flex items-center gap-2 rounded-full bg-accent text-neutral-50 px-3 py-1 text-[11px] mb-4">
@@ -520,33 +521,14 @@ export default function SettingsPage(): JSX.Element {
                         </div>
 
                         <div className="rounded-3xl border border-neutral-200 bg-gradient-to-br from-white via-neutral-50 to-neutral-100 px-6 py-8 sm:px-8 sm:py-10 shadow-sm">
-                            <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-neutral-900">
+                            <h1 className="text-3xl sm:text-4xl tracking-tight text-neutral-900">
                                 Settings
                             </h1>
                             <p className="mt-1 text-sm text-neutral-600">
                                 Manage account, subscription, connections, and notifications.
                             </p>
-
-
-                            {/* <div className="mt-6 flex flex-wrap gap-3 text-xs">
-                            <Badge icon={<Camera className="h-3 w-3" />} label="Website capture" />
-                            <Badge icon={<Sparkles className="h-3 w-3" />} label="Editable previews" />
-                            <Badge icon={<Rocket className="h-3 w-3" />} label="Launch-ready output" />
-                            <Badge icon={<Lock className="h-3 w-3" />} label="Fair-use credits" />
-                        </div> */}
                         </div>
                     </section>
-                    {/* <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-800">
-                        Settings
-                    </h1>
-                    <p className="mt-1 text-sm text-neutral-600">
-                        Manage account, subscription, connections, and notifications.
-                    </p>
-
-                    <div className="mt-4 mb-4 flex items-center gap-2">
-                        <div className="h-px flex-1 bg-neutral-200/80" />
-                        <div className="h-px flex-1 bg-neutral-200/80" />
-                    </div> */}
 
                     {/* Profile */}
                     <section className="mt-4 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
@@ -799,7 +781,7 @@ export default function SettingsPage(): JSX.Element {
                         <div className="mt-3 flex flex-wrap items-center gap-2">
                             <a
                                 href="mailto:support@kloner.app?subject=Kloner%20account%20closure%20or%20data%20deletion%20request"
-                                className="inline-flex items-center gap-2 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white"
+                                className="inline-flex items-center gap-2 rounded-lg bg-accent px-3 py-2 text-xs text-white"
                             >
                                 Contact support about my account
                             </a>

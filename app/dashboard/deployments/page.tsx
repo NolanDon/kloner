@@ -878,24 +878,22 @@ export default function DeploymentsPage(): JSX.Element {
     return (
         <main className="min-h-screen bg-white">
             <div className="mx-auto max-w-[1200px] px-4 sm:px-6 lg:px-10 py-8">
-                <div className="mb-4 flex items-center gap-2">
-                    <div className="h-px flex-1 bg-neutral-200/70" />
-                    <div className="h-px flex-1 bg-neutral-200/70" />
+                <div className="inline-flex items-center gap-2 rounded-full bg-accent text-neutral-50 px-3 py-1 text-[11px] mb-4">
+                    <span>Kloner · Deployments</span>
                 </div>
 
                 <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-                    <div>
+
+                    <div className="rounded-3xl border border-neutral-200 bg-gradient-to-br from-white via-neutral-50 to-neutral-100 px-6 py-8 sm:px-8 sm:py-10 shadow-sm">
                         <div className="flex flex-col gap-3">
                             <div className="flex items-center gap-2">
-                                <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-800">
+                                <h1 className="text-3xl sm:text-4xl tracking-tight text-neutral-900">
                                     Deployments
                                 </h1>
                             </div>
 
                             {hasNewFlag && (
-                                <div
-                                    className={`rounded-2xl border px-4 py-3 text-sm sm:text-xs shadow-sm ${bannerClasses}`}
-                                >
+                                <div className={`rounded-2xl border px-4 py-3 text-sm sm:text-xs shadow-sm ${bannerClasses}`}>
                                     <div className="flex items-start gap-2">
                                         {bannerVariant === "error" ? (
                                             <AlertTriangle className="h-4 w-4 mt-0.5 text-red-500" />
@@ -909,32 +907,29 @@ export default function DeploymentsPage(): JSX.Element {
                                             <div className="font-semibold mb-1">
                                                 {bannerVariant === "error"
                                                     ? "Deployment failed"
-                                                    : bannerVariant ===
-                                                        "success"
+                                                    : bannerVariant === "success"
                                                         ? "Deployment finished"
-                                                        : "Deployment started from Preview Builder"}
+                                                        : "Deployment started"}
                                             </div>
 
-                                            <p className="leading-relaxed">
+                                            <p className="leading-relaxed text-neutral-600">
                                                 {bannerVariant === "error"
-                                                    ? "Kloner tried to deploy your preview, but Vercel reported an error. Check the deployment in Vercel to inspect the build logs and fix the issue."
-                                                    : bannerVariant ===
-                                                        "success"
-                                                        ? "Your preview finished building on Vercel. You can open the live site or review its history below."
-                                                        : "A deployment was just triggered from the Preview Builder. Kloner will query the Vercel API periodically or when you manually refresh to keep this status in sync."}
+                                                    ? "Vercel reported an error. Check the build logs."
+                                                    : bannerVariant === "success"
+                                                        ? "Your site is live. Open it or review history."
+                                                        : "We’ll keep this status in sync."}
                                             </p>
                                         </div>
                                     </div>
                                 </div>
                             )}
 
-                            <p className="text-xs sm:text-sm text-neutral-500 max-w-xl">
-                                Every time Kloner deploys to your Vercel
-                                account, we record the deployment here. Status
-                                is refreshed automatically.
+                            <p className="max-w-2xl text-sm sm:text-base text-neutral-600">
+                                Deployments to Vercel show up here, with status kept up to date.
                             </p>
                         </div>
                     </div>
+
 
                     <div className="flex flex-col items-end gap-3">
                         {projectGroups.length > 0 && (
@@ -980,28 +975,6 @@ export default function DeploymentsPage(): JSX.Element {
                             </div>
 
                             <div className="mt-2 flex flex-col items-end gap-1">
-                                <button
-                                    type="button"
-                                    disabled={
-                                        refreshing || scopedItems.length === 0
-                                    }
-                                    onClick={refreshFromVercel}
-                                    className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-xs text-neutral-800 hover:bg-neutral-50 disabled:opacity-60 disabled:cursor-default"
-                                >
-                                    {refreshing ? (
-                                        <Loader2 className="h-3.5 w-3.5 animate-spin text-neutral-500" />
-                                    ) : (
-                                        <RefreshCw className="h-3.5 w-3.5 text-neutral-500" />
-                                    )}
-                                    <span>Check status via Vercel API</span>
-                                </button>
-                                <div className="text-[10px] text-neutral-400">
-                                    {lastGlobalCheck
-                                        ? `Last checked ${formatDate(
-                                            lastGlobalCheck
-                                        )}`
-                                        : "Not checked yet"}
-                                </div>
                                 {refreshError && (
                                     <div className="text-[10px] text-red-600 max-w-[220px] text-right">
                                         {refreshError}

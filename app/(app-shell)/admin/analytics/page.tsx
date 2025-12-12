@@ -11,6 +11,7 @@ import {
     Timestamp,
 } from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
+import { useRouter } from "next/navigation";
 
 type GateState = "loading" | "allowed" | "denied";
 
@@ -55,6 +56,8 @@ function tsToDate(v: any): Date | null {
 }
 
 export default function AdminAnalyticsPage() {
+    const router = useRouter();
+
     const [gate, setGate] = useState<GateState>("loading");
     const [loadingData, setLoadingData] = useState(true);
     const [rows, setRows] = useState<UserAnalyticsRow[]>([]);
@@ -84,6 +87,13 @@ export default function AdminAnalyticsPage() {
         });
         return () => off();
     }, []);
+
+    // redirect if not allowed
+    useEffect(() => {
+        if (gate === "denied") {
+            router.replace("/dashboard");
+        }
+    }, [gate, router]);
 
     // ---- load analytics from kloner_users + subcollections ----
     useEffect(() => {
@@ -402,11 +412,8 @@ export default function AdminAnalyticsPage() {
     }
 
     if (gate === "denied") {
-        return (
-            <div className="p-6 text-sm text-red-600">
-                You do not have access to admin analytics.
-            </div>
-        );
+        // redirect handled in effect; render nothing here
+        return null;
     }
 
     return (
@@ -562,7 +569,7 @@ export default function AdminAnalyticsPage() {
                                             className="flex flex-col items-center gap-1"
                                         >
                                             <div
-                                                className="w-6 rounded-t-md bg-neutral-900"
+                                                className="w-6 rounded-t-md bg-accent"
                                                 style={{ height }}
                                                 title={`${b.date}: ${b.count}`}
                                             />

@@ -10,716 +10,606 @@ import {
     Zap,
     Shield,
 } from "lucide-react";
-import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import { HashScrollHighlighter } from "./HashScrollHighlighter";
+import { RightQuickNav } from "./RightQuickNav";
 
 const ACCENT = "#f55f2a";
 
+const SECTION_Y = "py-14 sm:py-16";
+const SECTION_SCROLL = "scroll-mt-[110px]";
+
 export default function DocsPage() {
     return (
-        <div className="min-h-screen bg-white pt-[15px] pb-[30px]">
-
-            <main className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-10 py-16">
+        <div className="min-h-screen bg-white pb-[30px]">
+            <main className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-10 py-8">
                 <HashScrollHighlighter />
-                {/* Hero */}
-                <section className="mb-10">
-                    <div className="inline-flex items-center gap-2 rounded-full bg-accent text-neutral-50 px-3 py-1 text-[11px] mb-4">
-                        <span>Kloner · Product Guide</span>
-                    </div>
 
-                    <div className="rounded-3xl border border-neutral-200 bg-gradient-to-br from-white via-neutral-50 to-neutral-100 px-6 py-8 sm:px-8 sm:py-10 shadow-sm">
-                        <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-neutral-900">
-                            Documentation
-                        </h1>
-                        <p className="mt-3 max-w-2xl text-sm sm:text-base text-neutral-600">
-                            Kloner lets you capture a website, turn it into an editable preview, and
-                            ship a polished version as your own project. This page explains the core
-                            features, how credits work, and what the different plans unlock.
-                        </p>
-
-                        <div className="mt-6 flex flex-wrap gap-3 text-xs">
-                            <Badge icon={<Camera className="h-3 w-3" />} label="Website capture" />
-                            <Badge icon={<Sparkles className="h-3 w-3" />} label="Editable previews" />
-                            <Badge icon={<Rocket className="h-3 w-3" />} label="Launch-ready output" />
-                            <Badge icon={<Lock className="h-3 w-3" />} label="Fair-use credits" />
-                        </div>
-                    </div>
-                </section>
-
-                {/* Quick navigation */}
-                <section className="mb-12">
-                    <div className="grid gap-3 sm:grid-cols-4 text-xs">
-                        <AnchorCard href="#features" title="Features">
-                            End-to-end flow from URL capture to launch-ready preview.
-                        </AnchorCard>
-                        <AnchorCard href="#credits" title="Credit system">
-                            How daily usage works and what is included for each tier.
-                        </AnchorCard>
-                        <AnchorCard href="#plans" title="Payment plans">
-                            Overview of Free, Pro, and Agency usage patterns.
-                        </AnchorCard>
-                        <AnchorCard href="#safety" title="Safety & fairness">
-                            How we design Kloner to be safe, fair, and abuse-resistant.
-                        </AnchorCard>
-                    </div>
-                </section>
-
-                {/* Features */}
-                <section id="features" className="mt-[100px] mb-[100px]">
-                    <SectionHeader
-                        eyebrow="Core workflow"
-                        title="From concept to your own version"
-                        description="Kloner is built around a simple, guided flow: capture, preview, edit, and publish. Each step is designed to be visual, safe, and repeatable."
-                    />
-
-                    <div className="mt-6 grid gap-5 md:grid-cols-2">
-                        <FeatureCard
-                            icon={<Camera className="h-5 w-5" />}
-                            title="1. Enter a URL into the Kloner search bar"
-                            badge="Step 1"
-                            items={[
-                                "Kloner captures a visual layout of the page for you.",
-                            ]}
-                            // demo={<DemoScreenshotTile />}
-                        />
-                        <FeatureCard
-                            icon={<Sparkles className="h-5 w-5" />}
-                            title="2. Generate an editable preview"
-                            badge="Step 2"
-                            items={[
-                                "The preview looks like the original but is now editable inside your workspace.",
-                                "You can revisit and regenerate previews as your ideas evolve.",
-                            ]}
-                            // demo={<DemoPreviewTile />}
-                        />
-                        <FeatureCard
-                            icon={<CheckCircle2 className="h-5 w-5" />}
-                            title="3. Edit visually"
-                            badge="Step 3"
-                            items={[
-                                "Change copy, swap sections, adjust layouts, and tailor the design to your brand.",
-                                "You stay in one focused editor instead of juggling multiple tools.",
-                            ]}
-                            // demo={<DemoEditorHint />}
-                        />
-                        <FeatureCard
-                            icon={<Rocket className="h-5 w-5" />}
-                            title="4. Export or launch"
-                            badge="Step 4"
-                            items={[
-                                "Once you’re happy with the preview, export or connect it to your deployment flow.",
-                                "You can revisit, duplicate, and evolve previous versions without losing your work.",
-                            ]}
-                            // demo={}
-                        />
-                    </div>
-                </section>
-                {/* <DemoDeployCTA /> */}
-
-                {/* Credits */}
-                <section id="credits" className="mt-[100px] mb-[100px] scroll-mt-[150px]">
-                    <SectionHeader
-                        eyebrow="Usage limits"
-                        title="How the credit system works"
-                        description="Credits keep usage predictable and fair. They also create natural upgrade points for teams that outgrow the Free tier."
-                    />
-
-                    <div className="mt-6 grid gap-6 md:grid-cols-[1.4fr,1fr]">
-                        {/* Explanation */}
-                        <div className="rounded-2xl border border-neutral-200 bg-white p-5 sm:p-6 shadow-sm">
-                            <h3 className="text-sm font-semibold text-neutral-900 mb-2">
-                                Two things that use credits
-                            </h3>
-                            <ul className="space-y-2 text-xs text-neutral-700">
-                                <li>
-                                    <span className="font-semibold">Snapshot actions</span> – every
-                                    time you ask Kloner to capture a fresh snapshot of a URL, it uses
-                                    a small number of credits.
-                                </li>
-                                <li>
-                                    <span className="font-semibold">Preview generations</span> – each
-                                    time you spin up a new editable preview from a snapshot, it uses
-                                    another small batch of credits.
-                                </li>
-                            </ul>
-
-                            <h3 className="mt-4 text-sm font-semibold text-neutral-900 mb-2">
-                                Typical daily allowances
-                            </h3>
-                            <div className="space-y-2 text-xs text-neutral-700">
-                                <TierRow
-                                    label="Free"
-                                    snapshot="A handful of snapshots / day"
-                                    preview="Enough previews to test the product"
-                                    emphasis
-                                />
-                                <TierRow
-                                    label="Pro"
-                                    snapshot="Comfortable daily snapshot allowance"
-                                    preview="Generous preview allowance for active builders"
-                                />
-                                <TierRow
-                                    label="Agency"
-                                    snapshot="High volume for client work"
-                                    preview="High volume for project iterations"
-                                />
-                                <TierRow
-                                    label="Enterprise"
-                                    snapshot="Tailored to your team"
-                                    preview="Tailored to your workloads"
-                                />
+                {/* IMPORTANT: the right nav must live in the same grid as ALL sections */}
+                <div className="lg:grid lg:grid-cols-[minmax(0,1fr),260px] lg:gap-10">
+                    {/* LEFT: all content */}
+                    <div className="min-w-0">
+                        {/* Hero */}
+                        <section className="mb-10">
+                            <div className="inline-flex items-center gap-2 rounded-full bg-accent text-neutral-50 px-3 py-1 text-[11px] mb-4">
+                                <span>Kloner · Product Guide</span>
                             </div>
 
-                            <h3 className="mt-5 text-sm font-semibold text-neutral-900 mb-2">
-                                What happens when credits run out
-                            </h3>
-                            <ul className="space-y-2 text-xs text-neutral-700">
-                                <li>
-                                    Snapshot and preview buttons clearly show when you’ve hit your
-                                    daily limit on the current plan.
-                                </li>
-                                <li>
-                                    Instead of silently failing, Kloner shows a gentle upgrade prompt
-                                    that explains what you’d gain by moving up a tier.
-                                </li>
-                                <li>
-                                    Credits automatically refill on a rolling daily basis, so casual
-                                    users can keep using the Free plan without friction.
-                                </li>
-                            </ul>
-                        </div>
+                            <div className="rounded-3xl border border-neutral-200 bg-gradient-to-br from-white via-neutral-50 to-neutral-100 px-6 py-7 sm:px-8 sm:py-9 shadow-sm">
+                                <h1 className="text-3xl sm:text-4xl tracking-tight text-neutral-900">
+                                    Documentation
+                                </h1>
+                                <p className="mt-3 max-w-2xl text-sm sm:text-base text-neutral-600">
+                                    Capture a site, generate an editable preview, customize it, then export or deploy.
+                                    This page explains the workflow, credits, plans, and guardrails.
+                                </p>
 
-                        {/* Demo / visualizer */}
-                        <div className="space-y-4">
-                            <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-                                <h3 className="text-sm font-semibold text-neutral-900 mb-3">
-                                    Demo · Credit counters
-                                </h3>
-                                <div className="space-y-3 text-xs">
-                                    <PlanChip label="Current plan" value="Free" />
-                                    <DemoCreditPill
-                                        label="Snapshot actions"
-                                        used={2}
-                                        total={3}
-                                    />
-                                    <DemoCreditPill
-                                        label="Preview generations"
-                                        used={4}
-                                        total={5}
-                                    />
-                                    <p className="mt-2 text-[11px] text-neutral-500">
-                                        Once a counter reaches zero, Kloner pauses that action for the
-                                        day and guides you toward either upgrading or trying again
-                                        tomorrow.
-                                    </p>
+                                <div className="mt-6 flex flex-wrap gap-2.5 text-xs">
+                                    <Badge icon={<Camera className="h-3 w-3" />} label="Website capture" />
+                                    <Badge icon={<Sparkles className="h-3 w-3" />} label="Editable previews" />
+                                    <Badge icon={<Rocket className="h-3 w-3" />} label="Launch-ready output" />
+                                    <Badge icon={<Lock className="h-3 w-3" />} label="Fair-use credits" />
                                 </div>
                             </div>
+                        </section>
 
-                            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-xs text-emerald-900 shadow-sm">
-                                <div className="flex items-start gap-2">
-                                    <Shield className="mt-0.5 h-4 w-4" />
-                                    <div>
-                                        <p className="font-semibold mb-1">
-                                            Fairness principle: no credits lost on system errors
-                                        </p>
-                                        <p>
-                                            If something on our side fails, that attempt doesn’t count
-                                            against your daily credits. Credits are meant to reflect
-                                            successful work, not failed attempts.
-                                        </p>
+                        {/* Features */}
+                        <section id="features" className={`${SECTION_Y} ${SECTION_SCROLL}`}>
+                            <SectionHeader
+                                eyebrow="Core workflow"
+                                title="From URL to your version"
+                                description="Four steps. The editor stays visual, the output stays yours."
+                            />
+
+                            <div className="mt-6 grid gap-5 md:grid-cols-2">
+                                <FeatureCard
+                                    icon={<Camera className="h-5 w-5" />}
+                                    title="1. Capture a URL"
+                                    badge="Step 1"
+                                    items={[
+                                        "We take a snapshot of the page layout.",
+                                        "You keep a reference point for comparison.",
+                                    ]}
+                                />
+                                <FeatureCard
+                                    icon={<Sparkles className="h-5 w-5" />}
+                                    title="2. Generate a preview"
+                                    badge="Step 2"
+                                    items={[
+                                        "Turns the snapshot into editable blocks.",
+                                        "Regenerate any time as your direction changes.",
+                                    ]}
+                                />
+                                <FeatureCard
+                                    icon={<CheckCircle2 className="h-5 w-5" />}
+                                    title="3. Edit visually"
+                                    badge="Step 3"
+                                    items={[
+                                        "Update copy, sections, layout, colors, and CTA hierarchy.",
+                                        "Stay in one workspace instead of juggling tools.",
+                                    ]}
+                                />
+                                <FeatureCard
+                                    icon={<Rocket className="h-5 w-5" />}
+                                    title="4. Export or deploy"
+                                    badge="Step 4"
+                                    items={[
+                                        "Export code or ship through your deployment flow.",
+                                        "Duplicate versions without losing earlier work.",
+                                    ]}
+                                />
+                            </div>
+                        </section>
+
+                        {/* Credits */}
+                        <section id="credits" className={`${SECTION_Y} ${SECTION_SCROLL}`}>
+                            <SectionHeader
+                                eyebrow="Usage limits"
+                                title="Credits are simple"
+                                description="Two counters. Clear limits. No silent failures."
+                            />
+
+                            <div className="mt-6 grid gap-6 md:grid-cols-[1.35fr,1fr]">
+                                <div className="rounded-2xl border border-neutral-200 bg-white p-5 sm:p-6 shadow-sm">
+                                    <h3 className="text-sm font-semibold text-neutral-900 mb-2">
+                                        What spends credits
+                                    </h3>
+                                    <ul className="space-y-2 text-[12px] text-neutral-700 leading-relaxed">
+                                        <li>
+                                            <span className="font-semibold">Snapshots</span> capture a fresh state of a URL.
+                                        </li>
+                                        <li>
+                                            <span className="font-semibold">Previews</span> generate an editable project from a snapshot.
+                                        </li>
+                                    </ul>
+
+                                    <h3 className="mt-5 text-sm font-semibold text-neutral-900 mb-2">
+                                        Typical daily shape
+                                    </h3>
+                                    <div className="space-y-2 text-[12px] text-neutral-700">
+                                        <TierRow
+                                            label="Free"
+                                            snapshot="Light daily snapshots"
+                                            preview="Enough previews to evaluate"
+                                            emphasis
+                                        />
+                                        <TierRow
+                                            label="Pro"
+                                            snapshot="Comfortable daily volume"
+                                            preview="Active building allowance"
+                                        />
+                                        <TierRow
+                                            label="Agency"
+                                            snapshot="Client-scale volume"
+                                            preview="High iteration volume"
+                                        />
+                                        <TierRow
+                                            label="Enterprise"
+                                            snapshot="Custom"
+                                            preview="Custom"
+                                        />
+                                    </div>
+
+                                    <h3 className="mt-5 text-sm font-semibold text-neutral-900 mb-2">
+                                        When you hit the limit
+                                    </h3>
+                                    <ul className="space-y-2 text-[12px] text-neutral-700 leading-relaxed">
+                                        <li>Buttons show the limit state immediately.</li>
+                                        <li>Upgrade prompts explain what unlocks.</li>
+                                        <li>Credits refill automatically on schedule.</li>
+                                    </ul>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+                                        <h3 className="text-sm font-semibold text-neutral-900 mb-3">
+                                            Demo · Counters
+                                        </h3>
+                                        <div className="space-y-3 text-xs">
+                                            <PlanChip label="Current plan" value="Free" />
+                                            <DemoCreditPill label="Snapshot actions" used={2} total={3} />
+                                            <DemoCreditPill label="Preview generations" used={4} total={5} />
+                                            <p className="mt-2 text-[11px] text-neutral-500">
+                                                When a counter hits zero, that action pauses until the refill.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-[12px] text-emerald-900 shadow-sm">
+                                        <div className="flex items-start gap-2">
+                                            <Shield className="mt-0.5 h-4 w-4" />
+                                            <div>
+                                                <p className="font-semibold mb-1">
+                                                    No credits lost on system errors
+                                                </p>
+                                                <p className="leading-relaxed">
+                                                    If something fails on our side, the attempt should not consume credits.
+                                                </p>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    </div>
-                </section>
+                        </section>
 
-                {/* Plans */}
-                <section id="plans" className="mt-[100px] mb-[100px] scroll-mt-[150px]">
-                    <SectionHeader
-                        eyebrow="Monetization"
-                        title="Plan overview"
-                        description="Kloner is usable on Free, and intentionally rewarding on paid tiers. The idea is simple: real value at every level, and extra power as you grow."
-                    />
+                        {/* Plans */}
+                        <section id="plans" className={`${SECTION_Y} ${SECTION_SCROLL}`}>
+                            <SectionHeader
+                                eyebrow="Plans"
+                                title="Pick based on how often you iterate"
+                                description="Free for testing. Pro for building. Agency for client throughput."
+                            />
 
-                    <div className="mt-6 grid gap-5 md:grid-cols-3">
-                        <PlanCard
-                            label="Free"
-                            highlight={false}
-                            description="Perfect for quick experiments and trying Kloner without commitment."
-                            bullets={[
-                                "Limited daily snapshots and previews",
-                                "Core editor experience included",
-                                "No payment details required",
-                                "Good for solo testing and personal tinkering",
-                            ]}
-                            cta="Get started free"
-                            href="/signup"
-                        />
-                        <PlanCard
-                            label="Pro"
-                            highlight
-                            description="Built for solo founders, freelancers, and small product teams."
-                            bullets={[
-                                "Higher daily allowances",
-                                "Priority processing windows",
-                                "Access to more advanced editor capabilities",
-                                "Support for streamlined launch workflows",
-                            ]}
-                            cta="See Pro details"
-                            href="/price"
-                        />
-                        <PlanCard
-                            label="Agency"
-                            highlight={false}
-                            description="For agencies and studios cloning and customizing sites for clients."
-                            bullets={[
-                                "High-volume usage patterns supported",
-                                "Agency-friendly credit allowances",
-                                "Features designed for client delivery pipelines",
-                                "Flexible options for custom agreements",
-                            ]}
-                            cta="Explore Agency options"
-                            href="/price"
-                        />
-                    </div>
+                            <div className="mt-6 grid gap-5 md:grid-cols-3">
+                                <PlanCard
+                                    label="Free"
+                                    highlight={false}
+                                    description="Try the flow without commitment."
+                                    bullets={[
+                                        "Limited daily snapshots + previews",
+                                        "Full core editor access",
+                                        "No payment details",
+                                    ]}
+                                    cta="Get started"
+                                    href="/signup"
+                                />
+                                <PlanCard
+                                    label="Pro"
+                                    highlight
+                                    description="For solo founders and small teams."
+                                    bullets={[
+                                        "Higher daily allowances",
+                                        "Faster iteration cadence",
+                                        "Advanced editor features",
+                                    ]}
+                                    cta="See Pro details"
+                                    href="/price"
+                                />
+                                <PlanCard
+                                    label="Agency"
+                                    highlight={false}
+                                    description="For multi-project and client work."
+                                    bullets={[
+                                        "High-volume usage",
+                                        "Client pipeline friendly",
+                                        "Flexible agreements",
+                                    ]}
+                                    cta="Explore Agency"
+                                    href="/price"
+                                />
+                            </div>
 
-                    <p className="mt-4 text-[11px] text-neutral-500">
-                        Enterprise discussions focus on scale, governance, and custom workflows.
-                        Reach out through in-app contact options if you need something beyond the
-                        standard tiers.
-                    </p>
-                </section>
-
-                {/* Compare: cloning, hosting, rendering */}
-                <section id="compare" className="mt-[100px] mb-[100px] scroll-mt-[150px]">
-                    <SectionHeader
-                        eyebrow="Compare"
-                        title="How you ship and maintain your cloned projects"
-                        description="High-level tradeoffs between cloning vs rebuilding from scratch, different hosting providers, and static vs server-rendered setups."
-                    />
-
-                    <div className="mt-6 grid gap-5 md:grid-cols-3 text-xs text-neutral-800">
-                        <article
-                            id="cloning-vs-rebuild"
-                            className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
-                        >
-                            <h3 className="text-sm font-semibold text-neutral-900 mb-1">
-                                Cloning vs rebuild
-                            </h3>
-                            <ul className="space-y-1.5">
-                                <li className="flex gap-2">
-                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
-                                    <span>
-                                        Cloning gives you a fast starting point that mirrors a layout you
-                                        already know works.
-                                    </span>
-                                </li>
-                                <li className="flex gap-2">
-                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
-                                    <span>
-                                        Rebuilds are slower but can be tailored from the ground up to your
-                                        stack and standards.
-                                    </span>
-                                </li>
-                                <li className="flex gap-2">
-                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
-                                    <span>
-                                        A common pattern: clone first to explore structure, then
-                                        selectively rebuild the pieces you keep.
-                                    </span>
-                                </li>
-                            </ul>
-                        </article>
-
-                        <article
-                            id="vercel-vs-netlify"
-                            className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
-                        >
-                            <h3 className="text-sm font-semibold text-neutral-900 mb-1">
-                                Vercel vs Netlify
-                            </h3>
-                            <ul className="space-y-1.5">
-                                <li className="flex gap-2">
-                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
-                                    <span>
-                                        Both are excellent for static and hybrid Jamstack deployments.
-                                    </span>
-                                </li>
-                                <li className="flex gap-2">
-                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
-                                    <span>
-                                        Vercel leans heavily into HTML workflows and preview
-                                        deployments.
-                                    </span>
-                                </li>
-                                <li className="flex gap-2">
-                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
-                                    <span>
-                                        Netlify emphasises simple git-based flows and a broad plugin and
-                                        integration ecosystem.
-                                    </span>
-                                </li>
-                            </ul>
-                        </article>
-
-                        <article
-                            id="static-vs-ssr"
-                            className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
-                        >
-                            <h3 className="text-sm font-semibold text-neutral-900 mb-1">
-                                Static vs SSR
-                            </h3>
-                            <ul className="space-y-1.5">
-                                <li className="flex gap-2">
-                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
-                                    <span>
-                                        Static exports are simple, cacheable, and usually cheapest to run.
-                                    </span>
-                                </li>
-                                <li className="flex gap-2">
-                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
-                                    <span>
-                                        SSR (or ISR) is useful when you need per-request data or frequent
-                                        content changes.
-                                    </span>
-                                </li>
-                                <li className="flex gap-2">
-                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
-                                    <span>
-                                        Kloner’s output is designed so you can go either way depending on
-                                        your hosting choice.
-                                    </span>
-                                </li>
-                            </ul>
-                        </article>
-                    </div>
-                </section>
-
-                {/* Safety & fairness (non-technical) */}
-                <section id="safety" className="mt-[100px] mb-[100px] scroll-mt-[150px]">
-                    <SectionHeader
-                        eyebrow="Trust & boundaries"
-                        title="Safety, privacy, and fair use"
-                        description="Kloner is designed to be useful for builders while respecting websites, users, and hosting providers."
-                    />
-
-                    <div className="mt-6 grid gap-5 md:grid-cols-2">
-                        <FaqBlock
-                            title="How Kloner treats other websites"
-                            body={[
-                                "Kloner only works with publicly accessible content.",
-                                "You are responsible for ensuring that your use respects the original website’s terms, local laws, and any relevant licensing.",
-                                "We encourage users to treat Kloner as a starting point for their own original work, not a way to pass off someone else’s site as-is.",
-                            ]}
-                        />
-                        <FaqBlock
-                            title="Privacy and data handling"
-                            body={[
-                                "Kloner focuses on page visuals and layout, not on tracking individual visitors or private user data.",
-                                "Captured material is kept inside your account and used to power your previews and projects.",
-                                "We do not expose internal implementation details or any sensitive infrastructure information in public docs.",
-                            ]}
-                        />
-                        <FaqBlock
-                            title="Guardrails against abuse"
-                            body={[
-                                "Daily credits and sensible pacing are built in to discourage automated abuse and scraping behavior.",
-                                "Certain advanced actions are locked to paid plans where there is a clearer accountability trail.",
-                                "Suspicious or abusive usage patterns can be rate-limited or blocked to protect the platform and other users.",
-                            ]}
-                        />
-                        <FaqBlock
-                            title="Working with your team"
-                            body={[
-                                "Pro and Agency tiers are designed for collaborative workflows while still keeping one clear account owner.",
-                                "Teams can standardize on Kloner for consistent previews and faster client sign-offs.",
-                                "If your use case is unusual or high-risk, talk to us before scaling up, so we can help design an appropriate setup.",
-                            ]}
-                        />
-                    </div>
-                </section>
-
-                {/* Library: export + routing, SEO, fonts, images, deploy */}
-                <section id="export-options" className="mt-[100px] mb-[100px] scroll-mt-[150px]">
-                    <SectionHeader
-                        eyebrow="Library"
-                        title="Export options and practical guides"
-                        description="These sections stay high-level and are written for both technical and non-technical users. They describe responsibilities and tradeoffs without exposing internal systems."
-                    />
-
-                    <div className="mt-6 grid gap-5 md:grid-cols-2">
-                        <LibraryCard
-                            id="routing-guides"
-                            icon={<Zap className="h-4 w-4" />}
-                            title="Routing guides"
-                            lines={[
-                                "Explains how exported projects can be organised into simple, predictable routes.",
-                                "Covers common patterns such as home pages, landing pages, and basic sub-pages.",
-                                "You decide how to wire these routes into your own framework or hosting provider.",
-                            ]}
-                        />
-                        <LibraryCard
-                            id="seo-templates"
-                            icon={<Sparkles className="h-4 w-4" />}
-                            title="SEO templates"
-                            lines={[
-                                "Outlines safe defaults for titles, descriptions, and basic on-page structure.",
-                                "Focuses on clarity and relevance, not on exploiting search engines.",
-                                "You remain responsible for any SEO strategy, claims, and compliance.",
-                            ]}
-                        />
-                        <LibraryCard
-                            id="font-subsetting"
-                            icon={<Camera className="h-4 w-4" />}
-                            title="Font subsetting"
-                            lines={[
-                                "Describes why trimming unused font weights and character sets improves load time.",
-                                "Avoids bundling full font families when only a few styles are needed.",
-                                "You are responsible for licensing any fonts you choose to use in exports.",
-                            ]}
-                        />
-                        <LibraryCard
-                            id="image-optimization"
-                            icon={<Camera className="h-4 w-4" />}
-                            title="Image optimization"
-                            lines={[
-                                "Explains basic sizing, compression, and responsive image ideas in plain language.",
-                                "Encourages you to keep file sizes reasonable without damaging clarity.",
-                                "You choose where images are hosted and remain responsible for the assets you upload.",
-                            ]}
-                        />
-                        <LibraryCard
-                            id="deploy-checklists"
-                            icon={<CheckCircle2 className="h-4 w-4" />}
-                            title="Deploy checklists"
-                            lines={[
-                                "Provides simple pre-launch checks: links working, copy reviewed, legal pages present.",
-                                "Highlights that you must verify any tracking pixels, consent flows, and policies.",
-                                "Reminds you to confirm that the project respects all relevant terms and regulations.",
-                            ]}
-                        />
-                        <LibraryCard
-                            id="export-options-card"
-                            icon={<Rocket className="h-4 w-4" />}
-                            title="Export options"
-                            lines={[
-                                "Summarises the main ways to move from preview to your own hosting environment.",
-                                "Keeps the language platform-agnostic so you can choose Vercel, Netlify, or others.",
-                                "Clarifies that once exported, you own and control the project code and its use.",
-                            ]}
-                        />
-                    </div>
-                </section>
-
-                {/* Company: About + Contact for footer links */}
-                <section id="about" className="mt-[100px] mb-[100px] scroll-mt-[150px]">
-                    <SectionHeader
-                        eyebrow="Company"
-                        title="About Kloner"
-                        description="Kloner is built for people who want to move fast from inspiration to shipped projects without losing control of the output."
-                    />
-
-                    <div className="mt-6 grid gap-5 md:grid-cols-2 text-xs text-neutral-800">
-                        <div>
-                            <h3 className="text-sm font-semibold text-neutral-900 mb-1">
-                                What we focus on
-                            </h3>
-                            <ul className="space-y-1.5">
-                                <li className="flex gap-2">
-                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
-                                    <span>
-                                        Fast iteration from an existing page to something that actually
-                                        represents your offer.
-                                    </span>
-                                </li>
-                                <li className="flex gap-2">
-                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
-                                    <span>
-                                        Clear guardrails so cloning stays on the right side of fair use and
-                                        platform policies.
-                                    </span>
-                                </li>
-                                <li className="flex gap-2">
-                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
-                                    <span>
-                                        An opinionated workflow that still lets you export and own the
-                                        final code.
-                                    </span>
-                                </li>
-                            </ul>
-                        </div>
-
-                        <div id="contact">
-                            <h3 className="text-sm font-semibold text-neutral-900 mb-1">
-                                Contact
-                            </h3>
-                            <p className="text-[11px] text-neutral-700 mb-2">
-                                If you&apos;re evaluating Kloner for a serious project, reach out so we
-                                can understand your use case and make sure the product is a good fit.
+                            <p className="mt-5 text-[11px] text-neutral-500">
+                                Enterprise is custom for governance, scale, and workflows.
                             </p>
-                            <ul className="space-y-1.5 text-[11px] text-neutral-700">
-                                <li className="flex gap-2">
-                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
-                                    <span>
-                                        Product feedback, bugs, or feature requests.
-                                    </span>
-                                </li>
-                                <li className="flex gap-2">
-                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
-                                    <span>
-                                        Agency or studio needs that don&apos;t fit the default plans.
-                                    </span>
-                                </li>
-                                <li className="flex gap-2">
-                                    <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
-                                    <span>
-                                        Partnership ideas where Kloner sits inside a larger toolchain.
-                                    </span>
-                                </li>
-                            </ul>
-                        </div>
+                        </section>
+
+                        {/* Compare */}
+                        <section id="compare" className={`${SECTION_Y} ${SECTION_SCROLL}`}>
+                            <SectionHeader
+                                eyebrow="Compare"
+                                title="Shipping tradeoffs"
+                                description="Fast start vs tailored rebuild, plus hosting choices."
+                            />
+
+                            <div className="mt-6 grid gap-5 md:grid-cols-3 text-[12px] text-neutral-800">
+                                <article
+                                    id="cloning-vs-rebuild"
+                                    className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
+                                >
+                                    <h3 className="text-sm font-semibold text-neutral-900 mb-1">
+                                        Clone vs rebuild
+                                    </h3>
+                                    <ul className="space-y-1.5 leading-relaxed">
+                                        <li className="flex gap-2">
+                                            <span className="mt-[7px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                            <span>Clone to get structure fast.</span>
+                                        </li>
+                                        <li className="flex gap-2">
+                                            <span className="mt-[7px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                            <span>Rebuild for deeper technical control.</span>
+                                        </li>
+                                        <li className="flex gap-2">
+                                            <span className="mt-[7px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                            <span>Common: clone first, rebuild the keepers.</span>
+                                        </li>
+                                    </ul>
+                                </article>
+
+                                <article
+                                    id="vercel-vs-netlify"
+                                    className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
+                                >
+                                    <h3 className="text-sm font-semibold text-neutral-900 mb-1">
+                                        Vercel vs Netlify
+                                    </h3>
+                                    <ul className="space-y-1.5 leading-relaxed">
+                                        <li className="flex gap-2">
+                                            <span className="mt-[7px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                            <span>Both work well for static + hybrid apps.</span>
+                                        </li>
+                                        <li className="flex gap-2">
+                                            <span className="mt-[7px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                            <span>Vercel shines with previews and Next workflows.</span>
+                                        </li>
+                                        <li className="flex gap-2">
+                                            <span className="mt-[7px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                            <span>Netlify is strong for simple git deploy flows.</span>
+                                        </li>
+                                    </ul>
+                                </article>
+
+                                <article
+                                    id="static-vs-ssr"
+                                    className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
+                                >
+                                    <h3 className="text-sm font-semibold text-neutral-900 mb-1">
+                                        Static vs SSR
+                                    </h3>
+                                    <ul className="space-y-1.5 leading-relaxed">
+                                        <li className="flex gap-2">
+                                            <span className="mt-[7px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                            <span>Static is cheap, fast, and cache-friendly.</span>
+                                        </li>
+                                        <li className="flex gap-2">
+                                            <span className="mt-[7px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                            <span>SSR/ISR helps when content changes often.</span>
+                                        </li>
+                                        <li className="flex gap-2">
+                                            <span className="mt-[7px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                            <span>Kloner output supports either path.</span>
+                                        </li>
+                                    </ul>
+                                </article>
+                            </div>
+                        </section>
+
+                        {/* Safety */}
+                        <section id="safety" className={`${SECTION_Y} ${SECTION_SCROLL}`}>
+                            <SectionHeader
+                                eyebrow="Trust"
+                                title="Safety, privacy, fair use"
+                                description="Kloner is a tool. Responsibility stays with the user."
+                            />
+
+                            <div className="mt-6 grid gap-5 md:grid-cols-2">
+                                <FaqBlock
+                                    title="How Kloner treats other websites"
+                                    body={[
+                                        "Works only with publicly accessible content.",
+                                        "You must follow terms, laws, and licensing.",
+                                        "Use as a starting point, not a copy-paste shortcut.",
+                                    ]}
+                                />
+                                <FaqBlock
+                                    title="Privacy and data handling"
+                                    body={[
+                                        "Focused on layout and structure, not personal data.",
+                                        "Captured material stays inside your account.",
+                                        "Docs avoid exposing sensitive infrastructure details.",
+                                    ]}
+                                />
+                                <FaqBlock
+                                    title="Guardrails against abuse"
+                                    body={[
+                                        "Credits and pacing discourage automated scraping.",
+                                        "Some advanced actions are paid-tier gated.",
+                                        "Abuse can be rate-limited or blocked.",
+                                    ]}
+                                />
+                                <FaqBlock
+                                    title="Working with your team"
+                                    body={[
+                                        "Pro and Agency fit collaboration workflows.",
+                                        "Standardize previews for faster approvals.",
+                                        "Unusual risk cases should be discussed before scale.",
+                                    ]}
+                                />
+                            </div>
+                        </section>
+
+                        {/* Library */}
+                        <section id="export-options" className={`${SECTION_Y} ${SECTION_SCROLL}`}>
+                            <SectionHeader
+                                eyebrow="Library"
+                                title="Practical guides"
+                                description="High-level, non-sensitive guidance for shipping clean exports."
+                            />
+
+                            <div className="mt-6 grid gap-5 md:grid-cols-2">
+                                <LibraryCard
+                                    id="routing-guides"
+                                    icon={<Zap className="h-4 w-4" />}
+                                    title="Routing guides"
+                                    lines={[
+                                        "Simple route structures for exports.",
+                                        "Common pages: home, landing, sub-pages.",
+                                        "You decide the framework wiring.",
+                                    ]}
+                                />
+                                <LibraryCard
+                                    id="seo-templates"
+                                    icon={<Sparkles className="h-4 w-4" />}
+                                    title="SEO templates"
+                                    lines={[
+                                        "Safe defaults for title/description.",
+                                        "Clarity and relevance over tricks.",
+                                        "You own SEO strategy and compliance.",
+                                    ]}
+                                />
+                                <LibraryCard
+                                    id="font-subsetting"
+                                    icon={<Camera className="h-4 w-4" />}
+                                    title="Font subsetting"
+                                    lines={[
+                                        "Trim weights you do not use.",
+                                        "Avoid shipping huge families by default.",
+                                        "Confirm font licensing for exports.",
+                                    ]}
+                                />
+                                <LibraryCard
+                                    id="image-optimization"
+                                    icon={<Camera className="h-4 w-4" />}
+                                    title="Image optimization"
+                                    lines={[
+                                        "Right-size images for the layout.",
+                                        "Compress without obvious artifacts.",
+                                        "You choose hosting and asset sources.",
+                                    ]}
+                                />
+                                <LibraryCard
+                                    id="deploy-checklists"
+                                    icon={<CheckCircle2 className="h-4 w-4" />}
+                                    title="Deploy checklists"
+                                    lines={[
+                                        "Verify links, copy, and key pages.",
+                                        "Confirm tracking and consent flows.",
+                                        "Double-check terms and legal basics.",
+                                    ]}
+                                />
+                                <LibraryCard
+                                    id="export-options-card"
+                                    icon={<Rocket className="h-4 w-4" />}
+                                    title="Export options"
+                                    lines={[
+                                        "Move preview to your hosting stack.",
+                                        "Works with Vercel, Netlify, others.",
+                                        "After export, you control the code.",
+                                    ]}
+                                />
+                            </div>
+                        </section>
+
+                        {/* About */}
+                        <section id="about" className={`${SECTION_Y} ${SECTION_SCROLL}`}>
+                            <SectionHeader
+                                eyebrow="Company"
+                                title="About Kloner"
+                                description="Built for fast iteration without losing ownership of output."
+                            />
+
+                            <div className="mt-6 grid gap-6 md:grid-cols-2 text-[12px] text-neutral-800">
+                                <div>
+                                    <h3 className="text-sm font-semibold text-neutral-900 mb-2">
+                                        What we focus on
+                                    </h3>
+                                    <ul className="space-y-2 leading-relaxed">
+                                        <li className="flex gap-2">
+                                            <span className="mt-[7px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                            <span>Speed: get to a working version quickly.</span>
+                                        </li>
+                                        <li className="flex gap-2">
+                                            <span className="mt-[7px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                            <span>Guardrails: keep usage on the right side of fair use.</span>
+                                        </li>
+                                        <li className="flex gap-2">
+                                            <span className="mt-[7px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                            <span>Ownership: exportable code you control.</span>
+                                        </li>
+                                    </ul>
+                                </div>
+
+                                <div id="contact">
+                                    <h3 className="text-sm font-semibold text-neutral-900 mb-2">
+                                        Contact
+                                    </h3>
+                                    <p className="text-[12px] text-neutral-700 mb-3 leading-relaxed">
+                                        For serious evaluations, reach out with your use case so constraints can be validated early.
+                                    </p>
+                                    <ul className="space-y-2 text-[12px] text-neutral-700 leading-relaxed">
+                                        <li className="flex gap-2">
+                                            <span className="mt-[7px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                            <span>Product feedback and bug reports.</span>
+                                        </li>
+                                        <li className="flex gap-2">
+                                            <span className="mt-[7px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                            <span>Agency needs outside standard tiers.</span>
+                                        </li>
+                                        <li className="flex gap-2">
+                                            <span className="mt-[7px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                            <span>Partnership ideas and integrations.</span>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </section>
+
+                        {/* Partnerships */}
+                        <section id="partnerships" className={`${SECTION_Y} ${SECTION_SCROLL}`}>
+                            <SectionHeader
+                                eyebrow="Partnerships"
+                                title="Ways to work together"
+                                description="Three buckets we expect to support as the product matures."
+                            />
+
+                            <div className="mt-6 grid gap-5 md:grid-cols-3 text-[12px] text-neutral-800">
+                                <article className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+                                    <h3 className="text-sm font-semibold text-neutral-900 mb-1">
+                                        For creators
+                                    </h3>
+                                    <p className="text-[12px] text-neutral-700 leading-relaxed">
+                                        Build landing pages and mini-sites fast, while owning the exports.
+                                    </p>
+                                </article>
+
+                                <article className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+                                    <h3 className="text-sm font-semibold text-neutral-900 mb-1">
+                                        Affiliates
+                                    </h3>
+                                    <p className="text-[12px] text-neutral-700 leading-relaxed">
+                                        Refer builders who need speed from inspiration to deployment.
+                                    </p>
+                                </article>
+
+                                <article className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+                                    <h3 className="text-sm font-semibold text-neutral-900 mb-1">
+                                        For business
+                                    </h3>
+                                    <p className="text-[12px] text-neutral-700 leading-relaxed">
+                                        Seats, SSO, or formal agreements for teams.
+                                    </p>
+                                </article>
+                            </div>
+                        </section>
+
+                        {/* Connect */}
+                        <section id="connect" className={`${SECTION_Y} ${SECTION_SCROLL}`}>
+                            <SectionHeader
+                                eyebrow="Connect"
+                                title="Stay up to date"
+                                description="Light placeholders that can evolve into full pages later."
+                            />
+
+                            <div className="mt-6 grid gap-5 md:grid-cols-3 text-[12px] text-neutral-800">
+                                <article className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+                                    <h3 className="text-sm font-semibold text-neutral-900 mb-1">
+                                        X / Twitter
+                                    </h3>
+                                    <p className="text-[12px] text-neutral-700 leading-relaxed">
+                                        Short updates and work-in-progress demos.
+                                    </p>
+                                </article>
+
+                                <article className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+                                    <h3 className="text-sm font-semibold text-neutral-900 mb-1">
+                                        Instagram
+                                    </h3>
+                                    <p className="text-[12px] text-neutral-700 leading-relaxed">
+                                        Visual before-and-after project shots.
+                                    </p>
+                                </article>
+
+                                <article className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+                                    <h3 className="text-sm font-semibold text-neutral-900 mb-1">
+                                        LinkedIn
+                                    </h3>
+                                    <p className="text-[12px] text-neutral-700 leading-relaxed">
+                                        More formal announcements and case studies.
+                                    </p>
+                                </article>
+                            </div>
+                        </section>
+
+                        {/* Quick start */}
+                        <section id="quick-start" className={`${SECTION_Y} ${SECTION_SCROLL}`}>
+                            <SectionHeader
+                                eyebrow="First session"
+                                title="Get value in 10 minutes"
+                                description="A simple first run that teaches the product."
+                            />
+
+                            <div className="mt-6 grid gap-4 text-[12px] text-neutral-800 md:grid-cols-3">
+                                <QuickStep
+                                    label="Step 1"
+                                    title="Clone something familiar"
+                                    body={["Pick a known site.", "Capture a snapshot, then generate a preview."]}
+                                />
+                                <QuickStep
+                                    label="Step 2"
+                                    title="Make it yours"
+                                    body={["Rewrite the headline and CTA.", "Swap one section to match your offer."]}
+                                />
+                                <QuickStep
+                                    label="Step 3"
+                                    title="Decide your tier"
+                                    body={[
+                                        "If limits hit but value is clear, upgrade.",
+                                        "Otherwise, wait for refills and keep testing.",
+                                    ]}
+                                />
+                            </div>
+                        </section>
                     </div>
-                </section>
 
-                {/* Partnerships: For Creators / Affiliates / For Business */}
-                <section id="partnerships" className="mt-[100px] mb-[100px] scroll-mt-[150px]">
-                    <SectionHeader
-                        eyebrow="Partnerships"
-                        title="Ways to work with Kloner long-term"
-                        description="High-level modes we expect to support as the product matures."
-                    />
-
-                    <div className="mt-6 grid gap-5 md:grid-cols-3 text-xs text-neutral-800">
-                        <article
-                            id="for-creators"
-                            className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
-                        >
-                            <h3 className="text-sm font-semibold text-neutral-900 mb-1">
-                                For creators
-                            </h3>
-                            <p className="text-[11px] text-neutral-700">
-                                Use Kloner to spin up landing pages, mini-sites, and experiments for
-                                your own audience, while still owning the final exports.
-                            </p>
-                        </article>
-
-                        <article
-                            id="affiliates"
-                            className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
-                        >
-                            <h3 className="text-sm font-semibold text-neutral-900 mb-1">
-                                Affiliates
-                            </h3>
-                            <p className="text-[11px] text-neutral-700">
-                                Point builders and agencies toward Kloner when they need a way to move
-                                faster from &quot;I like this layout&quot; to deployable code.
-                            </p>
-                        </article>
-
-                        <article
-                            id="for-business"
-                            className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
-                        >
-                            <h3 className="text-sm font-semibold text-neutral-900 mb-1">
-                                For business
-                            </h3>
-                            <p className="text-[11px] text-neutral-700">
-                                If you want seats, SSO, or more formal agreements, this is the bucket
-                                we expect those conversations to live in.
-                            </p>
-                        </article>
+                    {/* RIGHT: sticky anchor list */}
+                    <div className="hidden lg:block">
+                        <RightQuickNav />
                     </div>
-                </section>
+                </div>
+            </main>
 
-                {/* Connect: social placeholders for footer links */}
-                <section id="connect" className="mt-[100px] mb-[100px] scroll-mt-[150px]">
-                    <SectionHeader
-                        eyebrow="Connect"
-                        title="Stay up to date"
-                        description="Lightweight placeholders for social channels linked from the footer. These can evolve into full pages later."
-                    />
-
-                    <div className="mt-6 grid gap-5 md:grid-cols-3 text-xs text-neutral-800">
-                        <article
-                            id="x-twitter"
-                            className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
-                        >
-                            <h3 className="text-sm font-semibold text-neutral-900 mb-1">
-                                X / Twitter
-                            </h3>
-                            <p className="text-[11px] text-neutral-700">
-                                Short product updates, work-in-progress demos, and experiments as they
-                                happen.
-                            </p>
-                        </article>
-
-                        <article
-                            id="instagram"
-                            className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
-                        >
-                            <h3 className="text-sm font-semibold text-neutral-900 mb-1">
-                                Instagram
-                            </h3>
-                            <p className="text-[11px] text-neutral-700">
-                                Visual snippets and before-and-after shots of pages built with Kloner.
-                            </p>
-                        </article>
-
-                        <article
-                            id="linkedin"
-                            className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
-                        >
-                            <h3 className="text-sm font-semibold text-neutral-900 mb-1">
-                                LinkedIn
-                            </h3>
-                            <p className="text-[11px] text-neutral-700">
-                                More formal product announcements and case studies oriented around
-                                teams.
-                            </p>
-                        </article>
-                    </div>
-                </section >
-
-                {/* Gentle “how to get value fast” section */}
-                < section id="quick-start" className="mb-10" >
-                    <SectionHeader
-                        eyebrow="First session"
-                        title="A simple way to get value in 10 minutes"
-                        description="If you’re new to Kloner, this is a straightforward flow to run on your first day."
-                    />
-
-                    <div className="mt-6 grid gap-4 text-xs text-neutral-800 md:grid-cols-3">
-                        <QuickStep
-                            label="Step 1"
-                            title="Clone something familiar"
-                            body={[
-                                "Pick a site you already know well.",
-                                "Capture a snapshot and generate a preview.",
-                            ]}
-                        />
-                        <QuickStep
-                            label="Step 2"
-                            title="Make it yours"
-                            body={[
-                                "Change the headline to match your product.",
-                                "Swap one section to reflect your own offer.",
-                            ]}
-                        />
-                        <QuickStep
-                            label="Step 3"
-                            title="Decide if you need more"
-                            body={[
-                                "If you hit limits but see value, upgrade straight from the prompts.",
-                                "If not, let credits reset and keep exploring at your own pace.",
-                            ]}
-                        />
-                    </div>
-                </section >
-            </main >
-            <Footer />
-        </div >
+            {/* <Footer /> */}
+        </div>
     );
 }
 
@@ -734,11 +624,7 @@ function Badge({ icon, label }: { icon: React.ReactNode; label: string }) {
     );
 }
 
-function SectionHeader(props: {
-    eyebrow: string;
-    title: string;
-    description: string;
-}) {
+function SectionHeader(props: { eyebrow: string; title: string; description: string }) {
     return (
         <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500 mb-1">
@@ -747,7 +633,7 @@ function SectionHeader(props: {
             <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-neutral-900">
                 {props.title}
             </h2>
-            <p className="mt-1 max-w-2xl text-xs sm:text-sm text-neutral-600">
+            <p className="mt-2 max-w-2xl text-[12px] sm:text-sm text-neutral-600 leading-relaxed">
                 {props.description}
             </p>
         </div>
@@ -769,9 +655,7 @@ function AnchorCard({
             className="group rounded-2xl border border-neutral-200 bg-white px-4 py-3 shadow-sm hover:border-neutral-300 hover:shadow-md transition"
         >
             <div className="flex items-center justify-between gap-2 mb-1">
-                <span className="text-[12px] font-semibold text-neutral-900">
-                    {title}
-                </span>
+                <span className="text-[12px] font-semibold text-neutral-900">{title}</span>
                 <span className="text-[10px] text-neutral-400 group-hover:text-neutral-700">
                     Jump ↗
                 </span>
@@ -791,27 +675,22 @@ function FeatureCard(props: {
     return (
         <article className="flex h-full flex-col rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
             <div className="flex items-start gap-3">
-                <div
-                    className="rounded-full p-2 shrink-0"
-                    style={{ backgroundColor: "rgba(245,95,42,0.08)" }}
-                >
+                <div className="rounded-full p-2 shrink-0" style={{ backgroundColor: "rgba(245,95,42,0.08)" }}>
                     <div className="rounded-full bg-white p-1 shadow-sm" style={{ color: ACCENT }}>
                         {props.icon}
                     </div>
                 </div>
                 <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                        <span className="rounded-full bg-accent text-neutral-50 px-2 py-0.5 text-[10px] font-semibold">
+                        <span className="rounded-full bg-accent text-neutral-50 px-2 py-0.5 text-[10px]">
                             {props.badge}
                         </span>
-                        <h3 className="text-sm font-semibold text-neutral-900">
-                            {props.title}
-                        </h3>
+                        <h3 className="text-sm font-semibold text-neutral-900">{props.title}</h3>
                     </div>
-                    <ul className="mt-2 space-y-1.5 text-[11px] text-neutral-700">
+                    <ul className="mt-2 space-y-1.5 text-[12px] text-neutral-700 leading-relaxed">
                         {props.items.map((it) => (
                             <li key={it} className="flex gap-2">
-                                <span className="mt-[3px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                                <span className="mt-[7px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
                                 <span>{it}</span>
                             </li>
                         ))}
@@ -831,67 +710,6 @@ function FeatureCard(props: {
     );
 }
 
-/* Demo components (visual only) */
-
-function DemoScreenshotTile() {
-    return (
-        <div className="flex items-center gap-3">
-            <div className="h-10 w-16 rounded-lg bg-gradient-to-br from-neutral-200 to-neutral-100 border border-neutral-200" />
-            <div className="flex-1">
-                <div className="h-2.5 w-20 rounded bg-neutral-200 mb-1" />
-                <div className="h-2 w-32 rounded bg-neutral-100" />
-            </div>
-        </div>
-    );
-}
-
-function DemoPreviewTile() {
-    return (
-        <div className="flex items-center gap-3">
-            <div className="h-10 w-16 rounded-lg bg-gradient-to-br from-white to-neutral-100 border border-neutral-200 shadow-sm" />
-            <div className="flex-1">
-                <div className="inline-flex items-center gap-1 rounded-full bg-accent text-white px-2 py-0.5 text-[10px] mb-1">
-                    <Sparkles className="h-3 w-3" />
-                    <span>Preview created</span>
-                </div>
-                <div className="h-2 w-28 rounded bg-neutral-100" />
-            </div>
-        </div>
-    );
-}
-
-function DemoEditorHint() {
-    return (
-        <div className="space-y-2 text-[11px]">
-            <p className="text-neutral-600">
-                Edit headings, paragraphs, and sections visually. Kloner keeps your working
-                version and your original snapshot separate.
-            </p>
-        </div>
-    );
-}
-
-function DemoDeployCTA() {
-    return (
-        <div className="flex items-center justify-between gap-3 text-[11px]">
-            <div className="text-neutral-600">
-                <p className="font-semibold text-neutral-800">Ready to launch?</p>
-                <p className="text-[11px] text-neutral-600">
-                    Paid plans unlock direct integrations with popular hosting platforms.
-                </p>
-            </div>
-            <button
-                className="inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm"
-                style={{ backgroundColor: ACCENT }}
-                type="button"
-            >
-                <Rocket className="h-3 w-3" />
-                <span>See launch options</span>
-            </button>
-        </div>
-    );
-}
-
 /* Credits visual helpers */
 
 function PlanChip({ label, value }: { label: string; value: string }) {
@@ -905,15 +723,7 @@ function PlanChip({ label, value }: { label: string; value: string }) {
     );
 }
 
-function DemoCreditPill({
-    label,
-    used,
-    total,
-}: {
-    label: string;
-    used: number;
-    total: number;
-}) {
+function DemoCreditPill({ label, used, total }: { label: string; used: number; total: number }) {
     const remaining = Math.max(total - used, 0);
     const pct = Math.max(0, Math.min(100, (remaining / total) * 100));
 
@@ -938,38 +748,25 @@ function DemoCreditPill({
     );
 }
 
-function TierRow({
-    label,
-    snapshot,
-    preview,
-    emphasis,
-}: {
+function TierRow(props: {
     label: string;
     snapshot: string;
     preview: string;
     emphasis?: boolean;
 }) {
+    const emphasis = !!props.emphasis;
+
     return (
         <div
-            className={`flex items-center justify-between rounded-xl px-3 py-2 ${emphasis
-                ? "bg-accent text-neutral-50"
-                : "bg-neutral-50 text-neutral-800 border border-neutral-200"
+            className={`flex items-center justify-between rounded-xl px-3 py-2 ${emphasis ? "bg-accent text-neutral-50" : "bg-neutral-50 text-neutral-800 border border-neutral-200"
                 }`}
         >
             <div className="flex items-center gap-2 text-[11px]">
-                <span className="font-semibold">{label}</span>
+                <span className="font-semibold">{props.label}</span>
             </div>
-            <div className="flex flex-col items-end text-[11px]">
-                <span className="text-neutral-400">
-                    <span className={emphasis ? "text-neutral-50" : "text-neutral-800"}>
-                        {snapshot}
-                    </span>
-                </span>
-                <span className="text-neutral-400">
-                    <span className={emphasis ? "text-neutral-50" : "text-neutral-800"}>
-                        {preview}
-                    </span>
-                </span>
+            <div className="flex flex-col items-end text-[11px] leading-tight">
+                <span className={emphasis ? "text-neutral-50" : "text-neutral-800"}>{props.snapshot}</span>
+                <span className={emphasis ? "text-neutral-50" : "text-neutral-800"}>{props.preview}</span>
             </div>
         </div>
     );
@@ -987,9 +784,7 @@ function PlanCard(props: {
 }) {
     return (
         <div
-            className={`flex h-full flex-col rounded-2xl border bg-white p-5 shadow-sm ${props.highlight
-                ? "border-neutral-900 shadow-md shadow-neutral-200"
-                : "border-neutral-200"
+            className={`flex h-full flex-col rounded-2xl border bg-white p-5 shadow-sm ${props.highlight ? "border-neutral-900 shadow-md shadow-neutral-200" : "border-neutral-200"
                 }`}
         >
             <div className="mb-3 flex items-center justify-between gap-2">
@@ -1000,11 +795,11 @@ function PlanCard(props: {
                     </span>
                 )}
             </div>
-            <p className="text-xs text-neutral-600 mb-3">{props.description}</p>
-            <ul className="mb-4 space-y-1.5 text-[11px] text-neutral-700">
+            <p className="text-[12px] text-neutral-600 mb-3 leading-relaxed">{props.description}</p>
+            <ul className="mb-4 space-y-1.5 text-[12px] text-neutral-700 leading-relaxed">
                 {props.bullets.map((b) => (
                     <li key={b} className="flex gap-2">
-                        <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-500 shrink-0" />
+                        <span className="mt-[7px] h-1 w-1 rounded-full bg-neutral-500 shrink-0" />
                         <span>{b}</span>
                     </li>
                 ))}
@@ -1022,16 +817,16 @@ function PlanCard(props: {
     );
 }
 
-/* FAQ / text blocks */
+/* FAQ */
 
 function FaqBlock({ title, body }: { title: string; body: string[] }) {
     return (
         <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-            <h3 className="text-sm font-semibold text-neutral-900 mb-1">{title}</h3>
-            <ul className="space-y-1.5 text-[11px] text-neutral-700">
+            <h3 className="text-sm font-semibold text-neutral-900 mb-2">{title}</h3>
+            <ul className="space-y-2 text-[12px] text-neutral-700 leading-relaxed">
                 {body.map((b) => (
                     <li key={b} className="flex gap-2">
-                        <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                        <span className="mt-[7px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
                         <span>{b}</span>
                     </li>
                 ))}
@@ -1040,37 +835,29 @@ function FaqBlock({ title, body }: { title: string; body: string[] }) {
     );
 }
 
-/* Library cards */
+/* Library */
 
-function LibraryCard({
-    id,
-    icon,
-    title,
-    lines,
-}: {
+function LibraryCard(props: {
     id: string;
     icon: React.ReactNode;
     title: string;
     lines: string[];
 }) {
     return (
-        <article
-            id={id}
-            className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
-        >
+        <article id={props.id} className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
             <div className="mb-2 flex items-center gap-2">
                 <div
                     className="inline-flex h-7 w-7 items-center justify-center rounded-full"
                     style={{ backgroundColor: "rgba(245,95,42,0.08)", color: ACCENT }}
                 >
-                    {icon}
+                    {props.icon}
                 </div>
-                <h3 className="text-sm font-semibold text-neutral-900">{title}</h3>
+                <h3 className="text-sm font-semibold text-neutral-900">{props.title}</h3>
             </div>
-            <ul className="space-y-1.5 text-[11px] text-neutral-700">
-                {lines.map((text) => (
+            <ul className="space-y-2 text-[12px] text-neutral-700 leading-relaxed">
+                {props.lines.map((text) => (
                     <li key={text} className="flex gap-2">
-                        <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                        <span className="mt-[7px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
                         <span>{text}</span>
                     </li>
                 ))}
@@ -1079,23 +866,19 @@ function LibraryCard({
     );
 }
 
-function QuickStep(props: {
-    label: string;
-    title: string;
-    body: string[];
-}) {
+function QuickStep(props: { label: string; title: string; body: string[] }) {
     return (
         <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-            <div className="mb-1 flex items-center gap-2">
+            <div className="mb-2 flex items-center gap-2">
                 <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold text-neutral-50">
                     {props.label}
                 </span>
                 <h3 className="text-xs font-semibold text-neutral-900">{props.title}</h3>
             </div>
-            <ul className="space-y-1.5 text-[11px] text-neutral-700">
+            <ul className="space-y-2 text-[12px] text-neutral-700 leading-relaxed">
                 {props.body.map((b) => (
                     <li key={b} className="flex gap-2">
-                        <span className="mt-[5px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
+                        <span className="mt-[7px] h-1 w-1 rounded-full bg-neutral-400 shrink-0" />
                         <span>{b}</span>
                     </li>
                 ))}

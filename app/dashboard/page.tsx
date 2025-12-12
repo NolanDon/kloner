@@ -723,8 +723,8 @@ export default function DashboardPage() {
     }, [search, user, router]);
 
     return (
-        <div className="min-h-screen bg-white pt-[15px] pb-[30px]">
-            <main className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-10 py-16">
+        <div className="min-h-screen bg-white pb-[30px]">
+            <main className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-10 py-8">
                 <div className="inline-flex items-center gap-2 rounded-full bg-accent text-neutral-50 px-3 py-1 text-[11px] mb-4">
                     <span>Kloner · Dashboard</span>
                 </div>
