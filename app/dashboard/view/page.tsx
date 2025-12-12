@@ -618,7 +618,7 @@ function RenderCardInner({
                                     }}
                                     // allow click when timeout error, even if html is empty
                                     disabled={(disableOpen || isDeleting || !r.html) && !isFailed}
-                                    className="group inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-neutral-700 px-3 py-1.5 text-neutral-600 shadow-sm disabled:opacity-60"
+                                    className="group inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-neutral-700 px-3 py-1.5 text-neutral-800 shadow-sm disabled:opacity-60"
                                     title={
                                         isArchivedFlag
                                             ? "Unarchive to customize this preview"
