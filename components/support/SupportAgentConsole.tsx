@@ -173,7 +173,7 @@ export function SupportAgentConsole() {
                             onClick={() => setFilter("all")}
                             className={
                                 filter === "all"
-                                    ? "rounded-full bg-accent px-2 py-0.5 text-[11px] font-semibold text-white"
+                                    ? "rounded-full bg-accent px-3 py-1 text-[14px] font-semibold text-white"
                                     : "rounded-full px-2 py-0.5 text-[11px] text-neutral-700 hover:bg-white"
                             }
                         >
