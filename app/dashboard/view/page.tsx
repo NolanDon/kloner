@@ -3596,12 +3596,14 @@ export default function PreviewPage(): JSX.Element {
                                     <h1 className="text-3xl sm:text-4xl tracking-tight text-neutral-900">
                                         Builder
                                     </h1>
-                                    <div className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-1">
-                                        <Crown className="h-3.5 w-3.5 text-amber-500" />
-                                        <span className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">
-                                            {planLabel}
-                                        </span>
-                                    </div>
+                                    {userTier !== "unknown" && (
+                                        <div className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-1">
+                                            <Crown className="h-2.5 w-2.5 text-amber-500" />
+                                            <span className="text-[9px] font-semibold uppercase tracking-wide text-amber-700">
+                                                {planLabel}
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="mt-3 flex flex-wrap gap-2 text-xs gap-2">
@@ -3635,23 +3637,11 @@ export default function PreviewPage(): JSX.Element {
                                 <button
                                     type="button"
                                     onClick={() => router.push("/price")}
-                                    className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 hover:border-amber-300 transition-colors"
+                                    className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-800 hover:bg-amber-100 hover:border-amber-300 transition-colors"
                                 >
-                                    <Crown className="h-3.5 w-3.5 text-amber-500" />
+                                    <Crown className="h-3 w-3 text-amber-500" />
                                     <span>{userTier === "free" ? "View upgrades" : "Manage plan"}</span>
                                 </button>
-
-                                {/* <div className="relative group">
-                                    <button
-                                        type="button"
-                                        className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-xs text-neutral-800 hover:bg-neutral-50 hover:border-neutral-300 transition-colors"
-                                    >
-                                        Earn credits
-                                    </button>
-                                    <div className="pointer-events-none absolute right-0 z-20 mt-1 w-64 translate-y-1 rounded-md bg-neutral-900/95 px-3 py-2 text-[11px] text-neutral-100 opacity-0 shadow-lg ring-1 ring-black/10 transition group-hover:opacity-100 group-hover:translate-y-0">
-                                        Share a build. If approved, you earn 100 preview credits.
-                                    </div>
-                                </div> */}
                             </div>
                         </div>
                     </div>
@@ -4400,12 +4390,13 @@ export default function PreviewPage(): JSX.Element {
                                                                     ? "Redirecting to Stripe…"
                                                                     : "Go Pro and Deploy Your Site"}
                                                             </span>
-                                                            <span
-                                                                className="inline-flex items-center justify-center overflow-hidden text-base opacity-0 translate-x-[-4px] transition-all duration-150 opacity-100 translate-x-0"
-                                                                aria-hidden="true"
-                                                            >
-                                                                →
-                                                            </span>
+                                                            {!checkoutBusy && (
+                                                                <span
+                                                                    className="inline-flex items-center justify-center overflow-hidden text-base opacity-0 translate-x-[-4px] transition-all duration-150 opacity-100 translate-x-0"
+                                                                    aria-hidden="true">
+                                                                    →
+                                                                </span>
+                                                            )}
                                                         </span>
                                                     </motion.button>
 
