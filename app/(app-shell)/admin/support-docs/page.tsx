@@ -103,7 +103,6 @@ export default function AdminSupportDocsPage() {
         try {
             const res = await fetch("/api/support-docs/embed", { method: "POST" });
             const json = await res.json();
-            console.log("Embedding output:", json);
         } finally {
             setEmbedding(false);
         }

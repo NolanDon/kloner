@@ -5,6 +5,7 @@ import { Inter } from "next/font/google";
 import { AppClientProviders } from "./AppClientProvider";
 import ChatWidgetProvider from "@/components/support/ChatWidgetProvider";
 import AffiliateRefCapture from "@/components/AffiliateRefCapture";
+import { Suspense } from "react";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -43,8 +44,10 @@ export default function RootLayout({
       <body className="bg-white scroll-smooth snap-y snap-mandatory">
         <AuthProviderServer>
           <AppClientProviders>
-            <AffiliateRefCapture />
-            {children}
+            <Suspense>
+              <AffiliateRefCapture />
+              {children}
+            </Suspense>
             <ChatWidgetProvider />
           </AppClientProviders>
         </AuthProviderServer>
