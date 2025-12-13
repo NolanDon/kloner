@@ -678,9 +678,60 @@ export async function POST(req: NextRequest) {
             }
 
             // Safety net: keep invoice.paid so you still create entries even if you miss charge.succeeded
-            case "invoice.paid": {
+            case "invoice.paid":
+            case "invoice.payment_succeeded": {
                 const inv = event.data.object as Stripe.Invoice;
-                await writeAffiliateLedgerForInvoicePaid({ stripe, invoice: inv });
+
+                // These often exist on the invoice; if not, retrieve the invoice to fill them.
+                let piId =
+                    typeof (inv as any).payment_intent === "string"
+                        ? (inv as any).payment_intent
+                        : typeof (inv as any).payment_intent?.id === "string"
+                            ? (inv as any).payment_intent.id
+                            : "";
+
+                let chId =
+                    typeof (inv as any).charge === "string"
+                        ? (inv as any).charge
+                        : typeof (inv as any).charge?.id === "string"
+                            ? (inv as any).charge.id
+                            : "";
+
+                let invFull: Stripe.Invoice | null = null;
+
+                if (!piId || !chId) {
+                    try {
+                        invFull = await stripe.invoices.retrieve(inv.id, {
+                            expand: ["payment_intent", "charge"],
+                        });
+
+                        piId =
+                            typeof (invFull as any).payment_intent === "string"
+                                ? (invFull as any).payment_intent
+                                : typeof (invFull as any).payment_intent?.id === "string"
+                                    ? (invFull as any).payment_intent.id
+                                    : piId;
+
+                        chId =
+                            typeof (invFull as any).charge === "string"
+                                ? (invFull as any).charge
+                                : typeof (invFull as any).charge?.id === "string"
+                                    ? (invFull as any).charge.id
+                                    : chId;
+                    } catch (e) {
+                        console.error("[stripe] invoice.retrieve for ids failed", { invoiceId: inv.id }, e);
+                    }
+                }
+
+                await writeAffiliateLedgerForInvoicePaid({
+                    stripe,
+                    invoice: invFull || inv,
+                    overrides: {
+                        chargeId: chId || null,
+                        paymentIntentId: piId || null,
+                    },
+                });
+
                 break;
             }
 
