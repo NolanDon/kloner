@@ -437,21 +437,16 @@ async function writeAffiliateLedgerForInvoicePaid(params: {
         if (paidAtDate.getTime() > capEnd.getTime()) return;
     }
 
-    // Entry idempotency: invoice.id
     const entryRef = db
         .collection("affiliate_ledger")
         .doc(affiliateRefUsed)
         .collection("entries")
         .doc(invoice.id);
 
-    const existing = await entryRef.get();
-    if (existing.exists) return;
-
-    const subscriptionId = getInvoiceSubscriptionId(invoice);
-
     const chargeId = cleanStr(overrides?.chargeId || "") || null;
     const paymentIntentId = cleanStr(overrides?.paymentIntentId || "") || null;
 
+    const subscriptionId = getInvoiceSubscriptionId(invoice);
     const commissionCents = Math.round(netCollectedCents * AFF_RATE);
     const periodKey = monthKeyFromUnix(paidAtSec);
 
@@ -461,40 +456,60 @@ async function writeAffiliateLedgerForInvoicePaid(params: {
 
     const now = admin.firestore.FieldValue.serverTimestamp();
 
-    await entryRef.set(
-        {
-            affiliateRef: affiliateRefUsed,
-            affiliateSource: affiliateSourceUsed,
+    await db.runTransaction(async (tx) => {
+        const snap = await tx.get(entryRef);
 
-            uid,
-            customerId,
-            subscriptionId: subscriptionId || null,
+        if (!snap.exists) {
+            tx.set(
+                entryRef,
+                {
+                    affiliateRef: affiliateRefUsed,
+                    affiliateSource: affiliateSourceUsed,
 
-            invoiceId: invoice.id,
-            invoiceNumber: (invoice as any).number || null,
+                    uid,
+                    customerId,
+                    subscriptionId: subscriptionId || null,
 
-            // These are now sourced from charge.succeeded (reliable),
-            // and invoice.paid is just a redundant safety net.
-            chargeId,
-            paymentIntentId,
+                    invoiceId: invoice.id,
+                    invoiceNumber: (invoice as any).number || null,
 
-            netCollectedCents,
-            commissionRate: AFF_RATE,
-            commissionCents,
+                    chargeId,
+                    paymentIntentId,
 
-            currency: (invoice as any).currency || "usd",
-            periodKey,
+                    netCollectedCents,
+                    commissionRate: AFF_RATE,
+                    commissionCents,
 
-            paidAt: admin.firestore.Timestamp.fromDate(paidAtDate),
-            eligibleAt,
+                    currency: (invoice as any).currency || "usd",
+                    periodKey,
 
-            status: "pending",
-            createdAt: now,
-            updatedAt: now,
-        },
-        { merge: false },
-    );
+                    paidAt: admin.firestore.Timestamp.fromDate(paidAtDate),
+                    eligibleAt,
 
+                    status: "pending",
+                    createdAt: now,
+                    updatedAt: now,
+                },
+                { merge: false },
+            );
+        } else {
+            const cur = snap.data() as any;
+
+            // Patch only missing ids, never overwrite non-null ids
+            const patch: any = { updatedAt: now };
+
+            if (!cur?.chargeId && chargeId) patch.chargeId = chargeId;
+            if (!cur?.paymentIntentId && paymentIntentId) patch.paymentIntentId = paymentIntentId;
+
+            // If nothing to patch, do nothing.
+            if (Object.keys(patch).length > 1) {
+                tx.set(entryRef, patch, { merge: true });
+            }
+        }
+    });
+
+    // Always (re)write reverse lookup docs when we have ids.
+    // This fixes the case where entry existed but reverse lookups were missing.
     await writeReverseLookupDocs({
         affiliateRef: affiliateRefUsed,
         entryId: invoice.id,
@@ -502,6 +517,7 @@ async function writeAffiliateLedgerForInvoicePaid(params: {
         paymentIntentId,
     });
 }
+
 
 /**
  * Create the affiliate ledger entry from charge.succeeded (the event that reliably has pi + ch).
