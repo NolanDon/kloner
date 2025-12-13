@@ -615,6 +615,7 @@ export async function POST(req: NextRequest) {
 
             case "charge.refunded": {
                 const charge = event.data.object as Stripe.Charge;
+
                 const chId = typeof charge.id === "string" ? charge.id : null;
                 const piId =
                     typeof (charge as any).payment_intent === "string"
@@ -623,19 +624,30 @@ export async function POST(req: NextRequest) {
                             ? (charge as any).payment_intent.id
                             : null;
 
-                // Prefer direct lookup by charge id (no Firestore queries)
+                const invId =
+                    typeof (charge as any).invoice === "string"
+                        ? (charge as any).invoice
+                        : typeof (charge as any).invoice?.id === "string"
+                            ? (charge as any).invoice.id
+                            : null;
+
+                // 1) Prefer direct lookups by charge / PI (when we did store those IDs)
                 if (chId) {
                     await reverseByLookupId({ lookupId: `ch_${chId}`, reason: "refund" });
                 }
 
-                // Secondary fallback by payment_intent id
                 if (piId) {
                     await reverseByLookupId({ lookupId: `pi_${piId}`, reason: "refund" });
                 }
 
+                // 2) Fallback: use invoice-based reverse lookup
+                if (invId) {
+                    await reverseByLookupId({ lookupId: `inv_${invId}`, reason: "refund" });
+                }
+
                 break;
             }
-
+            
             case "charge.dispute.created": {
                 const dispute = event.data.object as Stripe.Dispute;
 
