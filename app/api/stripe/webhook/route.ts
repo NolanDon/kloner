@@ -19,15 +19,19 @@ export const dynamic = "force-dynamic";
 
 const STRIPE_API_VERSION: Stripe.LatestApiVersion = "2025-10-29.clover";
 
-const STRIPE_LIVE_KEY = process.env.STRIPE_SECRET_KEY_LIVE || "";
-const STRIPE_TEST_KEY = process.env.STRIPE_SECRET_KEY_TEST || "";
 
-const stripeLive = STRIPE_LIVE_KEY
-    ? new Stripe(STRIPE_LIVE_KEY, { apiVersion: STRIPE_API_VERSION })
-    : null;
+const STRIPE_TEST_KEY = process.env.STRIPE_SECRET_KEY_TEST || "";
+const STRIPE_LIVE_KEY =
+    process.env.STRIPE_SECRET_KEY_PROD ||
+    process.env.STRIPE_SECRET_KEY_LIVE ||
+    "";
 
 const stripeTest = STRIPE_TEST_KEY
     ? new Stripe(STRIPE_TEST_KEY, { apiVersion: STRIPE_API_VERSION })
+    : null;
+
+const stripeLive = STRIPE_LIVE_KEY
+    ? new Stripe(STRIPE_LIVE_KEY, { apiVersion: STRIPE_API_VERSION })
     : null;
 
 // Webhook secrets (support test + live; verify against both)
