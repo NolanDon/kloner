@@ -278,14 +278,14 @@ async function ensureAffiliateLockOnFirstPaid(params: {
         );
         return {
             affiliateRefLocked: lockedRefExisting,
-            affiliateSourceLocked: lockedSrcExisting || cleanStr(data?.affiliateSource || "") || "unknown",
+            affiliateSourceLocked:
+                lockedSrcExisting || cleanStr(data?.affiliateSource || "") || "unknown",
         };
     }
 
     const resolved = await resolveAffiliateRefForInvoice({ stripe, invoice });
     const affiliateRef = resolved.affiliateRef;
-    const affiliateSource =
-        resolved.affiliateSource || cleanStr(data?.affiliateSource || "") || "unknown";
+    const affiliateSource = resolved.affiliateSource || cleanStr(data?.affiliateSource || "") || "unknown";
 
     if (!affiliateRef) return null;
 
@@ -355,7 +355,7 @@ async function writeReverseLookupDocs(params: {
         );
     }
 
-    // NEW: customer reverse index, no collectionGroup indexing required
+    // customer reverse index (no collectionGroup query required)
     if (customerId) {
         batch.set(
             db
@@ -422,7 +422,6 @@ async function reverseByLookupId(params: {
     await reverseEntryDirect({ affiliateRef, entryId, reason });
 }
 
-// NEW: reverse by customerId using the customer reverse index (no collectionGroup query)
 async function reverseByCustomerId(params: {
     customerId: string;
     reason: "refund" | "dispute" | "voided" | "failed";
@@ -485,7 +484,6 @@ async function writeAffiliateLedgerForInvoicePaid(params: {
     const customerIdClean = cleanStr(customerId);
     if (!customerIdClean) return;
 
-    // Resolve UID, but if missing, auto-link using firebaseUid found in the invoice metadata
     let uid = await resolveUidForCustomerId(customerIdClean);
     if (!uid) {
         const fallbackUid = extractFirebaseUidFromInvoice(invoice);
@@ -534,7 +532,6 @@ async function writeAffiliateLedgerForInvoicePaid(params: {
 
     const now = admin.firestore.FieldValue.serverTimestamp();
 
-    // PI/CH resolution (NO invoice.retrieve)
     let paymentIntentId = extractPiFromInvoice(invoice);
     let chargeId = extractChargeFromInvoice(invoice);
 
@@ -644,17 +641,17 @@ async function reverseAffiliateFromRefund(refund: Stripe.Refund): Promise<void> 
     if (ch) await reverseByLookupId({ lookupId: `ch_${ch}`, reason: "refund" });
 }
 
-// NEW: handle charge.refunded using customerId as the safety net
 async function reverseAffiliateFromChargeRefunded(charge: Stripe.Charge): Promise<void> {
     const chId = cleanStr(charge.id);
     const piId = cleanStr((charge as any).payment_intent);
     const customerId =
-        typeof (charge as any).customer === "string" ? (charge as any).customer : (charge as any).customer?.id;
+        typeof (charge as any).customer === "string"
+            ? (charge as any).customer
+            : (charge as any).customer?.id;
 
     if (piId) await reverseByLookupId({ lookupId: `pi_${piId}`, reason: "refund" });
     if (chId) await reverseByLookupId({ lookupId: `ch_${chId}`, reason: "refund" });
 
-    // If reverse lookup docs were missing, this still flips the ledger
     if (customerId) await reverseByCustomerId({ customerId: cleanStr(customerId), reason: "refund" });
 }
 
@@ -696,8 +693,10 @@ export async function POST(req: NextRequest) {
         );
     }
 
+    const type = event.type as unknown as string;
+
     try {
-        switch (event.type) {
+        switch (type) {
             case "checkout.session.completed": {
                 const session = event.data.object as Stripe.Checkout.Session;
                 const firebaseUid = cleanStr(session.metadata?.firebaseUid);
@@ -706,9 +705,11 @@ export async function POST(req: NextRequest) {
 
                 if (firebaseUid && customerId) {
                     await linkCustomerToUid(cleanStr(customerId), firebaseUid);
-                    // hard-write on the user doc too (your screenshot path)
                     await db.collection("kloner_users").doc(firebaseUid).set(
-                        { stripeCustomerId: cleanStr(customerId), updatedAt: admin.firestore.FieldValue.serverTimestamp() },
+                        {
+                            stripeCustomerId: cleanStr(customerId),
+                            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                        },
                         { merge: true },
                     );
                 }
@@ -745,9 +746,11 @@ export async function POST(req: NextRequest) {
                     cancelAtPeriodEnd: (sub as any).cancel_at_period_end ?? undefined,
                 });
 
-                // enforce the field you asked about: kloner_users/{uid}/stripeCustomerId
                 await db.collection("kloner_users").doc(uid).set(
-                    { stripeCustomerId: cleanStr(customerId), updatedAt: admin.firestore.FieldValue.serverTimestamp() },
+                    {
+                        stripeCustomerId: cleanStr(customerId),
+                        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    },
                     { merge: true },
                 );
 
@@ -787,7 +790,6 @@ export async function POST(req: NextRequest) {
                 break;
             }
 
-            // Keep refund.created for cases where you only get refund events
             case "refund.created":
             case "refund.updated": {
                 const refund = event.data.object as Stripe.Refund;
@@ -795,7 +797,6 @@ export async function POST(req: NextRequest) {
                 break;
             }
 
-            // NEW: this is the one that fixes your case because it includes customerId
             case "charge.refunded": {
                 const charge = event.data.object as Stripe.Charge;
                 await reverseAffiliateFromChargeRefunded(charge);
@@ -816,8 +817,15 @@ export async function POST(req: NextRequest) {
                 break;
             }
 
-            default:
+            default: {
+                // FIX: Stripe can emit charge.refund.* events but your stripe TS union may not include them.
+                // Handle them without adding an invalid literal to the switch union.
+                if (type.startsWith("charge.refund.")) {
+                    const refund = event.data.object as Stripe.Refund;
+                    await reverseAffiliateFromRefund(refund);
+                }
                 break;
+            }
         }
 
         return NextResponse.json({ received: true });
