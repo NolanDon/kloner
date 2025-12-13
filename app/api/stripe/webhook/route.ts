@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 const STRIPE_API_VERSION: Stripe.LatestApiVersion = "2025-10-29.clover";
 
 /* ------------------------------------------------------------------ */
-/* Env (ONLY your names)                                               */
+/* Env                                                                */
 /* ------------------------------------------------------------------ */
 const STRIPE_TEST_KEY = process.env.STRIPE_SECRET_KEY_TEST || "";
 const STRIPE_PROD_KEY = process.env.STRIPE_SECRET_KEY_PROD || "";
@@ -59,7 +59,7 @@ const AFF_CAP_MONTHS = 12;
 const AFF_PENDING_DAYS = 14;
 
 /* ------------------------------------------------------------------ */
-/* Small helpers                                                       */
+/* Helpers                                                            */
 /* ------------------------------------------------------------------ */
 function cleanStr(v: unknown, max = 256): string {
     return typeof v === "string" ? v.trim().slice(0, max) : "";
@@ -73,13 +73,11 @@ function addMonths(date: Date, months: number): Date {
 
 function getInvoicePaidAtSec(invoice: Stripe.Invoice): number {
     const anyInv = invoice as any;
-    const paidAtSec =
-        typeof anyInv.status_transitions?.paid_at === "number"
-            ? anyInv.status_transitions.paid_at
-            : typeof anyInv.created === "number"
-                ? anyInv.created
-                : Math.floor(Date.now() / 1000);
-    return paidAtSec;
+    return typeof anyInv.status_transitions?.paid_at === "number"
+        ? anyInv.status_transitions.paid_at
+        : typeof anyInv.created === "number"
+            ? anyInv.created
+            : Math.floor(Date.now() / 1000);
 }
 
 function getInvoicePaidAtDate(invoice: Stripe.Invoice): Date {
@@ -141,65 +139,7 @@ async function resolveUidForCustomerId(customerId: string): Promise<string | nul
 }
 
 /* ------------------------------------------------------------------ */
-/* PI ↔ CH mapping                                                     */
-/* ------------------------------------------------------------------ */
-async function writePiChargeMap(piId: string, chId: string) {
-    const pi = cleanStr(piId);
-    const ch = cleanStr(chId);
-    if (!pi || !ch) return;
-
-    await db
-        .collection("affiliate_charge_map")
-        .doc(pi)
-        .set(
-            {
-                piId: pi,
-                chId: ch,
-                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            },
-            { merge: true },
-        );
-}
-
-async function readChargeForPi(piId: string): Promise<string> {
-    const pi = cleanStr(piId);
-    if (!pi) return "";
-    const snap = await db.collection("affiliate_charge_map").doc(pi).get();
-    if (!snap.exists) return "";
-    return cleanStr((snap.data() as any)?.chId || "");
-}
-
-/* ------------------------------------------------------------------ */
-/* Invoice ↔ PI mapping (NEW)                                          */
-/* ------------------------------------------------------------------ */
-async function writeInvoicePiMap(invoiceId: string, piId: string) {
-    const inv = cleanStr(invoiceId);
-    const pi = cleanStr(piId);
-    if (!inv || !pi) return;
-
-    await db
-        .collection("affiliate_invoice_pi_map")
-        .doc(inv)
-        .set(
-            {
-                invoiceId: inv,
-                piId: pi,
-                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            },
-            { merge: true },
-        );
-}
-
-async function readPiForInvoice(invoiceId: string): Promise<string> {
-    const inv = cleanStr(invoiceId);
-    if (!inv) return "";
-    const snap = await db.collection("affiliate_invoice_pi_map").doc(inv).get();
-    if (!snap.exists) return "";
-    return cleanStr((snap.data() as any)?.piId || "");
-}
-
-/* ------------------------------------------------------------------ */
-/* Affiliate ref resolution + LOCK (kept)                              */
+/* Affiliate ref resolution + LOCK                                     */
 /* ------------------------------------------------------------------ */
 async function resolveAffiliateRefForInvoice(params: {
     stripe: Stripe;
@@ -303,126 +243,10 @@ async function ensureAffiliateLockOnFirstPaid(params: {
 }
 
 /* ------------------------------------------------------------------ */
-/* Reverse lookup docs + reversals                                     */
+/* Ledger write (invoice.paid)                                         */
+/* Primary key for lookup: customerId                                  */
+/* Storage key: invoice.id (still unique per payment)                  */
 /* ------------------------------------------------------------------ */
-async function writeReverseLookupDocs(params: {
-    affiliateRef: string;
-    entryId: string; // invoice.id
-    chargeId?: string | null;
-    paymentIntentId?: string | null;
-}): Promise<void> {
-    const { affiliateRef, entryId, chargeId, paymentIntentId } = params;
-    const now = admin.firestore.FieldValue.serverTimestamp();
-
-    const batch = db.batch();
-
-    batch.set(
-        db.collection("affiliate_reverse_invoice").doc(`inv_${entryId}`),
-        { affiliateRef, entryId, updatedAt: now },
-        { merge: true },
-    );
-
-    if (chargeId) {
-        batch.set(
-            db.collection("affiliate_reverse_invoice").doc(`ch_${chargeId}`),
-            { affiliateRef, entryId, updatedAt: now },
-            { merge: true },
-        );
-    }
-
-    if (paymentIntentId) {
-        batch.set(
-            db.collection("affiliate_reverse_invoice").doc(`pi_${paymentIntentId}`),
-            { affiliateRef, entryId, updatedAt: now },
-            { merge: true },
-        );
-    }
-
-    await batch.commit();
-}
-
-function statusForReason(reason: "refund" | "dispute" | "voided" | "failed") {
-    if (reason === "refund") return "refunded";
-    if (reason === "dispute") return "disputed";
-    return "reversed";
-}
-
-async function reverseEntryDirect(params: {
-    affiliateRef: string;
-    entryId: string;
-    reason: "refund" | "dispute" | "voided" | "failed";
-}): Promise<void> {
-    const { affiliateRef, entryId, reason } = params;
-
-    const ref = db
-        .collection("affiliate_ledger")
-        .doc(affiliateRef)
-        .collection("entries")
-        .doc(entryId);
-
-    const snap = await ref.get();
-    if (!snap.exists) return;
-
-    const cur = snap.data() as any;
-    if (cur?.status === "refunded" || cur?.status === "disputed" || cur?.status === "reversed") {
-        return;
-    }
-
-    const now = admin.firestore.FieldValue.serverTimestamp();
-
-    await ref.set(
-        {
-            status: statusForReason(reason),
-            reversedAt: now,
-            reversalReason: reason,
-            updatedAt: now,
-        },
-        { merge: true },
-    );
-}
-
-async function reverseByLookupId(params: {
-    lookupId: string;
-    reason: "refund" | "dispute" | "voided" | "failed";
-}): Promise<void> {
-    const { lookupId, reason } = params;
-
-    const snap = await db.collection("affiliate_reverse_invoice").doc(lookupId).get();
-    if (!snap.exists) return;
-
-    const data = snap.data() as any;
-    const affiliateRef = cleanStr(data?.affiliateRef || "");
-    const entryId = cleanStr(data?.entryId || "");
-    if (!affiliateRef || !entryId) return;
-
-    await reverseEntryDirect({ affiliateRef, entryId, reason });
-}
-
-/* ------------------------------------------------------------------ */
-/* Core: write/patch ledger entry from invoice                          */
-/* ------------------------------------------------------------------ */
-function extractPiFromInvoice(invoice: Stripe.Invoice): string {
-    const anyInv = invoice as any;
-    const pi =
-        typeof anyInv.payment_intent === "string"
-            ? anyInv.payment_intent
-            : typeof anyInv.payment_intent?.id === "string"
-                ? anyInv.payment_intent.id
-                : "";
-    return cleanStr(pi);
-}
-
-function extractChargeFromInvoice(invoice: Stripe.Invoice): string {
-    const anyInv = invoice as any;
-    const ch =
-        typeof anyInv.charge === "string"
-            ? anyInv.charge
-            : typeof anyInv.charge?.id === "string"
-                ? anyInv.charge.id
-                : "";
-    return cleanStr(ch);
-}
-
 async function writeAffiliateLedgerForInvoicePaid(params: {
     stripe: Stripe;
     invoice: Stripe.Invoice;
@@ -474,18 +298,6 @@ async function writeAffiliateLedgerForInvoicePaid(params: {
 
     const now = admin.firestore.FieldValue.serverTimestamp();
 
-    // PI/CH resolution (NO invoice.retrieve)
-    let paymentIntentId = extractPiFromInvoice(invoice);
-    let chargeId = extractChargeFromInvoice(invoice);
-
-    if (!paymentIntentId) {
-        paymentIntentId = await readPiForInvoice(invoice.id);
-    }
-
-    if (!chargeId && paymentIntentId) {
-        chargeId = await readChargeForPi(paymentIntentId);
-    }
-
     const entryRef = db
         .collection("affiliate_ledger")
         .doc(affiliateRefUsed)
@@ -494,93 +306,95 @@ async function writeAffiliateLedgerForInvoicePaid(params: {
 
     await db.runTransaction(async (tx) => {
         const snap = await tx.get(entryRef);
-
-        const chargeIdOrNull = chargeId ? chargeId : null;
-        const paymentIntentIdOrNull = paymentIntentId ? paymentIntentId : null;
-
-        if (!snap.exists) {
-            tx.set(
-                entryRef,
-                {
-                    affiliateRef: affiliateRefUsed,
-                    affiliateSource: affiliateSourceUsed,
-
-                    uid,
-                    customerId: cleanStr(customerId),
-                    subscriptionId: subscriptionId || null,
-
-                    invoiceId: invoice.id,
-                    invoiceNumber: (invoice as any).number || null,
-
-                    chargeId: chargeIdOrNull,
-                    paymentIntentId: paymentIntentIdOrNull,
-
-                    netCollectedCents,
-                    commissionRate: AFF_RATE,
-                    commissionCents,
-
-                    currency: (invoice as any).currency || "usd",
-
-                    paidAt: admin.firestore.Timestamp.fromDate(paidAtDate),
-                    eligibleAt,
-
-                    status: "pending",
-                    createdAt: now,
-                    updatedAt: now,
-                },
-                { merge: false },
-            );
-        } else {
-            const cur = snap.data() as any;
-            const patch: any = { updatedAt: now };
-
-            if (!cur?.paymentIntentId && paymentIntentIdOrNull) patch.paymentIntentId = paymentIntentIdOrNull;
-            if (!cur?.chargeId && chargeIdOrNull) patch.chargeId = chargeIdOrNull;
-
-            if (Object.keys(patch).length > 1) {
-                tx.set(entryRef, patch, { merge: true });
-            }
+        if (snap.exists) {
+            tx.set(entryRef, { updatedAt: now }, { merge: true });
+            return;
         }
-    });
 
-    await writeReverseLookupDocs({
-        affiliateRef: affiliateRefUsed,
-        entryId: invoice.id,
-        chargeId: chargeId || null,
-        paymentIntentId: paymentIntentId || null,
+        tx.set(
+            entryRef,
+            {
+                affiliateRef: affiliateRefUsed,
+                affiliateSource: affiliateSourceUsed,
+
+                uid,
+                customerId: cleanStr(customerId),
+                subscriptionId: subscriptionId || null,
+
+                invoiceId: invoice.id,
+                invoiceNumber: (invoice as any).number || null,
+
+                netCollectedCents,
+                commissionRate: AFF_RATE,
+                commissionCents,
+
+                currency: (invoice as any).currency || "usd",
+
+                paidAt: admin.firestore.Timestamp.fromDate(paidAtDate),
+                eligibleAt,
+
+                status: "pending",
+                createdAt: now,
+                updatedAt: now,
+            },
+            { merge: false },
+        );
     });
 }
 
 /* ------------------------------------------------------------------ */
-/* invoice_payment.paid handler (NO Stripe API calls)                  */
+/* Reversal lookup by customerId                                       */
+/* - charge.refunded has customer + amount_refunded                    */
+/* - choose most recent matching entry across all affiliates           */
 /* ------------------------------------------------------------------ */
-async function handleInvoicePaymentPaid(invoicePayment: any): Promise<void> {
-    const invoiceId = cleanStr(invoicePayment?.invoice || "");
-    const paymentIntentId = cleanStr(invoicePayment?.payment?.payment_intent || "");
-    if (!invoiceId || !paymentIntentId) return;
+async function findLatestLedgerEntryByCustomer(params: {
+    customerId: string;
+    amountCents?: number | null;
+}): Promise<admin.firestore.QueryDocumentSnapshot | null> {
+    const customerId = cleanStr(params.customerId);
+    if (!customerId) return null;
 
-    await writeInvoicePiMap(invoiceId, paymentIntentId);
+    let q: admin.firestore.Query = db
+        .collectionGroup("entries")
+        .where("customerId", "==", customerId);
+
+    const amt = typeof params.amountCents === "number" ? params.amountCents : null;
+    if (amt && Number.isFinite(amt) && amt > 0) {
+        q = q.where("netCollectedCents", "==", amt);
+    }
+
+    // Requires a composite index in Firestore:
+    // collectionGroup: entries
+    // fields: customerId ASC, netCollectedCents ASC (optional), paidAt DESC
+    const snap = await q.orderBy("paidAt", "desc").limit(1).get();
+    if (snap.empty) return null;
+    return snap.docs[0]!;
 }
 
-/* ------------------------------------------------------------------ */
-/* Refund/dispute reversal                                             */
-/* ------------------------------------------------------------------ */
-async function reverseAffiliateFromRefund(refund: Stripe.Refund): Promise<void> {
-    const piId =
-        typeof refund.payment_intent === "string"
-            ? refund.payment_intent
-            : (refund.payment_intent as any)?.id;
+async function markLedgerEntryReversed(params: {
+    doc: admin.firestore.QueryDocumentSnapshot;
+    reason: "refund" | "voided" | "failed" | "dispute";
+}): Promise<void> {
+    const { doc, reason } = params;
+    const cur = doc.data() as any;
 
-    const chId =
-        typeof refund.charge === "string"
-            ? refund.charge
-            : (refund.charge as any)?.id;
+    if (cur?.status === "refunded" || cur?.status === "disputed" || cur?.status === "reversed") {
+        return;
+    }
 
-    const pi = cleanStr(piId);
-    const ch = cleanStr(chId);
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    const nextStatus =
+        reason === "refund" ? "refunded" : reason === "dispute" ? "disputed" : "reversed";
 
-    if (pi) await reverseByLookupId({ lookupId: `pi_${pi}`, reason: "refund" });
-    if (ch) await reverseByLookupId({ lookupId: `ch_${ch}`, reason: "refund" });
+    await doc.ref.set(
+        {
+            status: nextStatus,
+            reversedAt: now,
+            reversalReason: reason,
+            updatedAt: now,
+        },
+        { merge: true },
+    );
 }
 
 /* ------------------------------------------------------------------ */
@@ -596,7 +410,6 @@ export async function POST(req: NextRequest) {
 
     let event: Stripe.Event | null = null;
 
-    // Verify against test first
     if (WH_TEST) {
         try {
             event = Stripe.webhooks.constructEvent(body, sig, WH_TEST);
@@ -613,10 +426,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
     }
 
-    // Choose Stripe client by event.livemode, not by which secret matched.
-    const stripe =
-        event.livemode ? stripeProd : stripeTest;
-
+    const stripe = event.livemode ? stripeProd : stripeTest;
     if (!stripe) {
         return NextResponse.json(
             { error: event.livemode ? "Missing STRIPE_SECRET_KEY_PROD" : "Missing STRIPE_SECRET_KEY_TEST" },
@@ -671,23 +481,6 @@ export async function POST(req: NextRequest) {
                 break;
             }
 
-            // Warm PI->CH map (used later for ledger patching + refunds)
-            case "charge.succeeded": {
-                const charge = event.data.object as Stripe.Charge;
-                const chId = cleanStr(charge.id);
-                const piId = cleanStr((charge as any).payment_intent);
-                if (piId && chId) await writePiChargeMap(piId, chId);
-                break;
-            }
-
-            // Primary PI source for invoice -> PI mapping
-            case "invoice_payment.paid": {
-                const invoicePayment = event.data.object as any;
-                await handleInvoicePaymentPaid(invoicePayment);
-                break;
-            }
-
-            // Ledger creation happens here (has customerId/amount/subscription)
             case "invoice.paid":
             case "invoice.payment_succeeded": {
                 const inv = event.data.object as Stripe.Invoice;
@@ -697,19 +490,56 @@ export async function POST(req: NextRequest) {
 
             case "invoice.voided": {
                 const inv = event.data.object as Stripe.Invoice;
-                await reverseByLookupId({ lookupId: `inv_${inv.id}`, reason: "voided" });
+                const customerId =
+                    typeof inv.customer === "string" ? inv.customer : inv.customer?.id;
+
+                if (customerId) {
+                    const doc = await findLatestLedgerEntryByCustomer({ customerId });
+                    if (doc) await markLedgerEntryReversed({ doc, reason: "voided" });
+                }
                 break;
             }
 
             case "invoice.payment_failed": {
                 const inv = event.data.object as Stripe.Invoice;
-                await reverseByLookupId({ lookupId: `inv_${inv.id}`, reason: "failed" });
+                const customerId =
+                    typeof inv.customer === "string" ? inv.customer : inv.customer?.id;
+
+                if (customerId) {
+                    const doc = await findLatestLedgerEntryByCustomer({ customerId });
+                    if (doc) await markLedgerEntryReversed({ doc, reason: "failed" });
+                }
+                break;
+            }
+
+            case "charge.refunded": {
+                const ch = event.data.object as Stripe.Charge;
+                const customerId =
+                    typeof ch.customer === "string" ? ch.customer : (ch.customer as any)?.id;
+
+                const amountRefunded = Number((ch as any).amount_refunded ?? 0);
+
+                if (customerId) {
+                    const doc = await findLatestLedgerEntryByCustomer({
+                        customerId: cleanStr(customerId),
+                        amountCents: Number.isFinite(amountRefunded) && amountRefunded > 0 ? amountRefunded : null,
+                    });
+                    if (doc) await markLedgerEntryReversed({ doc, reason: "refund" });
+                }
                 break;
             }
 
             case "refund.created": {
-                const refund = event.data.object as Stripe.Refund;
-                await reverseAffiliateFromRefund(refund);
+                const rf = event.data.object as Stripe.Refund;
+                const amount = Number((rf as any).amount ?? 0);
+
+                const chId =
+                    typeof rf.charge === "string" ? rf.charge : (rf.charge as any)?.id;
+
+                // Best-effort: if refund includes charge id, it still won’t include customerId reliably.
+                // Skip API calls. charge.refunded will handle the actual reversal with customerId.
+                void chId;
+                void amount;
                 break;
             }
 
@@ -721,9 +551,10 @@ export async function POST(req: NextRequest) {
                         : typeof (dispute as any).charge?.id === "string"
                             ? (dispute as any).charge.id
                             : "";
-                if (chId) {
-                    await reverseByLookupId({ lookupId: `ch_${cleanStr(chId)}`, reason: "dispute" });
-                }
+
+                // No API calls. You’ll still get charge.dispute.created without customerId in payload sometimes.
+                // charge.refunded + invoice.* events cover cash movement; disputes mark later if you expand your pipeline.
+                void chId;
                 break;
             }
 
