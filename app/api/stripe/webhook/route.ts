@@ -584,15 +584,21 @@ export async function POST(req: NextRequest) {
             case "invoice.paid": {
                 const inv = event.data.object as Stripe.Invoice;
 
-                // Re-fetch expanded invoice so IDs are not null in Firestore.
-                // This also fixes "null chargeId / paymentIntentId / subscriptionId" in ledger entries.
                 let invFull: Stripe.Invoice = inv;
                 try {
                     invFull = await stripe.invoices.retrieve(inv.id, {
-                        expand: ["charge", "payment_intent", "subscription"],
+                        expand: ["payment_intent", "payment_intent.latest_charge", "subscription"],
                     });
-                } catch {
-                    // If retrieve fails (shouldn’t if keys + mode are consistent), fall back to payload.
+                    console.log(
+                        "[stripe] invoice.paid expanded",
+                        inv.id,
+                        "pi:",
+                        (invFull as any).payment_intent?.id || (invFull as any).payment_intent,
+                        "latest_charge:",
+                        (invFull as any).payment_intent?.latest_charge
+                    );
+                } catch (e) {
+                    console.error("[stripe] invoice.paid retrieve failed", inv.id, e);
                     invFull = inv;
                 }
 
@@ -647,7 +653,7 @@ export async function POST(req: NextRequest) {
 
                 break;
             }
-            
+
             case "charge.dispute.created": {
                 const dispute = event.data.object as Stripe.Dispute;
 

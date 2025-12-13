@@ -572,7 +572,7 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
     }
 
     return (
-        <main className="bg-white h-screen overflow-hidden">
+        <main className="bg-white h-screen overflow-auto">
             <div className="mx-auto max-w-[1400px] h-full grid grid-cols-1 md:grid-cols-[auto,1fr]">
                 <aside className="hidden md:block md:w-64 lg:w-72 shrink-0 border-r border-neutral-200 bg-white h-full sticky top-0">
                     <SidebarShell

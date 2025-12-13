@@ -23,7 +23,7 @@ jobs:
         env:
           BASE_URL: ${{ secrets.BACKEND_BASE_URL }}
           HDR_NAME: ${{ secrets.INTERNAL_HEADER_NAME }}
-          HDR_VALUE: ${{ secrets.INTERNAL_API_KEY_VERC }}
+          HDR_VALUE: ${{ secrets.INTERNAL_API_KEY }}
         run: |
           set -euo pipefail
           URL="${BASE_URL%/}/app/api/internal/affiliate-maintenance"
