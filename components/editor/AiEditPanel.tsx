@@ -319,7 +319,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                 credentials: "include",
                 headers: {
                     "content-type": "application/json",
-                    "x-kloner-csrf": csrf ?? "",
+                    "x-csrf": csrf ?? "",
                 },
                 body: JSON.stringify({
                     renderId,
@@ -575,9 +575,9 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                 <div className="border-t border-neutral-200 bg-white px-3 py-2">
                     <div className="mb-1 flex items-center justify-between gap-2">
                         {/* {prompt.length > 0 && ( */}
-                            <span className="text-[11px] text-neutral-400">
-                                {prompt.length}/{MAX_PROMPT_CHARS}
-                            </span>
+                        <span className="text-[11px] text-neutral-400">
+                            {prompt.length}/{MAX_PROMPT_CHARS}
+                        </span>
                         {/* )} */}
                     </div>
 

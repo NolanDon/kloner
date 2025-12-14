@@ -30,6 +30,40 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
+export async function getCustomerIdForUid(uid: string): Promise<string | null> {
+    // Primary: your real schema (from your screenshot)
+    const userSnap = await db.collection("kloner_users").doc(uid).get();
+    if (userSnap.exists) {
+        const v = userSnap.get("stripeCustomerId");
+        if (typeof v === "string" && v) return v;
+    }
+
+    // Fallbacks (older schemas)
+    const legacy1 = await db.collection("stripe_customers").doc(uid).get().catch(() => null as any);
+    if (legacy1?.exists) {
+        const v = legacy1.get("customerId") ?? legacy1.get("id");
+        if (typeof v === "string" && v) return v;
+    }
+
+    const legacy2 = await db.collection("users").doc(uid).get().catch(() => null as any);
+    if (legacy2?.exists) {
+        const v = legacy2.get("stripeCustomerId");
+        if (typeof v === "string" && v) return v;
+    }
+
+    return null;
+}
+
+export async function getSubscriptionIdForUid(uid: string): Promise<string | null> {
+    const userSnap = await db.collection("kloner_users").doc(uid).get();
+    if (userSnap.exists) {
+        const v = userSnap.get("stripeSubscriptionId");
+        if (typeof v === "string" && v) return v;
+    }
+    return null;
+}
+
+
 /** Map Stripe price IDs (test + live) to an internal tier string. */
 export function mapPriceToTier(priceId: string | null | undefined): UserTier {
     if (!priceId) return "free";

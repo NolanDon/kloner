@@ -12,6 +12,7 @@ import {
     Plug,
     Gauge,
     Loader2,
+    XCircle,
 } from "lucide-react";
 import NavBar from "@/components/NavBar";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
@@ -27,8 +28,9 @@ type TierResponse = {
     uid: string;
     tier: BillingTier;
     stripeStatus: string | null;
-    currentPeriodEnd: number | null;
+    currentPeriodEnd: number | null; // unix seconds
     cancelAtPeriodEnd: boolean | null;
+    trialEnd?: number | null; // unix seconds (optional; add in /api/billing/tier)
     source: string;
 };
 
@@ -58,14 +60,15 @@ type UiState =
     | "canceled"
     | "unknown";
 
-function toDate(v: number | null): Date | null {
-    if (!v && v !== 0) return null;
-    const d = new Date(v);
+function toDateFromUnixSeconds(v: number | null | undefined): Date | null {
+    if (v === null || v === undefined) return null;
+    const ms = v > 10_000_000_000 ? v : v * 1000; // tolerate ms accidentally
+    const d = new Date(ms);
     return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function formatDateMillis(v: number | null): string {
-    const d = toDate(v);
+function formatUnixSeconds(v: number | null | undefined): string {
+    const d = toDateFromUnixSeconds(v);
     if (!d) return "";
     return d.toLocaleString(undefined, {
         month: "short",
@@ -73,6 +76,13 @@ function formatDateMillis(v: number | null): string {
         hour: "2-digit",
         minute: "2-digit",
     });
+}
+
+function daysUntilUnixSeconds(v: number | null | undefined): number | null {
+    if (!v && v !== 0) return null;
+    const nowSec = Date.now() / 1000;
+    const deltaDays = Math.max(0, Math.ceil((v - nowSec) / 86400));
+    return deltaDays;
 }
 
 function deriveStateFromDoc(d?: DeploymentSummary | null): UiState {
@@ -137,7 +147,15 @@ export default function SettingsPage(): JSX.Element {
     const [cancelAtPeriodEnd, setCancelAtPeriodEnd] = useState<boolean | null>(
         null,
     );
-    const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
+
+    const [currentPeriodEndSec, setCurrentPeriodEndSec] = useState<number | null>(
+        null,
+    );
+    const [trialEndSec, setTrialEndSec] = useState<number | null>(null);
+
+    const [cancelBusy, setCancelBusy] = useState(false);
+    const [cancelError, setCancelError] = useState<string | null>(null);
+    const [cancelSuccess, setCancelSuccess] = useState<string | null>(null);
 
     const {
         status: vercelStatus,
@@ -170,58 +188,43 @@ export default function SettingsPage(): JSX.Element {
         return () => off();
     }, []);
 
+    const loadTier = async (signal?: AbortSignal) => {
+        setTierLoading(true);
+        setTierError(null);
+        setCancelError(null);
+        setCancelSuccess(null);
+
+        try {
+            const res = await fetch("/api/billing/tier?refresh=1", {
+                method: "GET",
+                credentials: "include",
+                signal,
+            });
+
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+            const data: TierResponse = await res.json();
+
+            setTier(data.tier);
+            setStripeStatus(data.stripeStatus);
+            setCancelAtPeriodEnd(data.cancelAtPeriodEnd ?? null);
+            setCurrentPeriodEndSec(data.currentPeriodEnd ?? null);
+            setTrialEndSec((data.trialEnd ?? null) as any);
+        } catch (err) {
+            if ((err as any)?.name === "AbortError") return;
+            console.error("Failed to load billing tier", err);
+            setTierError("Unable to load subscription details right now.");
+        } finally {
+            setTierLoading(false);
+        }
+    };
+
     // load billing tier
     useEffect(() => {
         if (!user) return;
-
-        let aborted = false;
-
-        const loadTier = async () => {
-            setTierLoading(true);
-            setTierError(null);
-            try {
-                const res = await fetch("/api/billing/tier?refresh=1", {
-                    method: "GET",
-                    credentials: "include",
-                });
-
-                if (!res.ok) {
-                    throw new Error(`HTTP ${res.status}`);
-                }
-
-                const data: TierResponse = await res.json();
-
-                if (aborted) return;
-
-                setTier(data.tier);
-                setStripeStatus(data.stripeStatus);
-                setCancelAtPeriodEnd(data.cancelAtPeriodEnd ?? null);
-
-                if (data.currentPeriodEnd) {
-                    const nowSec = Date.now() / 1000;
-                    const deltaDays = Math.max(
-                        0,
-                        Math.ceil((data.currentPeriodEnd - nowSec) / 86400),
-                    );
-                    setDaysRemaining(deltaDays);
-                } else {
-                    setDaysRemaining(null);
-                }
-            } catch (err) {
-                if (!aborted) {
-                    console.error("Failed to load billing tier", err);
-                    setTierError("Unable to load subscription details right now.");
-                }
-            } finally {
-                if (!aborted) setTierLoading(false);
-            }
-        };
-
-        void loadTier();
-
-        return () => {
-            aborted = true;
-        };
+        const ctrl = new AbortController();
+        void loadTier(ctrl.signal);
+        return () => ctrl.abort();
     }, [user]);
 
     // load deployments for bulk delete UI
@@ -242,9 +245,7 @@ export default function SettingsPage(): JSX.Element {
                     credentials: "include",
                 });
 
-                if (!res.ok) {
-                    throw new Error(`HTTP ${res.status}`);
-                }
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
                 const data = (await res.json()) as {
                     ok?: boolean;
@@ -254,9 +255,7 @@ export default function SettingsPage(): JSX.Element {
 
                 if (aborted) return;
 
-                if (!data.ok) {
-                    throw new Error(data.error || "Failed to load deployments");
-                }
+                if (!data.ok) throw new Error(data.error || "Failed to load deployments");
 
                 const list = data.deployments || [];
                 setDeployments(list);
@@ -316,12 +315,8 @@ export default function SettingsPage(): JSX.Element {
             const state = toUiState(d, latestReadyByProject);
             const key = projectKeyForDeployment(d);
 
-            if (deploymentFilter === "live-only") {
-                return state === "active";
-            }
-            if (deploymentFilter === "live-projects") {
-                return liveProjectKeys.has(key);
-            }
+            if (deploymentFilter === "live-only") return state === "active";
+            if (deploymentFilter === "live-projects") return liveProjectKeys.has(key);
             return true;
         });
     }, [deployments, latestReadyByProject, liveProjectKeys, deploymentFilter]);
@@ -459,9 +454,7 @@ export default function SettingsPage(): JSX.Element {
                 .filter((r: any) => r && r.ok && r.firestoreDeleted)
                 .map((r: any) => r.deploymentId as string);
 
-            setDeployments((prev) =>
-                prev.filter((d) => !deletedIds.includes(d.id)),
-            );
+            setDeployments((prev) => prev.filter((d) => !deletedIds.includes(d.id)));
             setSelectedDeploymentIds((prev) =>
                 prev.filter((id) => !deletedIds.includes(id)),
             );
@@ -475,6 +468,46 @@ export default function SettingsPage(): JSX.Element {
             setDeleteDeploymentError(err?.message || "Delete failed.");
         } finally {
             setDeleteDeploymentBusy(false);
+        }
+    }
+
+    async function handleCancelSubscription() {
+        const confirmed = window.confirm(
+            "Cancel your subscription at the end of the current period? You’ll keep access until then.",
+        );
+        if (!confirmed) return;
+
+        setCancelBusy(true);
+        setCancelError(null);
+        setCancelSuccess(null);
+
+        try {
+            const csrf = await ensureSessionAndCsrf();
+
+            const res = await fetch("/api/billing/cancel-subscription", {
+                method: "POST",
+                credentials: "include",
+                headers: {
+                    "content-type": "application/json",
+                    ...(csrf ? { "x-csrf": csrf } : {}),
+                },
+                body: JSON.stringify({ atPeriodEnd: true }),
+            });
+
+            const data = await res.json().catch(() => ({}));
+
+            if (!res.ok || !data?.ok) {
+                setCancelError(data?.error || `Cancel failed (HTTP ${res.status})`);
+                return;
+            }
+
+            setCancelSuccess("Cancellation scheduled. You’ll keep access until the end date.");
+            await loadTier();
+        } catch (err: any) {
+            console.error("Cancel subscription error", err);
+            setCancelError(err?.message || "Cancel failed.");
+        } finally {
+            setCancelBusy(false);
         }
     }
 
@@ -492,8 +525,7 @@ export default function SettingsPage(): JSX.Element {
             ? "bg-emerald-50 text-emerald-700 border-emerald-200"
             : "bg-neutral-100 text-neutral-600 border-neutral-200";
 
-    const tierLabel =
-        tier === "agency" ? "Agency" : tier === "pro" ? "Pro" : "Free";
+    const tierLabel = tier === "agency" ? "Agency" : tier === "pro" ? "Pro" : "Free";
 
     const tierBadgeClasses =
         tier === "agency"
@@ -503,17 +535,35 @@ export default function SettingsPage(): JSX.Element {
                 : "bg-neutral-100 text-neutral-600 border-neutral-200";
 
     const stripeStatusLabel = stripeStatus ?? "no active subscription";
+    const downgradeNotice = stripeStatus === "canceled" || stripeStatus === "unpaid";
 
-    const downgradeNotice =
-        stripeStatus === "canceled" || stripeStatus === "unpaid";
+    const nowSec = Date.now() / 1000;
+
+    const onTrial =
+        !!trialEndSec && trialEndSec > nowSec && stripeStatus !== "canceled" && stripeStatus !== "unpaid";
+
+    const trialDaysRemaining = onTrial ? daysUntilUnixSeconds(trialEndSec) : null;
+
+    const nextBillingLabel = !onTrial && currentPeriodEndSec
+        ? formatUnixSeconds(currentPeriodEndSec)
+        : "";
+
+    const endOfAccessSec = cancelAtPeriodEnd ? currentPeriodEndSec : null;
+    const endOfAccessDays = cancelAtPeriodEnd ? daysUntilUnixSeconds(endOfAccessSec) : null;
+
+    const canCancel =
+        tier !== "free" &&
+        !tierLoading &&
+        !!stripeStatus &&
+        stripeStatus !== "canceled" &&
+        stripeStatus !== "unpaid" &&
+        cancelAtPeriodEnd !== true;
 
     return (
         <>
             {/* <NavBar /> */}
             <main className="min-h-screen bg-white pb-[30px] overflow-y-auto">
-
                 <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-10 py-8">
-                    
                     {/* Hero */}
                     <section className="mb-10">
                         <div className="inline-flex items-center gap-2 rounded-full bg-accent text-neutral-50 px-3 py-1 text-[11px] mb-4">
@@ -574,6 +624,7 @@ export default function SettingsPage(): JSX.Element {
                                         {tierLoading ? "Checking..." : tierLabel}
                                     </span>
                                 </div>
+
                                 <p className="mt-1 text-xs text-neutral-600">
                                     {tier === "free" &&
                                         "Free tier with low daily preview and snapshot limits."}
@@ -584,35 +635,56 @@ export default function SettingsPage(): JSX.Element {
                                 </p>
 
                                 {tierError && (
-                                    <p className="mt-1 text-xs text-red-600">
-                                        {tierError}
-                                    </p>
+                                    <p className="mt-1 text-xs text-red-600">{tierError}</p>
                                 )}
 
                                 {!tierError && !tierLoading && (
-                                    <p className="mt-2 text-[11px] text-neutral-500">
-                                        Stripe status:{" "}
-                                        <span className="font-semibold">
-                                            {stripeStatusLabel}
-                                        </span>
-                                        {cancelAtPeriodEnd && daysRemaining !== null && (
-                                            <>
-                                                {" "}
-                                                · subscription ends in{" "}
+                                    <div className="mt-2 space-y-1">
+                                        <p className="text-[11px] text-neutral-500">
+                                            Stripe status:{" "}
+                                            <span className="font-semibold">{stripeStatusLabel}</span>
+                                            {downgradeNotice && (
+                                                <>
+                                                    {" "}
+                                                    · your account will fall back to the Free tier after this period.
+                                                </>
+                                            )}
+                                        </p>
+
+                                        {onTrial && trialDaysRemaining !== null && (
+                                            <p className="text-[11px] text-neutral-500">
+                                                Trial ends in{" "}
                                                 <span className="font-semibold">
-                                                    {daysRemaining} day
-                                                    {daysRemaining === 1 ? "" : "s"}
-                                                </span>
-                                            </>
+                                                    {trialDaysRemaining} day{trialDaysRemaining === 1 ? "" : "s"}
+                                                </span>{" "}
+                                                · {formatUnixSeconds(trialEndSec)}
+                                            </p>
                                         )}
-                                        {downgradeNotice && (
-                                            <>
-                                                {" "}
-                                                · your account will fall back to the Free tier
-                                                after this period.
-                                            </>
+
+                                        {!onTrial && nextBillingLabel && (
+                                            <p className="text-[11px] text-neutral-500">
+                                                Next billing:{" "}
+                                                <span className="font-semibold">{nextBillingLabel}</span>
+                                            </p>
                                         )}
-                                    </p>
+
+                                        {cancelAtPeriodEnd && endOfAccessDays !== null && endOfAccessSec && (
+                                            <p className="text-[11px] text-amber-700">
+                                                Cancellation scheduled · access ends in{" "}
+                                                <span className="font-semibold">
+                                                    {endOfAccessDays} day{endOfAccessDays === 1 ? "" : "s"}
+                                                </span>{" "}
+                                                · {formatUnixSeconds(endOfAccessSec)}
+                                            </p>
+                                        )}
+
+                                        {cancelError && (
+                                            <p className="text-[11px] text-red-600">{cancelError}</p>
+                                        )}
+                                        {cancelSuccess && (
+                                            <p className="text-[11px] text-emerald-600">{cancelSuccess}</p>
+                                        )}
+                                    </div>
                                 )}
                             </div>
 
@@ -623,6 +695,27 @@ export default function SettingsPage(): JSX.Element {
                                 >
                                     View plans
                                 </a>
+
+                                <button
+                                    type="button"
+                                    onClick={() => void handleCancelSubscription()}
+                                    disabled={!canCancel || cancelBusy}
+                                    className={[
+                                        "inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition",
+                                        canCancel
+                                            ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+                                            : "border-neutral-200 bg-neutral-50 text-neutral-400",
+                                        "disabled:opacity-60 disabled:pointer-events-none",
+                                    ].join(" ")}
+                                >
+                                    {cancelBusy ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                        <XCircle className="h-3.5 w-3.5" />
+                                    )}
+                                    Cancel subscription
+                                </button>
+
                                 <span className="text-[11px] text-neutral-500">
                                     Billing managed by Stripe
                                 </span>
@@ -676,9 +769,7 @@ export default function SettingsPage(): JSX.Element {
                                     <button
                                         type="button"
                                         onClick={handleDisconnectVercel}
-                                        disabled={
-                                            vercelStatus !== "connected" || disconnectBusy
-                                        }
+                                        disabled={vercelStatus !== "connected" || disconnectBusy}
                                         className="shrink-0 rounded-md border border-amber-500 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100"
                                     >
                                         {disconnectBusy ? "Disconnecting…" : "Disconnect"}
@@ -767,9 +858,7 @@ export default function SettingsPage(): JSX.Element {
                     {/* Account & data */}
                     <section className="mt-6 rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
                         <div className="flex items-center gap-2 text-neutral-800">
-                            <h2 className="text-sm font-semibold">
-                                Account and data
-                            </h2>
+                            <h2 className="text-sm font-semibold">Account and data</h2>
                         </div>
 
                         <p className="mt-2 text-xs text-neutral-600">
@@ -826,9 +915,7 @@ export default function SettingsPage(): JSX.Element {
                                             {visibleDeployments.length === 1 ? "" : "s"} in view
                                         </span>
                                         <span className="h-1 w-1 rounded-full bg-neutral-300" />
-                                        <span>
-                                            {selectedDeploymentIds.length} selected
-                                        </span>
+                                        <span>{selectedDeploymentIds.length} selected</span>
                                     </div>
 
                                     <div className="flex items-center gap-2 text-[11px]">
@@ -836,8 +923,8 @@ export default function SettingsPage(): JSX.Element {
                                             type="button"
                                             onClick={() => setDeploymentFilter("all")}
                                             className={`rounded-full px-2.5 py-1 border text-[11px] ${deploymentFilter === "all"
-                                                ? "border-neutral-800 text-neutral-900 bg-white"
-                                                : "border-neutral-200 text-neutral-600 bg-transparent"
+                                                    ? "border-neutral-800 text-neutral-900 bg-white"
+                                                    : "border-neutral-200 text-neutral-600 bg-transparent"
                                                 }`}
                                         >
                                             All
@@ -846,20 +933,18 @@ export default function SettingsPage(): JSX.Element {
                                             type="button"
                                             onClick={() => setDeploymentFilter("live-only")}
                                             className={`rounded-full px-2.5 py-1 border text-[11px] ${deploymentFilter === "live-only"
-                                                ? "border-neutral-800 text-neutral-900 bg-white"
-                                                : "border-neutral-200 text-neutral-600 bg-transparent"
+                                                    ? "border-neutral-800 text-neutral-900 bg-white"
+                                                    : "border-neutral-200 text-neutral-600 bg-transparent"
                                                 }`}
                                         >
                                             Live deployments
                                         </button>
                                         <button
                                             type="button"
-                                            onClick={() =>
-                                                setDeploymentFilter("live-projects")
-                                            }
+                                            onClick={() => setDeploymentFilter("live-projects")}
                                             className={`rounded-full px-2.5 py-1 border text-[11px] ${deploymentFilter === "live-projects"
-                                                ? "border-neutral-800 text-neutral-900 bg-white"
-                                                : "border-neutral-200 text-neutral-600 bg-transparent"
+                                                    ? "border-neutral-800 text-neutral-900 bg-white"
+                                                    : "border-neutral-200 text-neutral-600 bg-transparent"
                                                 }`}
                                         >
                                             Live projects + history
@@ -881,9 +966,7 @@ export default function SettingsPage(): JSX.Element {
                                                     checked={allVisibleSelected}
                                                     onChange={handleToggleAllVisible}
                                                     aria-checked={
-                                                        someVisibleSelected
-                                                            ? "mixed"
-                                                            : allVisibleSelected
+                                                        someVisibleSelected ? "mixed" : allVisibleSelected
                                                     }
                                                 />
                                                 <span>Select all in view</span>
@@ -895,28 +978,19 @@ export default function SettingsPage(): JSX.Element {
 
                                         <div className="max-h-64 overflow-y-auto divide-y divide-red-50">
                                             {visibleDeployments.map((d) => {
-                                                const state = toUiState(
-                                                    d,
-                                                    latestReadyByProject,
-                                                );
-                                                const displayUrl = d.publicDomain ||
+                                                const state = toUiState(d, latestReadyByProject);
+                                                const displayUrl =
+                                                    d.publicDomain ||
                                                     d.publicUrl ||
-                                                    (d.publicDomain
-                                                        ? `https://${d.publicDomain}`
-                                                        : null) ||
+                                                    (d.publicDomain ? `https://${d.publicDomain}` : null) ||
                                                     d.url ||
                                                     null;
+
                                                 const labelParts: string[] = [];
-                                                if (d.vercelProjectName) {
-                                                    labelParts.push(d.vercelProjectName);
-                                                }
-                                                if (displayUrl) {
-                                                    labelParts.push(displayUrl);
-                                                }
-                                                const label =
-                                                    labelParts.join(" · ") ||
-                                                    d.id ||
-                                                    "Unnamed deployment";
+                                                if (d.vercelProjectName) labelParts.push(d.vercelProjectName);
+                                                if (displayUrl) labelParts.push(displayUrl);
+
+                                                const label = labelParts.join(" · ") || d.id || "Unnamed deployment";
 
                                                 return (
                                                     <div
@@ -926,22 +1000,14 @@ export default function SettingsPage(): JSX.Element {
                                                         <div className="flex items-center gap-2 min-w-0 flex-1">
                                                             <input
                                                                 type="checkbox"
-                                                                checked={selectedDeploymentIds.includes(
-                                                                    d.id,
-                                                                )}
-                                                                onChange={() =>
-                                                                    handleToggleDeployment(
-                                                                        d.id,
-                                                                    )
-                                                                }
+                                                                checked={selectedDeploymentIds.includes(d.id)}
+                                                                onChange={() => handleToggleDeployment(d.id)}
                                                             />
                                                             <div className="min-w-0">
-                                                                <div className="truncate">
-                                                                    {label}
-                                                                </div>
+                                                                <div className="truncate">{label}</div>
                                                                 <div className="text-[10px] text-neutral-500">
-                                                                    {formatDateMillis(
-                                                                        d.createdAt,
+                                                                    {formatUnixSeconds(
+                                                                        d.createdAt ? Math.floor(d.createdAt / 1000) : null,
                                                                     ) || "Unknown time"}
                                                                 </div>
                                                             </div>
@@ -960,10 +1026,7 @@ export default function SettingsPage(): JSX.Element {
                                     <button
                                         type="button"
                                         onClick={handleDeleteDeploymentBulk}
-                                        disabled={
-                                            selectedDeploymentIds.length === 0 ||
-                                            deleteDeploymentBusy
-                                        }
+                                        disabled={selectedDeploymentIds.length === 0 || deleteDeploymentBusy}
                                         className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[11px] font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
                                     >
                                         {deleteDeploymentBusy && (
@@ -996,7 +1059,6 @@ export default function SettingsPage(): JSX.Element {
                                 )}
                             </div>
                         )}
-
                     </section>
 
                     {/* System status */}

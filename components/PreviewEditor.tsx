@@ -3294,8 +3294,6 @@ export default function PreviewEditor({
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
-                        // add your CSRF header here if you already use one:
-                        // "x-kloner-csrf": csrfToken,
                     },
                     body: JSON.stringify({
                         renderId: draftId,
@@ -3436,40 +3434,42 @@ export default function PreviewEditor({
             <div className="absolute inset-4 overflow-hidden">
 
                 {/* Close */}
-                <button
-                    type="button"
-                    onClick={() => {
-                        if (dirty) setClosePrompt(true);
-                        else performClose("discard");
-                    }}
-                    disabled={closing}
-                    aria-label="Close editor"
-                    className={`absolute ${IS_MOBILE ? 'bottom-6' : 'top-5'} right-5 z-[100] inline-flex h-6 w-6 items-center justify-center rounded-full border border-neutral-300 bg-white/90/90 text-neutral-700 shadow-md transition ${closing
-                        ? "cursor-not-allowed opacity-60"
-                        : "hover:bg-neutral-100 hover:text-neutral-900"
-                        }`}
-                >
-                    <span className="block h-[18px] w-[18px]">
-                        <svg
-                            viewBox="0 0 24 24"
-                            className="h-full w-full"
-                            aria-hidden="true"
-                        >
-                            <path
-                                d="M6 6l12 12M18 6L6 18"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="1.8"
-                                strokeLinecap="round"
-                            />
-                        </svg>
-                    </span>
-                </button>
+                {!IS_MOBILE && (
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (dirty) setClosePrompt(true);
+                            else performClose("discard");
+                        }}
+                        disabled={closing}
+                        aria-label="Close editor"
+                        className={`absolute top-5 right-5 z-[100] inline-flex h-6 w-6 items-center justify-center rounded-full border border-neutral-300 bg-white/90/90 text-neutral-700 shadow-md transition ${closing
+                            ? "cursor-not-allowed opacity-60"
+                            : "hover:bg-neutral-100 hover:text-neutral-900"
+                            }`}
+                    >
+                        <span className="block h-[18px] w-[18px]">
+                            <svg
+                                viewBox="0 0 24 24"
+                                className="h-full w-full"
+                                aria-hidden="true"
+                            >
+                                <path
+                                    d="M6 6l12 12M18 6L6 18"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="1.8"
+                                    strokeLinecap="round"
+                                />
+                            </svg>
+                        </span>
+                    </button>
+                )}
 
                 {/* FLOATING DEVICE SELECTOR – TOP CENTER */}
                 <div
                     id="kloner-device-toggle"
-                    className={`absolute ${IS_MOBILE ? 'bottom-5 left-1/2 z-[101]' : 'top-5 left-1/2 z-[101] '} -translate-x-1/2`}>
+                    className={`absolute ${IS_MOBILE ? 'bottom-20 left-1/2 z-[101]' : 'top-5 left-1/2 z-[101] '} -translate-x-1/2`}>
                     <div className={`inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white/90/95 px-2 py-1 shadow-md`}>
                         <motion.button
                             type="button"
@@ -3517,7 +3517,7 @@ export default function PreviewEditor({
 
                 {/* UI scale – top left */}
                 {sidebarHidden && (
-                    <div className={`absolute ${IS_MOBILE ? 'bottom-5 left-3' : 'top-5 left-5'} z-10 flex items-center gap-2 rounded-full ${IS_MOBILE ? '' : 'border border-neutral-200 bg-white/90/95 shadow-md'} px-3 py-1 `}>
+                    <div className={`absolute ${IS_MOBILE ? 'bottom-20 left-3' : 'top-5 left-5'} z-10 flex items-center gap-2 rounded-full ${IS_MOBILE ? '' : 'border border-neutral-200 bg-white/90/95 shadow-md'} px-3 py-1 `}>
                         {!IS_MOBILE && (
                             <span className="text-[11px] font-medium text-neutral-600">UI scale</span>
                         )}
@@ -3742,7 +3742,7 @@ export default function PreviewEditor({
                     {!sidebarHidden && (
                         <motion.aside
                             id="kloner-style-sidebar"
-                            className="pointer-events-auto fixed left-16 top-20 bottom-4 z-40 flex w-[300px] md:w-[350px] flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white/60 px-3 py-3 pb-5 shadow-lg backdrop-blur-sm"
+                            className="pointer-events-auto fixed left-16 top-20 bottom-20 z-40 flex w-[300px] md:w-[350px] flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white/60 px-3 py-3 pb-5 shadow-lg backdrop-blur-sm"
                             initial={{ x: -16, opacity: 0 }}
                             animate={{ x: 0, opacity: 1 }}
                             exit={{ x: -16, opacity: 0 }}
@@ -4496,7 +4496,6 @@ export default function PreviewEditor({
                         {(mode === "preview" || (isDevCodeMode && mode === "code")) && (
                             <div
                                 ref={iframeWrapperRef}
-                                id="kloner-home"
                                 className={
                                     isPreviewFullscreen
                                         ? "flex-1 min-h-0 flex flex-col overflow-hidden"
@@ -4527,7 +4526,9 @@ export default function PreviewEditor({
                                         transition={{ duration: 0.22 }}
                                     >
                                         {device === "desktop" && (
-                                            <div className="flex-1 min-h-0 rounded-xl border border-neutral-800 bg-neutral-950/90 shadow-xl overflow-hidden flex flex-col">
+                                            <div
+                                                className="flex-1 min-h-0 rounded-xl border border-neutral-800 bg-neutral-950/90 shadow-xl overflow-hidden flex flex-col"
+                                                id="kloner-home">
                                                 <div
                                                     className="flex cursor-move items-center gap-2 px-4 py-2 border-b border-neutral-800 bg-neutral-900/90"
                                                     onPointerDown={(e) => {
@@ -4763,7 +4764,7 @@ export default function PreviewEditor({
 
 
                         {/* Mobile footer actions */}
-                        <div className="fixed bottom-[70px] left-0 right-0 z-50 block bg-white/90/95 px-4 py-3 shadow-[0_-4px_12px_rgba(15,23,42,0.12)] lg:hidden">
+                        <div className="fixed bottom-0 left-0 right-0 z-50 block bg-white/90/95 px-4 py-3 shadow-[0_-4px_12px_rgba(15,23,42,0.12)] lg:hidden">
                             <div className="flex flex-inline gap-2" id="kloner-save-changes-mobile">
                                 <motion.button
                                     whileHover={{ y: -0.5 }}
