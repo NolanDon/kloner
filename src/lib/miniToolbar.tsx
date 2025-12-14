@@ -51,7 +51,7 @@ export function MiniToolbar({
 }: MiniToolbarProps) {
     const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
     const [visible, setVisible] = useState(false);
-    const [aiOpen, setAiOpen] = useState(true);
+    const [aiOpen, setAiOpen] = useState(false);
     const [prompt, setPrompt] = useState("");
     const [imageFile, setImageFile] = useState<File | null>(null); // still allowed for UX, not sent to backend
 

@@ -63,6 +63,7 @@ import {
     ScanFace,
     WrenchIcon,
     DeleteIcon,
+    CheckCheck,
 } from "lucide-react";
 import {
     isHttpUrl,
@@ -2684,11 +2685,7 @@ export default function PreviewPage(): JSX.Element {
         [user, docSnap, push]
     );
 
-    async function exportToVercel(opts: {
-        html: string;
-        name?: string;
-        renderId?: string;
-    }) {
+    async function exportToVercel(opts: { html: string; name?: string; renderId?: string }) {
         // full funnel timer
         const funnelStartMs = Date.now();
 
@@ -2729,10 +2726,7 @@ export default function PreviewPage(): JSX.Element {
 
             if (resolvedRenderId) {
                 setDeployWizardRenderId(resolvedRenderId);
-
                 setDeployWizardProjectName("your-website");
-                // const target = renders.find((r) => r.id === resolvedRenderId);
-                // setDeployWizardProjectName(target?.nameHint || "");
             } else {
                 setDeployWizardRenderId(null);
                 setDeployWizardProjectName("");
@@ -2766,9 +2760,7 @@ export default function PreviewPage(): JSX.Element {
                 if (resolvedRenderId) {
                     setDeployWizardRenderId(resolvedRenderId);
                     const target = renders.find((r) => r.id === resolvedRenderId);
-                    setDeployWizardProjectName(
-                        target?.nameHint || trimmedNameInput,
-                    );
+                    setDeployWizardProjectName(target?.nameHint || trimmedNameInput);
                 } else {
                     setDeployWizardRenderId(null);
                     setDeployWizardProjectName(trimmedNameInput);
@@ -2784,13 +2776,7 @@ export default function PreviewPage(): JSX.Element {
         let projectName = trimmedNameInput;
 
         if (user && resolvedRenderId) {
-            const renderRef = doc(
-                db,
-                "kloner_users",
-                user.uid,
-                "kloner_renders",
-                resolvedRenderId,
-            );
+            const renderRef = doc(db, "kloner_users", user.uid, "kloner_renders", resolvedRenderId);
 
             try {
                 // write the name immediately
@@ -2802,9 +2788,7 @@ export default function PreviewPage(): JSX.Element {
                     const data = snap.data() as any;
                     if (typeof data?.nameHint === "string") {
                         const dbName = data.nameHint.trim();
-                        if (dbName) {
-                            projectName = dbName;
-                        }
+                        if (dbName) projectName = dbName;
                     }
                 }
             } catch (err) {
@@ -2813,11 +2797,8 @@ export default function PreviewPage(): JSX.Element {
             }
         }
 
-        if (resolvedRenderId) {
-            setDeployWizardRenderId(resolvedRenderId);
-        } else {
-            setDeployWizardRenderId(null);
-        }
+        if (resolvedRenderId) setDeployWizardRenderId(resolvedRenderId);
+        else setDeployWizardRenderId(null);
 
         setDeployWizardProjectName(projectName);
         setDeployWizardError(null);
@@ -2825,11 +2806,12 @@ export default function PreviewPage(): JSX.Element {
         setDeployWizardOpen(true);
         setDeployWizardBusy(true);
         setDeployWizardLiveUrl(null);
-        autoDeployTriggeredRef.current = false;
 
-        if (resolvedRenderId) {
-            setDeployingRenderId(resolvedRenderId);
-        }
+        // IMPORTANT: mark attempt as started immediately so any "auto deploy" effect can't re-trigger on error.
+        // (Your UI can expose a "Retry" button that sets this back to false before calling exportToVercel again.)
+        autoDeployTriggeredRef.current = true;
+
+        if (resolvedRenderId) setDeployingRenderId(resolvedRenderId);
 
         push("Starting deployment…", "ok");
 
@@ -2887,17 +2869,13 @@ export default function PreviewPage(): JSX.Element {
 
                 setDeployWizardError(msg);
                 setDeployWizardLiveUrl(null);
-                setDeployWizardOpen(false)
+                // DO NOT close the wizard here; keeping it open prevents "re-open -> auto-trigger" loops.
                 push(msg, "err");
                 console.error("Deploy failed", msg);
                 return;
             }
 
-            const {
-                url,
-                vercelProjectId: apiProjectId,
-                vercelProjectName: apiProjectName,
-            } = j;
+            const { url, vercelProjectId: apiProjectId, vercelProjectName: apiProjectName } = j;
 
             // update local render state so the overlay switches out of "Deploy"
             if (resolvedRenderId) {
@@ -2909,37 +2887,24 @@ export default function PreviewPage(): JSX.Element {
                                 ...rr,
                                 lastDeployUrl: url,
                                 lastExportedAt: new Date(),
-                                vercelProjectId:
-                                    apiProjectId ?? rr.vercelProjectId ?? null,
-                                vercelProjectName:
-                                    apiProjectName ??
-                                    projectName ??
-                                    rr.vercelProjectName ??
-                                    null,
+                                vercelProjectId: apiProjectId ?? rr.vercelProjectId ?? null,
+                                vercelProjectName: apiProjectName ?? projectName ?? rr.vercelProjectName ?? null,
                             },
                     ),
                 );
             }
 
             setDeployWizardLiveUrl(url);
+            // already true, keep it true
             autoDeployTriggeredRef.current = true;
 
             if (user && resolvedRenderId) {
-                await updateDoc(
-                    doc(
-                        db,
-                        "kloner_users",
-                        user.uid,
-                        "kloner_renders",
-                        resolvedRenderId,
-                    ),
-                    {
-                        lastExportedAt: serverTimestamp(),
-                        lastDeployUrl: url,
-                        vercelProjectId: apiProjectId ?? null,
-                        vercelProjectName: apiProjectName ?? projectName ?? null,
-                    },
-                );
+                await updateDoc(doc(db, "kloner_users", user.uid, "kloner_renders", resolvedRenderId), {
+                    lastExportedAt: serverTimestamp(),
+                    lastDeployUrl: url,
+                    vercelProjectId: apiProjectId ?? null,
+                    vercelProjectName: apiProjectName ?? projectName ?? null,
+                });
             }
 
             const deployDurationMs = Date.now() - deployStartMs;
@@ -3002,8 +2967,6 @@ export default function PreviewPage(): JSX.Element {
             setDeployWizardBusy(false);
         }
     }
-
-
 
     const activeRender = useMemo(
         () => renders.find((r) => r.id === activeRenderId) || null,
@@ -4313,7 +4276,7 @@ export default function PreviewPage(): JSX.Element {
                                                         </p>
 
                                                         <p className="text-[11px] text-neutral-600 leading-relaxed">
-                                                            Deploying previews to Vercel is a paid feature. Upgrading unlocks instant
+                                                            Upgrading unlocks instant
                                                             publishing, higher limits, and full multi-site workflows.
                                                         </p>
                                                     </div>
@@ -4408,7 +4371,7 @@ export default function PreviewPage(): JSX.Element {
                                                             ) : deployWizardError ? (
                                                                 <span className="text-sm text-red-500">!</span>
                                                             ) : (
-                                                                <ScanFace className="h-4 w-4 text-white" />
+                                                                <CheckCheck className="h-4 w-4 text-white" />
                                                             )}
                                                         </div>
                                                         <div>

@@ -1151,7 +1151,7 @@ export default function PreviewEditor({
     const [history, setHistory] = useState<DraftSnapshot[]>([]);
     const [aiHistory, setAiHistory] = useState<AiEditSuggestion[]>([]);
     const [historyOpen, setHistoryOpen] = useState(false);
-    const [sidebarHidden, setSidebarHidden] = useState(false);
+    const [sidebarHidden, setSidebarHidden] = useState(IS_MOBILE ? true : false);
     // dragging iframe
     const previewDragControls = useDragControls();
 
@@ -3570,9 +3570,9 @@ export default function PreviewEditor({
                                         }
                                     }
                                 }}
-                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full bg-white/90 border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "style" && mode === "preview"
-                                    ? "border-transparent bg-[#f55f2a] text-white"
-                                    : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
+                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "style" && mode === "preview"
+                                    ? "border-transparent bg-accent text-white"
+                                    : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-accent hover:text-white"
                                     }`}
                             >
                                 <Palette className="h-4 w-4" aria-hidden="true" />
@@ -3582,6 +3582,7 @@ export default function PreviewEditor({
                                 </span>
                             </button>
 
+                            {/* Meta */}
                             <button
                                 type="button"
                                 id="kloner-meta-toggle"
@@ -3599,9 +3600,9 @@ export default function PreviewEditor({
                                         }
                                     }
                                 }}
-                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full bg-white/90 border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "meta"
-                                    ? "border-transparent bg-[#f55f2a] text-white"
-                                    : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
+                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "meta"
+                                    ? "border-transparent bg-accent text-white"
+                                    : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-accent hover:text-white"
                                     }`}
                             >
                                 <FileText className="h-4 w-4" aria-hidden="true" />
@@ -3616,8 +3617,7 @@ export default function PreviewEditor({
                                 type="button"
                                 id="kloner-ai-edit-toggle"
                                 onClick={() => {
-                                    const isActive =
-                                        !sidebarHidden && sidePanelMode === "revision-chat";
+                                    const isActive = !sidebarHidden && sidePanelMode === "revision-chat";
                                     if (isActive) {
                                         setSidebarHidden(true);
                                     } else {
@@ -3630,9 +3630,9 @@ export default function PreviewEditor({
                                         }
                                     }
                                 }}
-                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full bg-white/90 border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "revision-chat"
-                                    ? "border-transparent bg-[#f55f2a] text-white"
-                                    : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
+                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "revision-chat"
+                                    ? "border-transparent bg-accent text-white"
+                                    : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-accent hover:text-white"
                                     }`}
                             >
                                 <MessageSquare className="h-4 w-4" aria-hidden="true" />
@@ -3642,13 +3642,12 @@ export default function PreviewEditor({
                                 </span>
                             </button>
 
-
+                            {/* AI images */}
                             <button
                                 type="button"
                                 id="kloner-ai-image-library"
                                 onClick={() => {
-                                    const isActive =
-                                        !sidebarHidden && sidePanelMode === "ai-library";
+                                    const isActive = !sidebarHidden && sidePanelMode === "ai-library";
                                     if (isActive) {
                                         setSidebarHidden(true);
                                     } else {
@@ -3659,9 +3658,9 @@ export default function PreviewEditor({
                                         }
                                     }
                                 }}
-                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full bg-white/90 border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "ai-library"
-                                    ? "border-transparent bg-[#f55f2a] text-white"
-                                    : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
+                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "ai-library"
+                                    ? "border-transparent bg-accent text-white"
+                                    : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-accent hover:text-white"
                                     }`}
                             >
                                 <Images className="h-4 w-4" aria-hidden="true" />
@@ -3676,29 +3675,19 @@ export default function PreviewEditor({
                                 <button
                                     type="button"
                                     onClick={() => {
-                                        // if you have a devMode flag, guard here:
-                                        // if (!devMode) {
-                                        //     toast.error("Code view is only available in Dev mode.");
-                                        //     return;
-                                        // }
-
-                                        const isActive =
-                                            !sidebarHidden && sidePanelMode === "code" && mode === "code";
+                                        const isActive = !sidebarHidden && sidePanelMode === "code" && mode === "code";
 
                                         if (isActive) {
-                                            // toggle back to preview and optionally hide sidebar
                                             handleModeClick("preview");
-                                            // setSidebarHidden(true); // only if you want it to close
                                         } else {
-                                            // open code mode in the sidepanel
                                             setSidebarHidden(false);
                                             setSidePanelMode("code");
                                             handleModeClick("code");
                                         }
                                     }}
-                                    className={`group relative flex h-9 w-9 items-center justify-center rounded-full bg-white/90 border text-[11px] shadow-sm transition ${mode === "code" && sidePanelMode === "code" && !sidebarHidden
-                                        ? "border-transparent bg-[#f55f2a] text-white"
-                                        : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
+                                    className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${mode === "code" && sidePanelMode === "code" && !sidebarHidden
+                                        ? "border-transparent bg-accent text-white"
+                                        : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-accent hover:text-white"
                                         }`}
                                 >
                                     <Code2 className="h-4 w-4" aria-hidden="true" />
@@ -3715,9 +3704,9 @@ export default function PreviewEditor({
                                 type="button"
                                 onClick={() => setExportPrompt(true)}
                                 disabled={exporting}
-                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full bg-white/90 border text-[11px] shadow-sm transition ${exporting
-                                    ? "border-transparent bg-[#f55f2a]/70 text-white cursor-not-allowed"
-                                    : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
+                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${exporting
+                                    ? "border-transparent bg-accent/70 text-white cursor-not-allowed"
+                                    : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-accent hover:text-white"
                                     }`}
                             >
                                 <Rocket className="h-4 w-4" aria-hidden="true" />
@@ -3735,9 +3724,9 @@ export default function PreviewEditor({
                                     setSidePanelMode("style");
                                     handleModeClick("screenshot");
                                 }}
-                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full bg-white/90 border text-[11px] shadow-sm transition ${mode === "screenshot"
-                                    ? "border-transparent bg-[#f55f2a] text-white"
-                                    : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
+                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${mode === "screenshot"
+                                    ? "border-transparent bg-accent text-white"
+                                    : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-accent hover:text-white"
                                     }`}
                             >
                                 <Camera className="h-4 w-4" aria-hidden="true" />
@@ -3753,606 +3742,569 @@ export default function PreviewEditor({
                     {!sidebarHidden && (
                         <motion.aside
                             id="kloner-style-sidebar"
-                            className="pointer-events-auto max-h-[1150px] top-20 bg-neutral-50 fixed left-16 h-full z-40 flex w-[500px] flex-col overflow-auto rounded-xl border border-neutral-200 bg-white/90/90 px-3 py-3 shadow-lg backdrop-blur-sm"
+                            className="pointer-events-auto fixed left-16 top-20 bottom-4 z-40 flex w-[300px] md:w-[350px] flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white/60 px-3 py-3 pb-5 shadow-lg backdrop-blur-sm"
                             initial={{ x: -16, opacity: 0 }}
                             animate={{ x: 0, opacity: 1 }}
                             exit={{ x: -16, opacity: 0 }}
                             transition={{ duration: 0.18, ease: "easeOut" }}
                         >
-                            {/* STYLE MODE BODY */}
-                            {!controlsCollapsed && sidePanelMode === "style" && (
-                                <>
-                                    {mode === "preview" && (
-                                        <div
-                                            className="mt-1 border-t border-neutral-200 pt-3 text-[12px]"
-                                            id="kloner-selection-style"
-                                        >
-                                            <div className="mb-1 flex items-center justify-between">
-                                                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
-                                                    Selection
+                            {/* put your panel contents in a scroll area */}
+                            <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                                {/* STYLE MODE BODY */}
+                                {!controlsCollapsed && sidePanelMode === "style" && (
+                                    <>
+                                        {mode === "preview" && (
+                                            <div
+                                                className="mt-1 border-t border-neutral-200 pt-3 text-[12px]"
+                                                id="kloner-selection-style"
+                                            >
+                                                <div className="mb-1 flex items-center justify-between">
+                                                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+                                                        Selection
+                                                    </div>
+                                                    <div className="text-[11px] text-neutral-400">
+                                                        {selectionMeta.has
+                                                            ? selectionMeta.tagName || "Element"
+                                                            : "Click any block to style it"}
+                                                    </div>
                                                 </div>
-                                                <div className="text-[11px] text-neutral-400">
-                                                    {selectionMeta.has
-                                                        ? selectionMeta.tagName || "Element"
-                                                        : "Click any block to style it"}
+                                                <div className="mb-2 text-[11px] text-neutral-400">
+                                                    Styles here are scoped to the current{" "}
+                                                    <span className="font-semibold">{device}</span> layout.
                                                 </div>
-                                            </div>
-                                            <div className="mb-2 text-[11px] text-neutral-400">
-                                                Styles here are scoped to the current{" "}
-                                                <span className="font-semibold">{device}</span> layout.
-                                            </div>
 
-                                            <div className="space-y-3 text-[12px] max-h-64 overflow-y-auto pr-1 lg:max-h-none">
-                                                {(mergedThemeColors.length || theme.fontFamilies.length) > 0 && (
-                                                    <div className="mt-2 space-y-3 border-t border-neutral-200 pt-3">
-                                                        <div className="text-[11px] uppercase tracking-[0.14em] text-neutral-400">
-                                                            Theme (from this page)
+                                                <div className="space-y-3 text-[12px] max-h-64 overflow-y-auto pr-1 lg:max-h-none">
+                                                    {(mergedThemeColors.length || theme.fontFamilies.length) > 0 && (
+                                                        <div className="mt-2 space-y-3 border-t border-neutral-200 pt-3">
+                                                            <div className="text-[11px] uppercase tracking-[0.14em] text-neutral-400">
+                                                                Theme (from this page)
+                                                            </div>
+
+                                                            {mergedThemeColors.length > 0 && (
+                                                                <div>
+                                                                    <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
+                                                                        Theme text color
+                                                                    </div>
+                                                                    <div className="flex flex-wrap gap-1">
+                                                                        {mergedThemeColors.map((c) => (
+                                                                            <button
+                                                                                key={`theme-text-${c}`}
+                                                                                type="button"
+                                                                                className="h-5 w-5 rounded-full border border-black/10 shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-40"
+                                                                                style={{ background: c }}
+                                                                                disabled={closing}
+                                                                                onClick={() =>
+                                                                                    sendStyleCommand({
+                                                                                        kind: "textColor",
+                                                                                        value: c,
+                                                                                    })
+                                                                                }
+                                                                            />
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+
+                                                            {mergedThemeColors.length > 0 && (
+                                                                <div>
+                                                                    <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
+                                                                        Theme background
+                                                                    </div>
+
+                                                                    <div className="mb-2 flex flex-wrap items-center gap-1">
+                                                                        {mergedThemeColors.map((c) => (
+                                                                            <button
+                                                                                key={`theme-bg-${c}`}
+                                                                                type="button"
+                                                                                className="h-5 w-5 rounded-full border border-black/10 shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-40"
+                                                                                style={{ background: c }}
+                                                                                disabled={closing}
+                                                                                onClick={() =>
+                                                                                    sendStyleCommand({
+                                                                                        kind: "bgColor",
+                                                                                        value: c,
+                                                                                    })
+                                                                                }
+                                                                            />
+                                                                        ))}
+
+                                                                        <button
+                                                                            key="transparent-bg"
+                                                                            type="button"
+                                                                            disabled={closing}
+                                                                            onClick={() =>
+                                                                                sendStyleCommand({
+                                                                                    kind: "bgColor",
+                                                                                    value: "transparent",
+                                                                                })
+                                                                            }
+                                                                            className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-dashed border-neutral-400/80 bg-white/90 text-[9px] font-semibold uppercase tracking-wide text-neutral-500 shadow-sm transition hover:bg-neutral-50 hover:scale-105 active:scale-95 disabled:opacity-40"
+                                                                            title="Transparent background"
+                                                                        >
+                                                                            ⌀
+                                                                        </button>
+                                                                    </div>
+
+                                                                    <div className="flex items-center gap-2 text-[11px]">
+                                                                        <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+                                                                            Custom background
+                                                                        </span>
+
+                                                                        <input
+                                                                            type="color"
+                                                                            value={customBgColor}
+                                                                            disabled={closing}
+                                                                            onChange={(e) => {
+                                                                                const value = e.target.value;
+                                                                                setCustomBgColor(value);
+                                                                                sendStyleCommand({
+                                                                                    kind: "bgColor",
+                                                                                    value,
+                                                                                });
+                                                                            }}
+                                                                            className="h-6 w-6 cursor-pointer rounded-full border border-black/10 bg-transparent p-0"
+                                                                        />
+
+                                                                        <input
+                                                                            type="text"
+                                                                            value={customBgColor}
+                                                                            disabled={closing}
+                                                                            onChange={(e) => {
+                                                                                const raw = e.target.value.trim();
+                                                                                setCustomBgColor(raw);
+                                                                            }}
+                                                                            onBlur={() => {
+                                                                                const v = customBgColor.trim();
+                                                                                if (!v) return;
+                                                                                const hex = v.startsWith("#") ? v : `#${v}`;
+                                                                                if (hex.length === 4 || hex.length === 7) {
+                                                                                    setCustomBgColor(hex);
+                                                                                    sendStyleCommand({
+                                                                                        kind: "bgColor",
+                                                                                        value: hex,
+                                                                                    });
+                                                                                }
+                                                                            }}
+                                                                            className="h-7 flex-1 rounded border border-neutral-300 bg-white/90 px-2 text-[11px] text-neutral-700 shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400"
+                                                                            placeholder="#ffffff"
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Font */}
+                                                    <div>
+                                                        <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
+                                                            Font
+                                                        </div>
+                                                        <select
+                                                            className="w-full rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[12px] shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400 disabled:opacity-50"
+                                                            disabled={closing}
+                                                            onChange={(e) => {
+                                                                const opt = FONT_OPTIONS.find(
+                                                                    (f) => f.id === e.target.value,
+                                                                );
+                                                                if (!opt) return;
+                                                                sendStyleCommand({
+                                                                    kind: "fontFamily",
+                                                                    value: opt.css,
+                                                                });
+                                                            }}
+                                                            defaultValue=""
+                                                        >
+                                                            <option value="" disabled>
+                                                                Choose font
+                                                            </option>
+                                                            {FONT_OPTIONS.map((f) => (
+                                                                <option
+                                                                    key={f.id}
+                                                                    value={f.id}
+                                                                    style={{ fontFamily: f.css }}
+                                                                >
+                                                                    {f.label}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+
+                                                    {/* Size & headings */}
+                                                    <div>
+                                                        <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
+                                                            Size & headings
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {FONT_SIZE_PRESETS.map((s) => (
+                                                                <button
+                                                                    key={s.id}
+                                                                    type="button"
+                                                                    className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] leading-tight shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                    disabled={closing}
+                                                                    onClick={() =>
+                                                                        sendStyleCommand({
+                                                                            kind: "fontSizePx",
+                                                                            value: s.px,
+                                                                        })
+                                                                    }
+                                                                >
+                                                                    {s.label}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Text align */}
+                                                    <div>
+                                                        <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
+                                                            Text align
+                                                        </div>
+                                                        <div className="flex gap-1">
+                                                            {[
+                                                                { id: "left", label: "Left" },
+                                                                { id: "center", label: "Center" },
+                                                                { id: "right", label: "Right" },
+                                                            ].map((a) => (
+                                                                <button
+                                                                    key={a.id}
+                                                                    type="button"
+                                                                    className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                    disabled={closing}
+                                                                    onClick={() =>
+                                                                        sendStyleCommand({
+                                                                            kind: "align",
+                                                                            value: a.id as "left" | "center" | "right",
+                                                                        })
+                                                                    }
+                                                                >
+                                                                    {a.label}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Weight & transform */}
+                                                    <div>
+                                                        <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
+                                                            Font weight & transform
                                                         </div>
 
-                                                        {mergedThemeColors.length > 0 && (
-                                                            <div>
-                                                                <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
-                                                                    Theme text color
-                                                                </div>
-                                                                <div className="flex flex-wrap gap-1">
-                                                                    {mergedThemeColors.map((c) => (
-                                                                        <button
-                                                                            key={`theme-text-${c}`}
-                                                                            type="button"
-                                                                            className="h-5 w-5 rounded-full border border-black/10 shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-40"
-                                                                            style={{ background: c }}
-                                                                            disabled={closing}
-                                                                            onClick={() =>
-                                                                                sendStyleCommand({
-                                                                                    kind: "textColor",
-                                                                                    value: c,
-                                                                                })
-                                                                            }
-                                                                        />
-                                                                    ))}
-                                                                </div>
-                                                            </div>
-                                                        )}
-
-                                                        {mergedThemeColors.length > 0 && (
-                                                            <div>
-                                                                <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
-                                                                    Theme background
-                                                                </div>
-
-                                                                <div className="mb-2 flex flex-wrap items-center gap-1">
-                                                                    {mergedThemeColors.map((c) => (
-                                                                        <button
-                                                                            key={`theme-bg-${c}`}
-                                                                            type="button"
-                                                                            className="h-5 w-5 rounded-full border border-black/10 shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-40"
-                                                                            style={{ background: c }}
-                                                                            disabled={closing}
-                                                                            onClick={() =>
-                                                                                sendStyleCommand({
-                                                                                    kind: "bgColor",
-                                                                                    value: c,
-                                                                                })
-                                                                            }
-                                                                        />
-                                                                    ))}
-
-                                                                    <button
-                                                                        key="transparent-bg"
-                                                                        type="button"
-                                                                        disabled={closing}
-                                                                        onClick={() =>
-                                                                            sendStyleCommand({
-                                                                                kind: "bgColor",
-                                                                                value: "transparent",
-                                                                            })
-                                                                        }
-                                                                        className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-dashed border-neutral-400/80 bg-white/90 text-[9px] font-semibold uppercase tracking-wide text-neutral-500 shadow-sm transition hover:bg-neutral-50 hover:scale-105 active:scale-95 disabled:opacity-40"
-                                                                        title="Transparent background"
-                                                                    >
-                                                                        ⌀
-                                                                    </button>
-                                                                </div>
-
-                                                                <div className="flex items-center gap-2 text-[11px]">
-                                                                    <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
-                                                                        Custom background
-                                                                    </span>
-
-                                                                    <input
-                                                                        type="color"
-                                                                        value={customBgColor}
-                                                                        disabled={closing}
-                                                                        onChange={(e) => {
-                                                                            const value = e.target.value;
-                                                                            setCustomBgColor(value);
-                                                                            sendStyleCommand({
-                                                                                kind: "bgColor",
-                                                                                value,
-                                                                            });
-                                                                        }}
-                                                                        className="h-6 w-6 cursor-pointer rounded-full border border-black/10 bg-transparent p-0"
-                                                                    />
-
-                                                                    <input
-                                                                        type="text"
-                                                                        value={customBgColor}
-                                                                        disabled={closing}
-                                                                        onChange={(e) => {
-                                                                            const raw = e.target.value.trim();
-                                                                            setCustomBgColor(raw);
-                                                                        }}
-                                                                        onBlur={() => {
-                                                                            const v = customBgColor.trim();
-                                                                            if (!v) return;
-                                                                            const hex = v.startsWith("#") ? v : `#${v}`;
-                                                                            if (hex.length === 4 || hex.length === 7) {
-                                                                                setCustomBgColor(hex);
-                                                                                sendStyleCommand({
-                                                                                    kind: "bgColor",
-                                                                                    value: hex,
-                                                                                });
-                                                                            }
-                                                                        }}
-                                                                        className="h-7 flex-1 rounded border border-neutral-300 bg-white/90 px-2 text-[11px] text-neutral-700 shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400"
-                                                                        placeholder="#ffffff"
-                                                                    />
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )}
-
-                                                {/* Font */}
-                                                <div>
-                                                    <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
-                                                        Font
-                                                    </div>
-                                                    <select
-                                                        className="w-full rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[12px] shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400 disabled:opacity-50"
-                                                        disabled={closing}
-                                                        onChange={(e) => {
-                                                            const opt = FONT_OPTIONS.find(
-                                                                (f) => f.id === e.target.value,
-                                                            );
-                                                            if (!opt) return;
-                                                            sendStyleCommand({
-                                                                kind: "fontFamily",
-                                                                value: opt.css,
-                                                            });
-                                                        }}
-                                                        defaultValue=""
-                                                    >
-                                                        <option value="" disabled>
-                                                            Choose font
-                                                        </option>
-                                                        {FONT_OPTIONS.map((f) => (
-                                                            <option
-                                                                key={f.id}
-                                                                value={f.id}
-                                                                style={{ fontFamily: f.css }}
-                                                            >
-                                                                {f.label}
-                                                            </option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-
-                                                {/* Size & headings */}
-                                                <div>
-                                                    <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
-                                                        Size & headings
-                                                    </div>
-                                                    <div className="flex flex-wrap gap-1">
-                                                        {FONT_SIZE_PRESETS.map((s) => (
+                                                        <div className="flex flex-wrap gap-1">
                                                             <button
-                                                                key={s.id}
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] leading-tight shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-light shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
-                                                                        kind: "fontSizePx",
-                                                                        value: s.px,
+                                                                        kind: "weight",
+                                                                        value: "300",
                                                                     })
                                                                 }
                                                             >
-                                                                {s.label}
+                                                                Light
                                                             </button>
-                                                        ))}
-                                                    </div>
-                                                </div>
-
-                                                {/* Text align */}
-                                                <div>
-                                                    <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
-                                                        Text align
-                                                    </div>
-                                                    <div className="flex gap-1">
-                                                        {[
-                                                            { id: "left", label: "Left" },
-                                                            { id: "center", label: "Center" },
-                                                            { id: "right", label: "Right" },
-                                                        ].map((a) => (
                                                             <button
-                                                                key={a.id}
+                                                                type="button"
+                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-normal shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                disabled={closing}
+                                                                onClick={() =>
+                                                                    sendStyleCommand({
+                                                                        kind: "weight",
+                                                                        value: "400",
+                                                                    })
+                                                                }
+                                                            >
+                                                                Regular
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-semibold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                disabled={closing}
+                                                                onClick={() =>
+                                                                    sendStyleCommand({
+                                                                        kind: "weight",
+                                                                        value: "500",
+                                                                    })
+                                                                }
+                                                            >
+                                                                Medium
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-semibold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                disabled={closing}
+                                                                onClick={() =>
+                                                                    sendStyleCommand({
+                                                                        kind: "weight",
+                                                                        value: "600",
+                                                                    })
+                                                                }
+                                                            >
+                                                                Semi-bold
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-bold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                disabled={closing}
+                                                                onClick={() =>
+                                                                    sendStyleCommand({
+                                                                        kind: "weight",
+                                                                        value: "700",
+                                                                    })
+                                                                }
+                                                            >
+                                                                Bold
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-extrabold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                disabled={closing}
+                                                                onClick={() =>
+                                                                    sendStyleCommand({
+                                                                        kind: "weight",
+                                                                        value: "800",
+                                                                    })
+                                                                }
+                                                            >
+                                                                Extra-bold
+                                                            </button>
+
+                                                            <button
+                                                                type="button"
+                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] uppercase tracking-[0.14em] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                disabled={closing}
+                                                                onClick={() =>
+                                                                    sendStyleCommand({
+                                                                        kind: "transform",
+                                                                        value: "uppercase",
+                                                                    })
+                                                                }
+                                                            >
+                                                                UPPERCASE
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] normal-case shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                disabled={closing}
+                                                                onClick={() =>
+                                                                    sendStyleCommand({
+                                                                        kind: "transform",
+                                                                        value: "none",
+                                                                    })
+                                                                }
+                                                            >
+                                                                Aa
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Text color */}
+                                                    <div>
+                                                        <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
+                                                            Text color
+                                                        </div>
+
+                                                        <div className="mb-2 flex flex-wrap gap-1">
+                                                            {TEXT_COLOR_SWATCHES.map((c) => (
+                                                                <button
+                                                                    key={c}
+                                                                    type="button"
+                                                                    className="h-5 w-5 rounded-full border border-black/10 shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-40"
+                                                                    style={{ background: c }}
+                                                                    disabled={closing}
+                                                                    onClick={() =>
+                                                                        sendStyleCommand({
+                                                                            kind: "textColor",
+                                                                            value: c,
+                                                                        })
+                                                                    }
+                                                                />
+                                                            ))}
+                                                        </div>
+
+                                                        <div className="flex items-center gap-2 text-[11px]">
+                                                            <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+                                                                Custom text
+                                                            </span>
+
+                                                            <input
+                                                                type="color"
+                                                                value={customTextColor}
+                                                                disabled={closing}
+                                                                onChange={(e) => {
+                                                                    const value = e.target.value;
+                                                                    setCustomTextColor(value);
+                                                                    sendStyleCommand({
+                                                                        kind: "textColor",
+                                                                        value,
+                                                                    });
+                                                                }}
+                                                                className="h-6 w-6 cursor-pointer rounded-full border border-black/10 bg-transparent p-0"
+                                                            />
+
+                                                            <input
+                                                                type="text"
+                                                                value={customTextColor}
+                                                                disabled={closing}
+                                                                onChange={(e) => {
+                                                                    const raw = e.target.value.trim();
+                                                                    setCustomTextColor(raw);
+                                                                }}
+                                                                onBlur={() => {
+                                                                    const v = customTextColor.trim();
+                                                                    if (!v) return;
+                                                                    const hex = v.startsWith("#") ? v : `#${v}`;
+                                                                    if (hex.length === 4 || hex.length === 7) {
+                                                                        setCustomTextColor(hex);
+                                                                        sendStyleCommand({
+                                                                            kind: "textColor",
+                                                                            value: hex,
+                                                                        });
+                                                                    }
+                                                                }}
+                                                                className="h-7 flex-1 rounded border border-neutral-300 bg-white/90 px-2 text-[11px] text-neutral-700 shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400"
+                                                                placeholder="#111827"
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Background */}
+                                                    <div>
+                                                        <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
+                                                            Background
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {BG_COLOR_SWATCHES.map((c) => (
+                                                                <button
+                                                                    key={c}
+                                                                    type="button"
+                                                                    className="h-5 w-5 rounded-full border border-black/10 shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-40"
+                                                                    style={{ background: c }}
+                                                                    disabled={closing}
+                                                                    onClick={() =>
+                                                                        sendStyleCommand({
+                                                                            kind: "bgColor",
+                                                                            value: c,
+                                                                        })
+                                                                    }
+                                                                />
+                                                            ))}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Letter spacing */}
+                                                    <div>
+                                                        <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
+                                                            Letter spacing
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-1">
+                                                            <button
                                                                 type="button"
                                                                 className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
-                                                                        kind: "align",
-                                                                        value: a.id as "left" | "center" | "right",
+                                                                        kind: "letterSpacing",
+                                                                        value: "-0.02em",
                                                                     })
                                                                 }
                                                             >
-                                                                {a.label}
+                                                                Tight
                                                             </button>
-                                                        ))}
-                                                    </div>
-                                                </div>
-
-                                                {/* Weight & transform */}
-                                                <div>
-                                                    <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
-                                                        Font weight & transform
-                                                    </div>
-
-                                                    <div className="flex flex-wrap gap-1">
-                                                        <button
-                                                            type="button"
-                                                            className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-light shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                            disabled={closing}
-                                                            onClick={() =>
-                                                                sendStyleCommand({
-                                                                    kind: "weight",
-                                                                    value: "300",
-                                                                })
-                                                            }
-                                                        >
-                                                            Light
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-normal shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                            disabled={closing}
-                                                            onClick={() =>
-                                                                sendStyleCommand({
-                                                                    kind: "weight",
-                                                                    value: "400",
-                                                                })
-                                                            }
-                                                        >
-                                                            Regular
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-semibold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                            disabled={closing}
-                                                            onClick={() =>
-                                                                sendStyleCommand({
-                                                                    kind: "weight",
-                                                                    value: "500",
-                                                                })
-                                                            }
-                                                        >
-                                                            Medium
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-semibold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                            disabled={closing}
-                                                            onClick={() =>
-                                                                sendStyleCommand({
-                                                                    kind: "weight",
-                                                                    value: "600",
-                                                                })
-                                                            }
-                                                        >
-                                                            Semi-bold
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-bold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                            disabled={closing}
-                                                            onClick={() =>
-                                                                sendStyleCommand({
-                                                                    kind: "weight",
-                                                                    value: "700",
-                                                                })
-                                                            }
-                                                        >
-                                                            Bold
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-extrabold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                            disabled={closing}
-                                                            onClick={() =>
-                                                                sendStyleCommand({
-                                                                    kind: "weight",
-                                                                    value: "800",
-                                                                })
-                                                            }
-                                                        >
-                                                            Extra-bold
-                                                        </button>
-
-                                                        <button
-                                                            type="button"
-                                                            className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] uppercase tracking-[0.14em] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                            disabled={closing}
-                                                            onClick={() =>
-                                                                sendStyleCommand({
-                                                                    kind: "transform",
-                                                                    value: "uppercase",
-                                                                })
-                                                            }
-                                                        >
-                                                            UPPERCASE
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] normal-case shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                            disabled={closing}
-                                                            onClick={() =>
-                                                                sendStyleCommand({
-                                                                    kind: "transform",
-                                                                    value: "none",
-                                                                })
-                                                            }
-                                                        >
-                                                            Aa
-                                                        </button>
-                                                    </div>
-                                                </div>
-
-                                                {/* Text color */}
-                                                <div>
-                                                    <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
-                                                        Text color
-                                                    </div>
-
-                                                    <div className="mb-2 flex flex-wrap gap-1">
-                                                        {TEXT_COLOR_SWATCHES.map((c) => (
                                                             <button
-                                                                key={c}
                                                                 type="button"
-                                                                className="h-5 w-5 rounded-full border border-black/10 shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-40"
-                                                                style={{ background: c }}
+                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
-                                                                        kind: "textColor",
-                                                                        value: c,
+                                                                        kind: "letterSpacing",
+                                                                        value: "0",
                                                                     })
                                                                 }
-                                                            />
-                                                        ))}
-                                                    </div>
-
-                                                    <div className="flex items-center gap-2 text-[11px]">
-                                                        <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
-                                                            Custom text
-                                                        </span>
-
-                                                        <input
-                                                            type="color"
-                                                            value={customTextColor}
-                                                            disabled={closing}
-                                                            onChange={(e) => {
-                                                                const value = e.target.value;
-                                                                setCustomTextColor(value);
-                                                                sendStyleCommand({
-                                                                    kind: "textColor",
-                                                                    value,
-                                                                });
-                                                            }}
-                                                            className="h-6 w-6 cursor-pointer rounded-full border border-black/10 bg-transparent p-0"
-                                                        />
-
-                                                        <input
-                                                            type="text"
-                                                            value={customTextColor}
-                                                            disabled={closing}
-                                                            onChange={(e) => {
-                                                                const raw = e.target.value.trim();
-                                                                setCustomTextColor(raw);
-                                                            }}
-                                                            onBlur={() => {
-                                                                const v = customTextColor.trim();
-                                                                if (!v) return;
-                                                                const hex = v.startsWith("#") ? v : `#${v}`;
-                                                                if (hex.length === 4 || hex.length === 7) {
-                                                                    setCustomTextColor(hex);
-                                                                    sendStyleCommand({
-                                                                        kind: "textColor",
-                                                                        value: hex,
-                                                                    });
-                                                                }
-                                                            }}
-                                                            className="h-7 flex-1 rounded border border-neutral-300 bg-white/90 px-2 text-[11px] text-neutral-700 shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400"
-                                                            placeholder="#111827"
-                                                        />
-                                                    </div>
-                                                </div>
-
-                                                {/* Background */}
-                                                <div>
-                                                    <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
-                                                        Background
-                                                    </div>
-                                                    <div className="flex flex-wrap gap-1">
-                                                        {BG_COLOR_SWATCHES.map((c) => (
+                                                            >
+                                                                Normal
+                                                            </button>
                                                             <button
-                                                                key={c}
                                                                 type="button"
-                                                                className="h-5 w-5 rounded-full border border-black/10 shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-40"
-                                                                style={{ background: c }}
+                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
-                                                                        kind: "bgColor",
-                                                                        value: c,
+                                                                        kind: "letterSpacing",
+                                                                        value: "0.08em",
                                                                     })
                                                                 }
-                                                            />
-                                                        ))}
+                                                            >
+                                                                Wide
+                                                            </button>
+                                                        </div>
                                                     </div>
-                                                </div>
 
-                                                {/* Letter spacing */}
-                                                <div>
-                                                    <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
-                                                        Letter spacing
-                                                    </div>
-                                                    <div className="flex flex-wrap gap-1">
-                                                        <button
-                                                            type="button"
-                                                            className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                            disabled={closing}
-                                                            onClick={() =>
-                                                                sendStyleCommand({
-                                                                    kind: "letterSpacing",
-                                                                    value: "-0.02em",
-                                                                })
-                                                            }
-                                                        >
-                                                            Tight
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                            disabled={closing}
-                                                            onClick={() =>
-                                                                sendStyleCommand({
-                                                                    kind: "letterSpacing",
-                                                                    value: "0",
-                                                                })
-                                                            }
-                                                        >
-                                                            Normal
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                            disabled={closing}
-                                                            onClick={() =>
-                                                                sendStyleCommand({
-                                                                    kind: "letterSpacing",
-                                                                    value: "0.08em",
-                                                                })
-                                                            }
-                                                        >
-                                                            Wide
-                                                        </button>
-                                                    </div>
-                                                </div>
-
-                                                {/* Block align */}
-                                                <div>
-                                                    <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
-                                                        Block align
-                                                    </div>
-                                                    <div className="flex flex-wrap gap-1">
-                                                        <button
-                                                            type="button"
-                                                            className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                            disabled={closing}
-                                                            onClick={() =>
-                                                                sendStyleCommand({
-                                                                    kind: "blockAlign",
-                                                                    value: "left",
-                                                                })
-                                                            }
-                                                        >
-                                                            Left
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                            disabled={closing}
-                                                            onClick={() =>
-                                                                sendStyleCommand({
-                                                                    kind: "blockAlign",
-                                                                    value: "center",
-                                                                })
-                                                            }
-                                                        >
-                                                            Center
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                            disabled={closing}
-                                                            onClick={() =>
-                                                                sendStyleCommand({
-                                                                    kind: "blockAlign",
-                                                                    value: "right",
-                                                                })
-                                                            }
-                                                        >
-                                                            Right
-                                                        </button>
+                                                    {/* Block align */}
+                                                    <div>
+                                                        <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
+                                                            Block align
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-1">
+                                                            <button
+                                                                type="button"
+                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                disabled={closing}
+                                                                onClick={() =>
+                                                                    sendStyleCommand({
+                                                                        kind: "blockAlign",
+                                                                        value: "left",
+                                                                    })
+                                                                }
+                                                            >
+                                                                Left
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                disabled={closing}
+                                                                onClick={() =>
+                                                                    sendStyleCommand({
+                                                                        kind: "blockAlign",
+                                                                        value: "center",
+                                                                    })
+                                                                }
+                                                            >
+                                                                Center
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                disabled={closing}
+                                                                onClick={() =>
+                                                                    sendStyleCommand({
+                                                                        kind: "blockAlign",
+                                                                        value: "right",
+                                                                    })
+                                                                }
+                                                            >
+                                                                Right
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    )}
+                                        )}
 
-                                    {/* Mobile footer actions */}
-                                    <div className="fixed bottom-10 left-0 right-0 z-50 block border-t border-neutral-200 bg-white/90/95 px-4 py-3 shadow-[0_-4px_12px_rgba(15,23,42,0.12)] lg:hidden">
-                                        <div className="flex flex-col gap-2" id="kloner-save-changes-mobile">
-                                            <motion.button
-                                                whileHover={{ y: -0.5 }}
-                                                whileTap={{ scale: 0.99 }}
-                                                onClick={() => doSave()}
-                                                disabled={closing || savingDraft || !dirty}
-                                                aria-busy={applyingPreview}
-                                                className={`w-full rounded-md px-3 py-3 text-lg font-semibold transition focus:outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-60 ${dirty
-                                                    ? "bg-emerald-600 text-white hover:brightness-95"
-                                                    : "bg-emerald-50 text-emerald-700"
-                                                    }`}
-                                                title="Apply current draft to the live preview"
-                                                type="button"
-                                            >
-                                                {applyingPreview
-                                                    ? "Updating preview…"
-                                                    : dirty
-                                                        ? "Apply changes to preview"
-                                                        : "Preview is up to date"}
-                                            </motion.button>
 
-                                            <button
-                                                onClick={() => {
-                                                    if (dirty) setClosePrompt(true);
-                                                    else performClose("discard");
-                                                }}
-                                                disabled={closing}
-                                                type="button"
-                                                className={`w-full rounded-md px-3 py-3 text-lg font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${closing
-                                                    ? "cursor-not-allowed bg-accent text-white opacity-80"
-                                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                                                    }`}
-                                            >
-                                                ❌ Close
-                                            </button>
-                                        </div>
-                                    </div>
 
-                                    {/* Screenshot mode hint (still lives under style panel) */}
-                                    {isDevCodeMode && mode === "screenshot" && (
-                                        <div className="mt-4 text-[12px] text-slate-600">
-                                            Edit in Preview, apply with “Apply changes".
-                                        </div>
-                                    )}
-                                </>
-                            )}
+                                        {/* Screenshot mode hint (still lives under style panel) */}
+                                        {isDevCodeMode && mode === "screenshot" && (
+                                            <div className="mt-4 text-[12px] text-slate-600">
+                                                Edit in Preview, apply with “Apply changes".
+                                            </div>
+                                        )}
+                                    </>
+                                )}
 
-                            {/* CODE MODE BODY – separate branch */}
-                            {sidePanelMode === "code" && (
-                                <>
-                                    {isDevCodeMode && mode === "code" ? (
+                                {/* CODE MODE BODY – separate branch */}
+                                {isDevCodeMode && sidePanelMode === "code" && (
+                                    <>
                                         <div className="min-h-0 flex-1">
                                             <textarea
                                                 className="h-full w-full rounded border border-neutral-300 bg-white/90 p-2 font-mono text-[12px] leading-5 outline-none shadow-sm focus:ring-1 focus:ring-neutral-400 disabled:opacity-60"
@@ -4362,44 +4314,40 @@ export default function PreviewEditor({
                                                 disabled={closing}
                                             />
                                         </div>
-                                    ) : (
-                                        <div className="text-[12px] text-slate-600">
-                                            Code view is only available in dev mode.
-                                        </div>
-                                    )}
-                                </>
-                            )}
+                                    </>
+                                )}
 
-                            {sidePanelMode === "ai-library" && (
-                                <AiImageLibraryPanel
-                                    iframeRef={iframeRef}
-                                    user={user}
-                                    renderId={draftId ?? null}
-                                />
-                            )}
+                                {sidePanelMode === "ai-library" && (
+                                    <AiImageLibraryPanel
+                                        iframeRef={iframeRef}
+                                        user={user}
+                                        renderId={draftId ?? null}
+                                    />
+                                )}
 
-                            {sidePanelMode === "meta" && (
-                                <MetaSettings
-                                    key={currentPageKey}
-                                    draftId={draftId}
-                                    meta={currentSeoMeta}
-                                    uploadFileToUserBlob={uploadFileToUserBlob as any}
-                                    onSaveMeta={handleSaveMetaForCurrentPage}
-                                />
-                            )}
+                                {sidePanelMode === "meta" && (
+                                    <MetaSettings
+                                        key={currentPageKey}
+                                        draftId={draftId}
+                                        meta={currentSeoMeta}
+                                        uploadFileToUserBlob={uploadFileToUserBlob as any}
+                                        onSaveMeta={handleSaveMetaForCurrentPage}
+                                    />
+                                )}
 
-                            {sidePanelMode === "revision-chat" && (
-                                <AiEditPanel
-                                    renderId={draftId}
-                                    getSelectedBlockHtml={getSelectedBlockHtml}
-                                    selectionMeta={selectionMeta}
-                                    onAiHistoryChange={setAiHistory}
-                                    onApplyBlockHtml={applyAiEditedBlockHtml}
-                                    onAiEditingStateChange={(isEditing) => {
-                                        setAiEditing(isEditing);
-                                    }}
-                                />
-                            )}
+                                {sidePanelMode === "revision-chat" && (
+                                    <AiEditPanel
+                                        renderId={draftId}
+                                        getSelectedBlockHtml={getSelectedBlockHtml}
+                                        selectionMeta={selectionMeta}
+                                        onAiHistoryChange={setAiHistory}
+                                        onApplyBlockHtml={applyAiEditedBlockHtml}
+                                        onAiEditingStateChange={(isEditing) => {
+                                            setAiEditing(isEditing);
+                                        }}
+                                    />
+                                )}
+                            </div>
                         </motion.aside>
                     )}
 
@@ -4418,7 +4366,7 @@ export default function PreviewEditor({
 
 
                         {showSaveNudge && (
-                            <div className="mt-4 flex justify-center mt-3pointer-events-none z-[96] rounded-full bg-emerald-600 text-white hover:brightness-95 shadow-lg px-4 py-2 text-sm">
+                            <div className="mt-4 flex justify-center mt-3 pointer-events-none z-[96] rounded-full bg-emerald-600 text-white hover:brightness-95 shadow-lg px-4 py-2 text-sm">
                                 This is a one-time friendly reminder to save or apply your changes as you edit, so you don’t lose them.
                             </div>
                         )}
@@ -4561,38 +4509,28 @@ export default function PreviewEditor({
                                         drag
                                         dragControls={previewDragControls}
                                         dragListener={false}
-                                        dragMomentum={false}     // was true – turn off inertia
-                                        dragElastic={0}          // remove springy snap-back
+                                        dragMomentum={false}
+                                        dragElastic={0}
                                         className={
                                             isPreviewFullscreen
-                                                ? "flex-1 min-h-0 flex items-stretch"
-                                                : "mx-auto"
+                                                ? "flex-1 min-h-0 flex items-stretch justify-end"
+                                                : "ml-auto"
                                         }
                                         style={
                                             isPreviewFullscreen
-                                                ? {
-                                                    width: "100%",
-                                                    minWidth: 320,
-                                                    maxWidth: "100%",
-                                                }
-                                                : {
-                                                    width: devicePx,
-                                                    minWidth: 320,
-                                                    maxWidth: "100%",
-                                                }
+                                                ? { width: "100%", minWidth: 320, maxWidth: "100%" }
+                                                : { width: devicePx, minWidth: 320, maxWidth: "100%" }
                                         }
                                         initial={{ opacity: 0, y: 6 }}
                                         animate={{ opacity: 1, y: 0 }}
                                         exit={{ opacity: 0, y: -6 }}
                                         transition={{ duration: 0.22 }}
                                     >
-
                                         {device === "desktop" && (
                                             <div className="flex-1 min-h-0 rounded-xl border border-neutral-800 bg-neutral-950/90 shadow-xl overflow-hidden flex flex-col">
                                                 <div
                                                     className="flex cursor-move items-center gap-2 px-4 py-2 border-b border-neutral-800 bg-neutral-900/90"
                                                     onPointerDown={(e) => {
-                                                        // only start drag on primary button
                                                         if (e.button !== 0 || e.buttons !== 1) return;
                                                         e.preventDefault();
                                                         setIsDraggingPreview(true);
@@ -4609,37 +4547,7 @@ export default function PreviewEditor({
                                                         preview.kloner
                                                     </div>
 
-                                                    {/* undo / redo / fullscreen (desktop only) */}
-                                                    <div
-                                                        id="kloner-quick-undo"
-                                                        className="flex items-center gap-1.5"
-                                                    >
-                                                        {/* UNDO
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                const api = iframeRef.current?.contentWindow?.__klonerApi;
-                                                                if (api?.undo) api.undo();
-                                                            }}
-                                                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800/80 transition"
-                                                            aria-label="Undo"
-                                                        >
-                                                            <Undo2 className="h-5 w-5" />
-                                                        </button>
-
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                const api = iframeRef.current?.contentWindow?.__klonerApi;
-                                                                if (api?.redo) api.redo();
-                                                            }}
-                                                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800/80 transition"
-                                                            aria-label="Redo"
-                                                        >
-                                                            <Redo2 className="h-5 w-5" />
-                                                        </button> */}
-
-                                                        {/* FULLSCREEN */}
+                                                    <div id="kloner-quick-undo" className="flex items-center gap-1.5">
                                                         <button
                                                             type="button"
                                                             onClick={togglePreviewFullscreen}
@@ -4656,7 +4564,7 @@ export default function PreviewEditor({
                                                 </div>
 
                                                 <div
-                                                    className="bg-white/90 flex-1 min-h-0 overflow-auto"
+                                                    className="bg-white/90 flex-2 min-h-0 overflow-auto"
                                                     style={{ pointerEvents: isDraggingPreview ? "none" : "auto" }}
                                                 >
                                                     {iframeNode}
@@ -4853,6 +4761,46 @@ export default function PreviewEditor({
                             </button>
                         )}
 
+
+                        {/* Mobile footer actions */}
+                        <div className="fixed bottom-[70px] left-0 right-0 z-50 block bg-white/90/95 px-4 py-3 shadow-[0_-4px_12px_rgba(15,23,42,0.12)] lg:hidden">
+                            <div className="flex flex-inline gap-2" id="kloner-save-changes-mobile">
+                                <motion.button
+                                    whileHover={{ y: -0.5 }}
+                                    whileTap={{ scale: 0.99 }}
+                                    onClick={() => doSave()}
+                                    disabled={closing || savingDraft || !dirty}
+                                    aria-busy={applyingPreview}
+                                    className={`w-full rounded-md px-3 py-3 text-lg font-semibold transition focus:outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-60 ${dirty
+                                        ? "bg-emerald-600 text-white hover:brightness-95"
+                                        : "bg-emerald-50 text-emerald-700"
+                                        }`}
+                                    title="Apply current draft to the live preview"
+                                    type="button"
+                                >
+                                    {applyingPreview
+                                        ? "Updating preview…"
+                                        : dirty
+                                            ? "Apply"
+                                            : "Saved"}
+                                </motion.button>
+
+                                <button
+                                    onClick={() => {
+                                        if (dirty) setClosePrompt(true);
+                                        else performClose("discard");
+                                    }}
+                                    disabled={closing}
+                                    type="button"
+                                    className={`w-full rounded-md px-3 py-3 text-lg font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${closing
+                                        ? "cursor-not-allowed bg-accent text-white opacity-80"
+                                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                        }`}
+                                >
+                                    Close
+                                </button>
+                            </div>
+                        </div>
 
 
                         <div className="hidden lg:block mb-3" id="kloner-apply-changes">
