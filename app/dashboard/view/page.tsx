@@ -2887,6 +2887,7 @@ export default function PreviewPage(): JSX.Element {
 
                 setDeployWizardError(msg);
                 setDeployWizardLiveUrl(null);
+                setDeployWizardOpen(false)
                 push(msg, "err");
                 console.error("Deploy failed", msg);
                 return;

@@ -4,6 +4,7 @@ import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import crypto from "node:crypto";
+import admin from "firebase-admin";
 
 /* ───────── Shared constants ───────── */
 
@@ -127,4 +128,19 @@ export async function verifySession(req: NextRequest) {
 export function getAdminDb() {
     initAdmin();
     return getFirestore();
+}
+
+export async function requireAdmin(req: NextRequest) {
+    const authHeader = req.headers.get("authorization") || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+    if (!token) return { ok: false as const };
+
+    try {
+        const decoded = await admin.auth().verifyIdToken(token);
+        const claims = decoded as any;
+        if (!claims?.admin) return { ok: false as const };
+        return { ok: true as const, uid: decoded.uid };
+    } catch {
+        return { ok: false as const };
+    }
 }

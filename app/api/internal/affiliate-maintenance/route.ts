@@ -171,7 +171,6 @@ async function promotePendingToEarned(params: { limit?: number }): Promise<Promo
     await commitIfNeeded();
 
     // write/update small per-affiliate aggregates for future UI
-    // affiliate_ledger/{affiliateRef}/stats/current
     const statsNow = admin.firestore.FieldValue.serverTimestamp();
     const statBatch = db.batch();
     let statOps = 0;
