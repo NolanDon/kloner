@@ -14,6 +14,9 @@ import {
     setDoc,
     updateDoc,
     Timestamp,
+    where,
+    deleteDoc,
+    getDocs,
 } from "firebase/firestore";
 import { onAuthStateChanged, getIdTokenResult } from "firebase/auth";
 import { db, auth } from "@/lib/firebase";
@@ -21,8 +24,23 @@ import { db, auth } from "@/lib/firebase";
 async function markAgentConnected(chatId: string, assignedTo: string | null) {
     if (!chatId) return;
 
-    await updateDoc(doc(db, "support_chats", chatId), {
-        status: "open", // this is what the user widget must see to stop "connecting"
+    const chatRef = doc(db, "support_chats", chatId);
+    const msgsRef = collection(chatRef, "messages");
+
+    // 1) remove any lingering CONNECTING system message
+    const q = query(
+        msgsRef,
+        where("sender", "==", "system"),
+        where("text", "==", "__CONNECTING__")
+    );
+
+    const snap = await getDocs(q);
+    await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
+
+    // 2) flip chat state
+    await updateDoc(chatRef, {
+        status: "open",
+        mode: "agent",
         updatedAt: serverTimestamp(),
         agentConnectedAt: serverTimestamp(),
         assignedTo: assignedTo || null,
@@ -261,14 +279,13 @@ export default function AgentChatPage() {
                 createdAt: serverTimestamp(),
             });
 
-            // Update meta + inbox
             const baseUpdate = {
                 updatedAt: serverTimestamp(),
                 lastMessageFrom: "agent",
-                status: "assigned",
+                status: "open",     // ✅ consistent
                 assignedTo: agent.uid,
-                assignedToEmail: agent.email || null,
             };
+
 
             await updateDoc(chatRef, baseUpdate as any).catch((err) =>
                 console.warn("Failed to update chat meta", err)

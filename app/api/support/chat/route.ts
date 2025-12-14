@@ -20,9 +20,9 @@ const CHAT_COLLECTION = "support_chats";
 const SUPPORT_DOC_COLLECTION = "support_doc";
 
 // ---------- inactivity controls ----------
-const INACTIVITY_PROMPT_MS = 10 * 1000; // 10s
-const INACTIVITY_AUTO_CLOSE_MS = 30 * 1000; // 30s
-const PROMPT_GRACE_MS = 10 * 1000; // 10s
+const INACTIVITY_PROMPT_MS = 5 * 60 * 1000;   // 5 minutes
+const PROMPT_GRACE_MS = 2 * 60 * 1000;        // 2 minutes after the prompt
+const INACTIVITY_AUTO_CLOSE_MS = 15 * 60 * 1000; // 15 minutes total idle time
 
 const STILL_THERE_TEXT =
     "Still there? Reply to keep this chat open. If you don’t respond, it will auto-close soon.";

@@ -10,41 +10,48 @@ export async function POST(req: NextRequest) {
     try {
         const body = await req.json().catch(() => ({}));
         const chatId = typeof body.chatId === "string" ? body.chatId.trim() : "";
-        const by = body.by === "agent" ? "agent" : "user"; // default to user
+        const by =
+            body.by === "agent" || body.by === "user" || body.by === "system"
+                ? body.by
+                : "user";
 
         if (!chatId) {
-            return NextResponse.json(
-                { ok: false, error: "Missing chatId" },
-                { status: 400 },
-            );
+            return NextResponse.json({ ok: false, error: "Missing chatId" }, { status: 400 });
         }
 
         const db = getAdminDb();
+        const nowTs = admin.firestore.Timestamp.now();
+
         const chatRef = db.collection(CHAT_COLLECTION).doc(chatId);
         const inboxRef = db.collection(INBOX_COLLECTION).doc(chatId);
-        const now = admin.firestore.FieldValue.serverTimestamp();
 
-        // mark chat closed but keep history
         await chatRef.set(
             {
                 status: "closed",
-                closedAt: now,
+                closedAt: nowTs,
                 closedBy: by,
-                updatedAt: now,
+                updatedAt: nowTs,
                 unreadCount: 0,
+                inactivityPromptAt: admin.firestore.FieldValue.delete(),
+                pendingAutoCloseAt: admin.firestore.FieldValue.delete(),
             } as any,
-            { merge: true },
+            { merge: true }
         );
 
-        // remove from inbox list
-        await inboxRef.delete().catch(() => { });
+        await inboxRef.set(
+            {
+                status: "closed",
+                closedAt: nowTs,
+                closedBy: by,
+                updatedAt: nowTs,
+                unreadCount: 0,
+            } as any,
+            { merge: true }
+        );
 
         return NextResponse.json({ ok: true });
     } catch (err) {
         console.error("support close POST failed", err);
-        return NextResponse.json(
-            { ok: false, error: "Failed to close chat" },
-            { status: 500 },
-        );
+        return NextResponse.json({ ok: false, error: "Failed to close chat" }, { status: 500 });
     }
 }

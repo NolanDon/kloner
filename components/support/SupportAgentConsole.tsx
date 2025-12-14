@@ -65,7 +65,7 @@ function formatTime(ts?: Timestamp | null): string {
 export function SupportAgentConsole() {
     const router = useRouter();
     const [inbox, setInbox] = useState<InboxItem[]>([]);
-    const [filter, setFilter] = useState<"all" | "open" | "pending" | "closed">("open");
+    const [filter, setFilter] = useState<"all" | "open" | "pending" | "closed">("all");
 
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const knownChatIdsRef = useRef<Set<string>>(new Set());
