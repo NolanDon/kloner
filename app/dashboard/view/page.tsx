@@ -4333,21 +4333,21 @@ export default function PreviewPage(): JSX.Element {
                                                                             className="h-1.5 w-1.5 rounded-full"
                                                                             style={{ backgroundColor: ACCENT }}
                                                                         />
-                                                                        <span>Deploy multiple websites</span>
+                                                                        <span>200+ pro-only design tools</span>
                                                                     </li>
                                                                     <li className="flex items-center gap-1.5">
                                                                         <span
                                                                             className="h-1.5 w-1.5 rounded-full"
                                                                             style={{ backgroundColor: ACCENT }}
                                                                         />
-                                                                        <span>Access to 200+ design tools</span>
+                                                                        <span>450 preview credits per month (30 websites)</span>
                                                                     </li>
                                                                     <li className="flex items-center gap-1.5">
                                                                         <span
                                                                             className="h-1.5 w-1.5 rounded-full"
                                                                             style={{ backgroundColor: ACCENT }}
                                                                         />
-                                                                        <span>Higher preview and screenshot limits</span>
+                                                                        <span>Manage multiple websites + teams</span>
                                                                     </li>
                                                                     <li className="flex items-center gap-1.5">
                                                                         <span
@@ -4389,7 +4389,7 @@ export default function PreviewPage(): JSX.Element {
                                                             <span>
                                                                 {checkoutBusy
                                                                     ? "Redirecting to Stripe…"
-                                                                    : "Go Pro and Deploy Your Site"}
+                                                                    : "Start 7 day free trial and deploy"}
                                                             </span>
                                                             {!checkoutBusy && (
                                                                 <span
@@ -4436,7 +4436,9 @@ export default function PreviewPage(): JSX.Element {
                                                             onClick={closeDeployWizard}
                                                             className="rounded-full border border-neutral-200 px-3 py-1.5 text-sm font-semibold text-neutral-600 hover:bg-neutral-50"
                                                         >
-                                                            Close
+                                                            {!deployWizardBusy &&
+                                                                !deployWizardError ? (
+                                                                "Don't deploy my new site") : 'Close'}
                                                         </button>
                                                     </div>
                                                 </motion.div>

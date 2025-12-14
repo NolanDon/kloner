@@ -24,7 +24,7 @@ export const CREDIT_LIMITS: Record<
     },
     pro: {
         screenshotMonthly: 100,
-        previewMonthly: 400,
+        previewMonthly: 450,
         editMonthly: 300, // @ 5 credits each
     },
     agency: {

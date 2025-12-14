@@ -71,7 +71,6 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
 
         await linkCustomerToUid(customerId, uid);
     } else {
-        // Keep customer metadata up to date (safe, non-destructive)
         if (affiliateRef || affiliateSource) {
             try {
                 await stripe.customers.update(customerId, {
@@ -102,7 +101,7 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         successUrl = `${appOrigin}/dashboard/view?billing=success`;
     }
 
-    const cancelUrl = "https://kloner.app/price?billing=cancelled";
+    const cancelUrl = `${appOrigin}/price?billing=cancelled`;
 
     const baseMeta = {
         firebaseUid: uid,
@@ -111,21 +110,21 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         ...(affiliateSource ? { affiliateSource } : {}),
     };
 
+    const TRIAL_DAYS = 7;
+
     const session = await stripe.checkout.sessions.create({
         mode: "subscription",
         customer: customerId,
         client_reference_id: uid,
-        line_items: [
-            {
-                price: priceId,
-                quantity: 1,
-            },
-        ],
+        line_items: [{ price: priceId, quantity: 1 }],
         success_url: successUrl,
         cancel_url: cancelUrl,
         metadata: baseMeta,
         subscription_data: {
+            trial_period_days: TRIAL_DAYS,
             metadata: baseMeta,
+            // optional but recommended: if you require payment method up-front, keep default behavior.
+            // If you ever set `payment_method_collection: "if_required"` elsewhere, remove that for trials.
         },
     });
 

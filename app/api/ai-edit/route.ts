@@ -1050,27 +1050,27 @@ async function handlePost(req: NextRequest) {
         const isPaidTier =
             tier === "pro" || tier === "agency" || tier === "enterprise";
 
-        if (!isPaidTier) {
-            const limit = monthlyLimitFor(tier, "edit") || 0;
-            console.log("[ai-edit] blocked: tier not eligible for AI edits", {
-                uid,
-                tier,
-                limit,
-            });
+        // if (!isPaidTier) {
+        //     const limit = monthlyLimitFor(tier, "edit") || 0;
+        //     console.log("[ai-edit] blocked: tier not eligible for AI edits", {
+        //         uid,
+        //         tier,
+        //         limit,
+        //     });
 
-            return NextResponse.json(
-                {
-                    error:
-                        "AI edits are available on Pro plans and higher. Upgrade your plan to use this feature.",
-                    meta: {
-                        tier,
-                        creditsRemaining: 0,
-                        creditsLimit: limit,
-                    },
-                },
-                { status: 402 }
-            );
-        }
+        //     return NextResponse.json(
+        //         {
+        //             error:
+        //                 "AI edits are available on Pro plans and higher. Upgrade your plan to use this feature.",
+        //             meta: {
+        //                 tier,
+        //                 creditsRemaining: 0,
+        //                 creditsLimit: limit,
+        //             },
+        //         },
+        //         { status: 402 }
+        //     );
+        // }
 
         let modelResult: AiEditModelResult;
         try {

@@ -202,7 +202,7 @@ export default function NavBar(): JSX.Element {
             ) : (
               <>
                 <Link
-                  href="/dashboard"
+                  href="/dashboard/view"
                   className="hidden lg:inline text-[15px] text-white/85 hover:text-white"
                 >
                   Dashboard

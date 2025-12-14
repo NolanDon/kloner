@@ -516,8 +516,17 @@ export default function DocsPage() {
                                     <h3 className="text-sm font-semibold text-neutral-900 mb-1">
                                         Affiliates
                                     </h3>
+                                    <Link
+                                        href={"/affiliate"}
+                                    >
+                                        <div className="flex items-center bg-accent py-1 px-2 rounded-full justify-between gap-2 mb-1 max-w-[80px]">
+                                            <span className="text-[10px] text-white">
+                                                Apply Now ↗
+                                            </span>
+                                        </div>
+                                    </Link>
                                     <p className="text-[12px] text-neutral-700 leading-relaxed">
-                                        Refer builders who need speed from inspiration to deployment.
+                                        Earn high-yield monthly revenue from commissions.
                                     </p>
                                 </article>
 
@@ -790,7 +799,7 @@ function PlanCard(props: {
             <div className="mb-3 flex items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold text-neutral-900">{props.label}</h3>
                 {props.highlight && (
-                    <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold text-neutral-50">
+                    <span className="rounded-full whitespace-nowrap bg-accent px-2 py-0.5 text-[10px] font-semibold text-neutral-50">
                         Most popular
                     </span>
                 )}
@@ -870,7 +879,7 @@ function QuickStep(props: { label: string; title: string; body: string[] }) {
     return (
         <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
             <div className="mb-2 flex items-center gap-2">
-                <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold text-neutral-50">
+                <span className="rounded-full whitespace-nowrap bg-accent px-2 py-0.5 text-[10px] font-semibold text-neutral-50">
                     {props.label}
                 </span>
                 <h3 className="text-xs font-semibold text-neutral-900">{props.title}</h3>
