@@ -18,6 +18,20 @@ import {
 import { onAuthStateChanged, getIdTokenResult } from "firebase/auth";
 import { db, auth } from "@/lib/firebase";
 
+async function markAgentConnected(chatId: string, assignedTo: string | null) {
+    if (!chatId) return;
+
+    await updateDoc(doc(db, "support_chats", chatId), {
+        status: "open", // this is what the user widget must see to stop "connecting"
+        updatedAt: serverTimestamp(),
+        agentConnectedAt: serverTimestamp(),
+        assignedTo: assignedTo || null,
+        inactivityPromptAt: null,
+        pendingAutoCloseAt: null,
+    } as any);
+}
+
+
 type Sender = "user" | "ai" | "agent" | "system";
 
 type Message = {
@@ -198,12 +212,17 @@ export default function AgentChatPage() {
     async function handleAssignToMe() {
         if (!agent || !chatId) return;
         setAssigning(true);
+
         try {
             const chatRef = doc(db, "support_chats", chatId);
+
+            // 1) mark connected FIRST (kills pending autoclose + flips status to open)
+            await markAgentConnected(chatId, agent.uid);
+
+            // 2) keep your assignment fields (agent console can still show "assigned" if you want)
             await updateDoc(chatRef, {
                 assignedTo: agent.uid,
                 assignedToEmail: agent.email || null,
-                status: "assigned",
                 updatedAt: serverTimestamp(),
             });
 
@@ -212,7 +231,7 @@ export default function AgentChatPage() {
                 {
                     assignedTo: agent.uid,
                     assignedToEmail: agent.email || null,
-                    status: "assigned",
+                    status: "open",
                     updatedAt: serverTimestamp(),
                 },
                 { merge: true }

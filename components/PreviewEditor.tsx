@@ -3672,43 +3672,42 @@ export default function PreviewEditor({
                             </button>
 
                             {/* Code */}
-                            {/* Code */}
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    // if you have a devMode flag, guard here:
-                                    // if (!devMode) {
-                                    //     toast.error("Code view is only available in Dev mode.");
-                                    //     return;
-                                    // }
+                            {isDevCodeMode && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        // if you have a devMode flag, guard here:
+                                        // if (!devMode) {
+                                        //     toast.error("Code view is only available in Dev mode.");
+                                        //     return;
+                                        // }
 
-                                    const isActive =
-                                        !sidebarHidden && sidePanelMode === "code" && mode === "code";
+                                        const isActive =
+                                            !sidebarHidden && sidePanelMode === "code" && mode === "code";
 
-                                    if (isActive) {
-                                        // toggle back to preview and optionally hide sidebar
-                                        handleModeClick("preview");
-                                        // setSidebarHidden(true); // only if you want it to close
-                                    } else {
-                                        // open code mode in the sidepanel
-                                        setSidebarHidden(false);
-                                        setSidePanelMode("code");
-                                        handleModeClick("code");
-                                    }
-                                }}
-                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full bg-white/90 border text-[11px] shadow-sm transition ${mode === "code" && sidePanelMode === "code" && !sidebarHidden
-                                    ? "border-transparent bg-[#f55f2a] text-white"
-                                    : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
-                                    }`}
-                            >
-                                <Code2 className="h-4 w-4" aria-hidden="true" />
-                                <span className="sr-only">Code</span>
-                                <span className="pointer-events-none absolute left-11 top-1/2 hidden -translate-y-1/2 rounded-md bg-neutral-900 px-2 py-1 text-[10px] font-medium text-white shadow-sm group-hover:inline-block">
-                                    Code
-                                </span>
-                            </button>
-
-
+                                        if (isActive) {
+                                            // toggle back to preview and optionally hide sidebar
+                                            handleModeClick("preview");
+                                            // setSidebarHidden(true); // only if you want it to close
+                                        } else {
+                                            // open code mode in the sidepanel
+                                            setSidebarHidden(false);
+                                            setSidePanelMode("code");
+                                            handleModeClick("code");
+                                        }
+                                    }}
+                                    className={`group relative flex h-9 w-9 items-center justify-center rounded-full bg-white/90 border text-[11px] shadow-sm transition ${mode === "code" && sidePanelMode === "code" && !sidebarHidden
+                                        ? "border-transparent bg-[#f55f2a] text-white"
+                                        : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-[#f55f2a] hover:text-white"
+                                        }`}
+                                >
+                                    <Code2 className="h-4 w-4" aria-hidden="true" />
+                                    <span className="sr-only">Code</span>
+                                    <span className="pointer-events-none absolute left-11 top-1/2 hidden -translate-y-1/2 rounded-md bg-neutral-900 px-2 py-1 text-[10px] font-medium text-white shadow-sm group-hover:inline-block">
+                                        Code
+                                    </span>
+                                </button>
+                            )}
 
                             {/* Deploy */}
                             <button

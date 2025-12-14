@@ -202,7 +202,7 @@ function NavItem({
             )}
             <span className="truncate">{label}</span>
             {showBadge && (
-                <span className="ml-auto inline-flex min-w-[18px] items-center justify-center rounded-full bg-emerald-500 px-1.5 py-[1px] text-[6px] font-semibold text-white">
+                <span className="ml-auto inline-flex min-w-[18px] items-center justify-center rounded-full bg-emerald-500 px-2 py-[1.5px] text-[10px] font-semibold text-white">
                     {unreadCount}
                 </span>
             )}

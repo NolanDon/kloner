@@ -1,3 +1,7 @@
+// SupportAgentConsole.tsx (patched setChatStatus so "connecting" ends when agent marks open)
+// Only changes: setChatStatus now updates BOTH support_inbox and support_chats,
+// and assigns the agent when moving to open.
+
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -13,6 +17,7 @@ import {
     doc,
     serverTimestamp,
     updateDoc,
+    getDoc,
 } from "firebase/firestore";
 import {
     MessageCircle,
@@ -60,11 +65,8 @@ function formatTime(ts?: Timestamp | null): string {
 export function SupportAgentConsole() {
     const router = useRouter();
     const [inbox, setInbox] = useState<InboxItem[]>([]);
-    const [filter, setFilter] = useState<"all" | "open" | "pending" | "closed">(
-        "open",
-    );
+    const [filter, setFilter] = useState<"all" | "open" | "pending" | "closed">("open");
 
-    // sound only on *new* chats
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const knownChatIdsRef = useRef<Set<string>>(new Set());
     const isInitialSnapshotRef = useRef(true);
@@ -73,10 +75,7 @@ export function SupportAgentConsole() {
         const audio = new Audio("/sounds/support-new-message.mp3");
         audioRef.current = audio;
 
-        const qInbox = query(
-            collection(db, "support_inbox"),
-            orderBy("updatedAt", "desc"),
-        );
+        const qInbox = query(collection(db, "support_inbox"), orderBy("updatedAt", "desc"));
 
         const unsub = onSnapshot(
             qInbox,
@@ -85,40 +84,32 @@ export function SupportAgentConsole() {
                 const currentIds = new Set<string>();
                 let hasNewChat = false;
 
-                snap.forEach((doc) => {
-                    const data = doc.data() as DocumentData;
+                snap.forEach((docSnap) => {
+                    const data = docSnap.data() as DocumentData;
                     const updatedAt = data.updatedAt as Timestamp | undefined;
 
-                    currentIds.add(doc.id);
-                    if (!knownChatIdsRef.current.has(doc.id)) {
-                        hasNewChat = true;
-                    }
+                    currentIds.add(docSnap.id);
+                    if (!knownChatIdsRef.current.has(docSnap.id)) hasNewChat = true;
 
                     next.push({
-                        id: doc.id,
+                        id: docSnap.id,
                         userId: data.userId || null,
                         lastMessage: data.lastMessage || "",
                         updatedAt: updatedAt ?? null,
                         status: (data.status as InboxItem["status"]) || "open",
-                        unreadCount:
-                            typeof data.unreadCount === "number"
-                                ? data.unreadCount
-                                : 0,
+                        unreadCount: typeof data.unreadCount === "number" ? data.unreadCount : 0,
                         assignedTo: data.assignedTo || null,
                     });
                 });
 
                 setInbox(next);
 
-                // skip first snapshot (initial load)
                 if (!isInitialSnapshotRef.current && hasNewChat && audioRef.current) {
                     audioRef.current.play().catch(() => { });
                 }
 
                 knownChatIdsRef.current = currentIds;
-                if (isInitialSnapshotRef.current) {
-                    isInitialSnapshotRef.current = false;
-                }
+                if (isInitialSnapshotRef.current) isInitialSnapshotRef.current = false;
             },
             (err) => {
                 console.error("support/agent inbox onSnapshot failed", err);
@@ -138,19 +129,51 @@ export function SupportAgentConsole() {
         [inbox],
     );
 
-    async function setChatStatus(chatId: string, status: "open" | "pending" | "closed") {
+    async function setChatStatus(chatId: string, nextStatus: "open" | "pending" | "closed") {
         if (!chatId) return;
 
-        await updateDoc(doc(db, "support_inbox", chatId), {
-            status,
+        const inboxRef = doc(db, "support_inbox", chatId);
+        const chatRef = doc(db, "support_chats", chatId);
+
+        const inboxSnap = await getDoc(inboxRef);
+        const inboxData = inboxSnap.exists() ? (inboxSnap.data() as any) : {};
+        const currentAssignedTo = typeof inboxData?.assignedTo === "string" ? inboxData.assignedTo : null;
+
+        const agentId =
+            typeof window !== "undefined"
+                ? window.localStorage.getItem("kloner_support_agent_id")
+                : null;
+
+        const assignedTo =
+            nextStatus === "open"
+                ? currentAssignedTo || agentId || null
+                : currentAssignedTo || null;
+
+        await updateDoc(inboxRef, {
+            status: nextStatus,
             updatedAt: serverTimestamp(),
-        });
+            ...(nextStatus === "open" ? { assignedTo } : {}),
+        } as any);
+
+        // This is what makes the user widget stop showing "Connecting..."
+        await updateDoc(chatRef, {
+            status: nextStatus,
+            updatedAt: serverTimestamp(),
+            ...(nextStatus === "open"
+                ? {
+                    agentConnectedAt: serverTimestamp(),
+                    assignedTo,
+                    // hard kill any inactivity timers on pickup
+                    inactivityPromptAt: null,
+                    pendingAutoCloseAt: null,
+                }
+                : {}),
+        } as any);
     }
 
     return (
         <div className="h-screen bg-white">
             <div className="mx-auto flex h-full max-w-6xl flex-col px-4 py-6">
-                {/* Header */}
                 <header className="mb-4 flex items-center justify-between gap-3">
                     <div>
                         <div className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
@@ -165,21 +188,16 @@ export function SupportAgentConsole() {
                         <div className="flex items-center gap-1 rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1">
                             <Users className="h-3 w-3" />
                             <span>Active chats</span>
-                            <span className="font-semibold text-neutral-800">
-                                {inbox.length}
-                            </span>
+                            <span className="font-semibold text-neutral-800">{inbox.length}</span>
                         </div>
                         <div className="flex items-center gap-1 rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1">
                             <Circle className="h-2 w-2 fill-emerald-400 text-emerald-500" />
                             <span>Unread</span>
-                            <span className="font-semibold text-neutral-800">
-                                {totalUnread}
-                            </span>
+                            <span className="font-semibold text-neutral-800">{totalUnread}</span>
                         </div>
                     </div>
                 </header>
 
-                {/* Toolbar */}
                 <div className="mb-3 flex items-center justify-between gap-3 text-xs">
                     <div className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1">
                         <Filter className="h-3 w-3 text-neutral-500" />
@@ -235,7 +253,6 @@ export function SupportAgentConsole() {
                     </div>
                 </div>
 
-                {/* Inbox list */}
                 <div className="flex-1 overflow-hidden rounded-2xl border border-neutral-200 bg-white">
                     {filteredInbox.length === 0 ? (
                         <div className="grid h-full place-items-center px-6 py-10 text-xs text-neutral-500">
@@ -244,17 +261,16 @@ export function SupportAgentConsole() {
                     ) : (
                         <ul className="max-h-full divide-y divide-neutral-100 overflow-y-auto">
                             {filteredInbox.map((chat) => {
-                                const status = chat.status || "open";
-                                const statusClass = STATUS_COLORS[status];
-                                const unread = typeof chat.unreadCount === "number" ? chat.unreadCount : 0;
+                                const st = chat.status || "open";
+                                const statusClass = STATUS_COLORS[st];
+                                const unread =
+                                    typeof chat.unreadCount === "number" ? chat.unreadCount : 0;
 
                                 return (
                                     <li key={chat.id}>
                                         <button
                                             type="button"
-                                            onClick={() =>
-                                                router.push(`/support/agent/${chat.id}`)
-                                            }
+                                            onClick={() => router.push(`/support/agent/${chat.id}`)}
                                             className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-neutral-50"
                                         >
                                             <div className="min-w-0 flex-1">
@@ -266,15 +282,14 @@ export function SupportAgentConsole() {
                                                         className={`inline-flex items-center gap-1 rounded-full border px-2 py-[2px] text-[10px] font-semibold ${statusClass}`}
                                                     >
                                                         <span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
-                                                        <span className="capitalize">{status}</span>
+                                                        <span className="capitalize">{st}</span>
                                                     </span>
 
-                                                    {/* status actions */}
                                                     <div
                                                         className="inline-flex items-center gap-1"
                                                         onClick={(e) => e.stopPropagation()}
                                                     >
-                                                        {status !== "closed" ? (
+                                                        {st !== "closed" ? (
                                                             <button
                                                                 type="button"
                                                                 title="Close"
@@ -296,7 +311,7 @@ export function SupportAgentConsole() {
                                                             </button>
                                                         )}
 
-                                                        {status !== "pending" ? (
+                                                        {st !== "pending" ? (
                                                             <button
                                                                 type="button"
                                                                 title="Mark pending"
@@ -319,17 +334,16 @@ export function SupportAgentConsole() {
                                                         )}
                                                     </div>
 
-
-                                                    {status === "open" && unread > 0 ? (
+                                                    {st === "open" && unread > 0 ? (
                                                         <span className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-emerald-500 px-1.5 py-[1px] text-[10px] font-semibold text-white">
                                                             {unread}
                                                         </span>
                                                     ) : null}
                                                 </div>
+
                                                 <div className="mt-1 flex items-center gap-2 text-[11px] text-neutral-500">
                                                     <span className="line-clamp-1">
-                                                        {chat.lastMessage ||
-                                                            "No recent message"}
+                                                        {chat.lastMessage || "No recent message"}
                                                     </span>
                                                 </div>
                                             </div>

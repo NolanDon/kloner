@@ -13,13 +13,19 @@ type Sender = "user" | "ai" | "agent" | "system";
 type MessageDoc = {
     sender: Sender;
     text: string;
-    createdAt: FirebaseFirestore.FieldValue;
+    createdAt: FirebaseFirestore.Timestamp;
 };
 
 const CHAT_COLLECTION = "support_chats";
 const SUPPORT_DOC_COLLECTION = "support_doc";
 
-// ---------- small helpers ----------
+// ---------- inactivity controls ----------
+const INACTIVITY_PROMPT_MS = 10 * 1000; // 10s
+const INACTIVITY_AUTO_CLOSE_MS = 30 * 1000; // 30s
+const PROMPT_GRACE_MS = 10 * 1000; // 10s
+
+const STILL_THERE_TEXT =
+    "Still there? Reply to keep this chat open. If you don’t respond, it will auto-close soon.";
 
 type SupportDoc = {
     id: string;
@@ -43,9 +49,7 @@ function cosineSim(a: number[], b: number[]): number {
     return dot / (Math.sqrt(na) * Math.sqrt(nb));
 }
 
-async function loadSupportDocs(
-    db: FirebaseFirestore.Firestore,
-): Promise<SupportDoc[]> {
+async function loadSupportDocs(db: FirebaseFirestore.Firestore): Promise<SupportDoc[]> {
     const snap = await db.collection(SUPPORT_DOC_COLLECTION).get();
     return snap.docs
         .map((d) => {
@@ -77,58 +81,175 @@ async function buildContextFromDocs(question: string): Promise<string | null> {
     if (!queryEmbedding) return null;
 
     const ranked = docs
-        .map((doc) => ({
-            ...doc,
-            score: cosineSim(queryEmbedding!, doc.embedding),
-        }))
+        .map((doc) => ({ ...doc, score: cosineSim(queryEmbedding!, doc.embedding) }))
         .sort((a, b) => b.score - a.score);
 
     const top = ranked.slice(0, 3);
     if (!top.length || top[0].score < 0.1) return null;
 
     return top
-        .map(
-            (d) =>
-                `### ${d.id}\n` +
-                d.text.trim().slice(0, 3000),
-        )
+        .map((d) => `### ${d.id}\n` + d.text.trim().slice(0, 3000))
         .join("\n\n---\n\n");
 }
 
-// ---------- GET: load chat + messages ----------
+function tsToMs(v: any): number | null {
+    try {
+        if (!v) return null;
+        if (typeof v === "number") return Number.isFinite(v) ? v : null;
+        if (typeof v?.toMillis === "function") return v.toMillis();
+        if (typeof v?.toDate === "function") return v.toDate().getTime();
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+async function maybeAutoManageInactivity(
+    chatRef: FirebaseFirestore.DocumentReference,
+    chatData: any,
+) {
+    const status =
+        (chatData.status as "open" | "pending" | "closed" | undefined) || "open";
+    if (status === "closed") return;
+
+    const mode = (chatData.mode as "ai" | "agent" | undefined) || "ai";
+
+    // Never prompt/close while waiting for a human or during live agent mode.
+    // This prevents inbox entries "disappearing" (status flipping to closed) while connecting.
+    if (mode === "agent" || status === "pending") {
+        const hasTimers =
+            chatData.inactivityPromptAt != null || chatData.pendingAutoCloseAt != null;
+        if (hasTimers) {
+            const nowTs = admin.firestore.Timestamp.now();
+            await chatRef.set(
+                {
+                    updatedAt: nowTs,
+                    lastActivityAt: nowTs,
+                    inactivityPromptAt: admin.firestore.FieldValue.delete(),
+                    pendingAutoCloseAt: admin.firestore.FieldValue.delete(),
+                } as any,
+                { merge: true },
+            );
+        }
+        return;
+    }
+
+    const nowMs = Date.now();
+    const nowTs = admin.firestore.Timestamp.now();
+
+    let lastActivityMs =
+        tsToMs(chatData.lastActivityAt) ??
+        tsToMs(chatData.updatedAt) ??
+        tsToMs(chatData.lastMessageAt) ??
+        null;
+
+    if (!lastActivityMs) {
+        const lastMsgSnap = await chatRef
+            .collection("messages")
+            .orderBy("createdAt", "desc")
+            .limit(1)
+            .get();
+        const lastMsg = lastMsgSnap.docs[0]?.data() as any;
+        lastActivityMs = tsToMs(lastMsg?.createdAt) ?? null;
+    }
+    if (!lastActivityMs) return;
+
+    const idleMs = nowMs - lastActivityMs;
+
+    const pendingAutoCloseAtMs = tsToMs(chatData.pendingAutoCloseAt);
+    if (pendingAutoCloseAtMs && nowMs >= pendingAutoCloseAtMs) {
+        await chatRef.set(
+            {
+                status: "closed",
+                closedAt: nowTs,
+                closedBy: "system",
+                updatedAt: nowTs,
+                lastActivityAt: nowTs,
+                inactivityPromptAt: admin.firestore.FieldValue.delete(),
+                pendingAutoCloseAt: admin.firestore.FieldValue.delete(),
+            } as any,
+            { merge: true },
+        );
+        return;
+    }
+
+    if (idleMs >= INACTIVITY_AUTO_CLOSE_MS) {
+        await chatRef.set(
+            {
+                status: "closed",
+                closedAt: nowTs,
+                closedBy: "system",
+                updatedAt: nowTs,
+                lastActivityAt: nowTs,
+                inactivityPromptAt: admin.firestore.FieldValue.delete(),
+                pendingAutoCloseAt: admin.firestore.FieldValue.delete(),
+            } as any,
+            { merge: true },
+        );
+        return;
+    }
+
+    if (idleMs >= INACTIVITY_PROMPT_MS) {
+        const inactivityPromptAtMs = tsToMs(chatData.inactivityPromptAt);
+        const promptRecently =
+            inactivityPromptAtMs != null && nowMs - inactivityPromptAtMs < INACTIVITY_PROMPT_MS;
+
+        if (!promptRecently) {
+            const promptMsg: MessageDoc = {
+                sender: "system",
+                text: STILL_THERE_TEXT,
+                createdAt: nowTs,
+            };
+
+            await chatRef.collection("messages").add(promptMsg);
+
+            await chatRef.set(
+                {
+                    updatedAt: nowTs,
+                    lastActivityAt: nowTs,
+                    inactivityPromptAt: nowTs,
+                    pendingAutoCloseAt: admin.firestore.Timestamp.fromMillis(
+                        nowMs + PROMPT_GRACE_MS,
+                    ),
+                    lastMessageFrom: "system",
+                    lastMessage: STILL_THERE_TEXT,
+                    lastMessageAt: nowTs,
+                } as any,
+                { merge: true },
+            );
+        }
+    }
+}
 
 export async function GET(req: NextRequest) {
     try {
         const { searchParams } = new URL(req.url);
         const chatId = searchParams.get("chatId");
         if (!chatId) {
-            return NextResponse.json(
-                { ok: false, error: "Missing chatId" },
-                { status: 400 },
-            );
+            return NextResponse.json({ ok: false, error: "Missing chatId" }, { status: 400 });
         }
 
         const db = getAdminDb();
         const chatRef = db.collection(CHAT_COLLECTION).doc(chatId);
         const chatSnap = await chatRef.get();
         if (!chatSnap.exists) {
-            return NextResponse.json(
-                { ok: false, error: "Chat not found" },
-                { status: 404 },
-            );
+            return NextResponse.json({ ok: false, error: "Chat not found" }, { status: 404 });
         }
 
-        const chatData = chatSnap.data() || {};
+        const chatDataBefore = chatSnap.data() || {};
+        await maybeAutoManageInactivity(chatRef, chatDataBefore);
+
+        const chatSnap2 = await chatRef.get();
+        const chatData = chatSnap2.data() || {};
 
         const status =
             (chatData.status as "open" | "pending" | "closed" | undefined) || "open";
-
         const mode = (chatData.mode as "ai" | "agent") || "ai";
 
         const msgsSnap = await chatRef
             .collection("messages")
             .orderBy("createdAt", "asc")
-            .limit(100)
+            .limit(200)
             .get();
 
         const messages = msgsSnap.docs.map((d) => {
@@ -136,56 +257,26 @@ export async function GET(req: NextRequest) {
             return {
                 id: d.id,
                 sender: data.sender as Sender,
-                status,
                 text: data.text as string,
                 createdAt: (data.createdAt?.toDate?.() || new Date()).toISOString(),
             };
         });
 
-        return NextResponse.json({
-            ok: true,
-            chatId,
-            mode,
-            messages,
-        });
+        return NextResponse.json({ ok: true, chatId, mode, status, messages });
     } catch (err: any) {
         console.error("support chat GET failed", err);
-        return NextResponse.json(
-            { ok: false, error: "Failed to load chat" },
-            { status: 500 },
-        );
+        return NextResponse.json({ ok: false, error: "Failed to load chat" }, { status: 500 });
     }
 }
-
-// ---------- POST: add user message + AI reply (with docs) ----------
 
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json().catch(() => ({}));
         const textRaw = typeof body.text === "string" ? body.text.trim() : "";
-        const existingChatId =
-            typeof body.chatId === "string" ? body.chatId.trim() : "";
-
-        const status =
-            (textRaw.status as "open" | "pending" | "closed" | undefined) || "open";
-
-        if (status === "closed") {
-            return NextResponse.json(
-                {
-                    ok: false,
-                    error:
-                        "This conversation has been closed. Please start a new chat if you need more help.",
-                    status: "closed",
-                },
-                { status: 409 },
-            );
-        }
+        const existingChatId = typeof body.chatId === "string" ? body.chatId.trim() : "";
 
         if (!textRaw) {
-            return NextResponse.json(
-                { ok: false, error: "Missing message text" },
-                { status: 400 },
-            );
+            return NextResponse.json({ ok: false, error: "Missing message text" }, { status: 400 });
         }
 
         const db = getAdminDb();
@@ -202,46 +293,69 @@ export async function POST(req: NextRequest) {
             chatRef = db.collection(CHAT_COLLECTION).doc();
         }
 
-        const now = admin.firestore.FieldValue.serverTimestamp();
+        const nowTs = admin.firestore.Timestamp.now();
 
-        // new chat – initialise mode as "ai"
+        if (existingData) {
+            const existingStatus =
+                (existingData.status as "open" | "pending" | "closed" | undefined) || "open";
+            if (existingStatus === "closed") {
+                return NextResponse.json(
+                    {
+                        ok: false,
+                        error:
+                            "This conversation has been closed. Please start a new chat if you need more help.",
+                        status: "closed",
+                    },
+                    { status: 409 },
+                );
+            }
+        }
+
         if (!existingData) {
             await chatRef.set(
                 {
                     userId: uid,
-                    createdAt: now,
-                    updatedAt: now,
+                    createdAt: nowTs,
+                    updatedAt: nowTs,
+                    lastActivityAt: nowTs,
                     mode: "ai",
                     status: "open",
                     lastMessageFrom: "user",
+                    lastMessage: textRaw,
+                    lastMessageAt: nowTs,
+                    inactivityPromptAt: admin.firestore.FieldValue.delete(),
+                    pendingAutoCloseAt: admin.firestore.FieldValue.delete(),
                 },
                 { merge: true },
             );
         } else {
-            // existing chat – DO NOT touch `mode` here
             await chatRef.set(
                 {
                     userId: existingData.userId ?? uid ?? null,
-                    updatedAt: now,
+                    updatedAt: nowTs,
+                    lastActivityAt: nowTs,
                     status: existingData.status || "open",
                     lastMessageFrom: "user",
+                    lastMessage: textRaw,
+                    lastMessageAt: nowTs,
+                    inactivityPromptAt: admin.firestore.FieldValue.delete(),
+                    pendingAutoCloseAt: admin.firestore.FieldValue.delete(),
                 },
                 { merge: true },
             );
         }
 
-        // reload chat to get latest mode (including "agent" after escalation)
         const chatSnap = await chatRef.get();
         const chatData = chatSnap.data() || {};
         const mode = (chatData.mode as "ai" | "agent") || "ai";
 
-        const userMsg: MessageDoc = {
+        await chatRef.collection("messages").add({
             sender: "user",
             text: textRaw,
-            createdAt: now,
-        };
-        const userMsgRef = await chatRef.collection("messages").add(userMsg);
+            createdAt: nowTs,
+        } as MessageDoc);
 
+        // If we're in agent lane, do not auto-reply with AI.
         let aiMsgId: string | null = null;
 
         if (mode === "ai") {
@@ -260,16 +374,12 @@ export async function POST(req: NextRequest) {
                         : sender === "ai" || sender === "agent"
                             ? "assistant"
                             : "system";
-                return {
-                    role,
-                    text: data.text as string,
-                };
+                return { role, text: data.text as string };
             });
 
             const contextBlob = await buildContextFromDocs(textRaw);
 
             const messagesForModel: any[] = [];
-
             const baseSystem =
                 "You are the support assistant for Kloner, a tool for cloning and editing websites. " +
                 "Answer ONLY using the Kloner docs provided. If the answer is not clearly in the docs, " +
@@ -283,12 +393,7 @@ export async function POST(req: NextRequest) {
             if (contextBlob) {
                 messagesForModel.push({
                     role: "system",
-                    content: [
-                        {
-                            type: "input_text",
-                            text: `Kloner support docs:\n\n${contextBlob}`,
-                        },
-                    ],
+                    content: [{ type: "input_text", text: `Kloner support docs:\n\n${contextBlob}` }],
                 });
             }
 
@@ -297,12 +402,7 @@ export async function POST(req: NextRequest) {
                 const contentType = isAssistant ? "output_text" : "input_text";
                 messagesForModel.push({
                     role: msg.role,
-                    content: [
-                        {
-                            type: contentType,
-                            text: msg.text,
-                        },
-                    ],
+                    content: [{ type: contentType, text: msg.text }],
                 });
             }
 
@@ -312,22 +412,35 @@ export async function POST(req: NextRequest) {
             });
 
             const aiText = String(completion.output_text || "").trim();
-
             if (aiText) {
-                const aiMsg: MessageDoc = {
+                const aiTs = admin.firestore.Timestamp.now();
+                const aiRef = await chatRef.collection("messages").add({
                     sender: "ai",
                     text: aiText,
-                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                };
-                const aiRef = await chatRef.collection("messages").add(aiMsg);
+                    createdAt: aiTs,
+                } as MessageDoc);
                 aiMsgId = aiRef.id;
+
+                await chatRef.set(
+                    {
+                        updatedAt: aiTs,
+                        lastActivityAt: aiTs,
+                        lastMessageFrom: "ai",
+                        lastMessage: aiText,
+                        lastMessageAt: aiTs,
+                    },
+                    { merge: true },
+                );
             }
         }
 
         await chatRef.set(
             {
-                updatedAt: now,
+                updatedAt: nowTs,
+                lastActivityAt: nowTs,
                 lastMessageFrom: "user",
+                lastMessage: textRaw,
+                lastMessageAt: nowTs,
             },
             { merge: true },
         );
@@ -335,7 +448,7 @@ export async function POST(req: NextRequest) {
         const finalSnap = await chatRef
             .collection("messages")
             .orderBy("createdAt", "asc")
-            .limit(100)
+            .limit(200)
             .get();
 
         const messages = finalSnap.docs.map((d) => {
@@ -348,20 +461,19 @@ export async function POST(req: NextRequest) {
             };
         });
 
+        const status =
+            (chatData.status as "open" | "pending" | "closed" | undefined) || "open";
+
         return NextResponse.json({
             ok: true,
             chatId: chatRef.id,
             mode,
-            messages,
-            lastUserId: userMsgRef.id,
             status,
+            messages,
             lastAiId: aiMsgId,
         });
     } catch (err: any) {
         console.error("support chat POST failed", err);
-        return NextResponse.json(
-            { ok: false, error: "Failed to send message" },
-            { status: 500 },
-        );
+        return NextResponse.json({ ok: false, error: "Failed to send message" }, { status: 500 });
     }
 }

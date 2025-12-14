@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { SupportAgentConsole } from "@/components/support/SupportAgentConsole";
-// import your existing agent UI:
 
 type GateState = "loading" | "allowed" | "denied";
 

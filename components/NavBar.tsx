@@ -116,7 +116,7 @@ export default function NavBar(): JSX.Element {
 
   return (
     <div
-      className="p-4 fixed left-0 right-0 top-5 z-50"
+      className="p-1 md:p-4 fixed left-0 right-0 top-1 md:top-5 z-50"
       onMouseLeave={() => setOpen(false)}
     >
       <div className="mx-auto max-w-6xl">

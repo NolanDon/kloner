@@ -16,17 +16,30 @@ type ApiSendResponse = {
     ok: boolean;
     chatId: string;
     mode: ChatMode;
-    messages: ChatMessage[];
     status?: "open" | "pending" | "closed";
+    messages: ChatMessage[];
 };
 
 const STORAGE_KEY = "kloner_support_chat_id";
+const CONNECTING_TEXT = "__CONNECTING__";
+
+function ConnectingDots() {
+    return (
+        <div className="flex items-center gap-1.5">
+            <span className="sr-only">Connecting</span>
+            <span className="h-1.5 w-1.5 rounded-full bg-neutral-400 animate-[klDot_1.1s_ease-in-out_infinite]" />
+            <span className="h-1.5 w-1.5 rounded-full bg-neutral-400 animate-[klDot_1.1s_ease-in-out_0.18s_infinite]" />
+            <span className="h-1.5 w-1.5 rounded-full bg-neutral-400 animate-[klDot_1.1s_ease-in-out_0.36s_infinite]" />
+        </div>
+    );
+}
 
 export default function ChatWidgetProvider() {
     const [open, setOpen] = useState(false);
     const [chatId, setChatId] = useState<string | null>(null);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [mode, setMode] = useState<ChatMode>("ai");
+    const [status, setStatus] = useState<"open" | "pending" | "closed">("open");
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
     const [escalating, setEscalating] = useState(false);
@@ -34,7 +47,6 @@ export default function ChatWidgetProvider() {
     const [chatClosed, setChatClosed] = useState(false);
     const bottomRef = useRef<HTMLDivElement | null>(null);
 
-    // Restore chatId from localStorage
     useEffect(() => {
         if (typeof window === "undefined") return;
         const saved = window.localStorage.getItem(STORAGE_KEY);
@@ -57,48 +69,39 @@ export default function ChatWidgetProvider() {
             });
 
             if (res.status === 404) {
-                console.warn(
-                    "[support] chat not found, clearing stored chatId",
-                    existingChatId,
-                );
                 if (typeof window !== "undefined") {
                     window.localStorage.removeItem(STORAGE_KEY);
                 }
                 setChatId(null);
                 setMessages([]);
                 setMode("ai");
+                setStatus("open");
                 setChatClosed(false);
                 return;
             }
 
-            if (!res.ok) {
-                console.warn(
-                    "[support] failed to fetch existing chat",
-                    existingChatId,
-                    res.status,
-                );
-                return;
-            }
+            if (!res.ok) return;
 
             const data: ApiSendResponse = await res.json();
-            setMessages(data.messages);
+            setMessages(data.messages || []);
             setMode(data.mode);
+            setStatus(data.status || "open");
             setChatId(data.chatId);
-            setChatClosed(data.status === "closed");
-        } catch (err) {
-            console.warn("[support] fetchExisting threw", err);
+            setChatClosed((data.status || "open") === "closed");
+        } catch {
+            // ignore
         }
     }
 
-    // Poll for new messages while in agent mode so the user sees agent replies
     useEffect(() => {
-        if (!chatId || mode !== "agent") return;
+        if (!open || !chatId) return;
 
         let cancelled = false;
         let timeoutId: NodeJS.Timeout | null = null;
 
         const tick = async () => {
             if (cancelled) return;
+
             try {
                 const res = await fetch(
                     "/api/support/chat?chatId=" + encodeURIComponent(chatId),
@@ -112,6 +115,7 @@ export default function ChatWidgetProvider() {
                     setChatId(null);
                     setMessages([]);
                     setMode("ai");
+                    setStatus("open");
                     setChatClosed(false);
                     return;
                 }
@@ -119,16 +123,25 @@ export default function ChatWidgetProvider() {
                 if (!res.ok) return;
 
                 const data: ApiSendResponse = await res.json();
-                setMessages(data.messages);
+
+                setMessages((prev) => {
+                    // Never "shrink" during polling if the server temporarily returns fewer rows.
+                    const incoming = data.messages || [];
+                    if (incoming.length >= prev.length) return incoming;
+                    // If it shrunk, keep prev and append any truly new messages by id.
+                    const seen = new Set(prev.map((m) => m.id));
+                    const extras = incoming.filter((m) => !seen.has(m.id));
+                    return extras.length ? [...prev, ...extras] : prev;
+                });
+
                 setMode(data.mode);
+                setStatus(data.status || "open");
                 setChatId(data.chatId);
-                setChatClosed(data.status === "closed");
+                setChatClosed((data.status || "open") === "closed");
             } catch {
-                // ignore transient errors
+                // ignore
             } finally {
-                if (!cancelled) {
-                    timeoutId = setTimeout(tick, 4000);
-                }
+                if (!cancelled) timeoutId = setTimeout(tick, 2500);
             }
         };
 
@@ -138,7 +151,7 @@ export default function ChatWidgetProvider() {
             cancelled = true;
             if (timeoutId) clearTimeout(timeoutId);
         };
-    }, [chatId, mode]);
+    }, [open, chatId]);
 
     function pushClosedSystemMessage() {
         const sys: ChatMessage = {
@@ -157,7 +170,6 @@ export default function ChatWidgetProvider() {
 
         setError(null);
 
-        // If chat is already known closed, do not even hit the API.
         if (chatClosed) {
             setInput("");
             pushClosedSystemMessage();
@@ -180,19 +192,14 @@ export default function ChatWidgetProvider() {
             const res = await fetch("/api/support/chat", {
                 method: "POST",
                 headers: { "content-type": "application/json" },
-                body: JSON.stringify({
-                    chatId,
-                    text,
-                }),
+                body: JSON.stringify({ chatId, text }),
             });
 
-            // Special case: backend says chat is closed (409)
             if (res.status === 409) {
                 const body = await res.json().catch(() => ({} as any));
-
                 setChatClosed(true);
+                setStatus("closed");
 
-                // remove optimistic user message and show system notice instead
                 setMessages((prev) => {
                     const withoutTemp = prev.filter((m) => m.id !== tempId);
                     const sys: ChatMessage = {
@@ -205,7 +212,6 @@ export default function ChatWidgetProvider() {
                     };
                     return [...withoutTemp, sys];
                 });
-
                 return;
             }
 
@@ -215,10 +221,12 @@ export default function ChatWidgetProvider() {
             }
 
             const data: ApiSendResponse = await res.json();
+
             setChatId(data.chatId);
-            setMessages(data.messages);
             setMode(data.mode);
-            setChatClosed(data.status === "closed" || false);
+            setStatus(data.status || "open");
+            setChatClosed((data.status || "open") === "closed");
+            setMessages(data.messages || []);
 
             if (typeof window !== "undefined") {
                 window.localStorage.setItem(STORAGE_KEY, data.chatId);
@@ -232,6 +240,7 @@ export default function ChatWidgetProvider() {
 
     async function handleEscalate() {
         if (!chatId || mode === "agent" || escalating || chatClosed) return;
+
         setEscalating(true);
         setError(null);
 
@@ -247,19 +256,11 @@ export default function ChatWidgetProvider() {
                 throw new Error(body?.error || "Failed to escalate");
             }
 
-            const data: { ok: boolean; mode: ChatMode } = await res.json();
-            setMode(data.mode);
+            const data: { ok: boolean; mode: ChatMode; status?: "pending" | "open" | "closed" } =
+                await res.json();
 
-            setMessages((prev) => [
-                ...prev,
-                {
-                    id: `sys-${Date.now()}`,
-                    sender: "system",
-                    text:
-                        "You will be connected to a human. You can keep typing while we notify someone on the team.",
-                    createdAt: new Date().toISOString(),
-                },
-            ]);
+            setMode(data.mode);
+            setStatus(data.status || "pending");
         } catch (err: any) {
             setError(err.message || "Failed to escalate");
         } finally {
@@ -271,10 +272,9 @@ export default function ChatWidgetProvider() {
         if (!chatId) {
             setMessages([]);
             setMode("ai");
+            setStatus("open");
             setChatClosed(false);
-            if (typeof window !== "undefined") {
-                window.localStorage.removeItem(STORAGE_KEY);
-            }
+            if (typeof window !== "undefined") window.localStorage.removeItem(STORAGE_KEY);
             return;
         }
 
@@ -285,20 +285,38 @@ export default function ChatWidgetProvider() {
                 body: JSON.stringify({ chatId, by: "user" }),
             });
         } catch {
-            // ignore; leaving is best-effort
+            // ignore
         }
 
         setMessages([]);
         setMode("ai");
+        setStatus("open");
         setChatId(null);
         setChatClosed(false);
-        if (typeof window !== "undefined") {
-            window.localStorage.removeItem(STORAGE_KEY);
-        }
+        if (typeof window !== "undefined") window.localStorage.removeItem(STORAGE_KEY);
     }
+
+    const isConnectingToHuman = mode === "agent" && status === "pending";
 
     return (
         <>
+            <style jsx global>{`
+                @keyframes klDot {
+                    0% {
+                        opacity: 0.25;
+                        transform: translateY(0);
+                    }
+                    50% {
+                        opacity: 1;
+                        transform: translateY(-2px);
+                    }
+                    100% {
+                        opacity: 0.25;
+                        transform: translateY(0);
+                    }
+                }
+            `}</style>
+
             <button
                 type="button"
                 onClick={() => setOpen((o) => !o)}
@@ -316,9 +334,10 @@ export default function ChatWidgetProvider() {
                             </div>
                             <div className="text-sm font-medium text-neutral-900">
                                 {mode === "ai" ? "AI assistant" : "Live agent"}
-                                {chatClosed ? " · Closed" : ""}
+                                {chatClosed ? " · Closed" : isConnectingToHuman ? " · Connecting" : ""}
                             </div>
                         </div>
+
                         {chatId && (
                             <button
                                 type="button"
@@ -328,6 +347,7 @@ export default function ChatWidgetProvider() {
                                 Leave chat
                             </button>
                         )}
+
                         {mode === "ai" && !chatClosed && (
                             <button
                                 type="button"
@@ -349,27 +369,38 @@ export default function ChatWidgetProvider() {
                             </div>
                         )}
 
-                        {messages.map((m) => (
-                            <div
-                                key={m.id}
-                                className={
-                                    m.sender === "user"
-                                        ? "flex justify-end"
-                                        : "flex justify-start"
-                                }
-                            >
+                        {messages.map((m) => {
+                            const isUser = m.sender === "user";
+                            const isSystem = m.sender === "system";
+                            const isConnecting = isSystem && m.text === CONNECTING_TEXT;
+
+                            return (
                                 <div
-                                    className={`max-w-[80%] rounded-2xl px-3 py-2 ${m.sender === "user"
-                                            ? "bg-accent text-white"
-                                            : m.sender === "system"
-                                                ? "bg-neutral-100 text-neutral-700 text-xs"
-                                                : "bg-neutral-100 text-neutral-900"
-                                        }`}
+                                    key={m.id}
+                                    className={isUser ? "flex justify-end" : "flex justify-start"}
                                 >
-                                    <p className="whitespace-pre-wrap break-words">{m.text}</p>
+                                    <div
+                                        className={`max-w-[80%] rounded-2xl px-3 py-2 ${isUser
+                                                ? "bg-accent text-white"
+                                                : isSystem
+                                                    ? "bg-neutral-100 text-neutral-700 text-xs"
+                                                    : "bg-neutral-100 text-neutral-900"
+                                            }`}
+                                    >
+                                        {isConnecting ? (
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[11px] text-neutral-600">
+                                                    Connecting to a human
+                                                </span>
+                                                <ConnectingDots />
+                                            </div>
+                                        ) : (
+                                            <p className="whitespace-pre-wrap break-words">{m.text}</p>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
 
                         {loading && (
                             <div className="flex justify-start">
@@ -396,17 +427,19 @@ export default function ChatWidgetProvider() {
                         }}
                     >
                         <input
-                            className="flex-1 text-sm border border-neutral-200 rounded-xl px-3 py-2 outline-none focus:border-neutral-400"
+                            className="flex-1 placeholder:text-[11px] text-sm border border-neutral-200 rounded-xl px-3 py-2 outline-none focus:border-neutral-400"
                             placeholder={
                                 chatClosed
                                     ? "Chat closed. Click Leave chat to start a new one."
                                     : mode === "ai"
                                         ? "Ask anything about Kloner"
-                                        : "Write to the team"
+                                        : isConnectingToHuman
+                                            ? "You can keep typing while we connect you"
+                                            : "Write to the team"
                             }
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
-                            disabled={loading}
+                            disabled={loading || chatClosed}
                         />
                         <button
                             type="submit"
