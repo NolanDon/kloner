@@ -2465,23 +2465,24 @@ export default function PreviewEditor({
             // 1) Add new page immediately (starter placeholder)
             setCreatedPages((prev) => [...prev, { id: pageId, html: starterHtml } as any]);
 
-            // 2) AI generates only the new page block
-            const inferred = inferPageIntentFromSlug(slug);
-            const expandedPrompt = buildExpandedNewPagePrompt({
-                pageId,
-                slug,
-                userPrompt: promptRaw,
-                inferred,
-            });
+            const csrf = await ensureSessionAndCsrf();
 
+            // 2) Server builds the full expanded prompt (routing + constraints) and generates only the new page block
             const res = await fetch("/api/ai-edit", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(csrf ? { "x-csrf": csrf } : {}),
+                },
+                credentials: "include",
                 body: JSON.stringify({
                     renderId: draftId,
                     html: starterHtml,
-                    prompt: expandedPrompt,
                     mode: "code",
+                    action: "create_page",
+                    pageId,
+                    slug,
+                    userPrompt: promptRaw,
                 }),
             });
 
@@ -2491,8 +2492,7 @@ export default function PreviewEditor({
             }
 
             const data = await res.json().catch(() => ({}));
-            const suggestion =
-                data?.suggestions && data.suggestions.length ? data.suggestions[0] : null;
+            const suggestion = data?.suggestions && data.suggestions.length ? data.suggestions[0] : null;
 
             const afterHtml: string | undefined = suggestion?.afterHtml;
             if (!afterHtml || typeof afterHtml !== "string") throw new Error("AI returned no HTML.");
@@ -2500,8 +2500,9 @@ export default function PreviewEditor({
             // 3) Clean model output + hard-enforce same route block
             const cleaned = normalizeAiPageBlock(afterHtml, pageId);
 
-            // 3.1) Hard enforce multi-section if model returned a shallow hero-only layout
-            const enforced = enforceMinimumSections(cleaned, pageId, inferred);
+            // 3.1) Enforce minimum structure if model returned hero-only
+            // (server already tries to prevent this, but keep client enforcement as a final guard)
+            const enforced = enforceMinimumSections(cleaned, pageId);
 
             // 4) Update only this created page’s HTML
             setCreatedPages((prev) => {
@@ -2531,185 +2532,6 @@ export default function PreviewEditor({
             setAiEditing(false);
         }
 
-        // ----------------------
-        // helpers used above (keep near your other helpers)
-        // ----------------------
-
-        function inferPageIntentFromSlug(slug: string): {
-            kind:
-            | "about"
-            | "contact"
-            | "pricing"
-            | "services"
-            | "faq"
-            | "blog"
-            | "features"
-            | "landing"
-            | "generic";
-            title: string;
-            hints: string[];
-        } {
-            const s = String(slug || "").toLowerCase().trim();
-
-            // title: last segment (avoid showing raw route)
-            const parts = s.split("/").filter(Boolean);
-            const last = parts[parts.length - 1] || "new page";
-            const title = last
-                .split("-")
-                .filter(Boolean)
-                .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-                .join(" ");
-
-            const pick = (
-                kind:
-                    | "about"
-                    | "contact"
-                    | "pricing"
-                    | "services"
-                    | "faq"
-                    | "blog"
-                    | "features"
-                    | "landing"
-                    | "generic",
-                hints: string[],
-            ) => ({ kind, title, hints });
-
-            if (/(^|\/)(about|about-us|team|company|story|mission)(\/|$)/.test(s)) {
-                return pick("about", [
-                    "mission + values",
-                    "team or founder section",
-                    "social proof / testimonials",
-                    "cta section",
-                ]);
-            }
-            if (/(^|\/)(contact|support|help)(\/|$)/.test(s)) {
-                return pick("contact", [
-                    "contact methods",
-                    "form area (fields only, no <form> submission logic)",
-                    "faq snippets",
-                    "cta section",
-                ]);
-            }
-            if (/(^|\/)(pricing|plans|fees)(\/|$)/.test(s)) {
-                return pick("pricing", [
-                    "tier cards (3 tiers)",
-                    "feature comparison bullets (not a table)",
-                    "faq section",
-                    "cta section",
-                ]);
-            }
-            if (/(^|\/)(services|service)(\/|$)/.test(s)) {
-                return pick("services", [
-                    "service list with short blurbs",
-                    "process steps",
-                    "case study highlight",
-                    "cta section",
-                ]);
-            }
-            if (/(^|\/)(faq|faqs)(\/|$)/.test(s)) {
-                return pick("faq", ["accordion-like blocks", "cta section"]);
-            }
-            if (/(^|\/)(blog|articles|posts)(\/|$)/.test(s)) {
-                return pick("blog", ["blog grid placeholder", "categories strip", "cta section"]);
-            }
-            if (/(^|\/)(features|product|platform)(\/|$)/.test(s)) {
-                return pick("features", [
-                    "hero + value prop",
-                    "feature sections (3+)",
-                    "cta section",
-                ]);
-            }
-            if (/(^|\/)(home|landing|start)(\/|$)/.test(s)) {
-                return pick("landing", ["hero", "benefits", "social proof", "cta"]);
-            }
-
-            return pick("generic", [
-                "hero section",
-                "2–4 content sections based on inferred topic",
-                "cta section",
-            ]);
-        }
-
-        function isVagueUserPrompt(p: string): boolean {
-            const t = String(p || "").trim();
-            if (!t) return true;
-            if (t.length < 18) return true;
-
-            // generic fluff that usually produces a hero-only page
-            const low = t.toLowerCase();
-            const vagueSignals = [
-                "make a page",
-                "new page",
-                "basic page",
-                "nice page",
-                "simple page",
-                "make it look good",
-                "something about",
-            ];
-            return vagueSignals.some((s) => low.includes(s));
-        }
-
-        function buildExpandedNewPagePrompt(args: {
-            pageId: string;
-            slug: string;
-            userPrompt: string;
-            inferred: { kind: string; title: string; hints: string[] };
-        }): string {
-            const { pageId, userPrompt, inferred } = args;
-
-            const title = inferred.title || "New page";
-            const vague = isVagueUserPrompt(userPrompt);
-
-            const intentLine = vague
-                ? `No detailed brief was provided. Infer a full multi-section layout from the page topic ("${title}") and standard expectations for a "${inferred.kind}" page.`
-                : `User brief: ${userPrompt}`;
-
-            const sectionsLine =
-                `Minimum output: at least 4 distinct sections (hero + 2+ content sections + CTA). ` +
-                `Use headings, short paragraphs, and small UI blocks. Avoid a single hero-only layout.`;
-
-            const themeLine =
-                `Styling must be consistent with the existing site theme and visual language. ` +
-                `Do not invent a random new design system. Only diverge if the user explicitly asked to.`;
-
-            const privacyLine =
-                `Do not print the route path anywhere in visible content. ` +
-                `No route crumbs, no "/slug" labels, no "Content curated for /..." copy.`;
-
-            const globalLayoutLine =
-                `IMPORTANT: Do NOT add a <header> or <footer>. Assume the site already has global header/footer. ` +
-                `Do not hide, override, or replace them. Do not use global CSS like body{...} or html{...}.`;
-
-            const structureLine =
-                `Create the layout INSIDE the provided <main class="page-root" data-route="..."> block only. ` +
-                `Return ONLY the updated HTML for this same block. ` +
-                `Do not remove class="page-root" or data-route. Do not modify any other pages.`;
-
-            const sectionHints =
-                inferred.hints && inferred.hints.length
-                    ? `Suggested sections: ${inferred.hints.join(", ")}.`
-                    : "";
-
-            // Hard constraints to prevent "site-wide" overrides that hide header/footer
-            const cssRules =
-                `If you include <style>, scope selectors under main.page-root[data-route="${pageId}"] only. ` +
-                `Never target header, footer, body, html, :root, or global tags without scoping.`;
-
-            return [
-                `Create a brand new page layout inside the provided <main class="page-root" data-route="${pageId}"> block.`,
-                intentLine,
-                sectionHints,
-                sectionsLine,
-                globalLayoutLine,
-                privacyLine,
-                themeLine,
-                cssRules,
-                structureLine,
-            ]
-                .filter(Boolean)
-                .join(" ");
-        }
-
         function countSectionsInMain(html: string): number {
             const mainMatch = html.match(/<main\b[\s\S]*?<\/main>/i);
             const inside = mainMatch ? mainMatch[0] : html;
@@ -2717,16 +2539,10 @@ export default function PreviewEditor({
             return sections ? sections.length : 0;
         }
 
-        function enforceMinimumSections(
-            html: string,
-            pageId: string,
-            inferred: { title: string; kind: string; hints: string[] },
-        ): string {
-            // If model returned <main> with 0–1 sections, pad with minimal structure.
+        function enforceMinimumSections(html: string, pageId: string): string {
             const n = countSectionsInMain(html);
             if (n >= 4) return html;
 
-            const title = inferred.title || "New page";
             const scoped = `main.page-root[data-route="${pageId}"]`;
 
             const padding = `
@@ -2745,7 +2561,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
   <section class="kl-np-hero">
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;">
       <div style="min-width:240px;">
-        <h2 style="margin:0;font-size:34px;line-height:1.05;">${escapeHtmlText(title)}</h2>
+        <h2 style="margin:0;font-size:34px;line-height:1.05;">New page</h2>
         <p style="margin:10px 0 0 0;color:rgba(0,0,0,.65);max-width:720px;font-size:14px;line-height:1.5;">
           A complete page layout with multiple sections, built to match the existing site theme.
         </p>
@@ -2793,24 +2609,14 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
     </div>
   </section>
 </div>
-`.trim();
+        `.trim();
 
-            // insert padding right after opening <main ...>
-            const re = new RegExp(`(<main\\b[^>]*\\bdata-route=["']${escapeRegExp(pageId)}["'][^>]*>)`, "i");
-            if (re.test(html)) {
-                return html.replace(re, `$1\n${padding}\n`);
-            }
-
+            const re = new RegExp(
+                `(<main\\b[^>]*\\bdata-route=["']${escapeRegExp(pageId)}["'][^>]*>)`,
+                "i"
+            );
+            if (re.test(html)) return html.replace(re, `$1\n${padding}\n`);
             return html + "\n" + padding;
-        }
-
-        function escapeHtmlText(s: string): string {
-            return String(s || "")
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;")
-                .replace(/'/g, "&#39;");
         }
 
         function escapeRegExp(s: string): string {
@@ -2826,6 +2632,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         handlePageSwitch,
         doSave,
     ]);
+
 
 
     const confirmPageSwitch = async () => {
@@ -5240,24 +5047,25 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             Cancel
                                                         </button>
 
-                                                        <button
-                                                            type="button"
-                                                            onClick={async () => {
-                                                                // close immediately, flip aiEditing on, then let createNewPageWithAi run
-                                                                if (creatingPage || aiEditing) return;
-                                                                setShowNewPageModal(false);
-                                                                setAiEditing(true);
-                                                                try {
-                                                                    await createNewPageWithAi();
-                                                                } finally {
-                                                                    setAiEditing(false);
-                                                                }
-                                                            }}
-                                                            disabled={creatingPage || aiEditing}
-                                                            className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:brightness-95 disabled:opacity-60"
-                                                        >
-                                                            {creatingPage || aiEditing ? "Creating…" : "Create page"}
-                                                        </button>
+                                                        {isDevCodeMode && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={async () => {
+                                                                    if (creatingPage || aiEditing) return;
+                                                                    setShowNewPageModal(false);
+                                                                    setAiEditing(true);
+                                                                    try {
+                                                                        await createNewPageWithAi();
+                                                                    } finally {
+                                                                        setAiEditing(false);
+                                                                    }
+                                                                }}
+                                                                disabled={creatingPage || aiEditing}
+                                                                className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:brightness-95 disabled:opacity-60"
+                                                            >
+                                                                {creatingPage || aiEditing ? "Creating…" : "Create page"}
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </motion.div>
@@ -5631,6 +5439,10 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     <div className="flex items-center gap-2 rounded-2xl bg-white px-3 py-1 text-[16px] text-neutral-700">
                                         <Loader2
                                             className="h-3.5 w-3.5 animate-spin"
+                                            style={{
+                                                backgroundImage:
+                                                    "linear-gradient(90deg,#4f46e5,#ec4899,#f97316)"
+                                            }}
                                         // keep a solid color or leave default; gradient on color won't work
                                         />
                                         <span

@@ -1158,12 +1158,10 @@ export default function DeploymentsPage(): JSX.Element {
                                                             disabled={
                                                                 isEditorLoading
                                                             }
-                                                            className="group inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-semibold text-white"
+                                                            className="group inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-sm text-white"
                                                             style={{
                                                                 backgroundColor:
                                                                     ACCENT,
-                                                                // boxShadow:
-                                                                //     "0 5px 15px rgba(245,95,42,0.40)",
                                                             }}
                                                         >
                                                             <span>
@@ -1186,7 +1184,7 @@ export default function DeploymentsPage(): JSX.Element {
                                                                     ? "noreferrer"
                                                                     : undefined
                                                             }
-                                                            className="group inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm  text-neutral-800 hover:bg-neutral-50"
+                                                            className="group inline-flex items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-2.5 py-1.5 text-sm text-neutral-800 hover:bg-neutral-50"
                                                         >
                                                             <span>
                                                                 Open site
