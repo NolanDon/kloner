@@ -647,7 +647,7 @@ import { db } from "@/lib/firebase"; // or wherever your db is
 import type { User as FirebaseUser } from "firebase/auth";
 import { RenderDoc } from "@/app/dashboard/view/page";
 import { useAuth } from "@/src/hooks/useAuth";
-import { Camera, Code2, Eye, EyeOff, FileText, Images, Loader2, Maximize2, MessageSquare, Minimize2, Monitor, Palette, Redo2, Rocket, RotateCcw, RotateCw, Smartphone, Tablet, Undo2 } from "lucide-react";
+import { Camera, Code2, Eye, EyeOff, FileText, Images, Loader2, Maximize2, MessageSquare, Minimize2, Monitor, Palette, Redo2, Rocket, RotateCcw, RotateCw, Smartphone, Tablet, Trash2Icon, Undo2 } from "lucide-react";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { EditorSessionCounters, EditorSessionMetrics, EditorSessionUser, ExportAnalyticsUser, recordEditorSessionAnalytics, recordExportAnalytics } from "./analytics";
 import AiEditPanel from "./editor/AiEditPanel";
@@ -2437,7 +2437,7 @@ export default function PreviewEditor({
 
         setCreatePageErr(null);
 
-        const prompt = (newPagePrompt || "").trim();
+        const promptRaw = (newPagePrompt || "").trim();
         const slugRaw = (newPageUrl || "").trim();
 
         const v = validatePageSlug(slugRaw);
@@ -2445,16 +2445,12 @@ export default function PreviewEditor({
             setCreatePageErr(v.msg || "Invalid URL.");
             return;
         }
-        if (!prompt) {
-            setCreatePageErr("Missing description.");
-            return;
-        }
         if (!draftId) {
             setCreatePageErr("Missing renderId.");
             return;
         }
 
-        const slug = sanitizePageSlug(slugRaw); // keeps "/" for nested paths
+        const slug = sanitizePageSlug(slugRaw); // supports nested paths
         const baseId = `/${slug}`;
         const pageId = uniquePageId(baseId, pageIds);
 
@@ -2470,19 +2466,21 @@ export default function PreviewEditor({
             setCreatedPages((prev) => [...prev, { id: pageId, html: starterHtml } as any]);
 
             // 2) AI generates only the new page block
+            const inferred = inferPageIntentFromSlug(slug);
+            const expandedPrompt = buildExpandedNewPagePrompt({
+                pageId,
+                slug,
+                userPrompt: promptRaw,
+                inferred,
+            });
+
             const res = await fetch("/api/ai-edit", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     renderId: draftId,
                     html: starterHtml,
-                    prompt:
-                        `Create a brand new page layout INSIDE the provided <main class="page-root" data-route="..."> block. ` +
-                        `Route: "${pageId}". Intent: ${prompt}. ` +
-                        `IMPORTANT: Do NOT add a <header> or <footer>. Assume the site already has a global header/footer. ` +
-                        `Start with <section> / <div> content only. ` +
-                        `Return ONLY the updated HTML for this same block. ` +
-                        `Do not remove class="page-root" or data-route. Do not modify any other pages.`,
+                    prompt: expandedPrompt,
                     mode: "code",
                 }),
             });
@@ -2493,7 +2491,8 @@ export default function PreviewEditor({
             }
 
             const data = await res.json().catch(() => ({}));
-            const suggestion = data?.suggestions && data.suggestions.length ? data.suggestions[0] : null;
+            const suggestion =
+                data?.suggestions && data.suggestions.length ? data.suggestions[0] : null;
 
             const afterHtml: string | undefined = suggestion?.afterHtml;
             if (!afterHtml || typeof afterHtml !== "string") throw new Error("AI returned no HTML.");
@@ -2501,11 +2500,14 @@ export default function PreviewEditor({
             // 3) Clean model output + hard-enforce same route block
             const cleaned = normalizeAiPageBlock(afterHtml, pageId);
 
+            // 3.1) Hard enforce multi-section if model returned a shallow hero-only layout
+            const enforced = enforceMinimumSections(cleaned, pageId, inferred);
+
             // 4) Update only this created page’s HTML
             setCreatedPages((prev) => {
                 const next = prev.slice();
                 const idx = next.findIndex((p) => String(p.id) === String(pageId));
-                if (idx >= 0) next[idx] = { ...next[idx], html: cleaned };
+                if (idx >= 0) next[idx] = { ...next[idx], html: enforced };
                 return next;
             });
 
@@ -2528,7 +2530,303 @@ export default function PreviewEditor({
             setCreatingPage(false);
             setAiEditing(false);
         }
-    }, [creatingPage, aiEditing, newPagePrompt, newPageUrl, draftId, pageIds, handlePageSwitch, doSave]);
+
+        // ----------------------
+        // helpers used above (keep near your other helpers)
+        // ----------------------
+
+        function inferPageIntentFromSlug(slug: string): {
+            kind:
+            | "about"
+            | "contact"
+            | "pricing"
+            | "services"
+            | "faq"
+            | "blog"
+            | "features"
+            | "landing"
+            | "generic";
+            title: string;
+            hints: string[];
+        } {
+            const s = String(slug || "").toLowerCase().trim();
+
+            // title: last segment (avoid showing raw route)
+            const parts = s.split("/").filter(Boolean);
+            const last = parts[parts.length - 1] || "new page";
+            const title = last
+                .split("-")
+                .filter(Boolean)
+                .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+                .join(" ");
+
+            const pick = (
+                kind:
+                    | "about"
+                    | "contact"
+                    | "pricing"
+                    | "services"
+                    | "faq"
+                    | "blog"
+                    | "features"
+                    | "landing"
+                    | "generic",
+                hints: string[],
+            ) => ({ kind, title, hints });
+
+            if (/(^|\/)(about|about-us|team|company|story|mission)(\/|$)/.test(s)) {
+                return pick("about", [
+                    "mission + values",
+                    "team or founder section",
+                    "social proof / testimonials",
+                    "cta section",
+                ]);
+            }
+            if (/(^|\/)(contact|support|help)(\/|$)/.test(s)) {
+                return pick("contact", [
+                    "contact methods",
+                    "form area (fields only, no <form> submission logic)",
+                    "faq snippets",
+                    "cta section",
+                ]);
+            }
+            if (/(^|\/)(pricing|plans|fees)(\/|$)/.test(s)) {
+                return pick("pricing", [
+                    "tier cards (3 tiers)",
+                    "feature comparison bullets (not a table)",
+                    "faq section",
+                    "cta section",
+                ]);
+            }
+            if (/(^|\/)(services|service)(\/|$)/.test(s)) {
+                return pick("services", [
+                    "service list with short blurbs",
+                    "process steps",
+                    "case study highlight",
+                    "cta section",
+                ]);
+            }
+            if (/(^|\/)(faq|faqs)(\/|$)/.test(s)) {
+                return pick("faq", ["accordion-like blocks", "cta section"]);
+            }
+            if (/(^|\/)(blog|articles|posts)(\/|$)/.test(s)) {
+                return pick("blog", ["blog grid placeholder", "categories strip", "cta section"]);
+            }
+            if (/(^|\/)(features|product|platform)(\/|$)/.test(s)) {
+                return pick("features", [
+                    "hero + value prop",
+                    "feature sections (3+)",
+                    "cta section",
+                ]);
+            }
+            if (/(^|\/)(home|landing|start)(\/|$)/.test(s)) {
+                return pick("landing", ["hero", "benefits", "social proof", "cta"]);
+            }
+
+            return pick("generic", [
+                "hero section",
+                "2–4 content sections based on inferred topic",
+                "cta section",
+            ]);
+        }
+
+        function isVagueUserPrompt(p: string): boolean {
+            const t = String(p || "").trim();
+            if (!t) return true;
+            if (t.length < 18) return true;
+
+            // generic fluff that usually produces a hero-only page
+            const low = t.toLowerCase();
+            const vagueSignals = [
+                "make a page",
+                "new page",
+                "basic page",
+                "nice page",
+                "simple page",
+                "make it look good",
+                "something about",
+            ];
+            return vagueSignals.some((s) => low.includes(s));
+        }
+
+        function buildExpandedNewPagePrompt(args: {
+            pageId: string;
+            slug: string;
+            userPrompt: string;
+            inferred: { kind: string; title: string; hints: string[] };
+        }): string {
+            const { pageId, userPrompt, inferred } = args;
+
+            const title = inferred.title || "New page";
+            const vague = isVagueUserPrompt(userPrompt);
+
+            const intentLine = vague
+                ? `No detailed brief was provided. Infer a full multi-section layout from the page topic ("${title}") and standard expectations for a "${inferred.kind}" page.`
+                : `User brief: ${userPrompt}`;
+
+            const sectionsLine =
+                `Minimum output: at least 4 distinct sections (hero + 2+ content sections + CTA). ` +
+                `Use headings, short paragraphs, and small UI blocks. Avoid a single hero-only layout.`;
+
+            const themeLine =
+                `Styling must be consistent with the existing site theme and visual language. ` +
+                `Do not invent a random new design system. Only diverge if the user explicitly asked to.`;
+
+            const privacyLine =
+                `Do not print the route path anywhere in visible content. ` +
+                `No route crumbs, no "/slug" labels, no "Content curated for /..." copy.`;
+
+            const globalLayoutLine =
+                `IMPORTANT: Do NOT add a <header> or <footer>. Assume the site already has global header/footer. ` +
+                `Do not hide, override, or replace them. Do not use global CSS like body{...} or html{...}.`;
+
+            const structureLine =
+                `Create the layout INSIDE the provided <main class="page-root" data-route="..."> block only. ` +
+                `Return ONLY the updated HTML for this same block. ` +
+                `Do not remove class="page-root" or data-route. Do not modify any other pages.`;
+
+            const sectionHints =
+                inferred.hints && inferred.hints.length
+                    ? `Suggested sections: ${inferred.hints.join(", ")}.`
+                    : "";
+
+            // Hard constraints to prevent "site-wide" overrides that hide header/footer
+            const cssRules =
+                `If you include <style>, scope selectors under main.page-root[data-route="${pageId}"] only. ` +
+                `Never target header, footer, body, html, :root, or global tags without scoping.`;
+
+            return [
+                `Create a brand new page layout inside the provided <main class="page-root" data-route="${pageId}"> block.`,
+                intentLine,
+                sectionHints,
+                sectionsLine,
+                globalLayoutLine,
+                privacyLine,
+                themeLine,
+                cssRules,
+                structureLine,
+            ]
+                .filter(Boolean)
+                .join(" ");
+        }
+
+        function countSectionsInMain(html: string): number {
+            const mainMatch = html.match(/<main\b[\s\S]*?<\/main>/i);
+            const inside = mainMatch ? mainMatch[0] : html;
+            const sections = inside.match(/<section\b/gi);
+            return sections ? sections.length : 0;
+        }
+
+        function enforceMinimumSections(
+            html: string,
+            pageId: string,
+            inferred: { title: string; kind: string; hints: string[] },
+        ): string {
+            // If model returned <main> with 0–1 sections, pad with minimal structure.
+            const n = countSectionsInMain(html);
+            if (n >= 4) return html;
+
+            const title = inferred.title || "New page";
+            const scoped = `main.page-root[data-route="${pageId}"]`;
+
+            const padding = `
+<style>
+${scoped} .kl-np-wrap{max-width:1100px;margin:0 auto;padding:56px 24px;}
+${scoped} .kl-np-hero{padding:48px 0 24px 0;}
+${scoped} .kl-np-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:16px;}
+${scoped} .kl-np-card{grid-column:span 6;border:1px solid rgba(0,0,0,.08);border-radius:16px;padding:16px;background:rgba(255,255,255,.7);}
+${scoped} .kl-np-card h3{margin:0 0 8px 0;font-size:16px;line-height:1.2;}
+${scoped} .kl-np-card p{margin:0;color:rgba(0,0,0,.65);font-size:13px;line-height:1.45;}
+${scoped} .kl-np-cta{margin-top:22px;border:1px solid rgba(0,0,0,.10);border-radius:18px;padding:18px;background:rgba(255,255,255,.85);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:center;border-radius:9999px;padding:10px 14px;font-size:13px;font-weight:700;border:1px solid rgba(0,0,0,.12);background:transparent;}
+</style>
+
+<div class="kl-np-wrap">
+  <section class="kl-np-hero">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+      <div style="min-width:240px;">
+        <h2 style="margin:0;font-size:34px;line-height:1.05;">${escapeHtmlText(title)}</h2>
+        <p style="margin:10px 0 0 0;color:rgba(0,0,0,.65);max-width:720px;font-size:14px;line-height:1.5;">
+          A complete page layout with multiple sections, built to match the existing site theme.
+        </p>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <a href="#" class="kl-np-btn" style="text-decoration:none;">Get started</a>
+        <a href="#" class="kl-np-btn" style="text-decoration:none;">Learn more</a>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="kl-np-grid">
+      <div class="kl-np-card">
+        <h3>What you get</h3>
+        <p>Clear structure, scannable content, and sections that fit the page type.</p>
+      </div>
+      <div class="kl-np-card">
+        <h3>How it works</h3>
+        <p>Organized blocks that can be edited, reordered, or expanded as needed.</p>
+      </div>
+      <div class="kl-np-card">
+        <h3>Details</h3>
+        <p>Space for your specifics: features, story, services, or FAQs.</p>
+      </div>
+      <div class="kl-np-card">
+        <h3>Next step</h3>
+        <p>A simple call-to-action that drives the user forward.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="kl-np-cta">
+      <div style="min-width:220px;">
+        <div style="font-weight:800;font-size:14px;">Ready to ship this page?</div>
+        <div style="color:rgba(0,0,0,.65);font-size:12px;margin-top:4px;">
+          Edit the sections and replace placeholder copy with your specifics.
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <a href="#" class="kl-np-btn" style="text-decoration:none;">Primary action</a>
+        <a href="#" class="kl-np-btn" style="text-decoration:none;">Secondary</a>
+      </div>
+    </div>
+  </section>
+</div>
+`.trim();
+
+            // insert padding right after opening <main ...>
+            const re = new RegExp(`(<main\\b[^>]*\\bdata-route=["']${escapeRegExp(pageId)}["'][^>]*>)`, "i");
+            if (re.test(html)) {
+                return html.replace(re, `$1\n${padding}\n`);
+            }
+
+            return html + "\n" + padding;
+        }
+
+        function escapeHtmlText(s: string): string {
+            return String(s || "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
+        function escapeRegExp(s: string): string {
+            return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        }
+    }, [
+        creatingPage,
+        aiEditing,
+        newPagePrompt,
+        newPageUrl,
+        draftId,
+        pageIds,
+        handlePageSwitch,
+        doSave,
+    ]);
+
 
     const confirmPageSwitch = async () => {
         if (!pageSwitchConfirm) return;
@@ -5421,21 +5719,20 @@ export default function PreviewEditor({
                             <div className="flex justify-end gap-2 text-sm">
                                 <button
                                     type="button"
-                                    className="px-2.5 py-1.5 text-xs rounded border border-neutral-300 bg-white/90 hover:bg-neutral-50 active:scale-[.98] font-semibold"
+                                    className="px-2.5 py-1.5 text-xs rounded-full border border-neutral-300 bg-white/90 hover:bg-neutral-50 active:scale-[.98] font-semibold"
                                     onClick={() => setClosePrompt(false)}
                                 >
-                                    Cancel
+                                    Keep Editing
                                 </button>
                                 <button
                                     type="button"
-                                    className="px-2.5 py-1.5 text-xs rounded border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 active:scale-[.98] font-semibold"
-                                    onClick={() => performClose("discard")}
-                                >
+                                    className="px-2.5 py-1.5 text-xs rounded-full border border-neutral-300 bg-white/90 hover:bg-neutral-50 active:scale-[.98] font-semibold"
+                                    onClick={() => performClose("discard")}>
                                     Discard
                                 </button>
                                 <button
                                     type="button"
-                                    className="px-2.5 py-1.5 text-xs rounded border border-transparent bg-accent text-white hover:brightness-110 active:scale-[.98] font-semibold"
+                                    className="px-2.5 py-1.5 text-xs rounded-full border border-transparent bg-accent text-white hover:brightness-110 active:scale-[.98] font-semibold"
                                     onClick={() => performClose("save")}
                                 >
                                     Save & close
@@ -5451,22 +5748,21 @@ export default function PreviewEditor({
                             <div className="text-md font-semibold text-neutral-900 mb-2">
                                 Deploy your Website?
                             </div>
-                            <p className="text-sm text-neutral-600 mb-2">
+                            <p className="text-xs text-neutral-600 mb-2">
                                 This will export your current preview and trigger a deployment to
                                 your connected Vercel project.
                             </p>
                             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mb-3">
-                                Warning: these changes can reach your live site once the
-                                deployment finishes.
+                                Warning: these changes will reach your live site.
                             </p>
-                            <div className="flex justify-end gap-2 text-sm">
+                            <div className="flex justify-end gap-2 text-xs">
                                 <button
                                     type="button"
-                                    className="px-2.5 py-1.5 rounded border border-neutral-300 bg-white/90 hover:bg-neutral-50 active:scale-[.98] disabled:opacity-60"
+                                    className="px-2.5 py-1.5 rounded-full border border-neutral-300 bg-white/90 hover:bg-neutral-50 active:scale-[.98] disabled:opacity-60"
                                     onClick={() => setExportPrompt(false)}
                                     disabled={exporting}
                                 >
-                                    Cancel
+                                    Back to Editor
                                 </button>
                                 <button
                                     onClick={async () => {
@@ -5474,11 +5770,11 @@ export default function PreviewEditor({
                                         await doExport();
                                     }}
                                     disabled={exporting}
-                                    className="inline-flex items-center gap-1.5 rounded-md font-semibold bg-accent px-2.5 py-1 text-white shadow-sm hover:border-neutral-400 disabled:opacity-60"
+                                    className="inline-flex items-center gap-1.5 rounded-full font-semibold bg-accent px-2.5 py-1 text-white shadow-sm hover:border-neutral-400 disabled:opacity-60"
                                     title="Open generated layout site"
                                 >
                                     <span>Deploy now</span>
-                                    <Rocket className="h-5 w-5" />
+                                    <Rocket className="h-3.5 w-3.5" />
                                 </button>
                             </div>
                         </div>

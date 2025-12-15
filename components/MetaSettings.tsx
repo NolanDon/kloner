@@ -283,7 +283,7 @@ export function MetaSettings({
     const generateLabel = isMetaEmpty ? "Generate meta" : "Regenerate meta";
 
     return (
-        <div className="flex h-full flex-col">
+        <div className="flex h-full flex-col bg-white/90">
             <div className="flex-1 overflow-y-auto px-4 pt-6 pb-4">
                 {isMetaEmpty && (
                     <div className="mb-5 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-900">
@@ -298,27 +298,33 @@ export function MetaSettings({
                 )}
 
                 {/* Favicon block */}
+
+                <div className="flex h-14 w-14 my-2 items-center justify-center overflow-hidden rounded-md border border-neutral-200 bg-neutral-50">
+                    {hasFavicon ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                            src={draftMeta.faviconUrl}
+                            alt="Current favicon"
+                            className="h-full w-full object-contain"
+                        />
+
+                    ) : (
+                        <span className="px-2 text-center text-[10px] text-neutral-400">
+                            No favicon
+                        </span>
+                    )}
+                </div>
+                {draftMeta.faviconUrl && (
+                    <span className="max-w-[200px] truncate text-[10px] text-neutral-700">
+                        {draftMeta.faviconUrl?.slice(0, 50) + '...'}
+                    </span>
+                )}
+
                 <div className="mb-6 rounded-lg border border-neutral-200 bg-white/80 p-4 shadow-sm">
                     <div className="flex items-start justify-between gap-4">
                         <div className="flex items-center gap-4">
-                            <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-md border border-neutral-200 bg-neutral-50">
-                                {hasFavicon ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img
-                                        src={draftMeta.faviconUrl}
-                                        alt="Current favicon"
-                                        className="h-full w-full object-contain"
-                                    />
-                                ) : (
-                                    <span className="px-2 text-center text-[10px] text-neutral-400">
-                                        No favicon
-                                    </span>
-                                )}
-                            </div>
+
                             <div className="flex flex-col gap-1">
-                                <span className="text-[11px] font-medium uppercase tracking-wide text-neutral-700">
-                                    Favicon
-                                </span>
                                 <span className="text-[11px] text-neutral-500">
                                     Square PNG, SVG, or ICO. At least 64×64
                                     recommended.
@@ -339,11 +345,7 @@ export function MetaSettings({
                                         ? "Replace favicon"
                                         : "Upload favicon"}
                             </button>
-                            {draftMeta.faviconUrl && (
-                                <span className="max-w-[200px] truncate text-[10px] text-neutral-400">
-                                    {draftMeta.faviconUrl}
-                                </span>
-                            )}
+
                         </div>
                     </div>
 

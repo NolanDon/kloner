@@ -4168,7 +4168,7 @@ export default function PreviewPage(): JSX.Element {
                                                                 type="button"
                                                                 onClick={closeDeployWizard}
                                                                 disabled={deployWizardBusy}
-                                                                className="rounded-full border border-neutral-200 px-3 py-1.5 text-sm font-semibold text-neutral-600 hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                                className="rounded-full border border-neutral-200 px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
                                                             >
                                                                 Close
                                                             </button>
@@ -4176,7 +4176,7 @@ export default function PreviewPage(): JSX.Element {
                                                                 type="button"
                                                                 onClick={handleConnectVercelFromWizard}
                                                                 disabled={deployWizardBusy}
-                                                                className="rounded-full px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                                                                className="rounded-full px-3 py-1.5 text-sm text-white disabled:opacity-50 disabled:cursor-not-allowed"
                                                                 style={{ backgroundColor: ACCENT }}
                                                             >
                                                                 Connect Vercel
