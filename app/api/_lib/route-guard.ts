@@ -36,7 +36,7 @@ export async function requireSessionAndMaybeCsrf(
         const csrfHeader = req.headers.get("x-csrf");
 
         if (!csrfCookie || !csrfHeader || csrfCookie !== csrfHeader) {
-            return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+            return NextResponse.json({ error: "CSRF check failed Guard" }, { status: 403 });
         }
     }
 

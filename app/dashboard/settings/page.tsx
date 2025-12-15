@@ -136,6 +136,53 @@ function stateLabel(state: UiState): string {
     return state;
 }
 
+// NEW: consistent rounded-full button base + busy feedback
+function btnClass({
+    kind,
+    disabled,
+}: {
+    kind: "primary" | "soft" | "danger" | "warn" | "ghost";
+    disabled?: boolean;
+}) {
+    const base =
+        "inline-flex items-center justify-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition active:scale-[0.99]";
+    const dis = disabled ? "opacity-50 pointer-events-none" : "";
+
+    if (kind === "primary")
+        return [
+            base,
+            "bg-accent text-white hover:brightness-95",
+            dis,
+        ].join(" ");
+
+    if (kind === "soft")
+        return [
+            base,
+            "border border-neutral-200 bg-white text-neutral-800 hover:bg-neutral-50",
+            dis,
+        ].join(" ");
+
+    if (kind === "warn")
+        return [
+            base,
+            "border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100",
+            dis,
+        ].join(" ");
+
+    if (kind === "danger")
+        return [
+            base,
+            "border border-red-200 bg-red-50 text-red-700 hover:bg-red-100",
+            dis,
+        ].join(" ");
+
+    return [
+        base,
+        "border border-neutral-200 bg-transparent text-neutral-700 hover:bg-neutral-100",
+        dis,
+    ].join(" ");
+}
+
 export default function SettingsPage(): JSX.Element {
     const [user, setUser] = useState<User | null>(null);
     const [disconnectBusy, setDisconnectBusy] = useState(false);
@@ -219,7 +266,6 @@ export default function SettingsPage(): JSX.Element {
         }
     };
 
-    // load billing tier
     useEffect(() => {
         if (!user) return;
         const ctrl = new AbortController();
@@ -227,7 +273,6 @@ export default function SettingsPage(): JSX.Element {
         return () => ctrl.abort();
     }, [user]);
 
-    // load deployments for bulk delete UI
     useEffect(() => {
         if (!user) return;
 
@@ -281,7 +326,6 @@ export default function SettingsPage(): JSX.Element {
         };
     }, [user]);
 
-    // derive per-project latest ready to mark "active"
     const latestReadyByProject = useMemo(() => {
         const map = new Map<string, string>();
         if (!deployments.length) return map;
@@ -340,6 +384,11 @@ export default function SettingsPage(): JSX.Element {
         return base.slice(0, 2).toUpperCase();
     }, [user]);
 
+    // NEW: treat any non-connected state as disconnected for disabling Disconnect
+    const isVercelConnected = vercelStatus === "connected";
+    const isVercelChecking = vercelStatus === "loading" || vercelChecking;
+    const canDisconnectVercel = isVercelConnected && !isVercelChecking && !disconnectBusy;
+
     function handleConnectVercel() {
         if (!VERCEL_INTEGRATION_SLUG || !user) {
             console.error("Missing integration slug or user not signed in");
@@ -366,6 +415,8 @@ export default function SettingsPage(): JSX.Element {
     }
 
     async function handleDisconnectVercel() {
+        if (!canDisconnectVercel) return;
+
         setDisconnectBusy(true);
         try {
             const csrf = await ensureSessionAndCsrf();
@@ -691,7 +742,10 @@ export default function SettingsPage(): JSX.Element {
                             <div className="flex flex-col items-start gap-2 sm:items-end">
                                 <a
                                     href="/price"
-                                    className="inline-flex items-center rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs font-semibold text-neutral-800 hover:bg-neutral-100"
+                                    className={btnClass({
+                                        kind: "soft",
+                                        disabled: false,
+                                    })}
                                 >
                                     View plans
                                 </a>
@@ -700,13 +754,10 @@ export default function SettingsPage(): JSX.Element {
                                     type="button"
                                     onClick={() => void handleCancelSubscription()}
                                     disabled={!canCancel || cancelBusy}
-                                    className={[
-                                        "inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition",
-                                        canCancel
-                                            ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
-                                            : "border-neutral-200 bg-neutral-50 text-neutral-400",
-                                        "disabled:opacity-60 disabled:pointer-events-none",
-                                    ].join(" ")}
+                                    className={btnClass({
+                                        kind: canCancel ? "danger" : "ghost",
+                                        disabled: !canCancel || cancelBusy,
+                                    })}
                                 >
                                     {cancelBusy ? (
                                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -754,25 +805,62 @@ export default function SettingsPage(): JSX.Element {
                                 <p className="mt-1 text-xs text-neutral-600">
                                     Deploy previews directly from Kloner.
                                 </p>
+
                                 <div className="mt-2 flex gap-2">
                                     <button
                                         type="button"
                                         onClick={handleConnectVercel}
-                                        disabled={
-                                            vercelStatus === "connected" ||
-                                            vercelStatus === "loading"
-                                        }
-                                        className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 hover:bg-neutral-50 disabled:opacity-50"
+                                        disabled={isVercelConnected || isVercelChecking}
+                                        className={btnClass({
+                                            kind: "soft",
+                                            disabled: isVercelConnected || isVercelChecking,
+                                        })}
                                     >
-                                        Connect
+                                        {isVercelChecking && !isVercelConnected ? (
+                                            <>
+                                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                Checking…
+                                            </>
+                                        ) : isVercelConnected ? (
+                                            <>
+                                                <CheckCircle2 className="h-3.5 w-3.5" />
+                                                Connected
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Plug className="h-3.5 w-3.5" />
+                                                Connect
+                                            </>
+                                        )}
                                     </button>
+
                                     <button
                                         type="button"
-                                        onClick={handleDisconnectVercel}
-                                        disabled={vercelStatus !== "connected" || disconnectBusy}
-                                        className="shrink-0 rounded-md border border-amber-500 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100"
+                                        onClick={() => void handleDisconnectVercel()}
+                                        disabled={!isVercelConnected || isVercelChecking || disconnectBusy}
+                                        className={btnClass({
+                                            kind: "warn",
+                                            disabled: !isVercelConnected || isVercelChecking || disconnectBusy,
+                                        })}
+                                        title={
+                                            !isVercelConnected
+                                                ? "Already disconnected"
+                                                : isVercelChecking
+                                                    ? "Checking integration…"
+                                                    : undefined
+                                        }
                                     >
-                                        {disconnectBusy ? "Disconnecting…" : "Disconnect"}
+                                        {disconnectBusy ? (
+                                            <>
+                                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                Disconnecting…
+                                            </>
+                                        ) : (
+                                            <>
+                                                <XCircle className="h-3.5 w-3.5" />
+                                                Disconnect
+                                            </>
+                                        )}
                                     </button>
                                 </div>
                             </div>
@@ -795,7 +883,7 @@ export default function SettingsPage(): JSX.Element {
                                 </p>
                                 <button
                                     disabled
-                                    className="mt-2 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-500"
+                                    className={btnClass({ kind: "soft", disabled: true })}
                                 >
                                     Manage
                                 </button>
@@ -827,7 +915,7 @@ export default function SettingsPage(): JSX.Element {
                                 </p>
                                 <button
                                     disabled
-                                    className="mt-2 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-500"
+                                    className={btnClass({ kind: "soft", disabled: true })}
                                 >
                                     Enable
                                 </button>
@@ -847,7 +935,7 @@ export default function SettingsPage(): JSX.Element {
                                 </p>
                                 <button
                                     disabled
-                                    className="mt-2 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-500"
+                                    className={btnClass({ kind: "soft", disabled: true })}
                                 >
                                     View Keys
                                 </button>
@@ -867,12 +955,12 @@ export default function SettingsPage(): JSX.Element {
                             deployments, and process deletion safely.
                         </p>
 
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <div className="mt-3 flex flex-wrap font-normal items-center gap-2">
                             <a
                                 href="mailto:support@kloner.app?subject=Kloner%20account%20closure%20or%20data%20deletion%20request"
-                                className="inline-flex items-center gap-2 rounded-lg bg-accent px-3 py-2 text-xs text-white"
+                                className={btnClass({ kind: "primary", disabled: false })}
                             >
-                                Contact support about my account
+                                Email Support
                             </a>
                             <span className="text-[11px] text-neutral-500">
                                 support@kloner.app
@@ -922,30 +1010,30 @@ export default function SettingsPage(): JSX.Element {
                                         <button
                                             type="button"
                                             onClick={() => setDeploymentFilter("all")}
-                                            className={`rounded-full px-2.5 py-1 border text-[11px] ${deploymentFilter === "all"
-                                                    ? "border-neutral-800 text-neutral-900 bg-white"
-                                                    : "border-neutral-200 text-neutral-600 bg-transparent"
-                                                }`}
+                                            className={btnClass({
+                                                kind: deploymentFilter === "all" ? "soft" : "ghost",
+                                                disabled: false,
+                                            })}
                                         >
                                             All
                                         </button>
                                         <button
                                             type="button"
                                             onClick={() => setDeploymentFilter("live-only")}
-                                            className={`rounded-full px-2.5 py-1 border text-[11px] ${deploymentFilter === "live-only"
-                                                    ? "border-neutral-800 text-neutral-900 bg-white"
-                                                    : "border-neutral-200 text-neutral-600 bg-transparent"
-                                                }`}
+                                            className={btnClass({
+                                                kind: deploymentFilter === "live-only" ? "soft" : "ghost",
+                                                disabled: false,
+                                            })}
                                         >
                                             Live deployments
                                         </button>
                                         <button
                                             type="button"
                                             onClick={() => setDeploymentFilter("live-projects")}
-                                            className={`rounded-full px-2.5 py-1 border text-[11px] ${deploymentFilter === "live-projects"
-                                                    ? "border-neutral-800 text-neutral-900 bg-white"
-                                                    : "border-neutral-200 text-neutral-600 bg-transparent"
-                                                }`}
+                                            className={btnClass({
+                                                kind: deploymentFilter === "live-projects" ? "soft" : "ghost",
+                                                disabled: false,
+                                            })}
                                         >
                                             Live projects + history
                                         </button>
@@ -1027,7 +1115,10 @@ export default function SettingsPage(): JSX.Element {
                                         type="button"
                                         onClick={handleDeleteDeploymentBulk}
                                         disabled={selectedDeploymentIds.length === 0 || deleteDeploymentBusy}
-                                        className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[11px] font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
+                                        className={btnClass({
+                                            kind: "danger",
+                                            disabled: selectedDeploymentIds.length === 0 || deleteDeploymentBusy,
+                                        })}
                                     >
                                         {deleteDeploymentBusy && (
                                             <Loader2 className="h-3 w-3 animate-spin" />

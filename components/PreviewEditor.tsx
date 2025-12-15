@@ -8,13 +8,6 @@ import { motion, AnimatePresence, useDragControls } from "framer-motion";
 export type Device = "desktop" | "tablet" | "mobile";
 export type ViewMode = "code" | "preview" | "screenshot";
 
-type EditorPage = {
-    id: string; // should match data-route when possible
-    label: string;
-    html: string;
-    screenshotUrl?: string;
-};
-
 export interface SeoMeta {
     title?: string;
     description?: string;
@@ -86,6 +79,13 @@ export type SelectionMeta = {
     tagName?: string;
     path?: string | null;
     rect?: any;
+};
+
+export type EditorPage = {
+    id: string; // should match data-route when possible
+    label: string;
+    html: string;
+    screenshotUrl?: string;
 };
 
 const FONT_OPTIONS = [
@@ -1620,9 +1620,6 @@ export default function PreviewEditor({
         if (onLiveHtml) onLiveHtml(cleanedHtml);
     }
 
-
-
-
     // Dont remove
     const localImageStore: Map<string, File> = new Map();
 
@@ -1630,22 +1627,6 @@ export default function PreviewEditor({
     const [activeSeoMetaByPage, setActiveSeoMetaByPage] = useState<
         Record<string, SeoMeta> | null
     >(null);
-
-    const allPages = useMemo<EditorPage[] | null>(
-        () =>
-            pages && pages.length
-                ? pages
-                : derivedPages.length
-                    ? derivedPages
-                    : null,
-        [pages, derivedPages]
-    );
-
-    const activePage = useMemo(
-        () =>
-            allPages ? allPages.find((p) => p.id === activePageId) ?? null : null,
-        [allPages, activePageId]
-    );
 
     function postToEditor(data: any) {
         const iframe = iframeRef.current;
@@ -1800,139 +1781,6 @@ export default function PreviewEditor({
         };
     });
 
-    const currentPageKey = useMemo(() => {
-        if (!allPages || !activePageId || activePageId === "single") {
-            return SINGLE_PAGE_KEY;
-        }
-        return activePageId;
-    }, [allPages, activePageId]);
-
-    const currentSeoMeta: SeoMeta = useMemo(() => {
-        const base = seoMetaByPage[currentPageKey] ?? emptyMeta;
-
-        // If this page already has a non-empty favicon, use it as-is.
-        if (typeof base.faviconUrl === "string" && base.faviconUrl.trim() !== "") {
-            return base;
-        }
-
-        // Otherwise, fall back to ANY valid favicon in the map (global favicon).
-        const anyFavicon = Object.values(seoMetaByPage).find(
-            (m): m is SeoMeta => {
-                if (!m || typeof m !== "object") return false;
-                const v = (m as SeoMeta).faviconUrl;
-                return typeof v === "string" && v.trim() !== "";
-            },
-        );
-
-        if (!anyFavicon || !anyFavicon.faviconUrl) {
-            return base;
-        }
-
-        return {
-            ...base,
-            faviconUrl: anyFavicon.faviconUrl,
-        };
-    }, [seoMetaByPage, currentPageKey]);
-
-
-    // pick a single renderId to use for Firestore writes / reads
-    const resolvedRenderId = draftId ?? null;
-
-
-    // this now does BOTH: updates local state AND writes to Firestore
-    const handleSaveMetaForCurrentPage = useCallback(
-        async (meta: SeoMeta) => {
-            // Decide which logical page we are saving for
-            const rawPageKey =
-                currentPageKey && currentPageKey !== "single"
-                    ? currentPageKey
-                    : SINGLE_PAGE_KEY;
-
-            // Firestore-safe key: NEVER allow "__single__" to be persisted
-            const pageKey =
-                rawPageKey === "__single__" ? "single" : rawPageKey || "single";
-
-            const faviconUrl = meta.faviconUrl?.trim() || "";
-
-            // build next map from current state
-            let next: SeoMetaByPage = {
-                ...(seoMetaByPage || {}),
-                [pageKey]: meta,
-            };
-
-            // favicon is global: propagate across pages if set
-            if (faviconUrl) {
-                next = Object.fromEntries(
-                    Object.entries(next).map(([key, val]) => [
-                        key,
-                        key === pageKey ? val : { ...val, faviconUrl },
-                    ]),
-                ) as SeoMetaByPage;
-            }
-
-            // HARD GUARD: never let "__single__" survive into Firestore
-            if ("__single__" in next) {
-                const anyNext: any = next;
-                const singleMeta = anyNext.__single__;
-                delete anyNext.__single__;
-                // prefer explicitly under "single" key if not already present
-                if (!anyNext.single && singleMeta) {
-                    anyNext.single = singleMeta;
-                }
-                next = anyNext;
-            }
-
-            // update local state so the editor reflects the latest SEO immediately
-            setSeoMetaByPage(next);
-            setActiveSeoMetaByPage(next);
-
-            // write to Firestore so exports and other clients see the latest meta
-            if (user && resolvedRenderId) {
-                try {
-                    const dref = doc(
-                        db,
-                        "kloner_users",
-                        user.uid,
-                        "kloner_renders",
-                        resolvedRenderId,
-                    );
-
-                    await updateDoc(dref, {
-                        seoMetaByPage: next,
-                        updatedAt: serverTimestamp(),
-                        // CRITICAL: persist JSON-LD as an object
-                        jsonLd: meta.jsonLd ?? null,
-                    });
-                } catch (err) {
-                    console.error(
-                        "[handleSaveMetaForCurrentPage] Failed to persist SEO meta to Firestore",
-                        { err, resolvedRenderId },
-                    );
-                }
-            }
-
-            // optional: still propagate up to any parent hook if you had one
-            if (onSaveMeta) {
-                void onSaveMeta(
-                    pageKey === "single" ? null : pageKey,
-                    meta,
-                    next,
-                );
-            }
-        },
-        [
-            currentPageKey,
-            seoMetaByPage,
-            user,
-            resolvedRenderId,
-            onSaveMeta,
-            // if SINGLE_PAGE_KEY is a constant in scope, add it here too:
-            // SINGLE_PAGE_KEY,
-        ],
-    );
-
-
-
     const theme = useMemo(
         () => deriveThemeFromInitialHtml(initialHtml),
         [initialHtml],
@@ -1942,24 +1790,6 @@ export default function PreviewEditor({
         () => Array.from(new Set([...(theme.textColors || []), ...(theme.bgColors || [])])),
         [theme.textColors, theme.bgColors]
     );
-
-    // inject route-specific CSS into the monolithic HTML for iframe preview
-    const renderHtml = useMemo(() => {
-        const base = stripScripts(stripEditorArtifacts(previewHtml || ""));
-        if (!base) return base;
-
-        if (!allPages || !activePageId || activePageId === "single") return base;
-
-        const styleTag = `<style id="kloner-active-route">main.page-root[data-route]{display:none!important;}main.page-root[data-route="${activePageId}"]{display:block!important;}</style>`;
-
-        if (base.includes("</head>")) {
-            return base.replace("</head>", `${styleTag}</head>`);
-        }
-        if (base.includes("<head>")) {
-            return base.replace("<head>", `<head>${styleTag}`);
-        }
-        return styleTag + base;
-    }, [previewHtml, activePageId, allPages]);
 
     const [uiScale, setUiScale] = useState<number>(() => {
         if (typeof window === "undefined") return (IS_MOBILE ? 1.05 : 0.75)
@@ -1997,25 +1827,6 @@ export default function PreviewEditor({
     }, [draftId, initialHtml]);
 
 
-    // set initial active page, and keep it valid when page set changes
-    useEffect(() => {
-        if (!allPages || allPages.length === 0) {
-            if (!activePageId) setActivePageId("single");
-            return;
-        }
-
-        const stillExists =
-            activePageId && allPages.some((p) => p.id === activePageId);
-
-        if (stillExists) return;
-
-        if (initialPageId && allPages.some((p) => p.id === initialPageId)) {
-            setActivePageId(initialPageId);
-            return;
-        }
-
-        setActivePageId(allPages[0].id);
-    }, [allPages, activePageId, initialPageId]);
 
     // persist monolithic draft to localStorage
     useEffect(() => {
@@ -2090,11 +1901,6 @@ export default function PreviewEditor({
     }, [draftId, snapshotDraft]);
 
 
-    // bump iframe key when HTML or mode changes (except pure screenshot mode)
-    useEffect(() => {
-        if (mode === "screenshot") return;
-        setIframeKey((k) => k + 1);
-    }, [renderHtml, mode]);
 
     // keyboard zoom shortcuts
     useEffect(() => {
@@ -2358,6 +2164,24 @@ export default function PreviewEditor({
         }
     }
 
+    // ----------------------
+    // NEW PAGE STATE + LOGIC (patched end-to-end)
+    // - slug input (NO leading "/"), UI shows "/" prefix
+    // - allow nested paths via "/" inside slug (ex: "blog/post")
+    // - live validation error shown automatically under input (no infinite loop)
+    // - Create button closes modal, sets aiEditing=true during AI work, then false when finished
+    // - created pages injected where other route pages live (not after footer)
+    // - prevents AI from adding page-level <header>/<footer>
+    // - prevents route filtering from hiding global header/footer by hoisting them outside page-root blocks
+    // ----------------------
+
+    const [showNewPageModal, setShowNewPageModal] = useState(false);
+    const [newPagePrompt, setNewPagePrompt] = useState("");
+    const [newPageUrl, setNewPageUrl] = useState(""); // slug/path only (no leading "/"), allows "/" inside
+    const [newPageUrlErr, setNewPageUrlErr] = useState<string | null>(null);
+    const [creatingPage, setCreatingPage] = useState(false);
+    const [createPageErr, setCreatePageErr] = useState<string | null>(null);
+    const [createdPages, setCreatedPages] = useState<EditorPage[]>([]);
 
     const handlePageSwitch = async (nextId: string) => {
         if (!nextId || nextId === activePageId) return;
@@ -2375,6 +2199,336 @@ export default function PreviewEditor({
         setActivePageId(nextId);
     };
 
+    // Merge base pages (pages/derivedPages) + createdPages into one list used by UI
+    const allPages = useMemo<EditorPage[] | null>(() => {
+        const base =
+            pages && pages.length
+                ? (pages as EditorPage[])
+                : derivedPages.length
+                    ? (derivedPages as EditorPage[])
+                    : null;
+
+        if ((!base || !base.length) && createdPages.length === 0) return null;
+
+        const seen = new Set<string>();
+        const out: EditorPage[] = [];
+
+        const push = (p: EditorPage) => {
+            const id = String(p?.id || "").trim();
+            if (!id || seen.has(id)) return;
+            seen.add(id);
+            out.push({ id, html: p?.html ?? null } as any);
+        };
+
+        (base || []).forEach(push);
+        createdPages.forEach(push);
+
+        return out;
+    }, [pages, derivedPages, createdPages]);
+
+    const currentPageKey = useMemo(() => {
+        if (!allPages || !activePageId || activePageId === "single") {
+            return SINGLE_PAGE_KEY;
+        }
+        return activePageId;
+    }, [allPages, activePageId]);
+
+    const currentSeoMeta: SeoMeta = useMemo(() => {
+        const base = seoMetaByPage[currentPageKey] ?? emptyMeta;
+
+        if (typeof base.faviconUrl === "string" && base.faviconUrl.trim() !== "") {
+            return base;
+        }
+
+        const anyFavicon = Object.values(seoMetaByPage).find((m): m is SeoMeta => {
+            if (!m || typeof m !== "object") return false;
+            const v = (m as SeoMeta).faviconUrl;
+            return typeof v === "string" && v.trim() !== "";
+        });
+
+        if (!anyFavicon || !anyFavicon.faviconUrl) return base;
+
+        return { ...base, faviconUrl: anyFavicon.faviconUrl };
+    }, [seoMetaByPage, currentPageKey]);
+
+    // pick a single renderId to use for Firestore writes / reads
+    const resolvedRenderId = draftId ?? null;
+
+    // this now does BOTH: updates local state AND writes to Firestore
+    const handleSaveMetaForCurrentPage = useCallback(
+        async (meta: SeoMeta) => {
+            const rawPageKey =
+                currentPageKey && currentPageKey !== "single" ? currentPageKey : SINGLE_PAGE_KEY;
+
+            const pageKey = rawPageKey === "__single__" ? "single" : rawPageKey || "single";
+
+            const faviconUrl = meta.faviconUrl?.trim() || "";
+
+            let next: SeoMetaByPage = {
+                ...(seoMetaByPage || {}),
+                [pageKey]: meta,
+            };
+
+            if (faviconUrl) {
+                next = Object.fromEntries(
+                    Object.entries(next).map(([key, val]) => [
+                        key,
+                        key === pageKey ? val : { ...val, faviconUrl },
+                    ]),
+                ) as SeoMetaByPage;
+            }
+
+            if ("__single__" in next) {
+                const anyNext: any = next;
+                const singleMeta = anyNext.__single__;
+                delete anyNext.__single__;
+                if (!anyNext.single && singleMeta) anyNext.single = singleMeta;
+                next = anyNext;
+            }
+
+            setSeoMetaByPage(next);
+            setActiveSeoMetaByPage(next);
+
+            if (user && resolvedRenderId) {
+                try {
+                    const dref = doc(db, "kloner_users", user.uid, "kloner_renders", resolvedRenderId);
+
+                    await updateDoc(dref, {
+                        seoMetaByPage: next,
+                        updatedAt: serverTimestamp(),
+                        jsonLd: meta.jsonLd ?? null,
+                    });
+                } catch (err) {
+                    console.error("[handleSaveMetaForCurrentPage] Failed to persist SEO meta to Firestore", {
+                        err,
+                        resolvedRenderId,
+                    });
+                }
+            }
+
+            if (onSaveMeta) {
+                void onSaveMeta(pageKey === "single" ? null : pageKey, meta, next);
+            }
+        },
+        [currentPageKey, seoMetaByPage, user, resolvedRenderId, onSaveMeta],
+    );
+
+    // inject created pages + route-specific CSS into the monolithic HTML for iframe preview
+    const renderHtml = useMemo(() => {
+        let base = stripScripts(stripEditorArtifacts(previewHtml || ""));
+        if (!base) return base;
+
+        // IMPORTANT: keep global header/footer always visible across routes
+        base = hoistGlobalHeaderFooter(base);
+
+        // (A) inject created pages into the document so they actually render (always updates)
+        if (createdPages.length) {
+            const markerStart = `<!-- kloner:created-pages:start -->`;
+            const markerEnd = `<!-- kloner:created-pages:end -->`;
+            const markerRe = new RegExp(`${markerStart}[\\s\\S]*?${markerEnd}\\s*`, "m");
+
+            // strip previous injected block first
+            base = base.replace(markerRe, "");
+
+            // ensure we never inject AI header/footer into pages
+            const blocks = createdPages
+                .map((p) => stripHeaderFooterFromPageBlock((p?.html || "").trim()))
+                .filter(Boolean);
+
+            if (blocks.length) {
+                const payload = `${markerStart}\n${blocks.join("\n\n")}\n${markerEnd}`;
+
+                // insert payload after the last existing page-root block (where the other pages live)
+                const pageBlockRe =
+                    /<main\b[^>]*\bclass=["'][^"']*\bpage-root\b[^"']*["'][^>]*\bdata-route=["'][^"']+["'][^>]*>[\s\S]*?<\/main>/gi;
+
+                let last: RegExpExecArray | null = null;
+                let m: RegExpExecArray | null;
+                while ((m = pageBlockRe.exec(base))) last = m;
+
+                if (last) {
+                    const at = (last.index ?? 0) + last[0].length;
+                    base = base.slice(0, at) + `\n${payload}\n` + base.slice(at);
+                } else {
+                    // fallback: before footer if exists, otherwise before </body>
+                    const footerIdx = base.search(/<footer\b/i);
+                    if (footerIdx >= 0) {
+                        base = base.slice(0, footerIdx) + `\n${payload}\n` + base.slice(footerIdx);
+                    } else if (base.includes("</body>")) {
+                        base = base.replace("</body>", `${payload}\n</body>`);
+                    } else {
+                        base = `${base}\n${payload}`;
+                    }
+                }
+            }
+        }
+
+        // (B) page filtering behavior (unchanged)
+        if (!allPages || !activePageId || activePageId === "single") return base;
+
+        const styleTag =
+            `<style id="kloner-active-route">` +
+            `main.page-root[data-route]{display:none!important;}` +
+            `main.page-root[data-route="${activePageId}"]{display:block!important;}` +
+            `</style>`;
+
+        if (base.includes("</head>")) return base.replace("</head>", `${styleTag}</head>`);
+        if (base.includes("<head>")) return base.replace("<head>", `<head>${styleTag}`);
+        return styleTag + base;
+    }, [previewHtml, activePageId, allPages, createdPages]);
+
+    useEffect(() => {
+        if (mode === "screenshot") return;
+        setIframeKey((k) => k + 1);
+    }, [renderHtml, mode]);
+
+    useEffect(() => {
+        if (!allPages || allPages.length === 0) {
+            if (!activePageId) setActivePageId("single");
+            return;
+        }
+
+        const stillExists = activePageId && allPages.some((p) => p.id === activePageId);
+        if (stillExists) return;
+
+        if (initialPageId && allPages.some((p) => p.id === initialPageId)) {
+            setActivePageId(initialPageId);
+            return;
+        }
+
+        setActivePageId(allPages[0].id);
+    }, [allPages, activePageId, initialPageId]);
+
+    const activePage = useMemo(
+        () => (allPages ? allPages.find((p) => p.id === activePageId) ?? null : null),
+        [allPages, activePageId],
+    );
+
+    // Set of all IDs across base + created overlay
+    const pageIds = useMemo(() => {
+        const s = new Set<string>();
+        (pages || []).forEach((p: any) => s.add(String(p.id)));
+        (derivedPages || []).forEach((p: any) => s.add(String(p.id)));
+        createdPages.forEach((p) => s.add(String(p.id)));
+        return s;
+    }, [pages, derivedPages, createdPages]);
+
+    // Live validation (no loop): only set if value changed
+    useEffect(() => {
+        const msg = validatePageSlug(newPageUrl).ok ? null : (validatePageSlug(newPageUrl).msg || "Invalid URL.");
+        setNewPageUrlErr((prev) => (prev === msg ? prev : msg));
+    }, [newPageUrl]);
+
+    const openNewPageModal = useCallback(() => {
+        setCreatePageErr(null);
+        setNewPagePrompt("");
+        setNewPageUrl("");
+        setShowNewPageModal(true);
+    }, []);
+
+    const closeNewPageModal = useCallback(() => {
+        if (creatingPage || aiEditing) return;
+        setShowNewPageModal(false);
+        setNewPageUrlErr(null)
+    }, [creatingPage, aiEditing]);
+
+    const createNewPageWithAi = useCallback(async () => {
+        if (creatingPage || aiEditing) return;
+
+        setCreatePageErr(null);
+
+        const prompt = (newPagePrompt || "").trim();
+        const slugRaw = (newPageUrl || "").trim();
+
+        const v = validatePageSlug(slugRaw);
+        if (!v.ok) {
+            setCreatePageErr(v.msg || "Invalid URL.");
+            return;
+        }
+        if (!prompt) {
+            setCreatePageErr("Missing description.");
+            return;
+        }
+        if (!draftId) {
+            setCreatePageErr("Missing renderId.");
+            return;
+        }
+
+        const slug = sanitizePageSlug(slugRaw); // keeps "/" for nested paths
+        const baseId = `/${slug}`;
+        const pageId = uniquePageId(baseId, pageIds);
+
+        // required behavior: close modal immediately + aiEditing true
+        setShowNewPageModal(false);
+        setAiEditing(true);
+
+        setCreatingPage(true);
+        try {
+            const starterHtml = baseNewPageBlockHtml(pageId);
+
+            // 1) Add new page immediately (starter placeholder)
+            setCreatedPages((prev) => [...prev, { id: pageId, html: starterHtml } as any]);
+
+            // 2) AI generates only the new page block
+            const res = await fetch("/api/ai-edit", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    renderId: draftId,
+                    html: starterHtml,
+                    prompt:
+                        `Create a brand new page layout INSIDE the provided <main class="page-root" data-route="..."> block. ` +
+                        `Route: "${pageId}". Intent: ${prompt}. ` +
+                        `IMPORTANT: Do NOT add a <header> or <footer>. Assume the site already has a global header/footer. ` +
+                        `Start with <section> / <div> content only. ` +
+                        `Return ONLY the updated HTML for this same block. ` +
+                        `Do not remove class="page-root" or data-route. Do not modify any other pages.`,
+                    mode: "code",
+                }),
+            });
+
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data?.error || `AI failed (${res.status})`);
+            }
+
+            const data = await res.json().catch(() => ({}));
+            const suggestion = data?.suggestions && data.suggestions.length ? data.suggestions[0] : null;
+
+            const afterHtml: string | undefined = suggestion?.afterHtml;
+            if (!afterHtml || typeof afterHtml !== "string") throw new Error("AI returned no HTML.");
+
+            // 3) Clean model output + hard-enforce same route block
+            const cleaned = normalizeAiPageBlock(afterHtml, pageId);
+
+            // 4) Update only this created page’s HTML
+            setCreatedPages((prev) => {
+                const next = prev.slice();
+                const idx = next.findIndex((p) => String(p.id) === String(pageId));
+                if (idx >= 0) next[idx] = { ...next[idx], html: cleaned };
+                return next;
+            });
+
+            // 5) Navigate to it
+            await handlePageSwitch(pageId);
+
+            // 6) Optional save
+            try {
+                await doSave?.();
+            } catch { }
+
+            // clear inputs for next time
+            setNewPagePrompt("");
+            setNewPageUrl("");
+        } catch (e: any) {
+            setCreatePageErr(e?.message || "Failed to create page.");
+            // reopen modal so user can see the error + fix inputs
+            setShowNewPageModal(true);
+        } finally {
+            setCreatingPage(false);
+            setAiEditing(false);
+        }
+    }, [creatingPage, aiEditing, newPagePrompt, newPageUrl, draftId, pageIds, handlePageSwitch, doSave]);
 
     const confirmPageSwitch = async () => {
         if (!pageSwitchConfirm) return;
@@ -2389,7 +2543,6 @@ export default function PreviewEditor({
             }
         } catch (err) {
             console.error("[confirmPageSwitch] save failed before page switch", err);
-            // still continue to switch, to avoid trapping the user
         } finally {
             setActivePageId(nextId);
             bumpSessionCounter("pageSwitch");
@@ -2401,6 +2554,157 @@ export default function PreviewEditor({
         setPageSwitchConfirm(null);
     };
 
+    // ----------------------
+    // helpers (bottom)
+    // ----------------------
+
+    function uniquePageId(baseId: string, pageIds: Set<string>): string {
+        let id = baseId;
+        let i = 2;
+        while (pageIds.has(id)) id = `${baseId}-${i++}`;
+        return id;
+    }
+
+    function baseNewPageBlockHtml(pageId: string): string {
+        const safeRoute = String(pageId || "/new-page");
+        // No page-level header/footer here. Keep as pure content.
+        return `
+<main class="page-root" data-route="${safeRoute}" data-kloner-root="1" style="min-height:100vh;">
+  <section style="max-width:1100px;margin:0 auto;padding:48px 24px;">
+    <div style="font-size:14px;color:rgba(0,0,0,0.55);margin-bottom:10px;">${safeRoute}</div>
+    <h1 style="margin:0 0 12px 0;font-size:40px;line-height:1.05;">New page</h1>
+    <p style="margin:0;color:rgba(0,0,0,0.65);max-width:820px;font-size:14px;">
+      Draft content will be generated here.
+    </p>
+  </section>
+</main>
+`.trim();
+    }
+
+    function sanitizePageSlug(input: string): string {
+        // allows nested segments with "/"
+        let s = String(input || "").trim().toLowerCase();
+
+        // no leading/trailing slashes (input is slug-only)
+        s = s.replace(/^\/+/, "").replace(/\/+$/g, "");
+
+        // normalize separators
+        s = s.replace(/[\s_]+/g, "-");
+
+        // split by "/", sanitize each segment, then re-join
+        const parts = s.split("/").filter(Boolean).map((seg) => {
+            let x = seg;
+            x = x.replace(/[^a-z0-9-]+/g, "-");
+            x = x.replace(/-+/g, "-").replace(/^-+|-+$/g, "");
+            return x;
+        });
+
+        // drop empty segments
+        return parts.filter(Boolean).join("/");
+    }
+
+    function validatePageSlug(input: string): { ok: boolean; msg?: string } {
+        const raw = String(input || "").trim();
+
+        if (!raw) return { ok: false, msg: "" };
+        if (/^\//.test(raw)) return { ok: false, msg: `Do not include "/". Type only the slug.` };
+        if (raw.length > 80) return { ok: false, msg: "Too long. Keep it under 80 characters." };
+
+        // allow only letters/numbers/spaces/_/- and "/" in raw typing
+        if (/[^a-zA-Z0-9\-_/ ]/.test(raw)) return { ok: false, msg: "Only letters, numbers, '-', and '/' are allowed." };
+        if (/\/{2,}/.test(raw)) return { ok: false, msg: "Avoid consecutive '/'." };
+
+        const sanitized = sanitizePageSlug(raw);
+        if (!sanitized) return { ok: false, msg: "Invalid slug. Use letters/numbers with optional '-' and '/'." };
+        if (sanitized.length < 2) return { ok: false, msg: "" };
+
+        // prevent empty segments after sanitize
+        if (sanitized.split("/").some((seg) => !seg)) return { ok: false, msg: "Invalid path segments." };
+        if (sanitized.split("/").some((seg) => seg.startsWith("-") || seg.endsWith("-"))) {
+            return { ok: false, msg: "Segments cannot start or end with '-'." };
+        }
+
+        return { ok: true };
+    }
+
+    function stripHeaderFooterFromPageBlock(html: string): string {
+        let out = html || "";
+        out = out.replace(/<header\b[\s\S]*?<\/header>\s*/gi, "");
+        out = out.replace(/<footer\b[\s\S]*?<\/footer>\s*/gi, "");
+        return out.trim();
+    }
+
+    function normalizeAiPageBlock(afterHtml: string, pageId: string): string {
+        let out = (afterHtml || "").trim();
+
+        // strip header/footer even if AI disobeys
+        out = stripHeaderFooterFromPageBlock(out);
+
+        // enforce correct wrapper if AI returned partial inner content
+        const hasMain = /<main\b[^>]*\bpage-root\b[^>]*>/i.test(out) && /<\/main>/i.test(out);
+        if (!hasMain) {
+            // wrap the returned content
+            const inner = out;
+            out = `
+<main class="page-root" data-route="${pageId}" data-kloner-root="1" style="min-height:100vh;">
+  ${inner}
+</main>
+`.trim();
+        }
+
+        // enforce correct route attribute regardless
+        out = out.replace(/data-route=["'][^"']*["']/i, `data-route="${pageId}"`);
+        if (!/class=["'][^"']*\bpage-root\b[^"']*["']/i.test(out)) {
+            // ensure page-root class exists on main
+            out = out.replace(/<main\b([^>]*)>/i, (m, g1) => {
+                if (/class=["']/.test(g1)) {
+                    return `<main${g1.replace(/class=["']([^"']*)["']/, (mm: any, cls: any) => ` class="${cls} page-root"`)}>`;
+                }
+                return `<main class="page-root"${g1}>`;
+            });
+        }
+
+        return out.trim();
+    }
+
+    function hoistGlobalHeaderFooter(docHtml: string): string {
+        let base = docHtml || "";
+
+        const HOIST_HEAD = `<!-- kloner:global-header:start -->`;
+        const HOIST_HEAD_END = `<!-- kloner:global-header:end -->`;
+        const HOIST_FOOT = `<!-- kloner:global-footer:start -->`;
+        const HOIST_FOOT_END = `<!-- kloner:global-footer:end -->`;
+
+        if (base.includes(HOIST_HEAD) || base.includes(HOIST_FOOT)) return base;
+
+        const headerMatch = base.match(/<header\b[\s\S]*?<\/header>/i);
+        const footerMatch = base.match(/<footer\b[\s\S]*?<\/footer>/i);
+
+        if (!headerMatch && !footerMatch) return base;
+
+        if (headerMatch) base = base.replace(headerMatch[0], "");
+        if (footerMatch) base = base.replace(footerMatch[0], "");
+
+        if (headerMatch) {
+            const headerPayload = `${HOIST_HEAD}\n${headerMatch[0]}\n${HOIST_HEAD_END}\n`;
+            if (base.includes("<body")) {
+                base = base.replace(/<body([^>]*)>/i, (m, g1) => `<body${g1}>\n${headerPayload}`);
+            } else {
+                base = `${headerPayload}${base}`;
+            }
+        }
+
+        if (footerMatch) {
+            const footerPayload = `\n${HOIST_FOOT}\n${footerMatch[0]}\n${HOIST_FOOT_END}\n`;
+            if (base.includes("</body>")) {
+                base = base.replace("</body>", `${footerPayload}</body>`);
+            } else {
+                base = `${base}${footerPayload}`;
+            }
+        }
+
+        return base;
+    }
 
     // inside your editor component
     async function doExport() {
@@ -3441,7 +3745,7 @@ export default function PreviewEditor({
                             if (dirty) setClosePrompt(true);
                             else performClose("discard");
                         }}
-                        disabled={closing}
+                        disabled={closing || aiEditing}
                         aria-label="Close editor"
                         className={`absolute top-5 right-5 z-[100] inline-flex h-6 w-6 items-center justify-center rounded-full border border-neutral-300 bg-white/90/90 text-neutral-700 shadow-md transition ${closing
                             ? "cursor-not-allowed opacity-60"
@@ -3472,6 +3776,7 @@ export default function PreviewEditor({
                     className={`absolute ${IS_MOBILE ? 'bottom-20 left-1/2 z-[101]' : 'top-5 left-1/2 z-[101] '} -translate-x-1/2`}>
                     <div className={`inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white/90/95 px-2 py-1 shadow-md`}>
                         <motion.button
+                            disabled={aiEditing}
                             type="button"
                             onClick={() => handleDeviceChange("desktop")}
                             whileHover={{ scale: 1.05 }}
@@ -3486,6 +3791,7 @@ export default function PreviewEditor({
                         </motion.button>
 
                         <motion.button
+                            disabled={aiEditing}
                             type="button"
                             onClick={() => handleDeviceChange("tablet")}
                             whileHover={{ scale: 1.05 }}
@@ -3501,6 +3807,7 @@ export default function PreviewEditor({
 
                         <motion.button
                             type="button"
+                            disabled={aiEditing}
                             onClick={() => handleDeviceChange("mobile")}
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.96 }}
@@ -3516,30 +3823,25 @@ export default function PreviewEditor({
                 </div>
 
                 {/* UI scale – top left */}
-                {sidebarHidden && (
-                    <div className={`absolute ${IS_MOBILE ? 'bottom-20 left-3' : 'top-5 left-5'} z-10 flex items-center gap-2 rounded-full ${IS_MOBILE ? '' : 'border border-neutral-200 bg-white/90/95 shadow-md'} px-3 py-1 `}>
-                        {!IS_MOBILE && (
-                            <span className="text-[11px] font-medium text-neutral-600">UI scale</span>
-                        )}
-                        <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-600">
-                            <button
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-white/90 text-neutral-600 shadow-sm hover:bg-neutral-100"
-                                onClick={() => setUiScale((s) => Math.max(0.5, +(s - 0.05).toFixed(2)))}
-                                disabled={closing}
-                            >
-                                −
-                            </button>
-                            {!IS_MOBILE && (<span className="w-10 text-center">{Math.round(uiScale * 100)}%</span>)}
-                            <button
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-white/90 text-neutral-600 shadow-sm hover:bg-neutral-100"
-                                onClick={() => setUiScale((s) => Math.min(1.25, +(s + 0.05).toFixed(2)))}
-                                disabled={closing}
-                            >
-                                +
-                            </button>
-                        </div>
+                <div className={`absolute ${IS_MOBILE ? 'bottom-20 left-3' : 'top-5 left-5'} z-10 flex items-center gap-2 rounded-full ${IS_MOBILE ? '' : 'bg-white/90 shadow-md'} px-2 py-1 `}>
+                    <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-600">
+                        <button
+                            className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-white/90 text-neutral-600 shadow-sm hover:bg-neutral-100"
+                            onClick={() => setUiScale((s) => Math.max(0.5, +(s - 0.05).toFixed(2)))}
+                            disabled={closing}
+                        >
+                            −
+                        </button>
+                        {!IS_MOBILE && (<span className="w-10 text-center">{Math.round(uiScale * 100)}%</span>)}
+                        <button
+                            className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-white/90 text-neutral-600 shadow-sm hover:bg-neutral-100"
+                            onClick={() => setUiScale((s) => Math.min(1.25, +(s + 0.05).toFixed(2)))}
+                            disabled={closing}
+                        >
+                            +
+                        </button>
                     </div>
-                )}
+                </div>
 
                 <div
                     className="relative bg-white/90 rounded-xl shadow-xl gap-4 p-4 grid grid-cols-1"
@@ -4375,23 +4677,21 @@ export default function PreviewEditor({
                             <div
                                 className={
                                     IS_MOBILE
-                                        ? "mt-2 overflow-x-auto -mx-4 px-4" // phone: allow horizontal scroll, edge-to-edge
-                                        : "mt-20"                            // non-mobile: keep your existing spacing
+                                        ? "mt-2 overflow-x-auto -mx-4 px-4"
+                                        : "mt-20"
                                 }
                             >
                                 <div
                                     className={
                                         IS_MOBILE
-                                            ? "inline-flex min-w-max"        // let content be wider than viewport
-                                            : "flex justify-center"          // desktop/tablet: centered
+                                            ? "inline-flex min-w-max"
+                                            : "flex justify-center"
                                     }
                                 >
-                                    {/* Outer pill: Layers button + all pages in one horizontal row */}
                                     <div
                                         id="kloner-page-switcher"
                                         className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/90/80 px-2 py-1 shadow-sm"
                                     >
-                                        {/* Layers toggle (kept, even though archived row is gone) */}
                                         <button
                                             type="button"
                                             onClick={() => setShowPageLayers((open) => !open)}
@@ -4410,7 +4710,6 @@ export default function PreviewEditor({
                                             <span>Pages</span>
                                         </button>
 
-                                        {/* All pages – archived ones are greyed out with restore below */}
                                         <div className="inline-flex items-center gap-2">
                                             {allPages.map((p) => {
                                                 const isActive = p.id === activePageId;
@@ -4444,7 +4743,6 @@ export default function PreviewEditor({
                                                         >
                                                             <span>{p.id}</span>
 
-                                                            {/* Archive icon only for non-archived pages */}
                                                             {!isArchived && (
                                                                 <a
                                                                     type="button"
@@ -4473,7 +4771,6 @@ export default function PreviewEditor({
                                                             )}
                                                         </motion.button>
 
-                                                        {/* Restore control only for archived pages */}
                                                         {isArchived && (
                                                             <button
                                                                 type="button"
@@ -4486,9 +4783,189 @@ export default function PreviewEditor({
                                                     </motion.div>
                                                 );
                                             })}
+
+                                            {/* ADD PAGE BUTTON (always visible) */}
+                                            <motion.button
+                                                type="button"
+                                                onClick={openNewPageModal}
+                                                whileHover={{ scale: 1.04, y: -1 }}
+                                                whileTap={{ scale: 0.98 }}
+                                                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200 bg-white/90 text-neutral-900 shadow-sm hover:bg-neutral-100"
+                                                title="Add new page"
+                                            >
+                                                <svg
+                                                    xmlns="http://www.w3.org/2000/svg"
+                                                    viewBox="0 0 20 20"
+                                                    fill="currentColor"
+                                                    className="h-4 w-4"
+                                                >
+                                                    <path
+                                                        fillRule="evenodd"
+                                                        d="M10 4a.75.75 0 01.75.75v4.5h4.5a.75.75 0 010 1.5h-4.5v4.5a.75.75 0 01-1.5 0v-4.5h-4.5a.75.75 0 010-1.5h4.5v-4.5A.75.75 0 0110 4z"
+                                                        clipRule="evenodd"
+                                                    />
+                                                </svg>
+                                            </motion.button>
                                         </div>
                                     </div>
                                 </div>
+
+                                {/* MODAL */}
+                                <AnimatePresence>
+                                    {showNewPageModal && (
+                                        <motion.div
+                                            key="new-page-modal"
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            exit={{ opacity: 0 }}
+                                            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-4"
+                                            onMouseDown={(e) => {
+                                                if (e.target === e.currentTarget) closeNewPageModal();
+                                            }}
+                                        >
+                                            <motion.div
+                                                initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                exit={{ opacity: 0, y: 10, scale: 0.98 }}
+                                                transition={{ duration: 0.18, ease: "easeOut" }}
+                                                className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white shadow-2xl"
+                                            >
+                                                <div className="flex items-start justify-between gap-4 border-b border-neutral-200 px-5 py-4">
+                                                    <div className="space-y-1">
+                                                        <div className="text-sm font-semibold text-neutral-900">
+                                                            Add a new page
+                                                        </div>
+                                                        <div className="text-xs text-neutral-600">
+                                                            Generates a new page only. Existing pages remain unchanged.
+                                                        </div>
+                                                    </div>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={closeNewPageModal}
+                                                        className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200"
+                                                        title="Close"
+                                                        disabled={creatingPage}
+                                                    >
+                                                        <svg
+                                                            xmlns="http://www.w3.org/2000/svg"
+                                                            viewBox="0 0 20 20"
+                                                            fill="currentColor"
+                                                            className="h-4 w-4 text-neutral-700"
+                                                        >
+                                                            <path
+                                                                fillRule="evenodd"
+                                                                d="M4.47 4.47a.75.75 0 011.06 0L10 8.94l4.47-4.47a.75.75 0 111.06 1.06L11.06 10l4.47 4.47a.75.75 0 11-1.06 1.06L10 11.06l-4.47 4.47a.75.75 0 11-1.06-1.06L8.94 10 4.47 5.53a.75.75 0 010-1.06z"
+                                                                clipRule="evenodd"
+                                                            />
+                                                        </svg>
+                                                    </button>
+                                                </div>
+
+                                                <div className="space-y-4 px-5 py-4">
+                                                    <div className="space-y-2">
+                                                        <label className="text-xs font-semibold text-neutral-700">Link URL</label>
+
+
+                                                        {/* slug input with fixed "/" prefix */}
+                                                        <div
+                                                            className={[
+                                                                "flex items-center overflow-hidden rounded-xl border bg-white",
+                                                                newPageUrlErr
+                                                                    ? "border-red-300 focus-within:border-red-400"
+                                                                    : "border-neutral-200 focus-within:border-neutral-300",
+                                                            ].join(" ")}
+                                                        >
+                                                            <div className="select-none px-3 py-2 text-sm text-neutral-400">/</div>
+
+                                                            <input
+                                                                value={newPageUrl}
+                                                                onChange={(e) => {
+                                                                    setCreatePageErr(null);
+                                                                    setNewPageUrl(e.target.value);
+                                                                }}
+                                                                placeholder="pricing or blog/guides"
+                                                                className="w-full bg-transparent px-0 py-2 pr-3 text-sm text-neutral-900 outline-none placeholder:text-neutral-400"
+                                                                disabled={creatingPage || aiEditing}
+                                                                inputMode="text"
+                                                                autoCapitalize="none"
+                                                                autoCorrect="off"
+                                                                spellCheck={false}
+                                                            />
+                                                        </div>
+
+                                                        {/* instant validation feedback */}
+                                                        {newPageUrlErr ? (
+                                                            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700">
+                                                                {newPageUrlErr}
+                                                            </div>
+                                                        ) : (
+                                                            <div className="text-[11px] text-neutral-500">
+                                                                Examples: pricing, about, blog/guides
+                                                            </div>
+                                                        )}
+
+
+                                                        <div className="text-[11px] text-neutral-500">
+                                                            Example: pricing, about, services (only a-z, 0-9, and -)
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="space-y-2">
+                                                        <label className="text-xs font-semibold text-neutral-700">Describe your new page</label>
+                                                        <textarea
+                                                            value={newPagePrompt}
+                                                            onChange={(e) => {
+                                                                setCreatePageErr(null);
+                                                                setNewPagePrompt(e.target.value);
+                                                            }}
+                                                            placeholder="Describe your new page"
+                                                            rows={4}
+                                                            className="w-full resize-none rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none placeholder:text-neutral-400 focus:border-neutral-300"
+                                                            disabled={creatingPage || aiEditing}
+                                                        />
+                                                    </div>
+
+                                                    {createPageErr && (
+                                                        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                                                            {createPageErr}
+                                                        </div>
+                                                    )}
+
+                                                    <div className="flex items-center justify-end gap-2 pt-1">
+                                                        <button
+                                                            type="button"
+                                                            onClick={closeNewPageModal}
+                                                            className="rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-800 hover:bg-neutral-50 disabled:opacity-60"
+                                                            disabled={creatingPage || aiEditing}
+                                                        >
+                                                            Cancel
+                                                        </button>
+
+                                                        <button
+                                                            type="button"
+                                                            onClick={async () => {
+                                                                // close immediately, flip aiEditing on, then let createNewPageWithAi run
+                                                                if (creatingPage || aiEditing) return;
+                                                                setShowNewPageModal(false);
+                                                                setAiEditing(true);
+                                                                try {
+                                                                    await createNewPageWithAi();
+                                                                } finally {
+                                                                    setAiEditing(false);
+                                                                }
+                                                            }}
+                                                            disabled={creatingPage || aiEditing}
+                                                            className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:brightness-95 disabled:opacity-60"
+                                                        >
+                                                            {creatingPage || aiEditing ? "Creating…" : "Create page"}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </motion.div>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
                             </div>
                         )}
 
@@ -4513,7 +4990,7 @@ export default function PreviewEditor({
                                         className={
                                             isPreviewFullscreen
                                                 ? "flex-1 min-h-0 flex items-stretch justify-end"
-                                                : "ml-auto"
+                                                : `${device === "desktop" ? 'ml-auto' : 'mx-auto'}`
                                         }
                                         style={
                                             isPreviewFullscreen

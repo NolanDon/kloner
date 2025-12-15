@@ -270,12 +270,12 @@ export function MiniToolbar({
             )}
 
             {/* EXTREMELY COMPACT MAIN TOOLBAR */}
-            <div className="inline-flex items-center gap-0.5 rounded-full bg-neutral-900/95 px-1 py-0.5 text-[10px] font-semibold text-white shadow-xl">
+            <div className="inline-flex items-center gap-0.5 rounded-full bg-white/90 px-1 py-0.5 text-[10px] border border-neutral-700 font-semibold text-neutral-800 shadow-xl">
                 <button
                     type="button"
                     onClick={handleMoveUp}
                     disabled={disabled}
-                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent/90 hover:bg-accent ${disabled ? "cursor-not-allowed opacity-50" : ""
+                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-accent hover:text-white hover:text-white ${disabled ? "cursor-not-allowed opacity-50" : ""
                         }`}
                     title="Move section up"
                 >
@@ -285,7 +285,7 @@ export function MiniToolbar({
                     type="button"
                     onClick={handleMoveDown}
                     disabled={disabled}
-                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent/90 hover:bg-accent ${disabled ? "cursor-not-allowed opacity-50" : ""
+                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-accent hover:text-white ${disabled ? "cursor-not-allowed opacity-50" : ""
                         }`}
                     title="Move section down"
                 >
@@ -295,7 +295,7 @@ export function MiniToolbar({
                     type="button"
                     onClick={handleInsertBelowSimple}
                     disabled={disabled}
-                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full  hover:bg-accent ${disabled ? "cursor-not-allowed opacity-50" : ""
+                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-accent hover:text-white ${disabled ? "cursor-not-allowed opacity-50" : ""
                         }`}
                     title="Duplicate this block"
                 >
@@ -308,7 +308,7 @@ export function MiniToolbar({
                         setAiOpen((v) => !v);
                     }}
                     disabled={disabled}
-                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent/95 hover:bg-accent ${disabled ? "cursor-not-allowed opacity-50" : ""
+                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent/95 hover:bg-accent hover:text-white ${disabled ? "cursor-not-allowed opacity-50" : ""
                         }`}
                     title="AI edit this block"
                 >
