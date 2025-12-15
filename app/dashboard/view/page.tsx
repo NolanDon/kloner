@@ -37,7 +37,8 @@ import {
     setDoc,
     arrayRemove,
     getDocFromServer,
-    getDoc
+    getDoc,
+    getDocsFromServer
 } from "firebase/firestore";
 import {
     ref as sRef,
@@ -1939,69 +1940,88 @@ export default function PreviewPage(): JSX.Element {
 
 
     const refreshRenders = useCallback(
-        async () => {
+        async (preferServer: boolean = true) => {
             if (!user) return;
             if (!targetUrl || !isHttpUrl(targetUrl)) {
-                setRenders((prev) =>
-                    prev.length ? [] : prev
-                );
+                setRenders((prev) => (prev.length ? [] : prev));
                 return;
             }
 
+            const tsToMs = (v: any): number => {
+                if (!v) return 0;
+                if (typeof v === "number") return v;
+                if (v instanceof Date) return v.getTime();
+                if (typeof v?.toDate === "function") return v.toDate().getTime();
+                const d = new Date(v);
+                return Number.isNaN(d.getTime()) ? 0 : d.getTime();
+            };
+
+            const mergePreferNewerDeploy = (prev: any, next: any) => {
+                if (!prev) return next;
+
+                const prevExported = tsToMs(prev.lastExportedAt);
+                const nextExported = tsToMs(next.lastExportedAt);
+
+                const prevHasDeploy = !!prev.lastDeployUrl;
+                const nextHasDeploy = !!next.lastDeployUrl;
+
+                // If local already has deploy url and remote doesn't (or remote is older), keep local deploy fields.
+                const keepLocalDeploy =
+                    prevHasDeploy && (!nextHasDeploy || prevExported > nextExported);
+
+                if (!keepLocalDeploy) return next;
+
+                return {
+                    ...next,
+                    lastDeployUrl: prev.lastDeployUrl,
+                    lastExportedAt: prev.lastExportedAt,
+                    vercelProjectId: prev.vercelProjectId ?? next.vercelProjectId ?? null,
+                    vercelProjectName: prev.vercelProjectName ?? next.vercelProjectName ?? null,
+                };
+            };
+
             setLoadingRenders(true);
             try {
-                const base = collection(
-                    db,
-                    "kloner_users",
-                    user.uid,
-                    "kloner_renders"
-                );
+                const base = collection(db, "kloner_users", user.uid, "kloner_renders");
                 const qs = query(
                     base,
                     where("archived", "in", [false, null]),
                     orderBy("createdAt", "desc"),
-                    limit(100)
+                    limit(100),
                 );
-                const snap = await getDocs(qs);
+
+                // Force server read first to avoid stale cache overwriting optimistic deploy state.
+                let snap;
+                try {
+                    snap = preferServer ? await getDocsFromServer(qs) : await getDocs(qs);
+                } catch {
+                    snap = await getDocs(qs);
+                }
 
                 const all = snap.docs.map(mapRenderDoc);
 
                 const filtered = all.filter((r) => {
                     const byUrl = (r.url || "") === targetUrl;
-                    const byHash =
-                        !!targetHash && r.urlHash === targetHash;
-                    const byKeyHash =
-                        !!targetHash &&
-                        extractHashFromKey(r.key) === targetHash;
+                    const byHash = !!targetHash && r.urlHash === targetHash;
+                    const byKeyHash = !!targetHash && extractHashFromKey(r.key) === targetHash;
                     return byUrl || byHash || byKeyHash;
                 });
 
                 const now = Date.now();
                 for (const r of filtered) {
                     const key = r.key || "";
-                    if (
-                        key &&
-                        lockUntilByKey[key] &&
-                        lockUntilByKey[key] > now
-                    ) {
+                    if (key && lockUntilByKey[key] && lockUntilByKey[key] > now) {
                         setLockUntilByRender((m) => ({
                             ...m,
-                            [r.id]: Math.max(
-                                m[r.id] || 0,
-                                lockUntilByKey[key]
-                            ),
+                            [r.id]: Math.max(m[r.id] || 0, lockUntilByKey[key]),
                         }));
                     }
                 }
 
                 const withOptimistic = [...filtered];
 
-                for (const [k, opt] of Object.entries(
-                    optimisticByKey
-                )) {
-                    const exists = filtered.some(
-                        (r) => r.key === k
-                    );
+                for (const [k, opt] of Object.entries(optimisticByKey)) {
+                    const exists = filtered.some((r) => r.key === k);
                     if (!exists) {
                         withOptimistic.unshift(opt);
                     } else {
@@ -2013,35 +2033,34 @@ export default function PreviewPage(): JSX.Element {
                     }
                 }
 
-                setRenders((prev) =>
-                    rendersEqual(prev, withOptimistic)
-                        ? prev
-                        : withOptimistic
-                );
+                // Merge server results into local state without clobbering newer deploy fields.
+                setRenders((prev) => {
+                    const prevById = new Map(prev.map((r: any) => [r.id, r]));
+                    const prevByKey = new Map(prev.map((r: any) => [r.key, r]));
 
-                const anyQueued = withOptimistic.some(
-                    (r) => r.status === "queued"
-                );
+                    const merged = withOptimistic.map((r: any) => {
+                        const p = prevById.get(r.id) ?? (r.key ? prevByKey.get(r.key) : undefined);
+                        return mergePreferNewerDeploy(p, r);
+                    });
+
+                    return rendersEqual(prev, merged) ? prev : merged;
+                });
+
+                const anyQueued = withOptimistic.some((r) => r.status === "queued");
 
                 if (anyQueued) {
                     const now2 = Date.now();
                     if (!pollTimer.current) {
                         pollStopAt.current = now2 + 10 * 60 * 1000;
                         pollTimer.current = setInterval(async () => {
-                            await refreshRenders();
-                            if (
-                                Date.now() > pollStopAt.current &&
-                                pollTimer.current
-                            ) {
+                            await refreshRenders(true);
+                            if (Date.now() > pollStopAt.current && pollTimer.current) {
                                 clearInterval(pollTimer.current);
                                 pollTimer.current = null;
                             }
                         }, 5000);
                     } else {
-                        pollStopAt.current = Math.max(
-                            pollStopAt.current,
-                            now2 + 5 * 60 * 1000
-                        );
+                        pollStopAt.current = Math.max(pollStopAt.current, now2 + 5 * 60 * 1000);
                     }
                 } else if (pollTimer.current) {
                     clearInterval(pollTimer.current);
@@ -2051,11 +2070,7 @@ export default function PreviewPage(): JSX.Element {
                 setPendingByKey((prev) => {
                     const next = { ...prev };
                     withOptimistic.forEach((r) => {
-                        if (
-                            r.key &&
-                            (r.status === "ready" ||
-                                r.status === "failed")
-                        ) {
+                        if (r.key && (r.status === "ready" || r.status === "failed")) {
                             delete next[r.key];
                             setOptimisticByKey((m) => {
                                 if (!m[r.key!]) return m;
@@ -2071,14 +2086,9 @@ export default function PreviewPage(): JSX.Element {
                 setLoadingRenders(false);
             }
         },
-        [
-            user,
-            targetUrl,
-            targetHash,
-            optimisticByKey,
-            lockUntilByKey,
-        ]
+        [user, targetUrl, targetHash, optimisticByKey, lockUntilByKey],
     );
+
 
     useEffect(() => {
         if (!user || !targetUrl || !isHttpUrl(targetUrl)) {
