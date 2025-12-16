@@ -64,6 +64,7 @@ import {
     WrenchIcon,
     DeleteIcon,
     CheckCheck,
+    ExternalLink,
 } from "lucide-react";
 import {
     isHttpUrl,
@@ -209,6 +210,20 @@ type RenderCardProps = {
     retryRender: (render: { id: string; key?: string | null }) => void; // ← new
 };
 
+// ============================================================================
+// HELPER FUNCTION: Strict deployment check
+// ============================================================================
+function isRenderDeployed(r: { lastExportedAt?: any; lastDeployUrl?: string; vercelProjectId?: string | null; vercelProjectName?: string | null }): boolean {
+    return !!(
+        r.lastExportedAt &&
+        r.lastDeployUrl &&
+        (r.vercelProjectId || r.vercelProjectName)
+    );
+}
+
+// ============================================================================
+// RENDER CARD COMPONENT
+// ============================================================================
 function RenderCardInner({
     r,
     isDeleting,
@@ -223,6 +238,7 @@ function RenderCardInner({
     archiveRender,
     unarchiveRender,
     onShareWithCommunity,
+    push, // Add this to props if not already there
 }: RenderCardProps) {
     const router = useRouter();
 
@@ -231,15 +247,16 @@ function RenderCardInner({
     const reason =
         typeof (r as any).reason === "string" ? (r as any).reason : null;
 
-    // “failed” = timeout-style error, regardless of html
+    // "failed" = timeout-style error, regardless of html
     const isFailed =
         (r.status === "error" || r.status === "failed") &&
         (reason === "timeout_or_worker_shutdown" || reason === "timeout");
 
-    const isDeployed = !!r.lastExportedAt;
+    // ✅ STRICT deployment check - must have ALL these fields
+    const isDeployed = isRenderDeployed(r as any);
     const isArchived = !!r.archived;
 
-    const isCommunityBuild = r.source === "community_remix"
+    const isCommunityBuild = r.source === "community_remix";
 
     // progress normalization: prefer explicit percent, then raw `progress`
     const rawPercent =
@@ -332,10 +349,24 @@ function RenderCardInner({
 
     const showIframe = !!r.html?.trim();
 
+    // ✅ Enhanced deployThis function with validation
     const deployThis = () => {
-        if (!r.html?.trim()) return;
-        if (isDeployedFlag) return;
-        if (isArchivedFlag) return;
+        if (!r.html?.trim()) {
+            push?.("No HTML content to deploy", "warn");
+            return;
+        }
+
+        // ✅ Block if already deployed
+        if (isDeployedFlag) {
+            push?.("This render is already deployed. View it in deployments.", "warn");
+            return;
+        }
+
+        if (isArchivedFlag) {
+            push?.("Unarchive this render first to deploy it", "warn");
+            return;
+        }
+
         startDeployWizard({ id: r.id, nameHint: r.nameHint ?? undefined });
     };
 
@@ -475,7 +506,7 @@ function RenderCardInner({
                     : "",
             ].join(" ")}
         >
-            {/* ✅ community badge (unchanged) */}
+            {/* ✅ community badge */}
             {isCommunityBuild && (
                 <span
                     className="absolute left-2 bottom-2 z-40 inline-flex items-center gap-1.5 rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm"
@@ -518,7 +549,7 @@ function RenderCardInner({
                 </span>
             )}
 
-            {/* ✅ render id badge (new, small, unique) */}
+            {/* ✅ render id badge */}
             <span
                 className="absolute left-2 top-2 z-40 inline-flex items-center rounded-full border border-neutral-200 bg-white/85 px-2 py-0.5 text-[10px] font-mono text-neutral-700 shadow-sm"
                 title={`Render ID: ${String(r?.id || "").slice(0, 10)}`}
@@ -536,7 +567,6 @@ function RenderCardInner({
                     <span>v{controllerVersion}</span>
                 </span>
             )}
-
 
             {/* model badge – bottom left */}
             {model && isDev && (
@@ -567,8 +597,8 @@ function RenderCardInner({
                     className={[
                         "absolute -right-3 -top-3 z-40 inline-flex h-6 w-6 items-center justify-center rounded-full border shadow-sm",
                         "transition-all duration-150",
-                        "bg-white/85 border-neutral-200 text-neutral-400",                 // default: visible, subtle
-                        "hover:bg-red-600 hover:border-red-600 hover:text-white hover:shadow-md hover:scale-[1.04]", // hover: red + white icon
+                        "bg-white/85 border-neutral-200 text-neutral-400",
+                        "hover:bg-red-600 hover:border-red-600 hover:text-white hover:shadow-md hover:scale-[1.04]",
                         "active:scale-[0.98]",
                         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 focus-visible:ring-offset-2",
                         "disabled:opacity-60 disabled:pointer-events-none",
@@ -619,15 +649,17 @@ function RenderCardInner({
                                 }
                                 className={`group inline-flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-xs ${isArchivedFlag
                                     ? "cursor-not-allowed bg-neutral-50 text-neutral-400"
-                                    : "bg-accent text-white shadow-sm hover:bg-accent/90 disabled:opacity-60"
+                                    : isDeployedFlag
+                                        ? "bg-emerald-500 text-white shadow-sm hover:bg-green-700"
+                                        : "bg-accent text-white shadow-sm hover:bg-accent/90 disabled:opacity-60"
                                     }`}
                                 title={
                                     isArchivedFlag
                                         ? "Unarchive this preview to deploy it"
-                                        : deployLocked
-                                            ? "Upgrade to publish live sites"
-                                            : isDeployedFlag
-                                                ? "View and modify this deployment"
+                                        : isDeployedFlag
+                                            ? "View and manage this deployment"
+                                            : deployLocked
+                                                ? "Upgrade to publish live sites"
                                                 : "Deploy current HTML to Vercel"
                                 }
                             >
@@ -638,8 +670,8 @@ function RenderCardInner({
                                     </>
                                 ) : isDeployedFlag ? (
                                     <>
-                                        <span>View deployment</span>
-                                        <Rocket className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
+                                        <span>✓ Deployed</span>
+                                        <ExternalLink className="h-4 w-4" />
                                     </>
                                 ) : (
                                     <>
@@ -653,13 +685,11 @@ function RenderCardInner({
                                 <button
                                     onClick={async () => {
                                         if (isFailed) {
-                                            // reuse this card, do NOT create a new optimistic render
                                             retryRender({ id: r.id, key: r.key || null });
                                         } else {
                                             continueRender(r.id);
                                         }
                                     }}
-                                    // allow click when timeout error, even if html is empty
                                     disabled={(disableOpen || isDeleting || !r.html) && !isFailed}
                                     className="group inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-neutral-700 px-3 py-1.5 text-neutral-800 shadow-sm disabled:opacity-60"
                                     title={
@@ -681,12 +711,15 @@ function RenderCardInner({
                                     {isFailed ? (
                                         <WrenchIcon className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
                                     ) : (
-                                        <BrushIcon className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
+                                        (isBuilding || isQueued) ?
+                                            <Hammer className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
+                                            :
+                                            <BrushIcon className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
                                     )}
                                 </button>
                             )}
-
                         </div>
+
                         {isFailed && !r.html && (
                             <p className="mt-1 text-[11px] text-amber-500">
                                 This preview hit a timeout. Click "Retry" to try again.
@@ -739,9 +772,7 @@ function RenderCardInner({
                                         <>
                                             <button
                                                 type="button"
-                                                onClick={() =>
-                                                    setShareOpen((prev) => !prev)
-                                                }
+                                                onClick={() => setShareOpen((prev) => !prev)}
                                                 disabled={
                                                     alreadyShared ||
                                                     !r.html?.trim() ||
@@ -776,11 +807,9 @@ function RenderCardInner({
                                                     isQueued ||
                                                     isFailed
                                                 }
-                                                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] shadow-sm
-        disabled:opacity-50 disabled:cursor-not-allowed
-        ${isArchivedFlag
-                                                        ? "border-amber-500 bg-amber-50 text-amber-900 hover:bg-amber-100"
-                                                        : "border-neutral-300 bg-white/60 text-neutral-700 hover:border-neutral-400"
+                                                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] shadow-sm disabled:opacity-50 disabled:cursor-not-allowed ${isArchivedFlag
+                                                    ? "border-amber-500 bg-amber-50 text-amber-900 hover:bg-amber-100"
+                                                    : "border-neutral-300 bg-white/60 text-neutral-700 hover:border-neutral-400"
                                                     }`}
                                                 title={
                                                     isArchivedFlag
@@ -791,7 +820,6 @@ function RenderCardInner({
                                                 <span>{isArchivedFlag ? "Unarchive" : "Archive"}</span>
                                                 <Archive className="h-3.5 w-3.5" />
                                             </button>
-
                                         </>
                                     )}
                                 </div>
@@ -803,9 +831,8 @@ function RenderCardInner({
                                 {shareOpen && !alreadyShared && (
                                     <div className="mt-1 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-2 text-[10px] text-neutral-700">
                                         <p className="mb-2">
-                                            Publishing to Kloner community. Name your
-                                            project and optionally allow other users to
-                                            remix a copy of your layout.
+                                            Publishing to Kloner community. Name your project and
+                                            optionally allow other users to remix a copy of your layout.
                                         </p>
 
                                         <div className="mb-2">
@@ -821,15 +848,12 @@ function RenderCardInner({
                                                     hasEditedShareNameRef.current = true;
 
                                                     const forbidden =
-                                                        /\.(com|ca|org|net|io|co|app|dev)\b/i.test(
-                                                            v,
-                                                        ) ||
+                                                        /\.(com|ca|org|net|io|co|app|dev)\b/i.test(v) ||
                                                         /\bwww\./i.test(v) ||
                                                         /\bhttps?:\/\//i.test(v) ||
                                                         /\.\w{2,}$/i.test(v);
 
-                                                    const allowed =
-                                                        /^[a-zA-Z0-9\- ]*$/.test(v);
+                                                    const allowed = /^[a-zA-Z0-9\- ]*$/.test(v);
 
                                                     if (forbidden) {
                                                         setShareError(
@@ -866,9 +890,7 @@ function RenderCardInner({
                                                 type="checkbox"
                                                 className="h-3 w-3 rounded border-neutral-300"
                                                 checked={shareRemixable}
-                                                onChange={(e) =>
-                                                    setShareRemixable(e.target.checked)
-                                                }
+                                                onChange={(e) => setShareRemixable(e.target.checked)}
                                             />
                                             <span>Allow community to copy build</span>
                                         </label>
@@ -913,25 +935,22 @@ function RenderCardInner({
                 )}
             </div>
 
-            {
-                showIframe && (
-                    <div className="relative h-0 overflow-hidden" aria-hidden>
-                        <iframe
-                            title={`r-${r.id}`}
-                            className="h-0 w-full"
-                            sandbox="allow-same-origin"
-                            referrerPolicy="no-referrer"
-                            allow="clipboard-read; clipboard-write"
-                            key={`frame-${r.id}`}
-                            srcDoc={srcDoc}
-                        />
-                    </div>
-                )
-            }
-        </div >
+            {showIframe && (
+                <div className="relative h-0 overflow-hidden" aria-hidden>
+                    <iframe
+                        title={`r-${r.id}`}
+                        className="h-0 w-full"
+                        sandbox="allow-same-origin"
+                        referrerPolicy="no-referrer"
+                        allow="clipboard-read; clipboard-write"
+                        key={`frame-${r.id}`}
+                        srcDoc={srcDoc}
+                    />
+                </div>
+            )}
+        </div>
     );
 }
-
 
 
 /* ───────── toasts ───────── */
@@ -2685,10 +2704,46 @@ export default function PreviewPage(): JSX.Element {
         [user, docSnap, push]
     );
 
-    async function exportToVercel(opts: { html: string; name?: string; renderId?: string }) {
-        // full funnel timer
-        const funnelStartMs = Date.now();
+    async function refreshSingleRender(renderId: string) {
+        if (!user) return;
 
+        try {
+            const renderRef = doc(db, "kloner_users", user.uid, "kloner_renders", renderId);
+            const snap = await getDoc(renderRef);
+
+            if (snap.exists()) {
+                const data = snap.data() as RenderDoc;
+
+                setRenders((prev) =>
+                    prev.map((r) =>
+                        r.id !== renderId
+                            ? r
+                            : {
+                                ...r,
+                                ...data,
+                                lastExportedAt: data.lastExportedAt?.toDate?.() ?? data.lastExportedAt,
+                            }
+                    )
+                );
+            }
+        } catch (err) {
+            console.error("Failed to refresh single render:", err);
+            // Fallback to full refresh
+            await refreshRenders();
+        }
+    }
+
+    function isRenderDeployed(r: RenderDoc): boolean {
+        return !!(
+            r.lastExportedAt &&
+            r.lastDeployUrl &&
+            (r.vercelProjectId || r.vercelProjectName)
+        );
+    }
+
+
+    async function exportToVercel(opts: { html: string; name?: string; renderId?: string }) {
+        const funnelStartMs = Date.now();
         setEditorOpen(false);
 
         const { html, name, renderId } = opts;
@@ -2697,7 +2752,6 @@ export default function PreviewPage(): JSX.Element {
         const trimmedNameInput = name?.trim() || "";
         const hasName = trimmedNameInput.length > 0;
 
-        // mark funnel start
         await recordDeployAnalytics(user, {
             lastExportFlowStartedAt: serverTimestamp(),
             lastExportFlowRenderId: resolvedRenderId ?? null,
@@ -2705,10 +2759,8 @@ export default function PreviewPage(): JSX.Element {
             lastExportFlowSource: "editor_export_button",
         });
 
-        // If no name, open wizard at step 1 and bail.
         if (!hasName) {
             const durationMs = Date.now() - funnelStartMs;
-
             await recordDeployAnalytics(
                 user,
                 {
@@ -2736,10 +2788,8 @@ export default function PreviewPage(): JSX.Element {
             return;
         }
 
-        // Free tier: force upgrade step, do NOT deploy.
         if (userTier === "free") {
             const durationMs = Date.now() - funnelStartMs;
-
             await recordDeployAnalytics(
                 user,
                 {
@@ -2772,17 +2822,13 @@ export default function PreviewPage(): JSX.Element {
             return;
         }
 
-        // ── Resolve canonical project name from Firestore ──
         let projectName = trimmedNameInput;
 
         if (user && resolvedRenderId) {
             const renderRef = doc(db, "kloner_users", user.uid, "kloner_renders", resolvedRenderId);
 
             try {
-                // write the name immediately
                 await updateDoc(renderRef, { nameHint: projectName });
-
-                // then read back as canonical (in case some other process changed it)
                 const snap = await getDoc(renderRef);
                 if (snap.exists()) {
                     const data = snap.data() as any;
@@ -2793,7 +2839,6 @@ export default function PreviewPage(): JSX.Element {
                 }
             } catch (err) {
                 console.error("Failed to sync project name with Firestore", err);
-                // fall back to local projectName
             }
         }
 
@@ -2807,8 +2852,6 @@ export default function PreviewPage(): JSX.Element {
         setDeployWizardBusy(true);
         setDeployWizardLiveUrl(null);
 
-        // IMPORTANT: mark attempt as started immediately so any "auto deploy" effect can't re-trigger on error.
-        // (Your UI can expose a "Retry" button that sets this back to false before calling exportToVercel again.)
         autoDeployTriggeredRef.current = true;
 
         if (resolvedRenderId) setDeployingRenderId(resolvedRenderId);
@@ -2817,7 +2860,6 @@ export default function PreviewPage(): JSX.Element {
 
         const csrf = await ensureSessionAndCsrf();
 
-        // derive archived routes for this render and scrub them out of the HTML
         const archivedRoutes = getArchivedRoutesForRender(resolvedRenderId, renders);
         const scrubbedHtml = scrubArchivedRoutes(html, archivedRoutes);
 
@@ -2828,7 +2870,6 @@ export default function PreviewPage(): JSX.Element {
             fallbackSeoMetaByPage: activeSeoMetaByPage as SeoMetaByPage | null,
         });
 
-        // deploy timer
         const deployStartMs = Date.now();
 
         try {
@@ -2869,15 +2910,15 @@ export default function PreviewPage(): JSX.Element {
 
                 setDeployWizardError(msg);
                 setDeployWizardLiveUrl(null);
-                // DO NOT close the wizard here; keeping it open prevents "re-open -> auto-trigger" loops.
                 push(msg, "err");
                 console.error("Deploy failed", msg);
                 return;
             }
 
             const { url, vercelProjectId: apiProjectId, vercelProjectName: apiProjectName } = j;
+            const now = new Date();
 
-            // update local render state so the overlay switches out of "Deploy"
+            // ✅ IMMEDIATE local state update with all deployment fields
             if (resolvedRenderId) {
                 setRenders((prev) =>
                     prev.map((rr) =>
@@ -2886,24 +2927,27 @@ export default function PreviewPage(): JSX.Element {
                             : {
                                 ...rr,
                                 lastDeployUrl: url,
-                                lastExportedAt: new Date(),
+                                lastExportedAt: now,
                                 vercelProjectId: apiProjectId ?? rr.vercelProjectId ?? null,
                                 vercelProjectName: apiProjectName ?? projectName ?? rr.vercelProjectName ?? null,
+                                // ✅ Add explicit deployment flag
+                                isDeployed: true,
                             },
                     ),
                 );
             }
 
             setDeployWizardLiveUrl(url);
-            // already true, keep it true
             autoDeployTriggeredRef.current = true;
 
+            // ✅ Update Firestore with all deployment fields
             if (user && resolvedRenderId) {
                 await updateDoc(doc(db, "kloner_users", user.uid, "kloner_renders", resolvedRenderId), {
                     lastExportedAt: serverTimestamp(),
                     lastDeployUrl: url,
                     vercelProjectId: apiProjectId ?? null,
                     vercelProjectName: apiProjectName ?? projectName ?? null,
+                    isDeployed: true,
                 });
             }
 
@@ -2927,8 +2971,6 @@ export default function PreviewPage(): JSX.Element {
                 ["deploySuccessCount"],
             );
 
-            navigator.clipboard?.writeText(url).catch(() => void 0);
-
             try {
                 localStorage.setItem("kloner.deployments.hasUnseen", "1");
             } catch {
@@ -2936,9 +2978,15 @@ export default function PreviewPage(): JSX.Element {
             }
 
             setShowDeployNextSteps(true);
-            push("Deployed", "ok");
+            push("Deployed successfully!", "ok");
 
-            await refreshRenders();
+            // ✅ CRITICAL: Force refresh of this specific render to reflect deployment state
+            if (resolvedRenderId) {
+                await refreshSingleRender(resolvedRenderId);
+            } else {
+                await refreshRenders();
+            }
+
         } catch (err: any) {
             const msg = err?.message || "Vercel deploy failed";
             const deployDurationMs = Date.now() - deployStartMs;
@@ -3300,7 +3348,7 @@ export default function PreviewPage(): JSX.Element {
         [],
     );
 
-    const closeDeployWizard = useCallback(() => {
+    const closeDeployWizard = useCallback(async () => {
         setDeployWizardOpen(false);
         setDeployWizardBusy(false);
         setDeployWizardError(null);
@@ -4099,7 +4147,7 @@ export default function PreviewPage(): JSX.Element {
                                                         <button
                                                             type="button"
                                                             onClick={closeDeployWizard}
-                                                            className="rounded-full border border-neutral-200 px-3 py-1.5 text-sm font-semibold text-neutral-600 hover:bg-neutral-50"
+                                                            className="rounded-full border border-neutral-200 px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50"
                                                         >
                                                             Close
                                                         </button>
@@ -4120,7 +4168,7 @@ export default function PreviewPage(): JSX.Element {
                                                                 !!deployWizardError ||
                                                                 deployWizardBusy
                                                             }
-                                                            className="rounded-full px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                                                            className="rounded-full px-3 py-1.5 text-sm text-white disabled:opacity-60 disabled:cursor-not-allowed"
                                                             style={{ backgroundColor: ACCENT }}
                                                         >
                                                             Continue
@@ -4250,7 +4298,7 @@ export default function PreviewPage(): JSX.Element {
                                                                     href={deployWizardLiveUrl}
                                                                     target="_blank"
                                                                     rel="noreferrer"
-                                                                    className="group flex flex-inline items-center gap-1 rounded-full px-3 py-1.5 text-sm font-semibold text-white"
+                                                                    className="group flex flex-inline items-center gap-1 rounded-full px-3 py-1.5 text-sm text-white"
                                                                     style={{ backgroundColor: ACCENT }}
                                                                 >
                                                                     <span>View Site</span>
@@ -4397,7 +4445,7 @@ export default function PreviewPage(): JSX.Element {
                                                         <button
                                                             type="button"
                                                             onClick={closeDeployWizard}
-                                                            className="rounded-full border border-neutral-200 px-3 py-1.5 text-sm font-semibold text-neutral-600 hover:bg-neutral-50"
+                                                            className="rounded-full border border-neutral-200 px-3 py-1.5 text-xs text-neutral-600 hover:bg-neutral-50"
                                                         >
                                                             {!deployWizardBusy &&
                                                                 !deployWizardError ? (

@@ -39,7 +39,7 @@ export default function DocsPage() {
                                 <h1 className="text-3xl sm:text-4xl tracking-tight text-neutral-900">
                                     Documentation
                                 </h1>
-                                <p className="mt-3 max-w-2xl text-sm sm:text-base text-neutral-600">
+                                <p className="mt-1 max-w-2xl text-sm text-neutral-600">
                                     Capture a site, generate an editable preview, customize it, then export or deploy.
                                     This page explains the workflow, credits, plans, and guardrails.
                                 </p>

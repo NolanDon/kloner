@@ -1500,86 +1500,6 @@ export default function PreviewEditor({
     };
 
 
-    // const HISTORY_STORAGE_KEY = (draftId?: string | null) =>
-    //     draftId ? `kloner:history:${draftId}` : "kloner:history:temp";
-
-    // // load history from localStorage when draftId changes
-    // useEffect(() => {
-    //     if (!draftId) return;
-
-    //     let cancelled = false;
-
-    //     async function loadAiHistory() {
-    //         try {
-    //             const res = await fetch(
-    //                 `/api/ai-edit?renderId=${encodeURIComponent(draftId as any)}`,
-    //                 { credentials: "include" }
-    //             );
-    //             if (!res.ok) return;
-
-    //             const j = await res.json();
-    //             if (cancelled) return;
-
-    //             const all: AiEditSuggestion[] = Array.isArray(j.suggestions)
-    //                 ? j.suggestions
-    //                 : [];
-
-    //             const limited = [...all]
-    //                 .sort((a, b) => {
-    //                     const aT = new Date(a.createdAt).getTime();
-    //                     const bT = new Date(b.createdAt).getTime();
-    //                     return bT - aT;
-    //                 })
-    //                 .slice(0, 10);
-
-    //             setAiHistory(limited);
-    //         } catch {
-    //             // ignore
-    //         }
-    //     }
-
-    //     loadAiHistory();
-
-    //     return () => {
-    //         cancelled = true;
-    //     };
-    // }, [draftId]);
-
-
-    // // persist history to localStorage
-    // useEffect(() => {
-    //     if (typeof window === "undefined") return;
-    //     const key = HISTORY_STORAGE_KEY(draftId);
-    //     try {
-    //         window.localStorage.setItem(key, JSON.stringify(history));
-    //     } catch {
-    //         // ignore quota errors
-    //     }
-    // }, [history, draftId]);
-
-    // load history from localStorage when draftId changes
-    // useEffect(() => {
-    //     if (typeof window === "undefined") return;
-    //     const key = HISTORY_STORAGE_KEY(draftId);
-    //     const raw = window.localStorage.getItem(key);
-    //     if (!raw) return;
-
-    //     try {
-    //         const parsed = JSON.parse(raw) as DraftSnapshot[];
-    //         if (!Array.isArray(parsed)) return;
-
-    //         // keep only the last 10 by createdAt
-    //         const limited = [...parsed]
-    //             .sort((a, b) => b.createdAt - a.createdAt)
-    //             .slice(0, 10);
-
-    //         setHistory(limited);
-    //     } catch {
-    //         // ignore bad data
-    //     }
-    // }, [draftId]);
-
-
     function addSnapshot(opts: { id: string, createdAt: any, html: string; source: DraftSnapshotSource }) {
         const trimmed = opts.html.trim();
         if (!trimmed) return;
@@ -2182,6 +2102,7 @@ export default function PreviewEditor({
     const [creatingPage, setCreatingPage] = useState(false);
     const [createPageErr, setCreatePageErr] = useState<string | null>(null);
     const [createdPages, setCreatedPages] = useState<EditorPage[]>([]);
+    const [aiHistoryRefreshNonce, setAiHistoryRefreshNonce] = useState(0);
 
     const handlePageSwitch = async (nextId: string) => {
         if (!nextId || nextId === activePageId) return;
@@ -2482,7 +2403,7 @@ export default function PreviewEditor({
                     action: "create_page",
                     pageId,
                     slug,
-                    userPrompt: promptRaw,
+                    userPrompt: promptRaw, // raw user prompt ONLY (server must store this, not the expanded prompt)
                 }),
             });
 
@@ -2492,6 +2413,9 @@ export default function PreviewEditor({
             }
 
             const data = await res.json().catch(() => ({}));
+
+            setAiHistoryRefreshNonce((n) => n + 1);
+
             const suggestion = data?.suggestions && data.suggestions.length ? data.suggestions[0] : null;
 
             const afterHtml: string | undefined = suggestion?.afterHtml;
@@ -2504,7 +2428,7 @@ export default function PreviewEditor({
             // (server already tries to prevent this, but keep client enforcement as a final guard)
             const enforced = enforceMinimumSections(cleaned, pageId);
 
-            // 4) Update only this created page’s HTML
+            // 4) Update only this created page’s HTML (local state)
             setCreatedPages((prev) => {
                 const next = prev.slice();
                 const idx = next.findIndex((p) => String(p.id) === String(pageId));
@@ -2512,10 +2436,64 @@ export default function PreviewEditor({
                 return next;
             });
 
+            // 4.1) Persist new page into the canonical render doc so refresh works
+            // This is the missing piece: without this, your refresh reloads the starter placeholder.
+            try {
+                // Adjust these imports/paths to match your app
+                const [{ auth }, { db }] = await Promise.all([
+                    import("@/lib/firebase"), // should export `auth`
+                    import("@/lib/firebase"), // should export `db`
+                ]);
+
+                const { doc, getDoc, setDoc, updateDoc } = await import("firebase/firestore");
+
+                const uid = auth.currentUser?.uid;
+                if (uid) {
+                    const renderRef = doc(db as any, "kloner_users", uid, "kloner_renders", draftId);
+
+                    const snap = await getDoc(renderRef);
+                    const existing = snap.exists() ? (snap.data() as any) : {};
+
+                    // Canonical storage: pages array
+                    const pages: Array<{ id: string; html: string }> = Array.isArray(existing.pages)
+                        ? existing.pages
+                        : [];
+
+                    const idx = pages.findIndex((p) => String(p?.id) === String(pageId));
+                    const nextPages = pages.slice();
+
+                    if (idx >= 0) nextPages[idx] = { ...nextPages[idx], html: enforced };
+                    else nextPages.push({ id: pageId, html: enforced });
+
+                    const payload = {
+                        pages: nextPages,
+                        updatedAt: new Date(),
+                    };
+
+                    if (snap.exists()) {
+                        await updateDoc(renderRef, payload as any);
+                    } else {
+                        await setDoc(
+                            renderRef,
+                            {
+                                uid,
+                                renderId: draftId,
+                                ...payload,
+                                createdAt: new Date(),
+                            } as any,
+                            { merge: true }
+                        );
+                    }
+                }
+            } catch (e) {
+                // If this fails, UI still updates but refresh will revert to starter placeholder.
+                console.error("[createNewPageWithAi] persist failed", e);
+            }
+
             // 5) Navigate to it
             await handlePageSwitch(pageId);
 
-            // 6) Optional save
+            // 6) Optional save (keep if your app needs it for other state)
             try {
                 await doSave?.();
             } catch { }
@@ -2633,8 +2611,6 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         doSave,
     ]);
 
-
-
     const confirmPageSwitch = async () => {
         if (!pageSwitchConfirm) return;
         const nextId = pageSwitchConfirm.targetId;
@@ -2674,16 +2650,13 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         const safeRoute = String(pageId || "/new-page");
         // No page-level header/footer here. Keep as pure content.
         return `
-<main class="page-root" data-route="${safeRoute}" data-kloner-root="1" style="min-height:100vh;">
-  <section style="max-width:1100px;margin:0 auto;padding:48px 24px;">
-    <div style="font-size:14px;color:rgba(0,0,0,0.55);margin-bottom:10px;">${safeRoute}</div>
-    <h1 style="margin:0 0 12px 0;font-size:40px;line-height:1.05;">New page</h1>
-    <p style="margin:0;color:rgba(0,0,0,0.65);max-width:820px;font-size:14px;">
-      Draft content will be generated here.
-    </p>
-  </section>
-</main>
-`.trim();
+            <main 
+                class="page-root" 
+                data-route="${safeRoute}" 
+                data-kloner-root="1" 
+                style="min-height:100vh;">
+            </main>
+        `.trim();
     }
 
     function sanitizePageSlug(input: string): string {
@@ -3774,44 +3747,35 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
     const iframeNode = (
         <iframe
-            key={iframeKey}
-            ref={iframeRef}
-            className="w-full h-[70vh] sm:h-[80vh] border-0"
-            title="KlonerPreview"
-            // sandbox: allow scripts but still keep it in a sandbox box
-            sandbox="
-      allow-scripts
-      allow-same-origin
-      allow-forms
-      allow-popups
-      allow-modals
-      allow-popups-to-escape-sandbox
-    "
-            srcDoc={
-                aiPreviewHtml ||
-                renderHtml ||
-                "<!doctype html><html><head><meta charset='utf-8'></head><body></body></html>"
-            }
-            onLoad={() => {
-                const doc = iframeRef.current?.contentDocument;
-                if (!doc) return;
+  key={iframeKey}
+  ref={iframeRef}
+  className="w-full h-[70vh] sm:h-[80vh] border-0"
+  title="KlonerPreview"
+  referrerPolicy="no-referrer"
+  sandbox="allow-scripts allow-same-origin"
+  srcDoc={
+    aiPreviewHtml ||
+    renderHtml ||
+    "<!doctype html><html><head><meta charset='utf-8'></head><body></body></html>"
+  }
+  onLoad={() => {
+    const doc = iframeRef.current?.contentDocument;
+    if (!doc) return;
 
-                // clean existing editor chrome
-                doc.querySelectorAll(".kloner-toolbar").forEach((n) => n.remove());
-                doc.querySelectorAll(".kloner-style-panel").forEach((n) => n.remove());
+    // doc.querySelectorAll(".kloner-toolbar").forEach((n) => n.remove());
+    // doc.querySelectorAll(".kloner-style-panel").forEach((n) => n.remove());
 
-                if (mode === "preview") {
-                    injectEditableOverlay(
-                        doc,
-                        (updated) => {
-                            setHtmlDraft(updated);
-                        },
-                        device,
-                    );
-                    iframeRef.current?.contentWindow?.focus();
-                }
-            }}
-        />
+    if (mode === "preview") {
+      injectEditableOverlay(
+        doc,
+        (updated) => setHtmlDraft(updated),
+        device,
+      );
+      iframeRef.current?.contentWindow?.focus();
+    }
+  }}
+/>
+
 
     );
 
@@ -4745,6 +4709,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 {sidePanelMode === "revision-chat" && (
                                     <AiEditPanel
                                         renderId={draftId}
+                                        refreshNonce={aiHistoryRefreshNonce}
                                         getSelectedBlockHtml={getSelectedBlockHtml}
                                         selectionMeta={selectionMeta}
                                         onAiHistoryChange={setAiHistory}
@@ -5436,26 +5401,41 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     }}
                                 >
                                     {/* inner content with solid background */}
-                                    <div className="flex items-center gap-2 rounded-2xl bg-white px-3 py-1 text-[16px] text-neutral-700">
-                                        <Loader2
-                                            className="h-3.5 w-3.5 animate-spin"
-                                            style={{
-                                                backgroundImage:
-                                                    "linear-gradient(90deg,#4f46e5,#ec4899,#f97316)"
-                                            }}
-                                        // keep a solid color or leave default; gradient on color won't work
-                                        />
+                                    <div className="flex items-center gap-2.5 rounded-2xl bg-white/90 px-3.5 py-1.5 text-[15px] text-neutral-800 shadow-[0_10px_30px_rgba(0,0,0,0.08)] ring-1 ring-black/5 backdrop-blur">
                                         <span
-                                            className="bg-clip-text text-transparent"
+                                            className="bg-clip-text text-transparent font-medium"
                                             style={{
-                                                backgroundImage:
-                                                    "linear-gradient(90deg,#4f46e5,#ec4899,#f97316)",
+                                                backgroundImage: "linear-gradient(90deg,#4f46e5,#ec4899,#f97316)",
                                                 backgroundSize: "200% 200%",
                                                 animation: "kloner-ai-gradient-move 3s linear infinite",
                                             }}
                                         >
-                                            Applying AI Edit...
+                                            Applying AI Edit
                                         </span>
+
+                                        <span className="inline-flex items-center gap-1 leading-none" aria-hidden="true">
+                                            <span className="h-1.5 w-1.5 rounded-full bg-neutral-700 kloner-dot" />
+                                            <span className="h-1.5 w-1.5 rounded-full bg-neutral-700 kloner-dot" style={{ animationDelay: "0.15s" }} />
+                                            <span className="h-1.5 w-1.5 rounded-full bg-neutral-700 kloner-dot" style={{ animationDelay: "0.30s" }} />
+                                        </span>
+
+                                        <style jsx>{`
+                                            @keyframes klonerDots {
+                                            0%,
+                                            80%,
+                                            100% {
+                                                transform: translateY(0);
+                                                opacity: 0.35;
+                                            }
+                                            40% {
+                                                transform: translateY(-3px);
+                                                opacity: 1;
+                                            }
+                                            }
+                                            .kloner-dot {
+                                            animation: klonerDots 0.9s ease-in-out infinite;
+                                            }
+                                        `}</style>
                                     </div>
                                 </div>
                             </div>
@@ -5531,20 +5511,20 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                             <div className="flex justify-end gap-2 text-sm">
                                 <button
                                     type="button"
-                                    className="px-2.5 py-1.5 text-xs rounded-full border border-neutral-300 bg-white/90 hover:bg-neutral-50 active:scale-[.98] font-semibold"
+                                    className="px-2.5 py-1.5 text-xs rounded-full border border-neutral-300 bg-white/90 hover:bg-neutral-50 active:scale-[.98]"
                                     onClick={() => setClosePrompt(false)}
                                 >
                                     Keep Editing
                                 </button>
                                 <button
                                     type="button"
-                                    className="px-2.5 py-1.5 text-xs rounded-full border border-neutral-300 bg-white/90 hover:bg-neutral-50 active:scale-[.98] font-semibold"
+                                    className="px-2.5 py-1.5 text-xs rounded-full border border-neutral-300 bg-white/90 hover:bg-neutral-50 active:scale-[.98]"
                                     onClick={() => performClose("discard")}>
                                     Discard
                                 </button>
                                 <button
                                     type="button"
-                                    className="px-2.5 py-1.5 text-xs rounded-full border border-transparent bg-accent text-white hover:brightness-110 active:scale-[.98] font-semibold"
+                                    className="px-2.5 py-1.5 text-xs rounded-full border border-transparent bg-accent text-white hover:brightness-110 active:scale-[.98]"
                                     onClick={() => performClose("save")}
                                 >
                                     Save & close
@@ -5582,7 +5562,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                         await doExport();
                                     }}
                                     disabled={exporting}
-                                    className="inline-flex items-center gap-1.5 rounded-full font-semibold bg-accent px-2.5 py-1 text-white shadow-sm hover:border-neutral-400 disabled:opacity-60"
+                                    className="inline-flex items-center gap-1.5 rounded-full bg-accent px-2.5 py-1 text-white shadow-sm hover:border-neutral-400 disabled:opacity-60"
                                     title="Open generated layout site"
                                 >
                                     <span>Deploy now</span>

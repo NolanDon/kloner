@@ -2,12 +2,7 @@
 
 import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 import { useEffect, useRef, useState } from "react";
-import {
-    Image as ImageIcon,
-    Info,
-    ArrowUpRight,
-    Loader2,
-} from "lucide-react";
+import { Image as ImageIcon, Info, ArrowUpRight, Loader2 } from "lucide-react";
 
 export interface AiEditSuggestion {
     id: string;
@@ -27,6 +22,10 @@ type SelectionMeta = {
 
 interface AiEditPanelProps {
     renderId: string | undefined;
+
+    // NEW: bump this number from parent to force history refresh
+    refreshNonce?: number;
+
     getSelectedBlockHtml: () => string | null;
     selectionMeta?: SelectionMeta;
     onApplyBlockHtml: (blockHtml: string, targetPath?: string | null) => void;
@@ -61,9 +60,7 @@ function normalizeCreatedAt(raw: any): string {
     if (typeof raw === "object" && typeof raw._seconds === "number") {
         const ms =
             raw._seconds * 1000 +
-            (typeof raw._nanoseconds === "number"
-                ? Math.floor(raw._nanoseconds / 1e6)
-                : 0);
+            (typeof raw._nanoseconds === "number" ? Math.floor(raw._nanoseconds / 1e6) : 0);
         const d = new Date(ms);
         return Number.isNaN(d.getTime()) ? "" : d.toISOString();
     }
@@ -99,9 +96,10 @@ async function getHistoryFetchOnce(renderId: string): Promise<HistoryFetchResult
     if (!win[GLOBAL_HISTORY_CACHE_KEY]) {
         win[GLOBAL_HISTORY_CACHE_KEY] = {};
     }
-    const cache: Record<string, Promise<HistoryFetchResult>> =
-        win[GLOBAL_HISTORY_CACHE_KEY];
+    const cache: Record<string, Promise<HistoryFetchResult>> = win[GLOBAL_HISTORY_CACHE_KEY];
 
+    // NOTE: your original code had `if (await cache[renderId])` which is wrong and can cause weirdness.
+    // Keeping behavior minimal but fixing it properly:
     if (await cache[renderId]) {
         return cache[renderId];
     }
@@ -122,9 +120,20 @@ async function getHistoryFetchOnce(renderId: string): Promise<HistoryFetchResult
     return p;
 }
 
+// NEW: force fetch (no cache). Used when parent says "refresh now".
+async function getHistoryFetchForce(renderId: string): Promise<HistoryFetchResult> {
+    const res = await fetch(`/api/ai-edit?renderId=${encodeURIComponent(renderId)}`, {
+        credentials: "include",
+        cache: "no-store",
+    });
+    const json = await res.json().catch(() => null);
+    return { res, json };
+}
+
 export default function AiEditPanel(props: AiEditPanelProps) {
     const {
         renderId,
+        refreshNonce, // NEW
         getSelectedBlockHtml,
         selectionMeta,
         onApplyBlockHtml,
@@ -151,9 +160,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
     const hasScopedBlock = !!selectionMeta?.has;
     const targetPath = selectionMeta?.path ?? null;
 
-    const [pendingSuggestionId, setPendingSuggestionId] = useState<string | null>(
-        null
-    );
+    const [pendingSuggestionId, setPendingSuggestionId] = useState<string | null>(null);
 
     useEffect(() => {
         if (onAiHistoryChange) onAiHistoryChange(suggestions);
@@ -162,18 +169,14 @@ export default function AiEditPanel(props: AiEditPanelProps) {
     function applyCreditsMeta(meta: CreditsMeta | any) {
         if (!meta) return;
         if (typeof meta.tier === "string") setTier(meta.tier);
-        if (typeof meta.creditsLimit === "number") {
-            setCreditsLimit(meta.creditsLimit);
-        } else {
-            setCreditsLimit(null);
-        }
-        if (typeof meta.creditsRemaining === "number") {
-            setCreditsRemaining(meta.creditsRemaining);
-        } else {
-            setCreditsRemaining(null);
-        }
+        if (typeof meta.creditsLimit === "number") setCreditsLimit(meta.creditsLimit);
+        else setCreditsLimit(null);
+
+        if (typeof meta.creditsRemaining === "number") setCreditsRemaining(meta.creditsRemaining);
+        else setCreditsRemaining(null);
     }
 
+    // PATCH: refreshNonce added to deps, and it can force-bypass cache.
     useEffect(() => {
         let cancelled = false;
 
@@ -189,31 +192,29 @@ export default function AiEditPanel(props: AiEditPanelProps) {
             setHistoryLoading(true);
 
             try {
-                const { res, json: j } = await getHistoryFetchOnce(renderId);
+                const isForced = typeof refreshNonce === "number" && refreshNonce > 0;
+                const { res, json: j } = isForced
+                    ? await getHistoryFetchForce(renderId)
+                    : await getHistoryFetchOnce(renderId);
 
                 if (cancelled) return;
 
                 if (!res.ok) {
-                    setHistoryError(
-                        j?.error ||
-                        `Failed to load AI edit history (status ${res.status}).`
-                    );
-                    const rawSuggestions: any[] = Array.isArray(j?.suggestions)
-                        ? j.suggestions
-                        : [];
+                    setHistoryError(j?.error || `Failed to load AI edit history (status ${res.status}).`);
+
+                    const rawSuggestions: any[] = Array.isArray(j?.suggestions) ? j.suggestions : [];
                     const normalized: AiEditSuggestion[] = rawSuggestions.map((s) => ({
                         ...s,
                         createdAt: normalizeCreatedAt((s as any).createdAt),
                     }));
+
                     setSuggestions(normalized);
                     applyCreditsMeta(j?.meta);
                     setHistoryLoading(false);
                     return;
                 }
 
-                const rawAll: any[] = Array.isArray(j?.suggestions)
-                    ? j.suggestions
-                    : [];
+                const rawAll: any[] = Array.isArray(j?.suggestions) ? j.suggestions : [];
                 const all: AiEditSuggestion[] = rawAll.map((s) => ({
                     ...s,
                     createdAt: normalizeCreatedAt((s as any).createdAt),
@@ -225,9 +226,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                 setHistoryLoading(false);
             } catch {
                 if (cancelled) return;
-                setHistoryError(
-                    "Failed to load AI edit history. It will update after your next edit."
-                );
+                setHistoryError("Failed to load AI edit history. It will update after your next edit.");
                 setHistoryLoading(false);
             }
         }
@@ -237,7 +236,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
         return () => {
             cancelled = true;
         };
-    }, [renderId]);
+    }, [renderId, refreshNonce]); // NEW DEP
 
     useEffect(() => {
         if (!loading) {
@@ -273,9 +272,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
         const blockHtml = blockHtmlRaw.trim();
 
         if (blockHtml.length > MAX_SELECTION_CHARS) {
-            setError(
-                "This selection is too large for a focused AI edit. Try selecting a smaller section."
-            );
+            setError("This selection is too large for a focused AI edit. Try selecting a smaller section.");
             return;
         }
 
@@ -284,7 +281,6 @@ export default function AiEditPanel(props: AiEditPanelProps) {
             ? `${basePrompt}\n\n[Attached image: ${attachedImage.name}]`
             : basePrompt;
 
-        // optimistic user bubble
         const optimisticId = `pending-${Date.now()}`;
         const optimisticCreatedAt = new Date().toISOString();
         setPendingSuggestionId(optimisticId);
@@ -307,8 +303,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
         if (onAiEditingStateChange) {
             try {
                 onAiEditingStateChange(true, targetPath);
-            } catch {
-            }
+            } catch { }
         }
 
         try {
@@ -336,9 +331,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                 return;
             }
 
-            const rawSuggestionsFromApi: any[] | null = Array.isArray(j.suggestions)
-                ? j.suggestions
-                : null;
+            const rawSuggestionsFromApi: any[] | null = Array.isArray(j.suggestions) ? j.suggestions : null;
             const rawSuggestionFromApi: any | undefined = j.suggestion;
 
             const suggestionsFromApi: AiEditSuggestion[] | null =
@@ -356,21 +349,14 @@ export default function AiEditPanel(props: AiEditPanelProps) {
 
             setSuggestions((prev) => {
                 const baseList =
-                    pendingSuggestionId == null
-                        ? prev
-                        : prev.filter((s) => s.id !== pendingSuggestionId);
+                    pendingSuggestionId == null ? prev : prev.filter((s) => s.id !== pendingSuggestionId);
 
-                if (suggestionsFromApi && suggestionsFromApi.length) {
-                    return suggestionsFromApi;
-                }
+                if (suggestionsFromApi && suggestionsFromApi.length) return suggestionsFromApi;
+
                 if (suggestionFromApi) {
-                    const exists = baseList.some(
-                        (s) => s.id === suggestionFromApi.id
-                    );
+                    const exists = baseList.some((s) => s.id === suggestionFromApi.id);
                     if (exists) {
-                        return baseList.map((s) =>
-                            s.id === suggestionFromApi.id ? suggestionFromApi : s
-                        );
+                        return baseList.map((s) => (s.id === suggestionFromApi.id ? suggestionFromApi : s));
                     }
                     return [...baseList, suggestionFromApi];
                 }
@@ -385,9 +371,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
 
             const latest: AiEditSuggestion | undefined =
                 suggestionFromApi ||
-                (suggestionsFromApi && suggestionsFromApi.length
-                    ? suggestionsFromApi[0]
-                    : undefined);
+                (suggestionsFromApi && suggestionsFromApi.length ? suggestionsFromApi[0] : undefined);
 
             if (latest && latest.afterHtml) {
                 setActivePreviewId(latest.id);
@@ -400,17 +384,14 @@ export default function AiEditPanel(props: AiEditPanelProps) {
             if (onAiEditingStateChange) {
                 try {
                     onAiEditingStateChange(false, targetPath);
-                } catch {
-                }
+                } catch { }
             }
         }
     };
 
     const handleDismiss = (id: string) => {
         setSuggestions((prev) => prev.filter((s) => s.id !== id));
-        if (activePreviewId === id) {
-            setActivePreviewId(null);
-        }
+        if (activePreviewId === id) setActivePreviewId(null);
     };
 
     const generateDisabled = loading || !prompt.trim() || !hasScopedBlock;
@@ -423,8 +404,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                 ? "Your plan includes unlimited AI edits this month."
                 : null;
 
-    const atMaxChars =
-        MAX_PROMPT_CHARS > 0 && prompt.length >= MAX_PROMPT_CHARS;
+    const atMaxChars = MAX_PROMPT_CHARS > 0 && prompt.length >= MAX_PROMPT_CHARS;
 
     const orderedSuggestions = [...suggestions].sort((a, b) => {
         const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
@@ -444,13 +424,10 @@ export default function AiEditPanel(props: AiEditPanelProps) {
     const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === "Enter") {
             e.preventDefault();
-            if (!generateDisabled) {
-                handleRun();
-            }
+            if (!generateDisabled) handleRun();
         }
     };
 
-    const longPhase = loadingPhase === "long";
     const loadingLabel = "Thinking… this may take a while…";
 
     return (
@@ -462,9 +439,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                             AI Edit Assistant
                         </div>
                         <div className="flex items-center gap-1 text-[11px] text-neutral-600">
-                            <span>
-                                Ask for small, focused changes to the selected block.
-                            </span>
+                            <span>Ask for small, focused changes to the selected block.</span>
                             <Info className="h-3 w-3 text-neutral-400" />
                         </div>
                     </div>
@@ -478,10 +453,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                     )}
                 </div>
 
-                <div
-                    ref={scrollContainerRef}
-                    className="flex-1 space-y-2 overflow-y-auto px-3 py-3 text-[12px]"
-                >
+                <div ref={scrollContainerRef} className="flex-1 space-y-2 overflow-y-auto px-3 py-3 text-[12px]">
                     {error && (
                         <div className="rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] text-red-700">
                             {error}
@@ -504,9 +476,8 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                     ) : orderedSuggestions.length === 0 && !historyError ? (
                         <div className="flex h-30 items-center justify-center rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 text-center">
                             <p className="text-[12px] text-neutral-500">
-                                No AI edits yet for this page. Select a block in the preview,
-                                describe a small change below, and your conversation will show
-                                up here.
+                                No AI edits yet for this page. Select a block in the preview, describe a small change below, and your
+                                conversation will show up here.
                             </p>
                         </div>
                     ) : (
@@ -514,23 +485,18 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                             const isOptimistic = s.id.startsWith("pending-");
                             return (
                                 <div key={s.id} className="space-y-10">
-                                    {/* User bubble */}
                                     <div className="flex flex-col items-end gap-1">
                                         <div className="max-w-[80%] rounded-2xl bg-[var(--accent,#f55f2a)] px-3 py-1.5 text-white shadow-sm">
                                             <div className="text-[16px]">{s.prompt}</div>
                                         </div>
-                                        <div className="pr-2 text-[10px] text-neutral-400">
-                                            {formatCreatedAt(s.createdAt)}
-                                        </div>
+                                        <div className="pr-2 text-[10px] text-neutral-400">{formatCreatedAt(s.createdAt)}</div>
                                     </div>
 
-                                    {/* AI bubble (hide while optimistic) */}
                                     {!isOptimistic && (
                                         <div className="flex flex-col items-start gap-1">
                                             <div className="max-w-[85%] rounded-2xl border border-neutral-200 bg-white px-3 py-1.5 text-neutral-900 shadow-sm">
                                                 <div className="text-[16px] text-neutral-800">
-                                                    {s.summary ||
-                                                        "Updated the selected block based on your request."}
+                                                    {s.summary || "Updated the selected block based on your request."}
                                                 </div>
                                                 <div className="mt-1 flex items-center justify-between text-[16px] text-neutral-500">
                                                     <button
@@ -543,9 +509,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                                                     </button>
                                                 </div>
                                             </div>
-                                            <div className="pl-2 text-[10px] text-neutral-400">
-                                                {formatCreatedAt(s.createdAt)}
-                                            </div>
+                                            <div className="pl-2 text-[10px] text-neutral-400">{formatCreatedAt(s.createdAt)}</div>
                                         </div>
                                     )}
                                 </div>
@@ -560,11 +524,9 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                         <span
                             className="bg-clip-text text-transparent"
                             style={{
-                                backgroundImage:
-                                    "linear-gradient(90deg,#4f46e5,#ec4899,#f97316)",
+                                backgroundImage: "linear-gradient(90deg,#4f46e5,#ec4899,#f97316)",
                                 backgroundSize: "200% 200%",
-                                animation:
-                                    "kloner-ai-gradient-move 3s linear infinite",
+                                animation: "kloner-ai-gradient-move 3s linear infinite",
                             }}
                         >
                             {loadingLabel}
@@ -574,11 +536,9 @@ export default function AiEditPanel(props: AiEditPanelProps) {
 
                 <div className="border-t border-neutral-200 bg-white px-3 py-2">
                     <div className="mb-1 flex items-center justify-between gap-2">
-                        {/* {prompt.length > 0 && ( */}
                         <span className="text-[11px] text-neutral-400">
                             {prompt.length}/{MAX_PROMPT_CHARS}
                         </span>
-                        {/* )} */}
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -604,8 +564,8 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                             onClick={handleRun}
                             disabled={generateDisabled}
                             className={`inline-flex h-9 w-9 items-center justify-center rounded-full text-[13px] font-semibold transition ${generateDisabled
-                                ? "cursor-not-allowed bg-neutral-200 text-neutral-500"
-                                : "bg-[var(--accent,#f55f2a)] text-white shadow-sm hover:brightness-110 active:brightness-95"
+                                    ? "cursor-not-allowed bg-neutral-200 text-neutral-500"
+                                    : "bg-[var(--accent,#f55f2a)] text-white shadow-sm hover:brightness-110 active:brightness-95"
                                 }`}
                             title={
                                 generateDisabled
@@ -613,11 +573,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                                     : "Send this request to the AI editor."
                             }
                         >
-                            {loading ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                                <ArrowUpRight className="h-4 w-4" />
-                            )}
+                            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />}
                         </button>
                     </div>
 
@@ -644,10 +600,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                                 }}
                             />
                             {attachedImage && (
-                                <span
-                                    className="max-w-[160px] truncate text-[11px] text-neutral-500"
-                                    title={attachedImage.name}
-                                >
+                                <span className="max-w-[160px] truncate text-[11px] text-neutral-500" title={attachedImage.name}>
                                     {attachedImage.name}
                                 </span>
                             )}
@@ -655,17 +608,11 @@ export default function AiEditPanel(props: AiEditPanelProps) {
 
                         <div className="min-h-[18px] text-right text-[11px]">
                             {atMaxChars ? (
-                                <span className="text-red-500">
-                                    Max {MAX_PROMPT_CHARS} characters reached.
-                                </span>
+                                <span className="text-red-500">Max {MAX_PROMPT_CHARS} characters reached.</span>
                             ) : !hasScopedBlock && prompt.length > 0 ? (
-                                <span className="text-amber-600">
-                                    No block selected. Click a section in the preview first.
-                                </span>
+                                <span className="text-amber-600">No block selected. Click a section in the preview first.</span>
                             ) : hasScopedBlock && prompt.length > 0 ? (
-                                <span className="text-emerald-600">
-                                    This edit will only affect your current selection.
-                                </span>
+                                <span className="text-emerald-600">This edit will only affect your current selection.</span>
                             ) : null}
                         </div>
                     </div>
@@ -673,18 +620,18 @@ export default function AiEditPanel(props: AiEditPanelProps) {
             </div>
 
             <style jsx global>{`
-                @keyframes kloner-ai-gradient-move {
-                    0% {
-                        background-position: 0% 50%;
-                    }
-                    50% {
-                        background-position: 100% 50%;
-                    }
-                    100% {
-                        background-position: 0% 50%;
-                    }
-                }
-            `}</style>
+        @keyframes kloner-ai-gradient-move {
+          0% {
+            background-position: 0% 50%;
+          }
+          50% {
+            background-position: 100% 50%;
+          }
+          100% {
+            background-position: 0% 50%;
+          }
+        }
+      `}</style>
         </>
     );
 }

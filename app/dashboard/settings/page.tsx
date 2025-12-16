@@ -30,7 +30,7 @@ type TierResponse = {
     stripeStatus: string | null;
     currentPeriodEnd: number | null; // unix seconds
     cancelAtPeriodEnd: boolean | null;
-    trialEnd?: number | null; // unix seconds (optional; add in /api/billing/tier)
+    trialEnd?: number | null; // unix seconds
     source: string;
 };
 
@@ -136,7 +136,6 @@ function stateLabel(state: UiState): string {
     return state;
 }
 
-// NEW: consistent rounded-full button base + busy feedback
 function btnClass({
     kind,
     disabled,
@@ -149,11 +148,7 @@ function btnClass({
     const dis = disabled ? "opacity-50 pointer-events-none" : "";
 
     if (kind === "primary")
-        return [
-            base,
-            "bg-accent text-white hover:brightness-95",
-            dis,
-        ].join(" ");
+        return [base, "bg-accent text-white hover:brightness-95", dis].join(" ");
 
     if (kind === "soft")
         return [
@@ -204,6 +199,10 @@ export default function SettingsPage(): JSX.Element {
     const [cancelError, setCancelError] = useState<string | null>(null);
     const [cancelSuccess, setCancelSuccess] = useState<string | null>(null);
 
+    const [renewBusy, setRenewBusy] = useState(false);
+    const [renewError, setRenewError] = useState<string | null>(null);
+    const [renewSuccess, setRenewSuccess] = useState<string | null>(null);
+
     const {
         status: vercelStatus,
         checking: vercelChecking,
@@ -240,6 +239,8 @@ export default function SettingsPage(): JSX.Element {
         setTierError(null);
         setCancelError(null);
         setCancelSuccess(null);
+        setRenewError(null);
+        setRenewSuccess(null);
 
         try {
             const res = await fetch("/api/billing/tier?refresh=1", {
@@ -384,7 +385,6 @@ export default function SettingsPage(): JSX.Element {
         return base.slice(0, 2).toUpperCase();
     }, [user]);
 
-    // NEW: treat any non-connected state as disconnected for disabling Disconnect
     const isVercelConnected = vercelStatus === "connected";
     const isVercelChecking = vercelStatus === "loading" || vercelChecking;
     const canDisconnectVercel = isVercelConnected && !isVercelChecking && !disconnectBusy;
@@ -531,6 +531,8 @@ export default function SettingsPage(): JSX.Element {
         setCancelBusy(true);
         setCancelError(null);
         setCancelSuccess(null);
+        setRenewError(null);
+        setRenewSuccess(null);
 
         try {
             const csrf = await ensureSessionAndCsrf();
@@ -562,6 +564,44 @@ export default function SettingsPage(): JSX.Element {
         }
     }
 
+    async function handleRenewSubscription() {
+        // This is NOT “charge now”. This only unsets cancel_at_period_end.
+        setRenewBusy(true);
+        setRenewError(null);
+        setRenewSuccess(null);
+        setCancelError(null);
+        setCancelSuccess(null);
+
+        try {
+            const csrf = await ensureSessionAndCsrf();
+
+            const res = await fetch("/api/billing/cancel-subscription", {
+                method: "POST",
+                credentials: "include",
+                headers: {
+                    "content-type": "application/json",
+                    ...(csrf ? { "x-csrf": csrf } : {}),
+                },
+                body: JSON.stringify({ atPeriodEnd: false }),
+            });
+
+            const data = await res.json().catch(() => ({}));
+
+            if (!res.ok || !data?.ok) {
+                setRenewError(data?.error || `Renew failed (HTTP ${res.status})`);
+                return;
+            }
+
+            setRenewSuccess("Cancellation removed. Subscription will continue normally.");
+            await loadTier();
+        } catch (err: any) {
+            console.error("Renew subscription error", err);
+            setRenewError(err?.message || "Renew failed.");
+        } finally {
+            setRenewBusy(false);
+        }
+    }
+
     const vercelBadgeLabel =
         vercelStatus === "connected"
             ? "connected"
@@ -590,8 +630,11 @@ export default function SettingsPage(): JSX.Element {
 
     const nowSec = Date.now() / 1000;
 
+    // Trial status remains "trialing" in Stripe until trial_end.
     const onTrial =
-        !!trialEndSec && trialEndSec > nowSec && stripeStatus !== "canceled" && stripeStatus !== "unpaid";
+        !!trialEndSec &&
+        trialEndSec > nowSec &&
+        stripeStatus === "trialing";
 
     const trialDaysRemaining = onTrial ? daysUntilUnixSeconds(trialEndSec) : null;
 
@@ -599,7 +642,10 @@ export default function SettingsPage(): JSX.Element {
         ? formatUnixSeconds(currentPeriodEndSec)
         : "";
 
-    const endOfAccessSec = cancelAtPeriodEnd ? currentPeriodEndSec : null;
+    // On trial, “end of access” is effectively the trial end when cancellation is scheduled.
+    const endOfAccessSec =
+        cancelAtPeriodEnd ? (onTrial ? trialEndSec : currentPeriodEndSec) : null;
+
     const endOfAccessDays = cancelAtPeriodEnd ? daysUntilUnixSeconds(endOfAccessSec) : null;
 
     const canCancel =
@@ -609,6 +655,14 @@ export default function SettingsPage(): JSX.Element {
         stripeStatus !== "canceled" &&
         stripeStatus !== "unpaid" &&
         cancelAtPeriodEnd !== true;
+
+    const canRenew =
+        tier !== "free" &&
+        !tierLoading &&
+        !!stripeStatus &&
+        stripeStatus !== "canceled" &&
+        stripeStatus !== "unpaid" &&
+        cancelAtPeriodEnd === true;
 
     return (
         <>
@@ -735,6 +789,13 @@ export default function SettingsPage(): JSX.Element {
                                         {cancelSuccess && (
                                             <p className="text-[11px] text-emerald-600">{cancelSuccess}</p>
                                         )}
+
+                                        {renewError && (
+                                            <p className="text-[11px] text-red-600">{renewError}</p>
+                                        )}
+                                        {renewSuccess && (
+                                            <p className="text-[11px] text-emerald-600">{renewSuccess}</p>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -749,6 +810,28 @@ export default function SettingsPage(): JSX.Element {
                                 >
                                     View plans
                                 </a>
+
+                                <button
+                                    type="button"
+                                    onClick={() => void handleRenewSubscription()}
+                                    disabled={!canRenew || renewBusy}
+                                    className={btnClass({
+                                        kind: canRenew ? "warn" : "ghost",
+                                        disabled: !canRenew || renewBusy,
+                                    })}
+                                    title={
+                                        canRenew
+                                            ? "Remove scheduled cancellation"
+                                            : "No cancellation scheduled"
+                                    }
+                                >
+                                    {renewBusy ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                        <CheckCircle2 className="h-3.5 w-3.5" />
+                                    )}
+                                    Renew
+                                </button>
 
                                 <button
                                     type="button"

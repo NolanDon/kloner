@@ -92,10 +92,10 @@ export function PreviewEditorTour() {
         }
 
         // In localhost: always run so you can test repeatedly
-        if (isLocalhost) {
-            setRun(true);
-            return;
-        }
+        // if (isLocalhost) {
+        //     setRun(true);
+        //     return;
+        // }
 
         // In production: still gate by localStorage; Firestore is write-only
         const seenLocal = window.localStorage.getItem(LOCAL_KEY) === "1";

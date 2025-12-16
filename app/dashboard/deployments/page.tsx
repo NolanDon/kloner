@@ -885,7 +885,7 @@ export default function DeploymentsPage(): JSX.Element {
                 <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
 
                     <div className="rounded-3xl border border-neutral-200 bg-gradient-to-br from-white via-neutral-50 to-neutral-100 px-6 py-8 sm:px-8 sm:py-10 shadow-sm">
-                        <div className="flex flex-col gap-3">
+                        <div className="flex flex-col gap-1">
                             <div className="flex items-center gap-2">
                                 <h1 className="text-3xl sm:text-4xl tracking-tight text-neutral-900">
                                     Deployments
@@ -924,7 +924,7 @@ export default function DeploymentsPage(): JSX.Element {
                                 </div>
                             )}
 
-                            <p className="max-w-2xl text-sm sm:text-base text-neutral-600">
+                            <p className="max-w-2xl text-sm text-neutral-600">
                                 Deployments to Vercel show up here, with status kept up to date.
                             </p>
                         </div>
@@ -1158,7 +1158,7 @@ export default function DeploymentsPage(): JSX.Element {
                                                             disabled={
                                                                 isEditorLoading
                                                             }
-                                                            className="group inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-sm text-white"
+                                                            className="group inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs text-white"
                                                             style={{
                                                                 backgroundColor:
                                                                     ACCENT,
@@ -1184,7 +1184,7 @@ export default function DeploymentsPage(): JSX.Element {
                                                                     ? "noreferrer"
                                                                     : undefined
                                                             }
-                                                            className="group inline-flex items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-2.5 py-1.5 text-sm text-neutral-800 hover:bg-neutral-50"
+                                                            className="group inline-flex items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-2.5 py-1.5 text-xs text-neutral-800 hover:bg-neutral-50"
                                                         >
                                                             <span>
                                                                 Open site

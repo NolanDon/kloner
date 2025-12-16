@@ -369,7 +369,7 @@ export default function AffiliatePage() {
     }, [chartBuckets]);
 
     return (
-        <div className="p-6">
+        <div className="p-8">
             <section className="mb-10">
                 <div className="inline-flex items-center gap-2 rounded-full bg-accent text-neutral-50 px-3 py-1 text-[11px] mb-4">
                     <span>Kloner · Affiliate Program</span>
@@ -377,7 +377,7 @@ export default function AffiliatePage() {
 
                 <div className="rounded-3xl border border-neutral-200 bg-gradient-to-br from-white via-neutral-50 to-neutral-100 px-6 py-7 sm:px-8 sm:py-9 shadow-sm">
                     <h1 className="text-3xl sm:text-4xl tracking-tight text-neutral-900">Earn recurring revenue from referrals</h1>
-                    <p className="mt-3 max-w-2xl text-sm sm:text-base text-neutral-600">
+                    <p className="mt-1 max-w-2xl text-sm text-neutral-600">
                         Share Kloner with your audience. Track commission, eligibility dates, and referral activity in one place.
                     </p>
 

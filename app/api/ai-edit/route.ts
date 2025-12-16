@@ -182,7 +182,7 @@ function isVagueUserPrompt(p: string): boolean {
 
 function buildCreatePagePrompt(args: {
     pageId: string; // "/pricing"
-    slug: string; // "pricing" or "docs/faq"
+    slug: string;   // "pricing" or "docs/faq"
     userPrompt: string;
 }): { modelPrompt: string; userPromptForStorage: string } {
     const { pageId, slug, userPrompt } = args;
@@ -195,51 +195,74 @@ function buildCreatePagePrompt(args: {
         ? `No detailed brief was provided. Infer a complete multi-section layout from the page topic ("${title}") and standard expectations for a "${inferred.kind}" page.`
         : `User brief: ${userPrompt}`;
 
+    /**
+     * 🔒 AUTHORITATIVE THEME SNAPSHOT
+     * This removes all guessing. The model must obey this.
+     */
+    const themeSnapshot = `
+SITE THEME SNAPSHOT (AUTHORITATIVE — DO NOT GUESS):
+- Background: full-bleed space / nebula imagery with purple + blue tones
+- Overall background is DARK and image-based
+- Primary text color: white (#ffffff)
+- Secondary text: rgba(255,255,255,0.7)
+- Headings: uppercase, wide letter-spacing, minimal, academic tone
+- Accent elements: thin white lines, low opacity dividers
+- Cards: translucent or outlined, NEVER solid dark panels
+- Do NOT invent dark gradient panels
+- Do NOT introduce a new design system
+- Match the homepage visual language exactly
+`;
+
+    /**
+     * 🔒 HARD CONTRAST RULE
+     * Prevents black-on-black forever.
+     */
+    const contrastRule = `
+CONTRAST RULE (NON-NEGOTIABLE):
+- All readable text MUST have strong contrast against its background
+- If background is dark or image-based, text MUST be white or near-white
+- Black or dark gray text on dark backgrounds is FORBIDDEN
+- If contrast is uncertain, add subtle overlays or outlines
+`;
+
     const sectionsLine =
         `Minimum output: at least 4 distinct sections (hero + 2+ content sections + CTA). ` +
-        `Use headings, short paragraphs, and small UI blocks. Avoid a single hero-only layout.`;
-
-    const themeLine =
-        `Styling must match the existing site theme and visual language. ` +
-        `Do not introduce a new design system. Reuse existing classes and tokens from the block.`;
-
-    const privacyLine =
-        `Do not print the route path anywhere in visible content. ` +
-        `No crumbs, no "/${slug}" labels, no "for /..." copy.`;
-
-    const globalLayoutLine =
-        `Do NOT add or modify any global header/footer. ` +
-        `Do not add <header> or <footer>. Do not hide or override them.`;
+        `Avoid single-panel or hero-only layouts.`;
 
     const routingConsistencyLine =
-        `ROUTING RULES (MUST MATCH CONTROLLER): ` +
+        `ROUTING RULES (STRICT): ` +
         `You are editing ONLY this page container: <main class="page-root" data-route="${pageId}">. ` +
-        `Do not change data-route. ` +
-        `If you add any internal navigation links, use href values that look like clean routes ("/about", "/services") and ensure they conceptually match the label.`;
+        `Do not change data-route.`;
 
     const structureLine =
         `Create the layout INSIDE the provided <main class="page-root" data-route="${pageId}"> block only. ` +
-        `Return ONLY the updated HTML for this same block. ` +
-        `Do not remove class="page-root" or data-route.`;
+        `Return ONLY the updated HTML for this block.`;
 
-    const sectionHints =
-        inferred.hints && inferred.hints.length
-            ? `Suggested sections: ${inferred.hints.join(", ")}.`
-            : "";
+    const globalLayoutLine =
+        `Do NOT add or modify global header or footer elements.`;
+
+    const privacyLine =
+        `Do not print the route path anywhere in visible content.`;
 
     const cssRules =
         `If you include <style>, scope selectors under main.page-root[data-route="${pageId}"] only. ` +
-        `Never target header, footer, body, html, :root, or unscoped tag selectors.`;
+        `Never target body, html, :root, header, or footer.`;
+
+    const sectionHints =
+        inferred.hints?.length
+            ? `Suggested sections: ${inferred.hints.join(", ")}.`
+            : "";
 
     const modelPrompt = [
         `Create a brand new page layout inside the provided <main class="page-root" data-route="${pageId}"> block.`,
+        themeSnapshot,
+        contrastRule,
         routingConsistencyLine,
         intentLine,
         sectionHints,
         sectionsLine,
         globalLayoutLine,
         privacyLine,
-        themeLine,
         cssRules,
         structureLine,
     ]
@@ -247,10 +270,11 @@ function buildCreatePagePrompt(args: {
         .join(" ");
 
     return {
-        modelPrompt,
+        modelPrompt: modelPrompt.slice(0, MAX_MODEL_PROMPT_CHARS),
         userPromptForStorage: userPrompt || "",
     };
 }
+
 
 /**
  * Trim HTML to a bounded size while trying to keep <head> intact.
@@ -1451,7 +1475,7 @@ async function handleGet(req: NextRequest) {
                     meta: { tier: "free", creditsRemaining: null, creditsLimit: null },
                 },
                 { status: 200 }
-        );
+            );
         }
     });
 }

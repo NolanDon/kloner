@@ -106,7 +106,7 @@ export function scrubArchivedRoutes(html: string, archivedRoutes: string[]): str
                         path = path.slice(0, -1);
                     }
                     return path;
-                })
+                }),
         );
 
         doc.querySelectorAll("main.page-root[data-route]").forEach((el) => {
@@ -121,13 +121,20 @@ export function scrubArchivedRoutes(html: string, archivedRoutes: string[]): str
             }
         });
 
+        // --- FIX: convert hash-router links "#/path" -> "/path"
+        // Keep normal anchors like "#section" intact.
+        doc.querySelectorAll<HTMLAnchorElement>("a[href]").forEach((a) => {
+            const href = (a.getAttribute("href") || "").trim();
+            if (href.startsWith("#/")) {
+                a.setAttribute("href", href.slice(1)); // "#/return" -> "/return"
+            }
+        });
+
         return doc.documentElement.outerHTML;
     } catch {
         return html;
     }
 }
-
-
 
 export function extractArchivedPageIdsFromRender(render: any): string[] {
 
@@ -203,52 +210,41 @@ export function withArchivedPageIds<T extends RenderLike>(
 }
 
 export function normalizeKlonerPaddingForExport(html: string): string {
-    if (typeof window === "undefined" || !html) return html;
+    if (!html) return html;
 
-    try {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, "text/html");
+    // 1) Remove editor-only device lock on <html ... data-kl-device="...">
+    //    Remove both single and double quoted forms
+    let out = html
+        .replace(/\sdata-kl-device="[^"]*"/i, "")
+        .replace(/\sdata-kl-device='[^']*'/i, "");
 
-        // 1) editor-only attribute: drop it so we don't lock the live site to "desktop"
-        if (doc.documentElement.hasAttribute("data-kl-device")) {
-            doc.documentElement.removeAttribute("data-kl-device");
-        }
-
-        // 2) inject a single responsive rule that maps the per-device vars to real breakpoints
-        //    id is stable so we never duplicate on re-exports
-        let styleEl = doc.getElementById("kloner-responsive-pad") as HTMLStyleElement | null;
-
-        if (!styleEl) {
-            styleEl = doc.createElement("style");
-            styleEl.id = "kloner-responsive-pad";
-            styleEl.textContent = `
-/* Kloner responsive padding – uses per-device vars written by the editor */
-[data-kl-pad] {
-  padding: var(--kl-pad-desktop, 0px);
-}
-
-@media (max-width: 1023px) {
-  [data-kl-pad] {
-    padding: var(--kl-pad-tablet, var(--kl-pad-desktop, 0px));
-  }
-}
-
-@media (max-width: 767px) {
-  [data-kl-pad] {
-    padding: var(--kl-pad-mobile, var(--kl-pad-tablet, var(--kl-pad-desktop, 0px)));
-  }
-}
+    // 2) Inject stable padding mapping style (only once)
+    const styleId = "kloner-responsive-pad";
+    if (!new RegExp(`id=["']${styleId}["']`, "i").test(out)) {
+        const css = `
+            /* Kloner responsive padding – uses per-device vars written by the editor */
+            [data-kl-pad] { padding: var(--kl-pad-desktop, 0px); }
+            @media (max-width: 1023px) { [data-kl-pad] { padding: var(--kl-pad-tablet, var(--kl-pad-desktop, 0px)); } }
+            @media (max-width: 767px) { [data-kl-pad] { padding: var(--kl-pad-mobile, var(--kl-pad-tablet, var(--kl-pad-desktop, 0px))); } }
             `.trim();
-            doc.head.appendChild(styleEl);
+
+        const inject = `<style id="${styleId}">\n${css}\n</style>\n`;
+
+        // Prefer inject right before </head>, otherwise prepend to document
+        if (/<\/head\s*>/i.test(out)) {
+            out = out.replace(/<\/head\s*>/i, `${inject}</head>`);
+        } else {
+            out = inject + out;
         }
-
-        return "<!DOCTYPE html>\n" + doc.documentElement.outerHTML;
-    } catch {
-        // if DOMParser explodes for any reason, fall back to original HTML
-        return html;
     }
-}
 
+    // 3) Ensure doctype exists (without reserializing everything)
+    if (!/^\s*<!doctype/i.test(out)) {
+        out = "<!DOCTYPE html>\n" + out;
+    }
+
+    return out;
+}
 
 export function toDate(v: any): Date | null {
     if (!v) return null;
