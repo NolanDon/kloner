@@ -3348,7 +3348,7 @@ export default function PreviewPage(): JSX.Element {
         [],
     );
 
-    const closeDeployWizard = useCallback(async () => {
+    const closeDeployWizard = useCallback(() => {
         setDeployWizardOpen(false);
         setDeployWizardBusy(false);
         setDeployWizardError(null);

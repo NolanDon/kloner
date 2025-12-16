@@ -28,7 +28,7 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 export async function getCustomerIdForUid(uid: string): Promise<string | null> {
-    // Primary: your real schema
+    // Primary: your real schema (from your screenshot)
     const userSnap = await db.collection("kloner_users").doc(uid).get();
     if (userSnap.exists) {
         const v = userSnap.get("stripeCustomerId");

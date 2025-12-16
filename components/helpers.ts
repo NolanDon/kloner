@@ -106,7 +106,7 @@ export function scrubArchivedRoutes(html: string, archivedRoutes: string[]): str
                         path = path.slice(0, -1);
                     }
                     return path;
-                }),
+                })
         );
 
         doc.querySelectorAll("main.page-root[data-route]").forEach((el) => {
@@ -121,20 +121,13 @@ export function scrubArchivedRoutes(html: string, archivedRoutes: string[]): str
             }
         });
 
-        // --- FIX: convert hash-router links "#/path" -> "/path"
-        // Keep normal anchors like "#section" intact.
-        doc.querySelectorAll<HTMLAnchorElement>("a[href]").forEach((a) => {
-            const href = (a.getAttribute("href") || "").trim();
-            if (href.startsWith("#/")) {
-                a.setAttribute("href", href.slice(1)); // "#/return" -> "/return"
-            }
-        });
-
         return doc.documentElement.outerHTML;
     } catch {
         return html;
     }
 }
+
+
 
 export function extractArchivedPageIdsFromRender(render: any): string[] {
 
