@@ -1371,9 +1371,15 @@ export default function PreviewEditor({
             const parser = new DOMParser();
             const doc = parser.parseFromString(html, "text/html");
 
+            // Target main.page-root elements with matching data-route
             const nodes = doc.querySelectorAll<HTMLElement>(
-                `[data-kloner-page-id="${pageId}"]`
+                `main.page-root[data-route="${pageId}"]`
             );
+
+            if (nodes.length === 0) {
+                console.warn(`[archivePageInHtmlById] No page found with route: ${pageId}`);
+                return html;
+            }
 
             nodes.forEach((node) => {
                 node.setAttribute("data-kloner-archived", "1");

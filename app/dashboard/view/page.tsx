@@ -319,7 +319,29 @@ function RenderCardInner({
 
     const srcDoc = useMemo(() => {
         if (!r.html) return "";
-        return secureHtmlForPreviewIframe(r.html);
+        let safeHtml = r.html.trim();
+
+        safeHtml = safeHtml.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
+        safeHtml = safeHtml.replace(/\son\w+\s*=\s*(['"]).*?\1/gi, "");
+        safeHtml = safeHtml.replace(
+            /href\s*=\s*(['"])\s*javascript:[^'"]*\1/gi,
+            'href="#"',
+        );
+
+        const csp = `
+<meta http-equiv="Content-Security-Policy"
+    content="
+        default-src 'none';
+        img-src data: blob: http: https:;
+        style-src 'unsafe-inline' https:;
+        font-src https: data:;
+        script-src 'none';
+        connect-src 'none';
+    ">
+`.trim();
+
+        const base = r.html ? `<base target="_blank" rel="noopener noreferrer">` : "";
+        return `${csp}${base}${safeHtml}`;
     }, [r.html]);
 
     const isDeployedFlag = isDeployed;

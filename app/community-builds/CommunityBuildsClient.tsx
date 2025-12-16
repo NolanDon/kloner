@@ -17,16 +17,6 @@ import {
     MoveLeftIcon,
     Repeat2,
 } from "lucide-react";
-import { secureHtmlForPreviewIframe } from "@/components/helpers";
-
-function injectCssIntoHead(html: string, css: string) {
-    if (!html) return html;
-    const styleTag = `<style id="kloner-iframe-lockdown">${css}</style>`;
-    if (html.includes('id="kloner-iframe-lockdown"')) return html;
-
-    if (html.includes("</head>")) return html.replace("</head>", `${styleTag}</head>`);
-    return `${styleTag}\n${html}`;
-}
 
 /** ---------------- Types ---------------- */
 
@@ -487,18 +477,8 @@ export default function CommunityBuildsClient() {
             ? derivedPages[previewPageIndex] ?? derivedPages[0]
             : null;
 
-    const activePageRaw =
+    const activePageHtml =
         activePage?.html ?? previewBuild?.html ?? "<!doctype html><html></html>";
-
-    const activePageHtml = secureHtmlForPreviewIframe(activePageRaw);
-
-    const previewLockdownCss = `
-        * { cursor: default !important; }
-        a, button, input, select, textarea { pointer-events: none !important; }
-        [role="link"], [onclick], [data-clickable] { pointer-events: none !important; }
-        `.trim();
-
-    const activePageHtmlLocked = injectCssIntoHead(activePageHtml, previewLockdownCss);
 
     const totalPages = derivedPages.length || 1;
 
@@ -539,10 +519,8 @@ export default function CommunityBuildsClient() {
 
                 <div className="mx-auto flex w-full max-w-5xl flex-wrap gap-5">
                     {items.map((item) => {
-                        const firstPageRaw =
+                        const firstPageHtml =
                             derivePagesFromHtml(item.html)?.[0]?.html ?? item.html ?? "";
-
-                        const firstPageHtml = secureHtmlForPreviewIframe(firstPageRaw);
 
                         const canRemix = item.remixable && !!item.html;
 
@@ -913,7 +891,14 @@ export default function CommunityBuildsClient() {
                                 <div className="absolute inset-2 overflow-hidden rounded-xl border border-black/10 bg-white">
                                     <iframe
                                         title={previewBuild.name}
-                                        srcDoc={activePageHtmlLocked}
+                                        srcDoc={`
+                      ${activePageHtml}
+                      <style>
+                        * { cursor: default !important; }
+                        a, button, input, select, textarea { pointer-events: none !important; }
+                        [role="link"], [onclick], [data-clickable] { pointer-events: none !important; }
+                      </style>
+                    `}
                                         className="h-full w-full overflow-auto"
                                         sandbox="allow-same-origin"
                                     />

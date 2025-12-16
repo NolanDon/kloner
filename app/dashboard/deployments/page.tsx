@@ -642,7 +642,7 @@ export default function DeploymentsPage(): JSX.Element {
                 deployment: d,
             });
 
-            const initialHtml = secureHtmlForPreviewIframe(render.html);
+            const initialHtml = render.html;
             const refImg = render.referenceImage;
             const draftId = render.id;
             const seoMap = render.seoMetaByPage ?? null;
