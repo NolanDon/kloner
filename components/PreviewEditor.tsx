@@ -3747,34 +3747,34 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
     const iframeNode = (
         <iframe
-  key={iframeKey}
-  ref={iframeRef}
-  className="w-full h-[70vh] sm:h-[80vh] border-0"
-  title="KlonerPreview"
-  referrerPolicy="no-referrer"
-  sandbox="allow-scripts allow-same-origin"
-  srcDoc={
-    aiPreviewHtml ||
-    renderHtml ||
-    "<!doctype html><html><head><meta charset='utf-8'></head><body></body></html>"
-  }
-  onLoad={() => {
-    const doc = iframeRef.current?.contentDocument;
-    if (!doc) return;
+            key={iframeKey}
+            ref={iframeRef}
+            className="w-full h-[70vh] sm:h-[80vh] border-0"
+            title="KlonerPreview"
+            referrerPolicy="no-referrer"
+            sandbox="allow-scripts allow-same-origin"
+            srcDoc={
+                aiPreviewHtml ||
+                renderHtml ||
+                "<!doctype html><html><head><meta charset='utf-8'></head><body></body></html>"
+            }
+            onLoad={() => {
+                const doc = iframeRef.current?.contentDocument;
+                if (!doc) return;
 
-    // doc.querySelectorAll(".kloner-toolbar").forEach((n) => n.remove());
-    // doc.querySelectorAll(".kloner-style-panel").forEach((n) => n.remove());
+                // doc.querySelectorAll(".kloner-toolbar").forEach((n) => n.remove());
+                // doc.querySelectorAll(".kloner-style-panel").forEach((n) => n.remove());
 
-    if (mode === "preview") {
-      injectEditableOverlay(
-        doc,
-        (updated) => setHtmlDraft(updated),
-        device,
-      );
-      iframeRef.current?.contentWindow?.focus();
-    }
-  }}
-/>
+                if (mode === "preview") {
+                    injectEditableOverlay(
+                        doc,
+                        (updated) => setHtmlDraft(updated),
+                        device,
+                    );
+                    iframeRef.current?.contentWindow?.focus();
+                }
+            }}
+        />
 
 
     );
@@ -3942,8 +3942,8 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     }
                                 }}
                                 className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "style" && mode === "preview"
-                                    ? "border-transparent bg-accent text-white"
-                                    : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-accent hover:text-white"
+                                    ? "bg-accent text-white"
+                                    : "border-neutral-300 bg-white/90 text-neutral-800 hover:bg-accent hover:text-white"
                                     }`}
                             >
                                 <Palette className="h-4 w-4" aria-hidden="true" />
@@ -3972,8 +3972,8 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     }
                                 }}
                                 className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "meta"
-                                    ? "border-transparent bg-accent text-white"
-                                    : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-accent hover:text-white"
+                                    ? "bg-accent text-white"
+                                    : "border-neutral-300 bg-white/90 text-neutral-800 hover:bg-accent hover:text-white"
                                     }`}
                             >
                                 <FileText className="h-4 w-4" aria-hidden="true" />
@@ -4002,8 +4002,8 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     }
                                 }}
                                 className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "revision-chat"
-                                    ? "border-transparent bg-accent text-white"
-                                    : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-accent hover:text-white"
+                                    ? "bg-accent text-white"
+                                    : "border-neutral-300 bg-white/90 text-neutral-800 hover:bg-accent hover:text-white"
                                     }`}
                             >
                                 <MessageSquare className="h-4 w-4" aria-hidden="true" />
@@ -4030,8 +4030,8 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     }
                                 }}
                                 className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "ai-library"
-                                    ? "border-transparent bg-accent text-white"
-                                    : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-accent hover:text-white"
+                                    ? "bg-accent text-white"
+                                    : "border-neutral-300 bg-white/90 text-neutral-800 hover:bg-accent hover:text-white"
                                     }`}
                             >
                                 <Images className="h-4 w-4" aria-hidden="true" />
@@ -4057,8 +4057,8 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                         }
                                     }}
                                     className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${mode === "code" && sidePanelMode === "code" && !sidebarHidden
-                                        ? "border-transparent bg-accent text-white"
-                                        : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-accent hover:text-white"
+                                        ? "bg-accent text-white"
+                                        : "border-neutral-300 bg-white/90 text-neutral-800 hover:bg-accent hover:text-white"
                                         }`}
                                 >
                                     <Code2 className="h-4 w-4" aria-hidden="true" />
@@ -4077,7 +4077,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 disabled={exporting}
                                 className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${exporting
                                     ? "border-transparent bg-accent/70 text-white cursor-not-allowed"
-                                    : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-accent hover:text-white"
+                                    : "border-neutral-300 bg-white/90 text-neutral-800 hover:bg-accent hover:text-white"
                                     }`}
                             >
                                 <Rocket className="h-4 w-4" aria-hidden="true" />
@@ -4096,8 +4096,8 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     handleModeClick("screenshot");
                                 }}
                                 className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${mode === "screenshot"
-                                    ? "border-transparent bg-accent text-white"
-                                    : "border-neutral-300 bg-white/90/80 text-neutral-500 hover:border-transparent hover:bg-accent hover:text-white"
+                                    ? "bg-accent text-white"
+                                    : "border-neutral-300 bg-white/90 text-neutral-800 hover:bg-accent hover:text-white"
                                     }`}
                             >
                                 <Camera className="h-4 w-4" aria-hidden="true" />
@@ -5414,9 +5414,9 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                         </span>
 
                                         <span className="inline-flex items-center gap-1 leading-none" aria-hidden="true">
-                                            <span className="h-1.5 w-1.5 rounded-full bg-neutral-700 kloner-dot" />
-                                            <span className="h-1.5 w-1.5 rounded-full bg-neutral-700 kloner-dot" style={{ animationDelay: "0.15s" }} />
-                                            <span className="h-1.5 w-1.5 rounded-full bg-neutral-700 kloner-dot" style={{ animationDelay: "0.30s" }} />
+                                            <span className="h-1.5 w-1.5 rounded-full bg-[#4f46e5] kloner-dot" />
+                                            <span className="h-1.5 w-1.5 rounded-full bg-[#ec4899] kloner-dot" style={{ animationDelay: "0.15s" }} />
+                                            <span className="h-1.5 w-1.5 rounded-full bg-[#f97316] kloner-dot" style={{ animationDelay: "0.30s" }} />
                                         </span>
 
                                         <style jsx>{`
@@ -5524,7 +5524,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 </button>
                                 <button
                                     type="button"
-                                    className="px-2.5 py-1.5 text-xs rounded-full border border-transparent bg-accent text-white hover:brightness-110 active:scale-[.98]"
+                                    className="px-2.5 py-1.5 text-xs rounded-full border bg-accent text-white hover:brightness-110 active:scale-[.98]"
                                     onClick={() => performClose("save")}
                                 >
                                     Save & close

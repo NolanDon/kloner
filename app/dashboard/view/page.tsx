@@ -81,7 +81,7 @@ import { UrlDoc } from "../page";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 import { archiveRender, resolveStorageUrl, useResolvedImg } from "@/src/lib/renders";
 import { AnimatePresence, motion } from "framer-motion";
-import { extractArchivedPageIdsFromRender, fetchRenderForDeployment, getArchivedRoutesForRender, persistArchivedPageIds, scrubArchivedRoutes, withArchivedPageIds } from "@/components/helpers";
+import { extractArchivedPageIdsFromRender, fetchRenderForDeployment, getArchivedRoutesForRender, persistArchivedPageIds, scrubArchivedRoutes, secureHtmlForPreviewIframe, withArchivedPageIds } from "@/components/helpers";
 import { recordDeployAnalytics } from "@/components/analytics";
 
 const VERCEL_INTEGRATION_SLUG =
@@ -319,29 +319,7 @@ function RenderCardInner({
 
     const srcDoc = useMemo(() => {
         if (!r.html) return "";
-        let safeHtml = r.html.trim();
-
-        safeHtml = safeHtml.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
-        safeHtml = safeHtml.replace(/\son\w+\s*=\s*(['"]).*?\1/gi, "");
-        safeHtml = safeHtml.replace(
-            /href\s*=\s*(['"])\s*javascript:[^'"]*\1/gi,
-            'href="#"',
-        );
-
-        const csp = `
-<meta http-equiv="Content-Security-Policy"
-    content="
-        default-src 'none';
-        img-src data: blob: http: https:;
-        style-src 'unsafe-inline' https:;
-        font-src https: data:;
-        script-src 'none';
-        connect-src 'none';
-    ">
-`.trim();
-
-        const base = r.html ? `<base target="_blank" rel="noopener noreferrer">` : "";
-        return `${csp}${base}${safeHtml}`;
+        return secureHtmlForPreviewIframe(r.html);
     }, [r.html]);
 
     const isDeployedFlag = isDeployed;

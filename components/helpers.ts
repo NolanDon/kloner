@@ -391,3 +391,104 @@ export const IS_MOBILE =
     typeof window !== "undefined" &&
     /Android|iPhone|iPod|Mobile/i.test(navigator.userAgent) &&
     !/iPad|Tablet/i.test(navigator.userAgent);
+
+
+
+export function secureHtmlForPreviewIframe(rawHtml: string): string {
+    if (!rawHtml) return rawHtml;
+
+    // must run in browser
+    if (typeof window === "undefined" || typeof DOMParser === "undefined") return rawHtml;
+
+    try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(rawHtml, "text/html");
+
+        // ensure <head>
+        if (!doc.head) {
+            const head = doc.createElement("head");
+            doc.documentElement.insertBefore(head, doc.body || null);
+        }
+
+        // 1) kill script execution + script gadgets
+        doc.querySelectorAll("script, noscript").forEach((n) => n.remove());
+
+        // meta refresh can navigate
+        doc.querySelectorAll('meta[http-equiv="refresh" i]').forEach((n) => n.remove());
+
+        // remove <base> entirely (it can rewrite all links + target)
+        doc.querySelectorAll("base").forEach((n) => n.remove());
+
+        // 2) strip inline event handlers + JS urls
+        doc.querySelectorAll<HTMLElement>("*").forEach((el) => {
+            // remove on* handlers
+            for (const attr of Array.from(el.attributes)) {
+                const name = attr.name.toLowerCase();
+                const val = (attr.value || "").trim();
+
+                if (name.startsWith("on")) el.removeAttribute(attr.name);
+
+                // javascript: urls
+                if ((name === "href" || name === "src") && /^javascript:/i.test(val)) {
+                    el.setAttribute(attr.name, "#");
+                }
+
+                // data:text/html or other active payloads
+                if ((name === "href" || name === "src") && /^data:text\/html/i.test(val)) {
+                    el.setAttribute(attr.name, "#");
+                }
+            }
+        });
+
+        // 3) FIX the hash-route links your generator is producing
+        //    "#/path" -> "/path" and "#/" -> "/"
+        doc.querySelectorAll<HTMLAnchorElement>("a[href]").forEach((a) => {
+            const href = (a.getAttribute("href") || "").trim();
+
+            if (href.startsWith("#/")) {
+                const next = href.slice(1); // remove leading "#"
+                a.setAttribute("href", next || "/");
+            }
+
+            // if you also ever generate "#/news/hotfixes?x=y", keep it:
+            // handled by slice(1) above
+
+            // harden target=_blank safety if any exist
+            const target = (a.getAttribute("target") || "").toLowerCase();
+            if (target === "_blank") {
+                const rel = (a.getAttribute("rel") || "").toLowerCase();
+                const needed = ["noopener", "noreferrer"];
+                const parts = new Set(rel.split(/\s+/).filter(Boolean));
+                needed.forEach((p) => parts.add(p));
+                a.setAttribute("rel", Array.from(parts).join(" "));
+            }
+        });
+
+        // 4) inject preview CSP (scriptless, no network, no forms, no frames)
+        const cspContent = [
+            "default-src 'none'",
+            "img-src https: data: blob:",
+            "style-src 'unsafe-inline' https:",
+            "font-src https: data:",
+            "media-src https: data: blob:",
+            "connect-src 'none'",
+            "frame-src 'none'",
+            "object-src 'none'",
+            "base-uri 'none'",
+            "form-action 'none'",
+            "script-src 'none'",
+        ].join("; ");
+
+        let csp = doc.querySelector('meta[http-equiv="Content-Security-Policy" i]');
+        if (!csp) {
+            csp = doc.createElement("meta");
+            csp.setAttribute("http-equiv", "Content-Security-Policy");
+            doc.head.prepend(csp);
+        }
+        csp.setAttribute("content", cspContent);
+
+        return "<!doctype html>\n" + doc.documentElement.outerHTML;
+    } catch {
+        return rawHtml;
+    }
+}

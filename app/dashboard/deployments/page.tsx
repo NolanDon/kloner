@@ -47,6 +47,7 @@ import {
     normalizeKlonerPaddingForExport,
     persistArchivedPageIds,
     scrubArchivedRoutes,
+    secureHtmlForPreviewIframe,
     withArchivedPageIds,
 } from "@/components/helpers";
 
@@ -641,7 +642,7 @@ export default function DeploymentsPage(): JSX.Element {
                 deployment: d,
             });
 
-            const initialHtml = render.html;
+            const initialHtml = secureHtmlForPreviewIframe(render.html);
             const refImg = render.referenceImage;
             const draftId = render.id;
             const seoMap = render.seoMetaByPage ?? null;

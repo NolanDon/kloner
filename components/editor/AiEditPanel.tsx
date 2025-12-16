@@ -34,7 +34,7 @@ interface AiEditPanelProps {
 }
 
 const MAX_PROMPT_CHARS = 200;
-const MAX_SELECTION_CHARS = 8000;
+const MAX_SELECTION_CHARS = 16000;
 
 type CreditsMeta = {
     tier?: string;
@@ -272,7 +272,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
         const blockHtml = blockHtmlRaw.trim();
 
         if (blockHtml.length > MAX_SELECTION_CHARS) {
-            setError("This selection is too large for a focused AI edit. Try selecting a smaller section.");
+            setError(`This selection is too large for a focused AI edit. Try selecting a smaller section. \n ${blockHtml.length}`);
             return;
         }
 
@@ -454,11 +454,6 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                 </div>
 
                 <div ref={scrollContainerRef} className="flex-1 space-y-2 overflow-y-auto px-3 py-3 text-[12px]">
-                    {error && (
-                        <div className="rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] text-red-700">
-                            {error}
-                        </div>
-                    )}
 
                     {historyError && (
                         <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
@@ -564,8 +559,8 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                             onClick={handleRun}
                             disabled={generateDisabled}
                             className={`inline-flex h-9 w-9 items-center justify-center rounded-full text-[13px] font-semibold transition ${generateDisabled
-                                    ? "cursor-not-allowed bg-neutral-200 text-neutral-500"
-                                    : "bg-[var(--accent,#f55f2a)] text-white shadow-sm hover:brightness-110 active:brightness-95"
+                                ? "cursor-not-allowed bg-neutral-200 text-neutral-500"
+                                : "bg-[var(--accent,#f55f2a)] text-white shadow-sm hover:brightness-110 active:brightness-95"
                                 }`}
                             title={
                                 generateDisabled
@@ -616,6 +611,11 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                             ) : null}
                         </div>
                     </div>
+                    {error && (
+                        <div className="mt-2 rounded-md text-[11px] text-red-700">
+                            {error}
+                        </div>
+                    )}
                 </div>
             </div>
 
