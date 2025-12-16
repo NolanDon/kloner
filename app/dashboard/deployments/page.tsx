@@ -892,39 +892,6 @@ export default function DeploymentsPage(): JSX.Element {
                                     Deployments
                                 </h1>
                             </div>
-
-                            {hasNewFlag && (
-                                <div className={`rounded-2xl border px-4 py-3 text-sm sm:text-xs shadow-sm ${bannerClasses}`}>
-                                    <div className="flex items-start gap-2">
-                                        {bannerVariant === "error" ? (
-                                            <AlertTriangle className="h-4 w-4 mt-0.5 text-red-500" />
-                                        ) : bannerVariant === "success" ? (
-                                            <CheckCircle2 className="h-4 w-4 mt-0.5 text-emerald-600" />
-                                        ) : (
-                                            <Rocket className="h-4 w-4 mt-0.5 text-neutral-500" />
-                                        )}
-
-                                        <div className="flex-1">
-                                            <div className="font-semibold mb-1">
-                                                {bannerVariant === "error"
-                                                    ? "Deployment failed"
-                                                    : bannerVariant === "success"
-                                                        ? "Deployment finished"
-                                                        : "Deployment started"}
-                                            </div>
-
-                                            <p className="leading-relaxed text-neutral-600">
-                                                {bannerVariant === "error"
-                                                    ? "Vercel reported an error. Check the build logs."
-                                                    : bannerVariant === "success"
-                                                        ? "Your site is live. Open it or review history."
-                                                        : "We’ll keep this status in sync."}
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
                             <p className="max-w-2xl text-sm text-neutral-600">
                                 Deployments to Vercel show up here, with status kept up to date.
                             </p>
@@ -1068,7 +1035,7 @@ export default function DeploymentsPage(): JSX.Element {
                                         <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-500 mb-2">
                                             Latest deployment
                                         </h3>
-                                        <article className="rounded-2xl border border-neutral-200 bg-white shadow-sm p-5 flex flex-col gap-3">
+                                        <article className="rounded-2xl border border-neutral-200 bg-white shadow-sm p-5 flex flex-col gap-1.5">
                                             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                                                 <div className="min-w-0">
                                                     <div className="flex items-center gap-2">
@@ -1146,6 +1113,44 @@ export default function DeploymentsPage(): JSX.Element {
                                                 )}
                                             </div>
 
+                                            {hasNewFlag && (
+                                                <div
+                                                    className={[
+                                                        "inline-flex w-auto max-w-none whitespace-nowrap rounded-2xl border px-3 py-2 text-sm sm:text-xs shadow-sm",
+                                                        bannerClasses,
+                                                    ].join(" ")}
+                                                >
+
+                                                    <div className="flex items-start gap-2">
+                                                        {bannerVariant === "error" ? (
+                                                            <AlertTriangle className="h-4 w-4 text-red-500" />
+                                                        ) : bannerVariant === "success" ? (
+                                                            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                                                        ) : (
+                                                            <Rocket className="h-4 w-4 text-neutral-500" />
+                                                        )}
+
+                                                        <div className="flex-1">
+                                                            <div className="font-semibold">
+                                                                {bannerVariant === "error"
+                                                                    ? "Deployment failed"
+                                                                    : bannerVariant === "success"
+                                                                        ? "Deployment finished"
+                                                                        : "Deployment started"}
+                                                            </div>
+
+                                                            <p className="leading-relaxed text-neutral-600">
+                                                                {bannerVariant === "error"
+                                                                    ? "Vercel reported an error. Check the build logs."
+                                                                    : bannerVariant === "success"
+                                                                        ? ""
+                                                                        : "We’ll keep this status in sync."}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+
                                             <div className="border-t border-neutral-100 pt-3">
                                                 <div className="mt-1 space-y-3 rounded-lg border border-neutral-200 bg-neutral-50/80 p-3">
                                                     <div className="flex flex-wrap items-center gap-2">
@@ -1193,6 +1198,7 @@ export default function DeploymentsPage(): JSX.Element {
                                                             <ArrowUpRight className="h-3 w-3 transform transition-transform duration-150" />
                                                         </a>
                                                     </div>
+
 
                                                     {showDeployHint && (
                                                         <div className="mt-2 max-w-xs rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 shadow-sm">
@@ -1277,6 +1283,7 @@ export default function DeploymentsPage(): JSX.Element {
                                                             </span>
                                                         </p>
                                                     )}
+
                                                 </div>
                                             </div>
                                         </article>
@@ -1410,6 +1417,7 @@ export default function DeploymentsPage(): JSX.Element {
                         )}
                     </div>
                 )}
+
                 {editorOpen && activeDeployment && editorDraftId && (
                     <PreviewEditor
                         initialHtml={editorHtml}

@@ -2573,22 +2573,9 @@ export default function PreviewPage(): JSX.Element {
             const ok = window.confirm("Discard this editable preview?");
             if (!ok) return;
 
-            setDeletingRender((m) => ({
-                ...m,
-                [renderId]: true,
-            }));
+            setDeletingRender((m) => ({ ...m, [renderId]: true }));
 
             try {
-                const renderRef = doc(
-                    db,
-                    "kloner_users",
-                    user.uid,
-                    "kloner_renders",
-                    renderId
-                );
-                const snap = await getDoc(renderRef);
-                const data = snap.exists() ? (snap.data() as any) : null;
-
                 // fire-and-forget delete of ALL storage objects for this render
                 try {
                     const csrf = await ensureSessionAndCsrf();
@@ -2605,8 +2592,22 @@ export default function PreviewPage(): JSX.Element {
                     console.error("storage delete by renderId failed (non-fatal)", e);
                 }
 
-                // delete Firestore doc last
-                await deleteDoc(renderRef);
+                // delete Firestore render + ai_edits (server-side recursive)
+                const csrf = await ensureSessionAndCsrf();
+                const resp = await fetch("/api/user-render/delete", {
+                    method: "POST",
+                    headers: {
+                        "content-type": "application/json",
+                        ...(csrf ? { "x-csrf": csrf } : {}),
+                    },
+                    credentials: "include",
+                    body: JSON.stringify({ renderId }),
+                });
+
+                if (!resp.ok) {
+                    const j = await resp.json().catch(() => ({}));
+                    throw new Error(j?.error || "Failed to discard preview.");
+                }
 
                 setRenders((prev) => prev.filter((r) => r.id !== renderId));
                 push("Preview discarded", "ok");

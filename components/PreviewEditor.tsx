@@ -1367,28 +1367,80 @@ export default function PreviewEditor({
 
     function archivePageInHtmlById(html: string, pageId: string): string {
         if (!html) return html;
+        if (typeof window === "undefined" || typeof DOMParser === "undefined") return html;
+
+        const normalizeRoute = (r: string) => {
+            const s = (r || "").trim();
+            if (!s) return s;
+            return s.startsWith("/") ? s : `/${s}`;
+        };
+
+        const archivedRoute = normalizeRoute(pageId);
+
+        const hrefTargetsArchivedRoute = (hrefRaw: string | null) => {
+            const href = (hrefRaw || "").trim();
+            if (!href) return false;
+
+            if (href.startsWith("#")) return false;
+            if (/^(mailto:|tel:|javascript:)/i.test(href)) return false;
+
+            // absolute URL
+            if (/^https?:\/\//i.test(href)) {
+                try {
+                    const u = new URL(href);
+                    const p = normalizeRoute(u.pathname || "");
+                    return p === archivedRoute || p.startsWith(archivedRoute + "/");
+                } catch {
+                    return false;
+                }
+            }
+
+            // relative/path URL
+            const clean = href.split(/[?#]/)[0] || href;
+            const p = normalizeRoute(clean);
+            return p === archivedRoute || p.startsWith(archivedRoute + "/");
+        };
+
         try {
             const parser = new DOMParser();
             const doc = parser.parseFromString(html, "text/html");
 
-            // Target main.page-root elements with matching data-route
-            const nodes = doc.querySelectorAll<HTMLElement>(
-                `main.page-root[data-route="${pageId}"]`
-            );
+            // Remove the route-filtering CSS that conflicts with archive display logic
+            const routeStyle = doc.querySelector('style#kloner-active-route');
+            if (routeStyle) routeStyle.remove();
 
+            // Archive the page content node(s)
+            const nodes = doc.querySelectorAll<HTMLElement>(`main.page-root[data-route="${archivedRoute}"]`);
             if (nodes.length === 0) {
-                console.warn(`[archivePageInHtmlById] No page found with route: ${pageId}`);
+                console.warn(`[archivePageInHtmlById] No page found with route: ${archivedRoute}`);
                 return html;
             }
 
             nodes.forEach((node) => {
                 node.setAttribute("data-kloner-archived", "1");
+                node.style.setProperty("display", "none", "important");
+            });
 
-                // only hide if not already hidden
-                const style = node.getAttribute("style") || "";
-                if (!/display\s*:\s*none/.test(style)) {
-                    node.style.display = "none";
+            // Block navigation to the archived route
+            const anchors = Array.from(doc.querySelectorAll<HTMLAnchorElement>("a[href]"));
+            anchors.forEach((a) => {
+                const href = a.getAttribute("href");
+                if (!hrefTargetsArchivedRoute(href)) return;
+
+                if (!a.hasAttribute("data-kloner-orig-href")) {
+                    a.setAttribute("data-kloner-orig-href", href || "");
                 }
+
+                a.setAttribute("data-kloner-nav-blocked", "1");
+                a.setAttribute("data-kloner-blocked-route", archivedRoute);
+
+                a.setAttribute("aria-disabled", "true");
+                a.setAttribute("tabindex", "-1");
+                a.setAttribute("href", "#");
+
+                a.style.setProperty("pointer-events", "none", "important");
+                a.style.setProperty("cursor", "not-allowed", "important");
+                a.style.setProperty("opacity", "0.6", "important");
             });
 
             return "<!doctype html>\n" + doc.documentElement.outerHTML;
@@ -1398,6 +1450,106 @@ export default function PreviewEditor({
         }
     }
 
+    function restorePageInHtmlById(html: string, pageId: string): string {
+        if (!html) return html;
+        if (typeof window === "undefined" || typeof DOMParser === "undefined") return html;
+
+        const normalizeRoute = (r: string) => {
+            const s = (r || "").trim();
+            if (!s) return s;
+            return s.startsWith("/") ? s : `/${s}`;
+        };
+
+        const restoredRoute = normalizeRoute(pageId);
+
+        const isLegacyDisabledLinkForRoute = (a: HTMLAnchorElement) => {
+            const href = (a.getAttribute("href") || "").trim();
+            const ariaDisabled = (a.getAttribute("aria-disabled") || "").trim() === "true";
+            const tabindex = (a.getAttribute("tabindex") || "").trim() === "-1";
+            const text = (a.textContent || "").trim().toLowerCase();
+
+            // Your current HTML disables nav items by setting href="#" + aria-disabled/tabindex
+            // Legacy fallback: only re-enable if it looks like the nav item for this route.
+            if (!(href === "#" && ariaDisabled && tabindex)) return false;
+
+            // If archive wrote a blocked-route marker, prefer that.
+            const blockedRoute = (a.getAttribute("data-kloner-blocked-route") || "").trim();
+            if (blockedRoute) return normalizeRoute(blockedRoute) === restoredRoute;
+
+            // No marker present (your pasted HTML). Infer from label for common routes.
+            const routeLabel = restoredRoute.replace(/^\//, "").trim().toLowerCase(); // "community"
+            if (!routeLabel) return false;
+
+            // Match exact word or includes (covers "Community", "Community Builds", etc.)
+            return text === routeLabel || text.includes(routeLabel);
+        };
+
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, "text/html");
+
+            // Remove the route-filtering CSS that conflicts with restore display logic
+            const routeStyle = doc.querySelector('style#kloner-active-route');
+            if (routeStyle) routeStyle.remove();
+
+            // Restore the page content node(s)
+            const nodes = doc.querySelectorAll<HTMLElement>(`main.page-root[data-route="${restoredRoute}"]`);
+            if (nodes.length === 0) {
+                console.warn(`[restorePageInHtmlById] No page found with route: ${restoredRoute}`);
+                return html;
+            }
+
+            nodes.forEach((node) => {
+                node.removeAttribute("data-kloner-archived");
+                node.style.removeProperty("display");
+            });
+
+            // Unblock navigation (new marker-based)
+            const blocked = Array.from(
+                doc.querySelectorAll<HTMLAnchorElement>(`a[data-kloner-nav-blocked="1"][data-kloner-blocked-route="${restoredRoute}"]`)
+            );
+
+            blocked.forEach((a) => {
+                const orig = a.getAttribute("data-kloner-orig-href");
+                if (orig != null && orig.trim()) {
+                    a.setAttribute("href", orig);
+                } else {
+                    a.setAttribute("href", restoredRoute);
+                }
+
+                a.removeAttribute("data-kloner-orig-href");
+                a.removeAttribute("data-kloner-nav-blocked");
+                a.removeAttribute("data-kloner-blocked-route");
+
+                a.removeAttribute("aria-disabled");
+                a.removeAttribute("tabindex");
+
+                a.style.removeProperty("pointer-events");
+                a.style.removeProperty("cursor");
+                a.style.removeProperty("opacity");
+            });
+
+            // Legacy fallback (for HTML like you pasted: disabled links without kloner markers)
+            const allAnchors = Array.from(doc.querySelectorAll<HTMLAnchorElement>("a[href]"));
+            allAnchors.forEach((a) => {
+                if (!isLegacyDisabledLinkForRoute(a)) return;
+
+                a.setAttribute("href", restoredRoute);
+
+                a.removeAttribute("aria-disabled");
+                a.removeAttribute("tabindex");
+
+                a.style.removeProperty("pointer-events");
+                a.style.removeProperty("cursor");
+                a.style.removeProperty("opacity");
+            });
+
+            return "<!doctype html>\n" + doc.documentElement.outerHTML;
+        } catch (err) {
+            console.warn("[restorePageInHtmlById] failed", err);
+            return html;
+        }
+    }
 
     function archivePage(pageId: string) {
         if (
@@ -1425,31 +1577,6 @@ export default function PreviewEditor({
 
             return next;
         });
-    }
-
-
-    function restorePageInHtmlById(html: string, pageId: string): string {
-        if (!html) return html;
-        try {
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, "text/html");
-
-            const nodes = doc.querySelectorAll<HTMLElement>(
-                `[data-kloner-page-id="${pageId}"]`
-            );
-
-            nodes.forEach((node) => {
-                node.removeAttribute("data-kloner-archived");
-                if (node.style.display === "none") {
-                    node.style.display = "";
-                }
-            });
-
-            return "<!doctype html>\n" + doc.documentElement.outerHTML;
-        } catch (err) {
-            console.warn("[restorePageInHtmlById] failed", err);
-            return html;
-        }
     }
 
 
@@ -2790,7 +2917,6 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         return base;
     }
 
-    // inside your editor component
     async function doExport() {
         if (exporting) return;
         setExportNote("");
@@ -2801,8 +2927,17 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         try {
             await doSave({ applyToPreview: true });
 
-            const baseHtmlRaw = snapshotFromIframeOrDraft();
-            const baseHtml = (baseHtmlRaw || previewHtml || "").trim();
+            // IMPORTANT:
+            // After restore/archive, React state has the newest HTML immediately,
+            // but the iframe DOM can lag behind for a tick (or longer).
+            // Export must prefer the latest in-memory HTML over iframe snapshot.
+            const latestStateHtml = (htmlDraft || previewHtml || "").trim();
+
+            const iframeHtmlRaw = snapshotFromIframeOrDraft();
+            const iframeHtml = (iframeHtmlRaw || "").trim();
+
+            const baseHtml = (latestStateHtml || iframeHtml).trim();
+
             if (!baseHtml) {
                 const msg = "No HTML available to export";
                 const durationMs = Date.now() - exportStartMs;
@@ -2810,17 +2945,12 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                 await recordExportAnalytics(
                     user as ExportAnalyticsUser,
                     draftId,
-                    {
-                        status: "error",
-                        error: msg,
-                        durationMs,
-                    },
+                    { status: "error", error: msg, durationMs },
                 );
 
                 throw new Error(msg);
             }
 
-            // FINAL SAFETY PASS: strip any Kloner UI one last time
             const cleanedForExport = cleanHtmlBeforeExport(baseHtml);
 
             const finalHtml = await buildFinalExport({
@@ -2836,15 +2966,10 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
             bumpSessionCounter("export");
 
-            // analytics: first / last export, count, last draft, timing, status
             await recordExportAnalytics(
                 user as ExportAnalyticsUser,
                 draftId,
-                {
-                    status: "success",
-                    error: null,
-                    durationMs,
-                },
+                { status: "success", error: null, durationMs },
             );
         } catch (e: any) {
             const msg = String(e?.message || "");
@@ -2853,17 +2978,11 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             await recordExportAnalytics(
                 user as ExportAnalyticsUser,
                 draftId,
-                {
-                    status: "error",
-                    error: msg,
-                    durationMs,
-                },
+                { status: "error", error: msg, durationMs },
             );
 
             if (/401|403|unauth/i.test(msg)) {
-                setExportNote(
-                    "Export blocked. Connect your Vercel account in Settings, then retry.",
-                );
+                setExportNote("Export blocked. Connect your Vercel account in Settings, then retry.");
             } else {
                 setExportNote("Export failed. Retry shortly.");
             }
@@ -5067,7 +5186,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                         className={
                                             isPreviewFullscreen
                                                 ? "flex-1 min-h-0 flex items-stretch justify-end"
-                                                : `${device === "desktop" ? 'ml-auto' : 'mx-auto'}`
+                                                : `${device === "desktop" && !sidebarHidden ? 'ml-auto' : 'mx-auto'}`
                                         }
                                         style={
                                             isPreviewFullscreen
@@ -5542,7 +5661,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                 {exportPrompt && (
                     <div className="fixed inset-0 z-[10010] flex items-center justify-center bg-black/40">
-                        <div className="bg-white/90 rounded-lg shadow-xl p-4 w-full max-w-sm border border-neutral-200">
+                        <div className="bg-white rounded-lg shadow-xl p-4 w-full max-w-sm border border-neutral-200">
                             <div className="text-md font-semibold text-neutral-900 mb-2">
                                 Deploy your Website?
                             </div>
