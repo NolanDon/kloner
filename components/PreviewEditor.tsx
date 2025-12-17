@@ -5256,31 +5256,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                 }}
                                                 className="mx-auto cursor-move ounded-[28px] border rounded-[36px] border-neutral-700 bg-neutral-950/90 px-4 pt-4 pb-6 shadow-xl"
                                             >
-                                                <div className="flex items-center justify-end gap-1.5">
-                                                    {/* UNDO
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            const api = iframeRef.current?.contentWindow?.__klonerApi;
-                                                            if (api?.undo) api.undo();
-                                                        }}
-                                                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800/80 transition"
-                                                        aria-label="Undo"
-                                                    >
-                                                        <Undo2 className="h-5 w-5" />
-                                                    </button>
-
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            const api = iframeRef.current?.contentWindow?.__klonerApi;
-                                                            if (api?.redo) api.redo();
-                                                        }}
-                                                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800/80 transition"
-                                                        aria-label="Redo"
-                                                    >
-                                                        <Redo2 className="h-5 w-5" />
-                                                    </button> */}
+                                                <div className="flex items-center justify-end gap-1.5"> 
                                                 </div>
                                                 <div className="mx-auto mb-2 h-1.5 w-20 rounded-full bg-neutral-700" />
                                                 <div
@@ -5342,16 +5318,6 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                                     </motion.div>
                                 </AnimatePresence>
-
-                                {/* <div id="kloner-quick-undo">
-                                    <FloatingBlockToolbar
-                                        iframeRef={iframeRef}
-                                        wrapperRef={iframeWrapperRef}
-                                        selectionMeta={selectionMeta}
-                                        uiScale={0}
-                                    />
-                                </div> */}
-
                             </div>
                         )}
 

@@ -104,9 +104,7 @@ export default function Hero() {
     const normalized = validateAndNormalize(stripped);
 
     if (!normalized) {
-      setError(
-        "Please enter a valid public http(s) URL (no localhost or private IPs)."
-      );
+      setError("Please enter a valid public http(s) URL (no localhost or private IPs).");
       return;
     }
 
@@ -155,7 +153,7 @@ export default function Hero() {
           "max(env(safe-area-inset-left), clamp(12px, 4vw, 10px))",
       }}
     >
-      {/* Moving gradient keyframes (scoped) */}
+      {/* Mobile-only: moving gradient for the H1 text */}
       <style>{`
         @keyframes kloner-hero-gradient-move {
           0% { background-position: 0% 50%; }
@@ -164,13 +162,9 @@ export default function Hero() {
         }
       `}</style>
 
+      {/* Background: desktop video; mobile white-only */}
       <div className="absolute inset-0 p-[var(--hero-gutter)]">
-        <div
-          className={[
-            "relative h-full w-full overflow-hidden rounded-2xl md:rounded-3xl ring-1 ring-black/10 shadow-2xl",
-            isMobile ? "bg-white" : "",
-          ].join(" ")}
-        >
+        <div className="relative h-full w-full overflow-hidden rounded-2xl md:rounded-3xl ring-1 ring-black/10 shadow-2xl">
           {!isMobile ? (
             <>
               <video
@@ -187,6 +181,7 @@ export default function Hero() {
             </>
           ) : (
             <>
+              <div className="absolute inset-0 bg-white" />
               <div className="absolute inset-0 bg-gradient-to-b from-white via-white to-neutral-50" />
               <div className="pointer-events-none absolute inset-0 ring-1 ring-black/5" />
             </>
@@ -205,30 +200,43 @@ export default function Hero() {
             className={[
               display.className,
               "pt-10 md:pt-20 leading-[0.96] font-semibold text-[3.5rem] md:text-[5rem] tracking-[-0.015em]",
-              // Gradient text: your theme color via --accent (falls back if not defined)
-              "bg-clip-text text-transparent",
+              // Desktop: normal white text.
+              // Mobile: gradient text (handled via inline style below).
+              isMobile ? "" : "text-white",
             ].join(" ")}
             style={{
               textWrap: "balance" as any,
               WebkitFontSmoothing: "antialiased",
               MozOsxFontSmoothing: "grayscale",
-              backgroundImage: isMobile
-                ? `linear-gradient(90deg,
-                    color-mix(in srgb, var(--accent, #f55f2a) 85%, #111 15%),
-                    color-mix(in srgb, var(--accent, #f55f2a) 65%, #111 35%),
-                    #111,
-                    color-mix(in srgb, var(--accent, #f55f2a) 70%, #111 30%),
-                    var(--accent, #f55f2a)
-                  )`
-                : `linear-gradient(90deg,
-                    rgba(255,255,255,0.95),
-                    var(--accent, #f55f2a),
-                    rgba(255,255,255,0.95),
-                    rgba(255,255,255,0.75),
-                    var(--accent, #f55f2a)
-                  )`,
-              backgroundSize: "220% 220%",
-              animation: "kloner-hero-gradient-move 6s ease-in-out infinite",
+
+              // MOBILE ONLY: gradient + glow
+              ...(isMobile
+                ? {
+                  color: "transparent",
+                  WebkitTextFillColor: "transparent",
+                  WebkitBackgroundClip: "text",
+                  backgroundClip: "text",
+                  backgroundImage: `linear-gradient(90deg,
+                      #0b0b10 0%,
+                      var(--accent, #f55f2a) 22%,
+                      #0b0b10 46%,
+                      var(--accent, #f55f2a) 72%,
+                      #0b0b10 100%
+                    )`,
+                  backgroundSize: "260% 260%",
+                  animation: "kloner-hero-gradient-move 5.5s ease-in-out infinite",
+                  filter:
+                    "drop-shadow(0 10px 24px rgba(245,95,42,0.25)) drop-shadow(0 2px 10px rgba(0,0,0,0.18))",
+                }
+                : {
+                  // DESKTOP ONLY: hard-disable gradient behavior so it can’t leak
+                  backgroundImage: "none",
+                  WebkitTextFillColor: "currentColor",
+                  WebkitBackgroundClip: "border-box",
+                  backgroundClip: "border-box",
+                  filter: "none",
+                  animation: "none",
+                }),
             }}
           >
             Clone, Customize & Deploy.
@@ -266,9 +274,7 @@ export default function Hero() {
                 <span
                   className={[
                     "transition-colors",
-                    isMobile
-                      ? "group-hover:text-neutral-900"
-                      : "group-hover:text-white",
+                    isMobile ? "group-hover:text-neutral-900" : "group-hover:text-white",
                   ].join(" ")}
                 >
                   See how it works
@@ -289,11 +295,7 @@ export default function Hero() {
             </a>
           </div>
 
-          <form
-            onSubmit={onSubmit}
-            className="mt-6 md:mt-15 px-2"
-            aria-label="Start by pasting a URL"
-          >
+          <form onSubmit={onSubmit} className="mt-6 md:mt-15 px-2" aria-label="Start by pasting a URL">
             <div
               className={[
                 "mx-auto max-w-3xl",
@@ -303,17 +305,11 @@ export default function Hero() {
                 "flex items-center gap-2",
                 "pl-5 pr-2",
                 "h-[64px] sm:h-[74px]",
-                isMobile
-                  ? "ring-black/10 focus-within:ring-black/20"
-                  : "ring-white/25 focus-within:ring-white/70",
+                isMobile ? "ring-black/10 focus-within:ring-black/20" : "ring-white/25 focus-within:ring-white/70",
               ].join(" ")}
             >
-              <label htmlFor="hero-url" className="sr-only">
-                Website URL
-              </label>
-              <span className="hidden sm:inline text-neutral-500 text-lg">
-                https://
-              </span>
+              <label htmlFor="hero-url" className="sr-only">Website URL</label>
+              <span className="hidden sm:inline text-neutral-500 text-lg">https://</span>
               <input
                 id="hero-url"
                 name="u"
@@ -346,6 +342,7 @@ export default function Hero() {
                 Preview
               </button>
             </div>
+
             <div className="mt-2">
               {error ? (
                 <div
