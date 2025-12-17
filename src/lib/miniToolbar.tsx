@@ -14,6 +14,8 @@ import {
     Sparkles,
     X,
     Image as ImageIcon,
+    ArrowLeft,
+    ArrowRight,
 } from "lucide-react";
 import type { SelectionMeta } from "@/components/PreviewEditor";
 
@@ -165,6 +167,18 @@ export function MiniToolbar({
         callApi(iframeRef, "blockMoveDown");
     };
 
+    const handleMoveLeft = () => {
+        if (disabled) return;
+        callApi(iframeRef, "blockMoveLeft");
+    };
+
+
+    const handleMoveRight = () => {
+        if (disabled) return;
+        callApi(iframeRef, "blockMoveRight");
+    };
+
+
     const handleInsertBelowSimple = () => {
         if (disabled) return;
         const win = iframeRef.current?.contentWindow as any;
@@ -290,6 +304,26 @@ export function MiniToolbar({
                     title="Move section down"
                 >
                     <ArrowDown className="h-3.5 w-3.5" />
+                </button>
+                <button
+                    type="button"
+                    onClick={handleMoveLeft}
+                    disabled={disabled}
+                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-accent hover:text-white ${disabled ? "cursor-not-allowed opacity-50" : ""
+                        }`}
+                    title="Move section left"
+                >
+                    <ArrowLeft className="h-3.5 w-3.5" />
+                </button>
+                <button
+                    type="button"
+                    onClick={handleMoveRight}
+                    disabled={disabled}
+                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-accent hover:text-white ${disabled ? "cursor-not-allowed opacity-50" : ""
+                        }`}
+                    title="Move section right"
+                >
+                    <ArrowRight className="h-3.5 w-3.5" />
                 </button>
                 <button
                     type="button"

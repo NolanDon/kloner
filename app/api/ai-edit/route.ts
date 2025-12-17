@@ -18,11 +18,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../_lib/route-guard";
 import OpenAI from "openai";
-import {
-    canConsumeCredit,
-    monthlyLimitFor,
-    type UserTier,
-} from "@/src/lib/credits";
+import { monthlyLimitFor, type UserTier } from "@/src/lib/credits";
 import { getStorage } from "firebase-admin/storage";
 import sharp from "sharp";
 
@@ -82,6 +78,178 @@ const STORAGE_BUCKET =
     undefined;
 
 // helpers
+
+function nextPeriodEndUtc(now: Date) {
+    const y = now.getUTCFullYear();
+    const m = now.getUTCMonth();
+    const firstNext = new Date(Date.UTC(y, m + 1, 1, 0, 0, 0, 0));
+    return new Date(firstNext.getTime() - 1);
+}
+
+/**
+ * ATOMIC CREDIT RESERVATION (INLINE)
+ * - Single source of truth: kloner_users/{uid}.credits.aiEdits
+ * - Transaction prevents parallel overspend
+ * - Fail closed: caller must treat errors as 503
+ */
+async function reserveAiEditCreditsInline(opts: {
+    db: any;
+    uid: string;
+    tier: UserTier;
+    cost: number; // 5
+    now: Date;
+}): Promise<
+    | { ok: true; remaining: number | null; limit: number | null; periodEnd: Date | null }
+    | { ok: false; status: number; message: string; remaining: number; limit: number; periodEnd: Date | null }
+> {
+    const { db, uid, tier, cost, now } = opts;
+
+    const limit = monthlyLimitFor(tier, "edit");
+
+    // 0 => unlimited (enterprise only)
+    if (!limit) {
+        return { ok: true, remaining: null, limit: 0, periodEnd: null };
+    }
+
+    const userRef = db.collection("kloner_users").doc(uid);
+
+    return await db.runTransaction(async (tx: any) => {
+        const snap = await tx.get(userRef);
+        const data = snap.exists ? (snap.data() as any) : {};
+
+        const bucket =
+            data["credits.aiEdits"] ||
+            (data.credits && data.credits.aiEdits) ||
+            {};
+
+        const rawEnd = bucket.periodEnd;
+        let periodEndDate: Date | null = null;
+
+        if (rawEnd && typeof rawEnd.toDate === "function") {
+            periodEndDate = rawEnd.toDate() as Date;
+        } else if (rawEnd instanceof Date) {
+            periodEndDate = rawEnd;
+        }
+
+        const active = periodEndDate !== null && now < periodEndDate;
+
+        const existingRemaining =
+            typeof bucket.remaining === "number" && bucket.remaining >= 0
+                ? bucket.remaining
+                : null;
+
+        const endDate = active ? (periodEndDate as Date) : nextPeriodEndUtc(now);
+        const startRemaining = active && existingRemaining !== null ? existingRemaining : limit;
+
+        // always keep bucket synced, even if blocked
+        if (startRemaining < cost) {
+            tx.set(
+                userRef,
+                {
+                    "credits.aiEdits": {
+                        remaining: Math.max(startRemaining, 0),
+                        monthlyLimit: limit,
+                        periodEnd: endDate,
+                    },
+                },
+                { merge: true }
+            );
+
+            return {
+                ok: false,
+                status: 402,
+                message: "You have used all AI edit credits for this month.",
+                remaining: Math.max(startRemaining, 0),
+                limit,
+                periodEnd: endDate,
+            };
+        }
+
+        const newRemaining = Math.max(startRemaining - cost, 0);
+
+        tx.set(
+            userRef,
+            {
+                "credits.aiEdits": {
+                    remaining: newRemaining,
+                    monthlyLimit: limit,
+                    periodEnd: endDate,
+                },
+            },
+            { merge: true }
+        );
+
+        return { ok: true, remaining: newRemaining, limit, periodEnd: endDate };
+    });
+}
+
+/**
+ * Ensure credits.aiEdits exists for UI (GET path).
+ * Does NOT consume credits.
+ */
+async function ensureAiEditBucketInline(opts: {
+    db: any;
+    uid: string;
+    tier: UserTier;
+    now: Date;
+}): Promise<{ remaining: number | null; limit: number | null; periodEnd: Date | null }> {
+    const { db, uid, tier, now } = opts;
+
+    const limit = monthlyLimitFor(tier, "edit");
+
+    // unlimited
+    if (!limit) return { remaining: null, limit: 0, periodEnd: null };
+
+    const userRef = db.collection("kloner_users").doc(uid);
+
+    return await db.runTransaction(async (tx: any) => {
+        const snap = await tx.get(userRef);
+        const data = snap.exists ? (snap.data() as any) : {};
+
+        const bucket =
+            data["credits.aiEdits"] ||
+            (data.credits && data.credits.aiEdits) ||
+            {};
+
+        const rawEnd = bucket.periodEnd;
+        let periodEndDate: Date | null = null;
+
+        if (rawEnd && typeof rawEnd.toDate === "function") {
+            periodEndDate = rawEnd.toDate() as Date;
+        } else if (rawEnd instanceof Date) {
+            periodEndDate = rawEnd;
+        }
+
+        const active = periodEndDate !== null && now < periodEndDate;
+
+        const existingRemaining =
+            typeof bucket.remaining === "number" && bucket.remaining >= 0
+                ? bucket.remaining
+                : null;
+
+        const endDate = active ? (periodEndDate as Date) : nextPeriodEndUtc(now);
+
+        // if active and remaining present, keep as-is
+        if (active && existingRemaining !== null) {
+            return { remaining: existingRemaining, limit, periodEnd: endDate };
+        }
+
+        // reset for new period or missing bucket
+        tx.set(
+            userRef,
+            {
+                "credits.aiEdits": {
+                    remaining: limit,
+                    monthlyLimit: limit,
+                    periodEnd: endDate,
+                },
+            },
+            { merge: true }
+        );
+
+        return { remaining: limit, limit, periodEnd: endDate };
+    });
+}
 
 function inferPageIntentFromSlug(slug: string): {
     kind:
@@ -195,10 +363,6 @@ function buildCreatePagePrompt(args: {
         ? `No detailed brief was provided. Infer a complete multi-section layout from the page topic ("${title}") and standard expectations for a "${inferred.kind}" page.`
         : `User brief: ${userPrompt}`;
 
-    /**
-     * 🔒 AUTHORITATIVE THEME SNAPSHOT
-     * This removes all guessing. The model must obey this.
-     */
     const themeSnapshot = `
 SITE THEME SNAPSHOT (AUTHORITATIVE — DO NOT GUESS):
 - Background: full-bleed space / nebula imagery with purple + blue tones
@@ -213,10 +377,6 @@ SITE THEME SNAPSHOT (AUTHORITATIVE — DO NOT GUESS):
 - Match the homepage visual language exactly
 `;
 
-    /**
-     * 🔒 HARD CONTRAST RULE
-     * Prevents black-on-black forever.
-     */
     const contrastRule = `
 CONTRAST RULE (NON-NEGOTIABLE):
 - All readable text MUST have strong contrast against its background
@@ -275,7 +435,6 @@ CONTRAST RULE (NON-NEGOTIABLE):
     };
 }
 
-
 /**
  * Trim HTML to a bounded size while trying to keep <head> intact.
  * This keeps model latency and cost under control.
@@ -323,10 +482,6 @@ function extractTextFromResponse(resp: any): string {
 
 /**
  * Moderate user prompts (and image slot prompts) using omni-moderation-latest.
- *
- * Behavior:
- * - If moderation returns flagged: throw an error with code "PROMPT_UNSAFE"
- * - If moderation fails (network, config, etc): throw; caller should fail CLOSED
  */
 async function assertPromptSafe(prompt: string) {
     try {
@@ -364,7 +519,6 @@ async function assertPromptSafe(prompt: string) {
 
 /**
  * Parse KLONER_IMAGE_SLOT comments.
- * Example: <!-- KLONER_IMAGE_SLOT_0: a wide elephant background -->
  */
 function extractImageSlots(html: string): { index: number; prompt: string }[] {
     const slots: { index: number; prompt: string }[] = [];
@@ -384,7 +538,6 @@ function extractImageSlots(html: string): { index: number; prompt: string }[] {
 
 /**
  * Simple JPEG compression via sharp.
- * This keeps AI-generated images smaller without destroying quality.
  */
 async function compressImageBuffer(buf: Buffer): Promise<any> {
     try {
@@ -867,87 +1020,6 @@ ${trimmedHtml}
 }
 
 /**
- * Ensure / sync a dedicated credits.aiEdits bucket.
- */
-async function syncAiEditCreditsBucket(opts: {
-    userRef: any;
-    tier: UserTier;
-    now: Date;
-    usedCreditsBefore: number;
-    consumedNow: boolean;
-}): Promise<{ remaining: number | null; limit: number | null }> {
-    const { userRef, tier, now, usedCreditsBefore, consumedNow } = opts;
-
-    let limit: number | null = null;
-    try {
-        const rawLimit = monthlyLimitFor(tier, "edit");
-        limit = rawLimit || 0;
-    } catch (err) {
-        console.error("[ai-edit][credits] monthlyLimitFor(edit) failed", err);
-        return { remaining: null, limit: null };
-    }
-
-    if (!limit) {
-        return { remaining: null, limit: 0 };
-    }
-
-    let remainingResult: number = 0;
-
-    try {
-        const snap = await userRef.get();
-        const data = snap.exists ? (snap.data() as any) : {};
-        const bucket =
-            data["credits.aiEdits"] ||
-            (data.credits && data.credits.aiEdits) ||
-            {};
-
-        const rawEnd = bucket.periodEnd;
-        let periodEndDate: Date | null = null;
-
-        if (rawEnd && typeof rawEnd.toDate === "function") {
-            periodEndDate = rawEnd.toDate() as Date;
-        } else if (rawEnd instanceof Date) {
-            periodEndDate = rawEnd;
-        }
-
-        const bucketHasActivePeriod = periodEndDate !== null && now < periodEndDate;
-
-        const existingRemaining =
-            typeof bucket.remaining === "number" && bucket.remaining >= 0
-                ? bucket.remaining
-                : 0;
-
-        if (bucketHasActivePeriod) {
-            remainingResult = consumedNow ? Math.max(existingRemaining - 5, 0) : existingRemaining;
-        } else {
-            const usedTotal = usedCreditsBefore + (consumedNow ? 5 : 0);
-            remainingResult = Math.max(limit - usedTotal, 0);
-
-            const year = now.getUTCFullYear();
-            const month = now.getUTCMonth();
-            const firstNextMonth = new Date(Date.UTC(year, month + 1, 1, 0, 0, 0, 0));
-            periodEndDate = new Date(firstNextMonth.getTime() - 1);
-        }
-
-        await userRef.set(
-            {
-                "credits.aiEdits": {
-                    remaining: remainingResult,
-                    monthlyLimit: limit,
-                    periodEnd: periodEndDate,
-                },
-            },
-            { merge: true }
-        );
-    } catch (err) {
-        console.error("[ai-edit][credits] failed syncing credits.aiEdits", err);
-        return { remaining: null, limit };
-    }
-
-    return { remaining: remainingResult, limit };
-}
-
-/**
  * Normalize timestamps to ISO strings for response payloads.
  */
 function normalizeCreatedAtToIso(raw: any): string | null {
@@ -975,6 +1047,14 @@ async function handlePost(req: NextRequest) {
             console.error("[ai-edit] failed to init Firestore", err);
         }
 
+        // FAIL CLOSED: do not allow AI calls without DB, or credits are unenforceable
+        if (!db) {
+            return NextResponse.json(
+                { error: "Service temporarily unavailable. Try again shortly." },
+                { status: 503 }
+            );
+        }
+
         const body = (await req.json()) as Partial<AiEditRequestBody>;
 
         const renderId = body.renderId?.trim();
@@ -989,7 +1069,6 @@ async function handlePost(req: NextRequest) {
             (body.userPrompt ?? body.prompt ?? "").trim().slice(0, MAX_USER_PROMPT_CHARS);
 
         // DISPLAY PROMPT: optional generated prompt that can be shown in history if your UI chooses it
-        // (kept for backwards compatibility with callers that used originalPrompt as "generated")
         const rawDisplayPrompt =
             (body.originalPrompt ?? "").trim().slice(0, MAX_MODEL_PROMPT_CHARS);
 
@@ -1054,101 +1133,89 @@ async function handlePost(req: NextRequest) {
 
         const now = new Date();
 
-        let aiEditsRef: any | null = null;
-        let userRef: any | null = null;
+        let userRef: any = null;
+        let aiEditsRef: any = null;
+
+        // tier from Firestore user doc (authoritative)
         let tier: UserTier = "free";
-        let creditsLimit: number | null = null;
-        let usedCreditsBefore = 0;
+        try {
+            userRef = db.collection("kloner_users").doc(uid);
+            const userSnap = await userRef.get();
+            if (userSnap.exists) {
+                const data = userSnap.data() as any;
+                const rawTierValue = (data.userTier ?? data.tier) as string | undefined;
+                const rawTier = rawTierValue?.toLowerCase();
 
-        if (db) {
-            try {
-                userRef = db.collection("kloner_users").doc(uid);
-
-                try {
-                    const userSnap = await userRef.get();
-                    if (userSnap.exists) {
-                        const data = userSnap.data() as any;
-                        const rawTierValue = (data.userTier ?? data.tier) as string | undefined;
-                        const rawTier = rawTierValue?.toLowerCase();
-
-                        if (
-                            rawTier === "pro" ||
-                            rawTier === "agency" ||
-                            rawTier === "enterprise" ||
-                            rawTier === "free"
-                        ) {
-                            tier = rawTier as UserTier;
-                        } else {
-                            tier = "free";
-                        }
-                    }
-                } catch (e) {
-                    console.error("[ai-edit] failed to read userTier/tier; defaulting to free", e);
+                if (
+                    rawTier === "pro" ||
+                    rawTier === "agency" ||
+                    rawTier === "enterprise" ||
+                    rawTier === "free"
+                ) {
+                    tier = rawTier as UserTier;
+                } else {
                     tier = "free";
                 }
-
-                const renderRef = userRef.collection("kloner_renders").doc(renderId);
-                const renderSnap = await renderRef.get();
-
-                if (!renderSnap.exists) {
-                    await renderRef.set(
-                        { uid, renderId, createdAt: now, source: "ai-edit-shell" },
-                        { merge: true }
-                    );
-                }
-
-                aiEditsRef = renderRef.collection("ai_edits");
-
-                try {
-                    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-                    const monthSnap = await aiEditsRef.where("createdAt", ">=", startOfMonth).get();
-
-                    const editCountThisMonth = monthSnap.size ?? 0;
-                    usedCreditsBefore = editCountThisMonth * 5;
-
-                    const allowed = canConsumeCredit(tier, "edit", usedCreditsBefore);
-
-                    const limit = monthlyLimitFor(tier, "edit");
-                    creditsLimit = limit || 0;
-
-                    if (!allowed) {
-                        console.log("[ai-edit] credit check blocked request", {
-                            tier,
-                            creditsLimit,
-                            usedCreditsBefore,
-                        });
-
-                        if (userRef && limit) {
-                            await syncAiEditCreditsBucket({
-                                userRef,
-                                tier,
-                                now,
-                                usedCreditsBefore,
-                                consumedNow: false,
-                            });
-                        }
-
-                        return NextResponse.json(
-                            {
-                                error:
-                                    "You have used all AI edit credits for this month. Upgrade your plan or wait until next month for more.",
-                                meta: { tier, creditsRemaining: 0, creditsLimit },
-                            },
-                            { status: 402 }
-                        );
-                    }
-                } catch (err) {
-                    console.error("[ai-edit] credit check failed, allowing request", err);
-                }
-            } catch (err) {
-                console.error("[ai-edit] Firestore read/write failed, skipping history bootstrap", err);
-                db = null;
             }
+        } catch (e) {
+            console.error("[ai-edit] failed to read userTier/tier; defaulting to free", e);
+            tier = "free";
         }
 
-        // HARD TIER GATE: AI edits are Pro+ only (kept as-is; currently disabled in your file)
-        // const isPaidTier = tier === "pro" || tier === "agency" || tier === "enterprise";
-        // if (!isPaidTier) { ... }
+        // ATOMIC CREDIT RESERVATION (prepay before model call)
+        let creditsRemaining: number | null = null;
+        let creditsLimit: number | null = null;
+
+        try {
+            const r = await reserveAiEditCreditsInline({
+                db,
+                uid,
+                tier,
+                cost: 5,
+                now,
+            });
+
+            if (!r.ok) {
+                return NextResponse.json(
+                    {
+                        error: r.message,
+                        meta: { tier, creditsRemaining: r.remaining, creditsLimit: r.limit },
+                    },
+                    { status: r.status }
+                );
+            }
+
+            creditsRemaining = r.remaining;
+            creditsLimit = r.limit;
+        } catch (err) {
+            console.error("[ai-edit] credit reserve transaction failed; failing closed", err);
+            return NextResponse.json(
+                { error: "Service temporarily unavailable. Try again shortly." },
+                { status: 503 }
+            );
+        }
+
+        // bootstrap render + ai_edits ref for history persistence
+        try {
+            const renderRef = userRef.collection("kloner_renders").doc(renderId);
+            const renderSnap = await renderRef.get();
+
+            if (!renderSnap.exists) {
+                await renderRef.set(
+                    { uid, renderId, createdAt: now, source: "ai-edit-shell" },
+                    { merge: true }
+                );
+            }
+
+            aiEditsRef = renderRef.collection("ai_edits");
+        } catch (err) {
+            console.error("[ai-edit] Firestore history bootstrap failed (credits already consumed)", err);
+            // Credits already reserved; keep behavior predictable and fail.
+            return NextResponse.json(
+                { error: "Service temporarily unavailable. Try again shortly." },
+                { status: 503 }
+            );
+        }
 
         let modelResult: AiEditModelResult;
         try {
@@ -1207,49 +1274,8 @@ async function handlePost(req: NextRequest) {
 
         const summary = modelResult.summary;
 
-        // If Firestore unavailable, return without persistence
-        if (!db || !aiEditsRef) {
-            console.log("[ai-edit] returning without Firestore persistence", {
-                hasDb: !!db,
-                hasAiEditsRef: !!aiEditsRef,
-            });
-
-            return NextResponse.json(
-                {
-                    suggestions: [
-                        {
-                            id: "local",
-                            renderId,
-                            // IMPORTANT: "prompt" is always the user-entered prompt
-                            prompt: rawUserPrompt,
-                            // Optional: UI can show this instead for history if desired
-                            displayPrompt: rawDisplayPrompt || modelPrompt,
-                            modelPrompt,
-                            summary,
-                            beforeHtml: html,
-                            afterHtml,
-                            createdAt: now.toISOString(),
-                            uid,
-                            action,
-                        },
-                    ],
-                    meta: {
-                        tier,
-                        creditsRemaining: null,
-                        creditsLimit: null,
-                    },
-                    debug: imageDebug,
-                },
-                { status: 200 }
-            );
-        }
-
         const docRef = aiEditsRef.doc();
 
-        // Persistence rule:
-        // - "prompt" field is ALWAYS the user-entered text (what you want stored).
-        // - "displayPrompt" can store your generated prompt for history display.
-        // - "modelPrompt" stores the exact prompt sent to the model for debugging/auditing.
         await docRef.set({
             renderId,
             action,
@@ -1286,34 +1312,6 @@ async function handlePost(req: NextRequest) {
                 createdAt: normalizeCreatedAtToIso(data.createdAt),
             };
         });
-
-        // Sync / create credits.aiEdits and compute remaining for response
-        let creditsRemaining: number | null = null;
-        try {
-            if (userRef) {
-                const synced = await syncAiEditCreditsBucket({
-                    userRef,
-                    tier,
-                    now,
-                    usedCreditsBefore,
-                    consumedNow: true,
-                });
-                creditsRemaining = synced.remaining;
-                creditsLimit = synced.limit;
-            } else {
-                const limit = monthlyLimitFor(tier, "edit");
-                creditsLimit = limit || 0;
-
-                if (limit) {
-                    const usedAfter = usedCreditsBefore + 5;
-                    creditsRemaining = Math.max(limit - usedAfter, 0);
-                } else {
-                    creditsRemaining = null;
-                }
-            }
-        } catch (err) {
-            console.error("[ai-edit] failed computing/syncing AI edit credits", err);
-        }
 
         console.log("[ai-edit] POST success", {
             uid,
@@ -1398,28 +1396,28 @@ async function handleGet(req: NextRequest) {
                 tier = "free";
             }
 
+            // keep bucket fresh for UI
+            let creditsRemaining: number | null = null;
+            let creditsLimit: number | null = null;
+
+            try {
+                const now = new Date();
+                const b = await ensureAiEditBucketInline({
+                    db,
+                    uid,
+                    tier,
+                    now,
+                });
+                creditsRemaining = b.remaining;
+                creditsLimit = b.limit;
+            } catch (e) {
+                console.error("[ai-edit][GET] failed ensuring credits bucket", e);
+            }
+
             const renderRef = userRef.collection("kloner_renders").doc(renderId);
             const renderSnap = await renderRef.get();
 
             if (!renderSnap.exists) {
-                let creditsRemaining: number | null = null;
-                let creditsLimit: number | null = null;
-
-                try {
-                    const now = new Date();
-                    const synced = await syncAiEditCreditsBucket({
-                        userRef,
-                        tier,
-                        now,
-                        usedCreditsBefore: 0,
-                        consumedNow: false,
-                    });
-                    creditsRemaining = synced.remaining;
-                    creditsLimit = synced.limit;
-                } catch (err) {
-                    console.error("[ai-edit][GET] failed syncing AI edit credits for missing render", err);
-                }
-
                 return NextResponse.json(
                     { suggestions: [], meta: { tier, creditsRemaining, creditsLimit } },
                     { status: 200 }
@@ -1437,31 +1435,6 @@ async function handleGet(req: NextRequest) {
                     createdAt: normalizeCreatedAtToIso(data.createdAt),
                 };
             });
-
-            let creditsRemaining: number | null = null;
-            let creditsLimit: number | null = null;
-
-            try {
-                const now = new Date();
-                const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-
-                const monthSnap = await aiEditsRef.where("createdAt", ">=", startOfMonth).get();
-                const editCountThisMonth = monthSnap.size ?? 0;
-                const usedCreditsBefore = editCountThisMonth * 5;
-
-                const synced = await syncAiEditCreditsBucket({
-                    userRef,
-                    tier,
-                    now,
-                    usedCreditsBefore,
-                    consumedNow: false,
-                });
-
-                creditsRemaining = synced.remaining;
-                creditsLimit = synced.limit;
-            } catch (err) {
-                console.error("[ai-edit][GET] failed computing/syncing AI edit credits", err);
-            }
 
             return NextResponse.json(
                 { suggestions, meta: { tier, creditsRemaining, creditsLimit } },

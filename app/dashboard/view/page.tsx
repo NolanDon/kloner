@@ -549,23 +549,28 @@ function RenderCardInner({
                 </span>
             )}
 
-            {/* ✅ render id badge */}
-            <span
-                className="absolute left-2 top-2 z-40 inline-flex items-center rounded-full border border-neutral-200 bg-white/85 px-2 py-0.5 text-[10px] font-mono text-neutral-700 shadow-sm"
-                title={`Render ID: ${String(r?.id || "").slice(0, 10)}`}
-            >
-                {String(r?.id || "").slice(0, 10)}
-            </span>
 
-            {/* controller version badge – top left */}
-            {controllerVersion && isDev && (
-                <span
-                    className="absolute left-2 top-1 z-30 inline-flex items-center gap-1 rounded-full bg-neutral-900/85 px-2 py-0.5 text-[10px] text-neutral-50 shadow-sm"
-                    title={`Controller version ${controllerVersion}`}
-                >
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                    <span>v{controllerVersion}</span>
-                </span>
+            {/* ✅ render id badge */}
+            {!shareOpen && (
+                <>
+                    <span
+                        className="absolute left-2 top-2 z-40 inline-flex items-center rounded-full border border-neutral-200 bg-white/85 px-2 py-0.5 text-[10px] font-mono text-neutral-700 shadow-sm"
+                        title={`Render ID: ${String(r?.id || "").slice(0, 10)}`}
+                    >
+                        {String(r?.id || "").slice(0, 10)}
+                    </span>
+
+                    {/* controller version badge – top left */}
+                    {controllerVersion && isDev && (
+                        <span
+                            className="absolute left-2 top-1 z-30 inline-flex items-center gap-1 rounded-full bg-neutral-900/85 px-2 py-0.5 text-[10px] text-neutral-50 shadow-sm"
+                            title={`Controller version ${controllerVersion}`}
+                        >
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                            <span>v{controllerVersion}</span>
+                        </span>
+                    )}
+                </>
             )}
 
             {/* model badge – bottom left */}
@@ -628,97 +633,100 @@ function RenderCardInner({
                     </a>
                 )}
 
-                <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
-                    <div className="pointer-events-auto flex max-w-xs flex-col items-stretch gap-2 rounded-xl border border-neutral-200 bg-white/80 p-3 text-xs shadow-lg backdrop-blur-sm md:max-w-sm">
-                        {/* top row: deploy / customize */}
-                        <div className="flex w-full flex-col gap-2 sm:flex-row">
-                            <button
-                                onClick={
-                                    isDeployedFlag
-                                        ? () => {
-                                            router.push("/dashboard/deployments");
-                                        }
-                                        : deployThis
-                                }
-                                disabled={
-                                    isArchivedFlag ||
-                                    (!r.html && !isDeployedFlag) ||
-                                    isDeleting ||
-                                    isDeploying ||
-                                    isThisCardLockedForBuild
-                                }
-                                className={`group inline-flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-xs ${isArchivedFlag
-                                    ? "cursor-not-allowed bg-neutral-50 text-neutral-400"
-                                    : isDeployedFlag
-                                        ? "bg-emerald-500 text-white shadow-sm hover:bg-green-700"
-                                        : "bg-accent text-white shadow-sm hover:bg-accent/90 disabled:opacity-60"
-                                    }`}
-                                title={
-                                    isArchivedFlag
-                                        ? "Unarchive this preview to deploy it"
-                                        : isDeployedFlag
-                                            ? "View and manage this deployment"
-                                            : deployLocked
-                                                ? "Upgrade to publish live sites"
-                                                : "Deploy current HTML to Vercel"
-                                }
-                            >
-                                {isDeploying ? (
-                                    <>
-                                        <span>Deploying…</span>
-                                        <Rocket className="h-4 w-4 animate-pulse" />
-                                    </>
-                                ) : isDeployedFlag ? (
-                                    <>
-                                        <span>✓ Deployed</span>
-                                        <ExternalLink className="h-4 w-4" />
-                                    </>
-                                ) : (
-                                    <>
-                                        <span>Deploy</span>
-                                        <Rocket className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
-                                    </>
-                                )}
-                            </button>
 
-                            {!isDeployedFlag && (
+                <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
+                    <div className="pointer-events-auto flex max-w-xs flex-col items-stretch rounded-xl border border-neutral-200 bg-white/80 p-3 text-xs shadow-lg backdrop-blur-sm md:max-w-sm">
+                        {/* top row: deploy / customize */}
+                        {!shareOpen && (
+                            <div className="flex w-full flex-col gap-2 sm:flex-row">
                                 <button
-                                    onClick={async () => {
-                                        if (isFailed) {
-                                            retryRender({ id: r.id, key: r.key || null });
-                                        } else {
-                                            continueRender(r.id);
-                                        }
-                                    }}
-                                    disabled={(disableOpen || isDeleting || !r.html) && !isFailed}
-                                    className="group inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-neutral-700 px-3 py-1.5 text-neutral-800 shadow-sm disabled:opacity-60"
+                                    onClick={
+                                        isDeployedFlag
+                                            ? () => {
+                                                router.push("/dashboard/deployments");
+                                            }
+                                            : deployThis
+                                    }
+                                    disabled={
+                                        isArchivedFlag ||
+                                        (!r.html && !isDeployedFlag) ||
+                                        isDeleting ||
+                                        isDeploying ||
+                                        isThisCardLockedForBuild
+                                    }
+                                    className={`group inline-flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-xs ${isArchivedFlag
+                                        ? "cursor-not-allowed bg-neutral-50 text-neutral-400"
+                                        : isDeployedFlag
+                                            ? "bg-emerald-500 text-white shadow-sm hover:bg-green-700"
+                                            : "bg-accent text-white shadow-sm hover:bg-accent/90 disabled:opacity-60"
+                                        }`}
                                     title={
                                         isArchivedFlag
-                                            ? "Unarchive to customize this preview"
-                                            : isBuilding || isQueued
-                                                ? "Still building preview"
-                                                : isFailed
-                                                    ? "Retry the render operation"
-                                                    : "Open editor to customize"
+                                            ? "Unarchive this preview to deploy it"
+                                            : isDeployedFlag
+                                                ? "View and manage this deployment"
+                                                : deployLocked
+                                                    ? "Upgrade to publish live sites"
+                                                    : "Deploy current HTML to Vercel"
                                     }
                                 >
-                                    {isBuilding || isQueued
-                                        ? "Building…"
-                                        : isFailed
-                                            ? "Retry"
-                                            : "Customize"}
-
-                                    {isFailed ? (
-                                        <WrenchIcon className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
+                                    {isDeploying ? (
+                                        <>
+                                            <span>Deploying…</span>
+                                            <Rocket className="h-4 w-4 animate-pulse" />
+                                        </>
+                                    ) : isDeployedFlag ? (
+                                        <>
+                                            <span>✓ Deployed</span>
+                                            <ExternalLink className="h-4 w-4" />
+                                        </>
                                     ) : (
-                                        (isBuilding || isQueued) ?
-                                            <Hammer className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
-                                            :
-                                            <BrushIcon className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
+                                        <>
+                                            <span>Deploy</span>
+                                            <Rocket className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
+                                        </>
                                     )}
                                 </button>
-                            )}
-                        </div>
+
+                                {!isDeployedFlag && (
+                                    <button
+                                        onClick={async () => {
+                                            if (isFailed) {
+                                                retryRender({ id: r.id, key: r.key || null });
+                                            } else {
+                                                continueRender(r.id);
+                                            }
+                                        }}
+                                        disabled={(disableOpen || isDeleting || !r.html) && !isFailed}
+                                        className="group inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-neutral-700 px-3 py-1.5 text-neutral-800 shadow-sm disabled:opacity-60"
+                                        title={
+                                            isArchivedFlag
+                                                ? "Unarchive to customize this preview"
+                                                : isBuilding || isQueued
+                                                    ? "Still building preview"
+                                                    : isFailed
+                                                        ? "Retry the render operation"
+                                                        : "Open editor to customize"
+                                        }
+                                    >
+                                        {isBuilding || isQueued
+                                            ? "Building…"
+                                            : isFailed
+                                                ? "Retry"
+                                                : "Customize"}
+
+                                        {isFailed ? (
+                                            <WrenchIcon className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
+                                        ) : (
+                                            (isBuilding || isQueued) ?
+                                                <Hammer className="ghost-hammer-swing h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
+                                                :
+                                                <BrushIcon className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
+                                        )}
+                                    </button>
+                                )}
+                            </div>
+                        )}
 
                         {isFailed && !r.html && (
                             <p className="mt-1 text-[11px] text-amber-500">
@@ -753,83 +761,83 @@ function RenderCardInner({
                         )}
 
                         {/* bottom row: open site / share / archive */}
-                        <div className="flex w-full flex-wrap items-center justify-between gap-1">
-                            {r.siteConfigId && (
-                                <button
-                                    onClick={() => router.push(`/site/${r.siteConfigId}`)}
-                                    disabled={isDeleting}
-                                    className="inline-flex items-center gap-1.5 rounded-full border border-neutral-300 bg-white/70 px-2.5 py-1 text-[11px] text-neutral-800 shadow-sm hover:border-neutral-400 disabled:opacity-60"
-                                    title="Open generated layout site"
-                                >
-                                    <span>Open site</span>
-                                    <Rocket className="h-3.5 w-3.5" />
-                                </button>
-                            )}
-
-                            {onShareWithCommunity && (
-                                <div className="mt-4 flex w-full items-center justify-center gap-1">
-                                    {!shareOpen && (
-                                        <>
-                                            <button
-                                                type="button"
-                                                onClick={() => setShareOpen((prev) => !prev)}
-                                                disabled={
-                                                    alreadyShared ||
-                                                    !r.html?.trim() ||
-                                                    isDeleting ||
-                                                    isDeploying ||
-                                                    isQueued ||
-                                                    isFailed
-                                                }
-                                                className="inline-flex items-center gap-1.5 rounded-full border border-neutral-300 bg-white/60 px-2.5 py-1 text-[11px] text-neutral-600 hover:border-neutral-400 disabled:opacity-50"
-                                                title={
-                                                    alreadyShared
-                                                        ? "This build is already shared to the community gallery"
-                                                        : "Share this build to the Kloner community gallery"
-                                                }
-                                            >
-                                                <span>
-                                                    {alreadyShared
-                                                        ? "Shared"
-                                                        : shareOpen
-                                                            ? "Cancel sharing"
-                                                            : "Share"}
-                                                </span>
-                                                <Share2 className="h-3.5 w-3.5" />
-                                            </button>
-
-                                            <button
-                                                onClick={handleArchiveClick}
-                                                disabled={
-                                                    !r.html?.trim() ||
-                                                    isDeleting ||
-                                                    isDeploying ||
-                                                    isQueued ||
-                                                    isFailed
-                                                }
-                                                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] shadow-sm disabled:opacity-50 disabled:cursor-not-allowed ${isArchivedFlag
-                                                    ? "border-amber-500 bg-amber-50 text-amber-900 hover:bg-amber-100"
-                                                    : "border-neutral-300 bg-white/60 text-neutral-700 hover:border-neutral-400"
-                                                    }`}
-                                                title={
-                                                    isArchivedFlag
-                                                        ? "Move back to active previews"
-                                                        : "Move this preview into your archive"
-                                                }
-                                            >
-                                                <span>{isArchivedFlag ? "Unarchive" : "Archive"}</span>
-                                                <Archive className="h-3.5 w-3.5" />
-                                            </button>
-                                        </>
-                                    )}
-                                </div>
-                            )}
-                        </div>
+                        {/* <div className="flex w-full flex-wrap items-center justify-between gap-1"> */}
+                        {r.siteConfigId && (
+                            <button
+                                onClick={() => router.push(`/site/${r.siteConfigId}`)}
+                                disabled={isDeleting}
+                                className="inline-flex items-center gap-1.5 rounded-full border border-neutral-300 bg-white/70 px-2.5 py-1 text-[11px] text-neutral-800 shadow-sm hover:border-neutral-400 disabled:opacity-60"
+                                title="Open generated layout site"
+                            >
+                                <span>Open site</span>
+                                <Rocket className="h-3.5 w-3.5" />
+                            </button>
+                        )}
 
                         {onShareWithCommunity && (
-                            <div className="mt-1 w-full">
+                            <div className="mt-4 flex w-full items-center justify-center gap-1">
+                                {!shareOpen && (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShareOpen((prev) => !prev)}
+                                            disabled={
+                                                alreadyShared ||
+                                                !r.html?.trim() ||
+                                                isDeleting ||
+                                                isDeploying ||
+                                                isQueued ||
+                                                isFailed
+                                            }
+                                            className="inline-flex items-center gap-1.5 rounded-full border border-neutral-300 bg-white/60 px-2.5 py-1 text-[11px] text-neutral-600 hover:border-neutral-400 disabled:opacity-50"
+                                            title={
+                                                alreadyShared
+                                                    ? "This build is already shared to the community gallery"
+                                                    : "Share this build to the Kloner community gallery"
+                                            }
+                                        >
+                                            <span>
+                                                {alreadyShared
+                                                    ? "Shared"
+                                                    : shareOpen
+                                                        ? "Cancel sharing"
+                                                        : "Share"}
+                                            </span>
+                                            <Share2 className="h-3.5 w-3.5" />
+                                        </button>
+
+                                        <button
+                                            onClick={handleArchiveClick}
+                                            disabled={
+                                                !r.html?.trim() ||
+                                                isDeleting ||
+                                                isDeploying ||
+                                                isQueued ||
+                                                isFailed
+                                            }
+                                            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] shadow-sm disabled:opacity-50 disabled:cursor-not-allowed ${isArchivedFlag
+                                                ? "border-amber-500 bg-amber-50 text-amber-900 hover:bg-amber-100"
+                                                : "border-neutral-300 bg-white/60 text-neutral-700 hover:border-neutral-400"
+                                                }`}
+                                            title={
+                                                isArchivedFlag
+                                                    ? "Move back to active previews"
+                                                    : "Move this preview into your archive"
+                                            }
+                                        >
+                                            <span>{isArchivedFlag ? "Unarchive" : "Archive"}</span>
+                                            <Archive className="h-3.5 w-3.5" />
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        )}
+                        {/* </div> */}
+
+                        {onShareWithCommunity && (
+                            <div>
                                 {shareOpen && !alreadyShared && (
-                                    <div className="mt-1 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-2 text-[10px] text-neutral-700">
+                                    <div className="px-3text-[10px] text-neutral-700">
                                         <p className="mb-2">
                                             Publishing to Kloner community. Name your project and
                                             optionally allow other users to remix a copy of your layout.
@@ -1001,7 +1009,7 @@ function Toasts({ toasts }: { toasts: ToastMsg[] }) {
 const CenterSpinner = memo(function CenterSpinner({
     label = "Loading…",
     dim = true,
-    size = 20,
+    size = 30,
 }: {
     label?: string;
     dim?: boolean;
@@ -1013,7 +1021,7 @@ const CenterSpinner = memo(function CenterSpinner({
                 }`}
         >
             <div
-                className="flex items-center gap-2 rounded border px-3 py-1.5 text-xs text-neutral-800 bg-white"
+                className="flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-800"
                 role="status"
                 aria-live="polite"
             >
@@ -1027,7 +1035,7 @@ const CenterSpinner = memo(function CenterSpinner({
                     }}
                     aria-hidden
                 />
-                {label}
+                {/* {label} */}
             </div>
         </div>
     );
@@ -1065,29 +1073,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
 
     return (
         <>
-            <style jsx global>{`
-                @keyframes ghost-hammer-swing {
-                    0% {
-                        transform: rotate(-20deg) translateY(-1px);
-                    }
-                    25% {
-                        transform: rotate(-5deg) translateY(0);
-                    }
-                    50% {
-                        transform: rotate(10deg) translateY(1px);
-                    }
-                    75% {
-                        transform: rotate(-5deg) translateY(0);
-                    }
-                    100% {
-                        transform: rotate(-20deg) translateY(-1px);
-                    }
-                }
-                .ghost-hammer-swing {
-                    animation: ghost-hammer-swing 0.8s ease-in-out infinite;
-                    transform-origin: 25% 10%;
-                }
-            `}</style>
+
 
             <button
                 type="button"
@@ -4466,6 +4452,30 @@ export default function PreviewPage(): JSX.Element {
 
 
                 <Toasts toasts={toasts} />
+
+                <style jsx global>{`
+                @keyframes ghost-hammer-swing {
+                    0% {
+                        transform: rotate(-20deg) translateY(-1px);
+                    }
+                    25% {
+                        transform: rotate(-5deg) translateY(0);
+                    }
+                    50% {
+                        transform: rotate(10deg) translateY(1px);
+                    }
+                    75% {
+                        transform: rotate(-5deg) translateY(0);
+                    }
+                    100% {
+                        transform: rotate(-20deg) translateY(-1px);
+                    }
+                }
+                .ghost-hammer-swing {
+                    animation: ghost-hammer-swing 0.8s ease-in-out infinite;
+                    transform-origin: 25% 10%;
+                }
+            `}</style>
 
                 <style>
                     {`@keyframes spin{to{transform:rotate(360deg)}}`}

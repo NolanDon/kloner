@@ -594,7 +594,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
                         <div className="mt-2 flex items-center gap-2 text-[11px] text-neutral-500">
                             <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
                             <span>
-                                Processing up to 5 pages for this URL. This can take a few
+                                Processing up to 3 pages for this URL. This can take a few
                                 minutes.
                             </span>
                         </div>

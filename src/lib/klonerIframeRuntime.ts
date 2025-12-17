@@ -808,10 +808,14 @@ export function installKlonerIframeApi(
         restoreHistory(idx + 1);
     }
 
+    let suppressNotify = 0;
+
     const notify = (() => {
         let t = 0 as unknown as number;
         let raf = 0 as unknown as number;
         return () => {
+            if (suppressNotify > 0) return;
+
             clearTimeout(t as any);
             if (raf) cancelAnimationFrame(raf as any);
             t = window.setTimeout(() => {
@@ -1740,6 +1744,24 @@ export function installKlonerIframeApi(
         redo();
     };
 
+    // expose to React toolbar
+    api.blockGetFontFamily = () => {
+        return { fontFamily: getSelectedFontFamily() };
+    };
+
+    api.fontFamilyPreview = (payload?: { fontFamily?: string } | string) => {
+        const family =
+            typeof payload === "string" ? payload : (payload?.fontFamily || "");
+        previewFontFamily(family);
+    };
+
+    api.fontFamilySet = (payload?: { fontFamily?: string } | string) => {
+        const family =
+            typeof payload === "string" ? payload : (payload?.fontFamily || "");
+        setFontFamily(family);
+    };
+
+
     // selection/meta/export
     api.getSelectionMeta = () => {
         return selected
@@ -1891,6 +1913,45 @@ export function installKlonerIframeApi(
         },
         true
     );
+
+    // ---- Font family (preview + apply) ----
+
+    function getSelectedFontFamily(): string {
+        if (!selected) return "";
+        try {
+            return doc.defaultView!.getComputedStyle(selected).fontFamily || "";
+        } catch {
+            return selected.style.fontFamily || "";
+        }
+    }
+
+    function previewFontFamily(nextFamily: string) {
+        if (!selected) return;
+        const family = (nextFamily || "").trim();
+        if (!family) return;
+
+        suppressNotify++;
+        try {
+            selected.style.fontFamily = family;
+            publishSelection();
+        } finally {
+            suppressNotify--;
+        }
+    }
+
+
+    function setFontFamily(nextFamily: string) {
+        if (!selected) return;
+        const family = (nextFamily || "").trim();
+        if (!family) return;
+
+        selected.style.fontFamily = family;
+
+        saveHistory();
+        notify();
+        publishSelection();
+    }
+
 
     function deleteAssetsForElement(root: HTMLElement) {
         const paths = new Set<string>();
