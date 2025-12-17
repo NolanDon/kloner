@@ -26,33 +26,18 @@ function toAbsolute(u: string) {
   }
 }
 
-/**
- * Normalize user input by stripping leading protocols (http:// or https://)
- * and trimming whitespace.
- */
 function stripProtocol(input: string) {
   return input.replace(/^\s*https?:\/\//i, "").trim();
 }
 
-/**
- * Validate and normalize a candidate URL string.
- * Returns a normalized absolute URL string (with protocol) or null if invalid.
- * Security checks:
- *  - Only allows http/https schemes.
- *  - Rejects obvious loopback/private IP hosts (localhost, 127.*, 10.*, 172.16-31.*, 192.168.*, ::1).
- *  - Rejects empty hostnames and non-URL values.
- *  - Enforces a reasonable max length.
- */
 const DOMAIN_RE = /^(?!-)(?:[a-z0-9-]{1,63}\.)+[a-z]{2,63}$/i;
 
 function validateAndNormalize(u: string): string | null {
   const s = u.trim();
   if (!s) return null;
-  if (s.length > 2083) return null; // avoid extremely long inputs
+  if (s.length > 2083) return null;
 
   const lower = s.toLowerCase();
-
-  // Reject obvious garbage / bare schemes
   if (lower === "http" || lower === "https") return null;
 
   const abs = toAbsolute(s);
@@ -68,7 +53,6 @@ function validateAndNormalize(u: string): string | null {
 
     const hostLower = host.toLowerCase();
 
-    // Block common local/private addresses to reduce SSRF/localhost attacks
     if (
       hostLower === "localhost" ||
       hostLower === "::1" ||
@@ -82,10 +66,7 @@ function validateAndNormalize(u: string): string | null {
       return null;
     }
 
-    // Require proper domain structure: at least one dot, valid labels, letter TLD ≥ 2 chars
-    if (!DOMAIN_RE.test(hostLower)) {
-      return null;
-    }
+    if (!DOMAIN_RE.test(hostLower)) return null;
 
     return parsed.toString();
   } catch {
@@ -99,8 +80,6 @@ export default function Hero() {
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  // Detect mobile on the client and only render the small video on mobile.
-  // This ensures the large video is never requested on mobile devices.
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 767px)");
@@ -121,12 +100,13 @@ export default function Hero() {
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    // Strip protocol if the user included it (requirement)
     const stripped = stripProtocol(url);
     const normalized = validateAndNormalize(stripped);
 
     if (!normalized) {
-      setError("Please enter a valid public http(s) URL (no localhost or private IPs).");
+      setError(
+        "Please enter a valid public http(s) URL (no localhost or private IPs)."
+      );
       return;
     }
 
@@ -140,17 +120,13 @@ export default function Hero() {
 
     try {
       localStorage.setItem("kloner.pendingUrl", normalized);
-    } catch {
-      // ignore storage failures
-    }
+    } catch { }
     router.push(`/login?mode=signup&u=${encodeURIComponent(normalized)}`);
   }
 
-  // Keep input free of leading protocol while typing/pasting
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const cleaned = stripProtocol(e.target.value);
     setUrl(cleaned);
-    // live-validate lightly
     if (!cleaned) {
       setError(null);
       return;
@@ -179,25 +155,45 @@ export default function Hero() {
           "max(env(safe-area-inset-left), clamp(12px, 4vw, 10px))",
       }}
     >
-      {/* Background video / poster */}
+      {/* Moving gradient keyframes (scoped) */}
+      <style>{`
+        @keyframes kloner-hero-gradient-move {
+          0% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+      `}</style>
+
       <div className="absolute inset-0 p-[var(--hero-gutter)]">
-        <div className="relative h-full w-full overflow-hidden rounded-2xl md:rounded-3xl ring-1 ring-black/10 shadow-2xl">
-          {/* Only one video element is rendered, chosen by isMobile so the other file is never requested */}
-          <video
-            className="absolute inset-0 h-full w-full object-cover"
-            src={isMobile ? "/hero_mobile.mp4" : "/hero.webm"}
-            autoPlay
-            loop
-            muted
-            playsInline
-            preload="metadata"
-            poster="/images/hero-poster.jpg"
-          />
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/45 via-black/15 to-transparent" />
+        <div
+          className={[
+            "relative h-full w-full overflow-hidden rounded-2xl md:rounded-3xl ring-1 ring-black/10 shadow-2xl",
+            isMobile ? "bg-white" : "",
+          ].join(" ")}
+        >
+          {!isMobile ? (
+            <>
+              <video
+                className="absolute inset-0 h-full w-full object-cover"
+                src="/hero.webm"
+                autoPlay
+                loop
+                muted
+                playsInline
+                preload="metadata"
+                poster="/images/hero-poster.jpg"
+              />
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/45 via-black/15 to-transparent" />
+            </>
+          ) : (
+            <>
+              <div className="absolute inset-0 bg-gradient-to-b from-white via-white to-neutral-50" />
+              <div className="pointer-events-none absolute inset-0 ring-1 ring-black/5" />
+            </>
+          )}
         </div>
       </div>
 
-      {/* Copy + gigantic URL input */}
       <div className="container-soft relative z-10">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -206,61 +202,118 @@ export default function Hero() {
           className="mx-auto max-w-3xl text-center"
         >
           <h1
-            className={`${display.className} pt-20 leading-[0.96] font-semibold text-white text-[3.5rem] md:text-[5rem] tracking-[-0.015em]`}
+            className={[
+              display.className,
+              "pt-10 md:pt-20 leading-[0.96] font-semibold text-[3.5rem] md:text-[5rem] tracking-[-0.015em]",
+              // Gradient text: your theme color via --accent (falls back if not defined)
+              "bg-clip-text text-transparent",
+            ].join(" ")}
             style={{
               textWrap: "balance" as any,
               WebkitFontSmoothing: "antialiased",
               MozOsxFontSmoothing: "grayscale",
+              backgroundImage: isMobile
+                ? `linear-gradient(90deg,
+                    color-mix(in srgb, var(--accent, #f55f2a) 85%, #111 15%),
+                    color-mix(in srgb, var(--accent, #f55f2a) 65%, #111 35%),
+                    #111,
+                    color-mix(in srgb, var(--accent, #f55f2a) 70%, #111 30%),
+                    var(--accent, #f55f2a)
+                  )`
+                : `linear-gradient(90deg,
+                    rgba(255,255,255,0.95),
+                    var(--accent, #f55f2a),
+                    rgba(255,255,255,0.95),
+                    rgba(255,255,255,0.75),
+                    var(--accent, #f55f2a)
+                  )`,
+              backgroundSize: "220% 220%",
+              animation: "kloner-hero-gradient-move 6s ease-in-out infinite",
             }}
           >
             Clone, Customize & Deploy.
           </h1>
 
-          <p className="block md:hidden mt-4 md:mt-5 text-white/80 text-base sm:text-lg px-2 pb-10 md:pb-20">
-            Paste a URL. We generate a ready-to-ship project you can
-            preview, customize, and deploy in minutes.
+          <p
+            className={[
+              "block md:hidden mt-4 md:mt-5 text-base sm:text-lg px-2 pb-10 md:pb-20",
+              isMobile ? "text-neutral-600" : "text-white/80",
+            ].join(" ")}
+          >
+            Paste a URL. We generate a ready-to-ship project you can preview,
+            customize, and deploy in minutes.
           </p>
 
-
-          <p className="hidden md:block mt-4 md:mt-5 text-white/80 text-base sm:text-lg px-2 pb-10 md:pb-20">
+          <p
+            className={[
+              "hidden md:block mt-4 md:mt-5 text-base sm:text-lg px-2 pb-10 md:pb-20",
+              isMobile ? "text-neutral-600" : "text-white/80",
+            ].join(" ")}
+          >
             Paste a URL. We generate a ready-to-ship project you can <br />
             preview, customize, and deploy in minutes.
           </p>
 
-          {/* "How it works" link */}
           <div className="mt-12 flex justify-center">
             <a
               href="#how-it-works"
-              className="group inline-flex items-center gap-2 text-white/80 text-xs sm:text-sm"
+              className={[
+                "group inline-flex items-center gap-2 text-xs sm:text-sm",
+                isMobile ? "text-neutral-600" : "text-white/80",
+              ].join(" ")}
             >
               <span className="relative">
-                <span className="transition-colors group-hover:text-white">
+                <span
+                  className={[
+                    "transition-colors",
+                    isMobile
+                      ? "group-hover:text-neutral-900"
+                      : "group-hover:text-white",
+                  ].join(" ")}
+                >
                   See how it works
                 </span>
-                <span className="absolute inset-x-0 -bottom-0.5 h-px origin-left scale-x-0 bg-white/70 transition-transform group-hover:scale-x-100" />
+                <span
+                  className={[
+                    "absolute inset-x-0 -bottom-0.5 h-px origin-left scale-x-0 transition-transform group-hover:scale-x-100",
+                    isMobile ? "bg-neutral-400/70" : "bg-white/70",
+                  ].join(" ")}
+                />
               </span>
               <ArrowRightSquare
-                className="h-4 w-4 transform transition-transform duration-200 group-hover:translate-x-1 mt-0.5"
+                className={[
+                  "h-4 w-4 transform transition-transform duration-200 group-hover:translate-x-1 mt-0.5",
+                  isMobile ? "text-neutral-600" : "text-white/80",
+                ].join(" ")}
               />
             </a>
           </div>
 
-
-          <form onSubmit={onSubmit} className="mt-6 md:mt-15 px-2" aria-label="Start by pasting a URL">
+          <form
+            onSubmit={onSubmit}
+            className="mt-6 md:mt-15 px-2"
+            aria-label="Start by pasting a URL"
+          >
             <div
-              className="
-                mx-auto max-w-3xl
-                rounded-[999px] ring-1 ring-white/25 bg-white/90 backdrop-blur
-                shadow-[0_8px_28px_rgba(0,0,0,0.25)]
-                focus-within:ring-2 focus-within:ring-white/70
-                transition
-                flex items-center gap-2
-                pl-5 pr-2
-                h-[64px] sm:h-[74px]
-              "
+              className={[
+                "mx-auto max-w-3xl",
+                "rounded-[999px] ring-1 bg-white/90 backdrop-blur",
+                "shadow-[0_8px_28px_rgba(0,0,0,0.25)]",
+                "focus-within:ring-2 transition",
+                "flex items-center gap-2",
+                "pl-5 pr-2",
+                "h-[64px] sm:h-[74px]",
+                isMobile
+                  ? "ring-black/10 focus-within:ring-black/20"
+                  : "ring-white/25 focus-within:ring-white/70",
+              ].join(" ")}
             >
-              <label htmlFor="hero-url" className="sr-only">Website URL</label>
-              <span className="hidden sm:inline text-neutral-500 text-lg">https://</span>
+              <label htmlFor="hero-url" className="sr-only">
+                Website URL
+              </label>
+              <span className="hidden sm:inline text-neutral-500 text-lg">
+                https://
+              </span>
               <input
                 id="hero-url"
                 name="u"
@@ -295,11 +348,24 @@ export default function Hero() {
             </div>
             <div className="mt-2">
               {error ? (
-                <div role="alert" className="text-yellow-200 text-xs sm:text-sm">
+                <div
+                  role="alert"
+                  className={[
+                    "text-xs sm:text-sm",
+                    isMobile ? "text-red-600" : "text-yellow-200",
+                  ].join(" ")}
+                >
                   {error}
                 </div>
               ) : (
-                <div className="text-white/80 text-xs sm:text-sm">Free preview • No card required to generate previews</div>
+                <div
+                  className={[
+                    "text-xs sm:text-sm",
+                    isMobile ? "text-neutral-600" : "text-white/80",
+                  ].join(" ")}
+                >
+                  Free preview • No card required to generate previews
+                </div>
               )}
             </div>
           </form>
