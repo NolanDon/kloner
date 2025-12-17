@@ -427,7 +427,7 @@ export default function ChatWidgetProvider() {
                         }}
                     >
                         <input
-                            className="flex-1 placeholder:text-[11px] text-sm border border-neutral-200 rounded-xl px-3 py-2 outline-none focus:border-neutral-400"
+                            className="flex-1 placeholder:text-[16px] md:placeholder:text-[11px] text-[16px] md:text-sm border border-neutral-200 rounded-xl px-3 py-2 outline-none focus:border-neutral-400"
                             placeholder={
                                 chatClosed
                                     ? "Chat closed. Click Leave chat to start a new one."
