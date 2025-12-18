@@ -1,15 +1,19 @@
 // app/dashboard/archived/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { getUserRenders, RenderRecord, unarchiveRender, useResolvedImg } from "@/src/lib/renders";
+import { Trash2 as DeleteIcon } from "lucide-react";
+import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 
 type ArchiveCardProps = {
     r: RenderRecord;
     onUnarchive: (id: string) => void;
+    onDiscard: (id: string) => void;
+    isDeleting: boolean;
 };
 
-function ArchiveCard({ r, onUnarchive }: ArchiveCardProps) {
+function ArchiveCard({ r, onUnarchive, onDiscard, isDeleting }: ArchiveCardProps) {
     const { src: refImgUrl, onError: refImgErr } = useResolvedImg(r.key || "");
     const isDeployed = !!r.lastExportedAt;
 
@@ -20,6 +24,24 @@ function ArchiveCard({ r, onUnarchive }: ArchiveCardProps) {
 
     return (
         <div className="relative flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
+            <button
+                onClick={() => onDiscard(r.id)}
+                disabled={isDeleting}
+                aria-label="Discard preview"
+                title="Delete this editable preview"
+                className={[
+                    "absolute -right-3 -top-3 z-40 inline-flex h-6 w-6 items-center justify-center rounded-full border shadow-sm",
+                    "transition-all duration-150",
+                    "bg-white/85 border-neutral-200 text-neutral-400",
+                    "hover:bg-red-600 hover:border-red-600 hover:text-white hover:shadow-md hover:scale-[1.04]",
+                    "active:scale-[0.98]",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 focus-visible:ring-offset-2",
+                    "disabled:opacity-60 disabled:pointer-events-none",
+                ].join(" ")}
+            >
+                <DeleteIcon className="h-3.5 w-3.5 transition-colors" />
+            </button>
+
             <div className="relative">
                 {refImgUrl ? (
                     <img
@@ -65,6 +87,7 @@ function ArchiveCard({ r, onUnarchive }: ArchiveCardProps) {
                     onClick={() => onUnarchive(r.id)}
                     className="shrink-0 rounded-md border border-amber-500 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100"
                     title="Move this preview back to your main dashboard"
+                    disabled={isDeleting}
                 >
                     Unarchive
                 </button>
@@ -76,6 +99,8 @@ function ArchiveCard({ r, onUnarchive }: ArchiveCardProps) {
 export default function ArchivedPage() {
     const [renders, setRenders] = useState<RenderRecord[]>([]);
     const [loading, setLoading] = useState(true);
+    const [deletingRender, setDeletingRender] = useState<Record<string, boolean>>({});
+    const [err, setErr] = useState<string | null>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -90,6 +115,63 @@ export default function ArchivedPage() {
             cancelled = true;
         };
     }, []);
+
+    const discardRender = useCallback(
+        async (renderId: string) => {
+            const ok = window.confirm("Discard this editable preview?");
+            if (!ok) return;
+
+            setErr(null);
+            setDeletingRender((m) => ({ ...m, [renderId]: true }));
+
+            try {
+                // fire-and-forget delete of ALL storage objects for this render
+                try {
+                    const csrf = await ensureSessionAndCsrf();
+                    await fetch("/api/user-blob/delete", {
+                        method: "POST",
+                        headers: {
+                            "content-type": "application/json",
+                            ...(csrf ? { "x-csrf": csrf } : {}),
+                        },
+                        credentials: "include",
+                        body: JSON.stringify({ renderId }),
+                    });
+                } catch (e) {
+                    console.error("storage delete by renderId failed (non-fatal)", e);
+                }
+
+                // delete Firestore render + ai_edits (server-side recursive)
+                const csrf = await ensureSessionAndCsrf();
+                const resp = await fetch("/api/user-render/delete", {
+                    method: "POST",
+                    headers: {
+                        "content-type": "application/json",
+                        ...(csrf ? { "x-csrf": csrf } : {}),
+                    },
+                    credentials: "include",
+                    body: JSON.stringify({ renderId }),
+                });
+
+                if (!resp.ok) {
+                    const j = await resp.json().catch(() => ({}));
+                    throw new Error(j?.error || "Failed to discard preview.");
+                }
+
+                setRenders((prev) => prev.filter((r) => r.id !== renderId));
+            } catch (e: any) {
+                console.error("discardRender failed", e);
+                setErr(e?.message || "Failed to discard preview.");
+            } finally {
+                setDeletingRender((m) => {
+                    const n = { ...m };
+                    delete n[renderId];
+                    return n;
+                });
+            }
+        },
+        [setRenders]
+    );
 
     async function handleUnarchive(id: string) {
         await unarchiveRender(id);
@@ -112,6 +194,12 @@ export default function ArchivedPage() {
                         Archived previews are hidden from your dashboard and retained for 30 days before permanent deletion. Unarchive anytime to resume editing or deploy.
                     </p>
 
+                    {err ? (
+                        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                            {err}
+                        </div>
+                    ) : null}
+
                     {loading ? (
                         <div className="mt-6 text-sm text-neutral-500">Loading…</div>
                     ) : renders.length === 0 ? (
@@ -122,11 +210,14 @@ export default function ArchivedPage() {
                         <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                             {renders.map((r) => {
                                 const normalized = { ...r, html: r.html ?? undefined };
+                                const isDeleting = !!deletingRender[r.id];
                                 return (
                                     <ArchiveCard
                                         key={r.id}
                                         r={normalized}
                                         onUnarchive={handleUnarchive}
+                                        onDiscard={discardRender}
+                                        isDeleting={isDeleting}
                                     />
                                 );
                             })}

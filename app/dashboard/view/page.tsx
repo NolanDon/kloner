@@ -500,9 +500,16 @@ function RenderCardInner({
             className={[
                 "relative flex flex-col overflow-visible rounded-xl border bg-white shadow-sm",
                 isArchivedFlag ? "border-amber-300/70 bg-amber-50/50" : "border-neutral-200",
-                // ✅ add border + ring only for community rebuild/remix
+                // ✅ community rebuild/remix: clearer but still clean
                 isCommunityBuild && !isArchivedFlag
-                    ? "border-[rgba(245,95,42,0.55)] ring-1 ring-[rgba(245,95,42,0.18)] shadow-[0_14px_32px_rgba(245,95,42,0.12)]"
+                    ? [
+                        "border-[rgba(245,95,42,0.65)]",
+                        "ring-2 ring-[rgba(245,95,42,0.20)]",
+                        "shadow-[0_18px_44px_rgba(245,95,42,0.14)]",
+                        "bg-[linear-gradient(180deg,rgba(245,95,42,0.06),rgba(255,255,255,0.0))]",
+                        "after:pointer-events-none after:absolute after:-inset-[1px] after:rounded-[0.85rem] after:content-['']",
+                        "after:ring-1 after:ring-[rgba(245,95,42,0.22)]",
+                    ].join(" ")
                     : "",
             ].join(" ")}
         >

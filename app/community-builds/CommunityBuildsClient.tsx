@@ -53,7 +53,6 @@ function toNum(v: unknown, fallback = 0) {
 }
 
 function getCount(it: any, key: string, fallback = 0) {
-    // handle common variants + nested stats
     const direct =
         it?.[key] ??
         it?.[`${key}Count`] ??
@@ -69,20 +68,17 @@ function toMillisMaybeTimestamp(v: any): number | null {
     if (typeof v === "number") return Number.isFinite(v) ? v : null;
     if (!v) return null;
 
-    // Firestore Timestamp-like
     if (typeof v?.toMillis === "function") {
         const ms = v.toMillis();
         return Number.isFinite(ms) ? ms : null;
     }
 
-    // { seconds, nanoseconds }
     if (typeof v?.seconds === "number") {
         const ns = typeof v?.nanoseconds === "number" ? v.nanoseconds : 0;
         const ms = v.seconds * 1000 + Math.floor(ns / 1_000_000);
         return Number.isFinite(ms) ? ms : null;
     }
 
-    // ISO string
     if (typeof v === "string") {
         const t = Date.parse(v);
         return Number.isFinite(t) ? t : null;
@@ -192,8 +188,11 @@ export default function CommunityBuildsClient() {
     const [previewPageIndex, setPreviewPageIndex] = useState(0);
     const [likeBusyId, setLikeBusyId] = useState<string | null>(null);
     const [remixBusyId, setRemixBusyId] = useState<string | null>(null);
-    const router = useRouter();
 
+    // Remix confirm modal state
+    const [confirmRemixBuild, setConfirmRemixBuild] = useState<CommunityBuild | null>(null);
+
+    const router = useRouter();
     const viewedOnceRef = useRef<Set<string>>(new Set());
 
     function patchItem(id: string, patch: Partial<CommunityBuild>) {
@@ -206,13 +205,6 @@ export default function CommunityBuildsClient() {
         });
     }
 
-    /**
-     * FIXES 401/CSRF regression:
-     * - always establish session+csrf first
-     * - wait for Firebase user (auth.currentUser may be null right after reload)
-     * - include BOTH credentials cookies + bearer token
-     * - retry once on 401 or CSRF failure
-     */
     const postJsonAuthed = useCallback(async (path: string, body: any) => {
         async function buildHeaders(forceRefreshToken: boolean) {
             const csrf = await ensureSessionAndCsrf().catch(() => null);
@@ -311,12 +303,9 @@ export default function CommunityBuildsClient() {
                         screenshotKey: it.screenshotKey ?? null,
                         screenshotUrl: it.screenshotUrl ?? null,
                         html: it.html ?? null,
-
-                        // counts (robust: supports alt key names / nested stats)
                         views,
                         likes,
                         remixes,
-
                         likedByMe: !!it.likedByMe,
                     };
                 });
@@ -341,43 +330,55 @@ export default function CommunityBuildsClient() {
 
     const items = state.status === "loaded" ? state.items : [];
 
-    async function handleRemix(build: CommunityBuild) {
+    // Actual remix execution (called only after confirm)
+    const runRemix = useCallback(
+        async (build: CommunityBuild) => {
+            if (!build?.remixable) return;
+            if (!build?.html) return;
+            if (remixBusyId) return;
+
+            setRemixBusyId(build.id);
+
+            try {
+                const res = await postJsonAuthed("/api/gallery/remix", {
+                    buildId: build.id,
+                    sourceRenderId: build.renderId,
+                });
+
+                const data = await res.json().catch(() => ({} as any));
+
+                if (!res.ok || data?.error) {
+                    if (res.status === 401) {
+                        router.push(`/login?next=${encodeURIComponent("/community-builds")}`);
+                        return;
+                    }
+                    console.warn("[remix] failed", res.status, data?.error || data);
+                    return;
+                }
+
+                const newRenderId = String(data?.renderId || "");
+                if (!newRenderId) {
+                    console.warn("[remix] missing renderId", data);
+                    return;
+                }
+
+                patchItem(build.id, { remixes: (build.remixes ?? 0) + 1 });
+                router.push(
+                    `/dashboard/view?render=${encodeURIComponent(newRenderId)}&remixed=1`,
+                );
+            } finally {
+                setRemixBusyId(null);
+            }
+        },
+        [postJsonAuthed, remixBusyId, router],
+    );
+
+    // Opens confirm modal instead of remixing immediately
+    function handleRemix(build: CommunityBuild) {
         if (!build?.remixable) return;
         if (!build?.html) return;
         if (remixBusyId) return;
-
-        setRemixBusyId(build.id);
-
-        try {
-            const res = await postJsonAuthed("/api/gallery/remix", {
-                buildId: build.id,
-                sourceRenderId: build.renderId,
-            });
-
-            const data = await res.json().catch(() => ({} as any));
-
-            if (!res.ok || data?.error) {
-                if (res.status === 401) {
-                    router.push(`/login?next=${encodeURIComponent("/community-builds")}`);
-                    return;
-                }
-                console.warn("[remix] failed", res.status, data?.error || data);
-                return;
-            }
-
-            const newRenderId = String(data?.renderId || "");
-            if (!newRenderId) {
-                console.warn("[remix] missing renderId", data);
-                return;
-            }
-
-            patchItem(build.id, { remixes: (build.remixes ?? 0) + 1 });
-            router.push(
-                `/dashboard/view?render=${encodeURIComponent(newRenderId)}&remixed=1`,
-            );
-        } finally {
-            setRemixBusyId(null);
-        }
+        setConfirmRemixBuild(build);
     }
 
     function handleBackToCommunity() {
@@ -434,10 +435,14 @@ export default function CommunityBuildsClient() {
                 return;
             }
 
-            if (typeof data?.likes !== "undefined" || typeof data?.likedByMe !== "undefined") {
+            if (
+                typeof data?.likes !== "undefined" ||
+                typeof data?.likedByMe !== "undefined"
+            ) {
                 patchItem(build.id, {
                     likes: typeof data.likes === "number" ? data.likes : undefined,
-                    likedByMe: typeof data.likedByMe === "boolean" ? data.likedByMe : undefined,
+                    likedByMe:
+                        typeof data.likedByMe === "boolean" ? data.likedByMe : undefined,
                 });
             }
         } finally {
@@ -505,229 +510,288 @@ export default function CommunityBuildsClient() {
     return (
         <>
             <section className="flex flex-col gap-6">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                    <div className="flex flex-col gap-1">
-                        <p className="text-[11px] uppercase tracking-[0.24em] text-black/45">
-                            Featured builds
-                        </p>
-                        <p className="max-w-xl text-sm text-black/65">
-                            Scroll through approved layouts, open an interactive preview, or
-                            remix a project into your own Kloner workspace.
-                        </p>
-                    </div>
-                </div>
+                <div className="mx-auto w-full">
+                    <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-3">
+                        {items.map((item) => {
+                            const firstPageHtml =
+                                derivePagesFromHtml(item.html)?.[0]?.html ?? item.html ?? "";
 
-                <div className="mx-auto flex w-full max-w-5xl flex-wrap gap-5">
-                    {items.map((item) => {
-                        const firstPageHtml =
-                            derivePagesFromHtml(item.html)?.[0]?.html ?? item.html ?? "";
+                            const canRemix = item.remixable && !!item.html;
 
-                        const canRemix = item.remixable && !!item.html;
-
-                        return (
-                            <motion.div
-                                key={item.id}
-                                className="flex h-[22rem] w-full flex-col overflow-hidden rounded-2xl border border-black/10 bg-white shadow-[0_14px_32px_rgba(15,23,42,0.12)] sm:w-[calc(50%-0.625rem)]"
-                                whileHover={{
-                                    y: -4,
-                                    boxShadow: "0 20px 40px rgba(15,23,42,0.16)",
-                                }}
-                                transition={{ type: "spring", stiffness: 160, damping: 18 }}
-                            >
-                                <div className="relative h-[65%] w-full overflow-hidden bg-neutral-100 group">
-                                    {firstPageHtml ? (
-                                        <div className="absolute inset-0 overflow-hidden rounded-xl opacity-50 group-hover:opacity-40 transition">
-                                            <iframe
-                                                title={item.name}
-                                                srcDoc={firstPageHtml}
-                                                className="h-full w-full pointer-events-none blur-[2px]"
-                                                sandbox="allow-same-origin"
-                                            />
-                                        </div>
-                                    ) : item.screenshotUrl ? (
-                                        <motion.img
-                                            src={item.screenshotUrl}
-                                            alt={item.name}
-                                            className="absolute inset-0 h-full w-full object-cover object-top opacity-60 blur-[1px] group-hover:opacity-45"
-                                            initial={{ scale: 1.03, opacity: 0.7 }}
-                                            animate={{ scale: 1, opacity: 0.8 }}
-                                            transition={{ duration: 0.6 }}
-                                            loading="lazy"
-                                        />
-                                    ) : (
-                                        <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top,_#e5e7eb,_#f3f4f6)]">
-                                            <div className="rounded-full border border-dashed border-black/10 px-4 py-2 text-xs text-black/50">
-                                                No preview available
+                            return (
+                                <motion.div
+                                    key={item.id}
+                                    className="flex h-[18.5rem] w-full flex-col overflow-hidden rounded-2xl border border-black/10 bg-white shadow-[0_14px_32px_rgba(15,23,42,0.10)]"
+                                    whileHover={{
+                                        y: -3,
+                                        boxShadow: "0 20px 40px rgba(15,23,42,0.14)",
+                                    }}
+                                    transition={{ type: "spring", stiffness: 160, damping: 18 }}
+                                >
+                                    <div className="relative h-[62%] w-full overflow-hidden bg-neutral-100 group">
+                                        {firstPageHtml ? (
+                                            <div className="absolute inset-0 overflow-hidden opacity-35 transition group-hover:opacity-25">
+                                                <div className="absolute left-0 top-0 origin-top-left scale-[0.32] pointer-events-none">
+                                                    <iframe
+                                                        title={item.name}
+                                                        srcDoc={firstPageHtml}
+                                                        className="h-[1200px] w-[1200px] bg-white"
+                                                        sandbox="allow-same-origin"
+                                                    />
+                                                </div>
+                                                <div className="absolute inset-0 bg-white/30" />
                                             </div>
-                                        </div>
-                                    )}
+                                        ) : item.screenshotUrl ? (
+                                            <motion.img
+                                                src={item.screenshotUrl}
+                                                alt={item.name}
+                                                className="absolute inset-0 h-full w-full object-cover object-top opacity-35 blur-[1px] transition group-hover:opacity-25"
+                                                initial={{ scale: 1.03, opacity: 0.35 }}
+                                                animate={{ scale: 1, opacity: 0.35 }}
+                                                transition={{ duration: 0.6 }}
+                                                loading="lazy"
+                                            />
+                                        ) : (
+                                            <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top,_#e5e7eb,_#f3f4f6)]">
+                                                <div className="rounded-full border border-dashed border-black/10 px-4 py-2 text-xs text-black/50">
+                                                    No preview available
+                                                </div>
+                                            </div>
+                                        )}
 
-                                    <button
-                                        type="button"
-                                        onClick={() => handleOpenPreview(item)}
-                                        className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4 text-white font-medium text-sm transition bg-black/40 backdrop-blur-sm opacity-0 group-hover:opacity-100"
-                                    >
-                                        <div className="flex flex-inline items-end gap-1 rounded-full bg-[rgba(245,95,42,0.95)] px-4 py-1.5 text-white text-sm shadow-sm hover:bg-[rgba(215,75,22,1)] transition">
-                                            <span>
-                                                See live preview
-                                            </span>
-                                            <Eye className="h-4 w-4" />
-                                        </div>
-                                    </button>
-                                </div>
-
-                                <div className="flex flex-1 items-center justify-between gap-3 border-t border-black/5 bg-white px-4 py-3 sm:px-5 sm:py-4">
-                                    <div className="min-w-0">
-                                        <p className="text-[10px] uppercase tracking-[0.26em] text-black/45 sm:text-[11px]">
-                                            Community build
-                                        </p>
-                                        <p className="mt-1 truncate text-[14px] font-semibold text-black sm:text-[15px]">
-                                            {item.name}
-                                        </p>
-
-                                        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-black/55">
-                                            {item.remixable && (
-                                                <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">
-                                                    Remixable
-                                                </span>
-                                            )}
-
-                                            <span className="inline-flex items-center gap-1 rounded-full border border-black/10 bg-white px-2 py-0.5 text-black/60">
-                                                <Eye className="h-3.5 w-3.5" />
-                                                {formatCount(item.views)}
-                                            </span>
-
-                                            <button
-                                                type="button"
-                                                onClick={() => void handleToggleLike(item)}
-                                                disabled={likeBusyId === item.id}
-                                                className={[
-                                                    "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 transition",
-                                                    item.likedByMe
-                                                        ? "border-[rgba(245,95,42,0.35)] bg-[rgba(245,95,42,0.10)] text-[rgba(145,54,14,0.98)]"
-                                                        : "border-black/10 bg-white text-black/60 hover:bg-black/[0.03]",
-                                                    likeBusyId === item.id
-                                                        ? "opacity-60 pointer-events-none"
-                                                        : "",
-                                                ].join(" ")}
-                                                aria-label="Like build"
-                                                title="Like"
-                                            >
-                                                <Heart
-                                                    className={[
-                                                        "h-3.5 w-3.5",
-                                                        item.likedByMe ? "fill-current" : "",
-                                                    ].join(" ")}
-                                                />
-                                                {formatCount(item.likes)}
-                                            </button>
-
-                                            <span className="inline-flex items-center gap-1 rounded-full border border-black/10 bg-white px-2 py-0.5 text-black/60">
-                                                <Repeat2 className="h-3.5 w-3.5" />
-                                                {formatCount(item.remixes)}
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    <div className="flex flex-col items-end gap-2 text-right text-[11px] text-black/55">
                                         <button
                                             type="button"
-                                            onClick={() => void handleRemix(item)}
-                                            disabled={!canRemix || remixBusyId === item.id}
-                                            className={[
-                                                "group inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-[12px] font-semibold transition",
-                                                "shadow-[0_10px_24px_rgba(15,23,42,0.10)]",
-                                                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(245,95,42,0.35)] focus-visible:ring-offset-2",
-                                                canRemix
-                                                    ? "bg-[rgba(245,95,42,1)] text-white hover:bg-[rgba(215,75,22,1)]"
-                                                    : "bg-neutral-100 text-black/40 shadow-none cursor-not-allowed",
-                                                remixBusyId === item.id ? "opacity-80" : "",
-                                            ].join(" ")}
+                                            onClick={() => handleOpenPreview(item)}
+                                            className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4 text-white font-medium text-sm transition bg-black/40 backdrop-blur-sm opacity-0 group-hover:opacity-100"
                                         >
-                                            <span
-                                                className={[
-                                                    "inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/15 ring-1 ring-white/20",
-                                                    canRemix
-                                                        ? "group-hover:bg-white/20"
-                                                        : "bg-black/5 ring-black/10",
-                                                ].join(" ")}
-                                            >
-                                                {remixBusyId === item.id ? (
-                                                    <svg
-                                                        className="h-4 w-4 animate-spin"
-                                                        viewBox="0 0 24 24"
-                                                        fill="none"
-                                                        aria-hidden="true"
-                                                    >
-                                                        <circle
-                                                            cx="12"
-                                                            cy="12"
-                                                            r="9"
-                                                            stroke="currentColor"
-                                                            strokeWidth="2.5"
-                                                            opacity="0.25"
-                                                        />
-                                                        <path
-                                                            d="M21 12a9 9 0 0 1-9 9"
-                                                            stroke="currentColor"
-                                                            strokeWidth="2.5"
-                                                            strokeLinecap="round"
-                                                        />
-                                                    </svg>
-                                                ) : (
-                                                    <svg
-                                                        className="h-4 w-4"
-                                                        viewBox="0 0 24 24"
-                                                        fill="none"
-                                                        aria-hidden="true"
-                                                    >
-                                                        <path
-                                                            d="M7 7h6a4 4 0 0 1 4 4v1"
-                                                            stroke="currentColor"
-                                                            strokeWidth="2.25"
-                                                            strokeLinecap="round"
-                                                        />
-                                                        <path
-                                                            d="M17 7l2 2-2 2"
-                                                            stroke="currentColor"
-                                                            strokeWidth="2.25"
-                                                            strokeLinecap="round"
-                                                            strokeLinejoin="round"
-                                                        />
-                                                        <path
-                                                            d="M17 17H11a4 4 0 0 1-4-4v-1"
-                                                            stroke="currentColor"
-                                                            strokeWidth="2.25"
-                                                            strokeLinecap="round"
-                                                        />
-                                                        <path
-                                                            d="M7 17l-2-2 2-2"
-                                                            stroke="currentColor"
-                                                            strokeWidth="2.25"
-                                                            strokeLinecap="round"
-                                                            strokeLinejoin="round"
-                                                        />
-                                                    </svg>
-                                                )}
-                                            </span>
-
-                                            {remixBusyId === item.id
-                                                ? "Remixing…"
-                                                : canRemix
-                                                    ? "Remix"
-                                                    : "Remix disabled"}
+                                            <div className="flex flex-inline items-end gap-1 rounded-full bg-[rgba(245,95,42,0.95)] px-4 py-1.5 text-white text-sm shadow-sm hover:bg-[rgba(215,75,22,1)] transition">
+                                                <span>See live preview</span>
+                                                <Eye className="h-4 w-4" />
+                                            </div>
                                         </button>
                                     </div>
-                                </div>
-                            </motion.div>
-                        );
-                    })}
+
+                                    <div className="flex flex-1 items-center justify-between gap-3 border-t border-black/5 bg-white px-4 py-3">
+                                        <div className="min-w-0">
+                                            <p className="text-[10px] uppercase tracking-[0.26em] text-black/45">
+                                                Community build
+                                            </p>
+                                            <p className="mt-1 truncate text-[14px] font-semibold text-black">
+                                                {item.name}
+                                            </p>
+
+                                            <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-black/55">
+                                                {item.remixable && (
+                                                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">
+                                                        Remixable
+                                                    </span>
+                                                )}
+
+                                                <span className="inline-flex items-center gap-1 rounded-full border border-black/10 bg-white px-2 py-0.5 text-black/60">
+                                                    <Eye className="h-3.5 w-3.5" />
+                                                    {formatCount(item.views)}
+                                                </span>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() => void handleToggleLike(item)}
+                                                    disabled={likeBusyId === item.id}
+                                                    className={[
+                                                        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 transition",
+                                                        item.likedByMe
+                                                            ? "border-[rgba(245,95,42,0.35)] bg-[rgba(245,95,42,0.10)] text-[rgba(145,54,14,0.98)]"
+                                                            : "border-black/10 bg-white text-black/60 hover:bg-black/[0.03]",
+                                                        likeBusyId === item.id
+                                                            ? "opacity-60 pointer-events-none"
+                                                            : "",
+                                                    ].join(" ")}
+                                                    aria-label="Like build"
+                                                    title="Like"
+                                                >
+                                                    <Heart
+                                                        className={[
+                                                            "h-3.5 w-3.5",
+                                                            item.likedByMe ? "fill-current" : "",
+                                                        ].join(" ")}
+                                                    />
+                                                    {formatCount(item.likes)}
+                                                </button>
+
+                                                <span className="inline-flex items-center gap-1 rounded-full border border-black/10 bg-white px-2 py-0.5 text-black/60">
+                                                    <Repeat2 className="h-3.5 w-3.5" />
+                                                    {formatCount(item.remixes)}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-col items-end gap-2 text-right text-[11px] text-black/55">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleRemix(item)}
+                                                disabled={!canRemix || remixBusyId === item.id}
+                                                className={[
+                                                    "group inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-[12px] font-semibold transition",
+                                                    "shadow-[0_10px_24px_rgba(15,23,42,0.10)]",
+                                                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(245,95,42,0.35)] focus-visible:ring-offset-2",
+                                                    canRemix
+                                                        ? "bg-[rgba(245,95,42,1)] text-white hover:bg-[rgba(215,75,22,1)]"
+                                                        : "bg-neutral-100 text-black/40 shadow-none cursor-not-allowed",
+                                                    remixBusyId === item.id ? "opacity-80" : "",
+                                                ].join(" ")}
+                                            >
+                                                <span
+                                                    className={[
+                                                        "inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/15 ring-1 ring-white/20",
+                                                        canRemix
+                                                            ? "group-hover:bg-white/20"
+                                                            : "bg-black/5 ring-black/10",
+                                                    ].join(" ")}
+                                                >
+                                                    {remixBusyId === item.id ? (
+                                                        <svg
+                                                            className="h-4 w-4 animate-spin"
+                                                            viewBox="0 0 24 24"
+                                                            fill="none"
+                                                            aria-hidden="true"
+                                                        >
+                                                            <circle
+                                                                cx="12"
+                                                                cy="12"
+                                                                r="9"
+                                                                stroke="currentColor"
+                                                                strokeWidth="2.5"
+                                                                opacity="0.25"
+                                                            />
+                                                            <path
+                                                                d="M21 12a9 9 0 0 1-9 9"
+                                                                stroke="currentColor"
+                                                                strokeWidth="2.5"
+                                                                strokeLinecap="round"
+                                                            />
+                                                        </svg>
+                                                    ) : (
+                                                        <svg
+                                                            className="h-4 w-4"
+                                                            viewBox="0 0 24 24"
+                                                            fill="none"
+                                                            aria-hidden="true"
+                                                        >
+                                                            <path
+                                                                d="M7 7h6a4 4 0 0 1 4 4v1"
+                                                                stroke="currentColor"
+                                                                strokeWidth="2.25"
+                                                                strokeLinecap="round"
+                                                            />
+                                                            <path
+                                                                d="M17 7l2 2-2 2"
+                                                                stroke="currentColor"
+                                                                strokeWidth="2.25"
+                                                                strokeLinecap="round"
+                                                                strokeLinejoin="round"
+                                                            />
+                                                            <path
+                                                                d="M17 17H11a4 4 0 0 1-4-4v-1"
+                                                                stroke="currentColor"
+                                                                strokeWidth="2.25"
+                                                                strokeLinecap="round"
+                                                            />
+                                                            <path
+                                                                d="M7 17l-2-2 2-2"
+                                                                stroke="currentColor"
+                                                                strokeWidth="2.25"
+                                                                strokeLinecap="round"
+                                                                strokeLinejoin="round"
+                                                            />
+                                                        </svg>
+                                                    )}
+                                                </span>
+
+                                                {remixBusyId === item.id
+                                                    ? "Remixing…"
+                                                    : canRemix
+                                                        ? "Remix"
+                                                        : "Remix disabled"}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            );
+                        })}
+                    </div>
                 </div>
 
                 <div className="mt-2 text-xs text-black/55">
                     Showing {items.length} approved build{items.length === 1 ? "" : "s"}.
                 </div>
             </section>
+
+            {/* Remix confirm modal */}
+            <AnimatePresence>
+                {confirmRemixBuild && (
+                    <motion.div
+                        className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                    >
+                        <motion.div
+                            className="w-full max-w-md overflow-hidden rounded-2xl border border-black/10 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.22)]"
+                            initial={{ y: 14, scale: 0.98, opacity: 0 }}
+                            animate={{ y: 0, scale: 1, opacity: 1 }}
+                            exit={{ y: 10, scale: 0.985, opacity: 0 }}
+                            transition={{ type: "spring", stiffness: 140, damping: 18 }}
+                            role="dialog"
+                            aria-modal="true"
+                            aria-label="Confirm remix"
+                        >
+                            <div className="border-b border-black/10 px-5 py-4">
+                                <p className="text-[12px] uppercase tracking-[0.22em] text-black/45">
+                                    Confirm remix
+                                </p>
+                                <p className="mt-1 text-[15px] font-semibold text-black">
+                                    Remix “{confirmRemixBuild.name}”?
+                                </p>
+                                <p className="mt-2 text-[12px] leading-5 text-black/60">
+                                    This will clone the build into your account as a new editable preview.
+                                </p>
+                            </div>
+
+                            <div className="flex items-center justify-end gap-2 px-5 py-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setConfirmRemixBuild(null)}
+                                    disabled={!!remixBusyId}
+                                    className={[
+                                        "rounded-full border px-4 py-2 text-[12px] font-semibold transition",
+                                        "border-black/10 bg-white text-black/70 hover:bg-black/[0.03]",
+                                        remixBusyId ? "opacity-60 pointer-events-none" : "",
+                                    ].join(" ")}
+                                >
+                                    Cancel
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        const b = confirmRemixBuild;
+                                        setConfirmRemixBuild(null);
+                                        if (b) await runRemix(b);
+                                    }}
+                                    disabled={!!remixBusyId}
+                                    className={[
+                                        "rounded-full px-4 py-2 text-[12px] font-semibold text-white transition",
+                                        "bg-[rgba(245,95,42,1)] hover:bg-[rgba(215,75,22,1)]",
+                                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(245,95,42,0.35)] focus-visible:ring-offset-2",
+                                        remixBusyId ? "opacity-80 pointer-events-none" : "",
+                                    ].join(" ")}
+                                >
+                                    Confirm remix
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             <AnimatePresence>
                 {previewBuild && previewBuild.html && (
@@ -809,7 +873,7 @@ export default function CommunityBuildsClient() {
                                         {previewBuild.remixable && previewBuild.html && (
                                             <button
                                                 type="button"
-                                                onClick={() => void handleRemix(previewBuild)}
+                                                onClick={() => handleRemix(previewBuild)}
                                                 disabled={remixBusyId === previewBuild.id}
                                                 className={[
                                                     "group hidden items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold sm:inline-flex transition",

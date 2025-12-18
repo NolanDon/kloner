@@ -37,6 +37,7 @@ import {
     BarChart3,
     CreditCard,
     Users,
+    ShieldCheck,
 } from "lucide-react";
 import KlonerLoader from "@/components/KlonerLoader";
 
@@ -58,9 +59,10 @@ type NavSectionConfig = {
 const BASE_NAV_SECTIONS: NavSectionConfig[] = [
     {
         label: "General",
-        items: [{ href: "/", label: "Home", icon: Home },
-        { href: "/affiliate", label: "Affiliate Hub", icon: Users }, // <-- add
-        ]
+        items: [
+            { href: "/", label: "Home", icon: Home },
+            { href: "/affiliate", label: "Affiliate Hub", icon: Users },
+        ],
     },
     {
         label: "Preview",
@@ -124,7 +126,7 @@ const BASE_NAV_SECTIONS: NavSectionConfig[] = [
             {
                 href: "/admin/support-docs",
                 label: "Support docs",
-                icon: BookText,          // or any icon you prefer
+                icon: BookText,
                 adminOnly: true,
             },
             {
@@ -133,10 +135,15 @@ const BASE_NAV_SECTIONS: NavSectionConfig[] = [
                 icon: CreditCard,
                 adminOnly: true,
             },
+            {
+                href: "/admin/community-builds",
+                label: "Community builds",
+                icon: ShieldCheck,
+                adminOnly: true,
+            },
         ],
     },
 ];
-
 
 // STRICT match now – no startsWith for dashboard etc.
 function navItemIsActive(pathname: string, href: string): boolean {
@@ -209,7 +216,6 @@ function NavItem({
         </Link>
     );
 }
-
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
     return (
@@ -562,7 +568,6 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
                             ? data.unreadCount
                             : 0;
 
-                    // if you only want unread on non-closed threads:
                     if (status !== "closed") {
                         total += unread;
                     }
