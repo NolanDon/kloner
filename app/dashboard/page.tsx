@@ -27,7 +27,7 @@ import {
     type ListResult,
 } from "firebase/storage";
 import { auth, db, storage } from "@/lib/firebase";
-import { CheckCircle2, Clock3, AlertTriangle, Loader2, CrossIcon, DeleteIcon } from "lucide-react";
+import { CheckCircle2, Clock3, AlertTriangle, Loader2, CrossIcon, DeleteIcon, ArrowRight } from "lucide-react";
 
 const ACCENT = "#f55f2a";
 
@@ -70,13 +70,70 @@ interface UrlRowProps {
 }
 
 function isHttpUrl(s: string): s is string {
+    const raw = (s ?? "").trim();
+
+    // reject obvious garbage early
+    if (!raw) return false;
+    if (/\s/.test(raw)) return false;            // "status buddy haha"
+    if (/[\u0000-\u001F\u007F]/.test(raw)) return false; // control chars
+    if (raw.length > 2048) return false;
+
+    // must be absolute http(s)
+    if (!/^https?:\/\//i.test(raw)) return false;
+
+    let u: URL;
     try {
-        const u = new URL(s);
-        return u.protocol === "http:" || u.protocol === "https:";
+        u = new URL(raw);
     } catch {
         return false;
     }
+
+    if (u.protocol !== "http:" && u.protocol !== "https:") return false;
+
+    // disallow credentials
+    if (u.username || u.password) return false;
+
+    // host must exist and not contain spaces
+    if (!u.hostname || /\s/.test(u.hostname)) return false;
+
+    // reject localhost-ish if you want (optional: uncomment)
+    // if (u.hostname === "localhost" || u.hostname.endsWith(".local")) return false;
+
+    // must look like a real domain or an IP
+    const host = u.hostname;
+
+    const isIPv4 = /^\d{1,3}(\.\d{1,3}){3}$/.test(host) && host.split(".").every(p => {
+        const n = Number(p);
+        return Number.isInteger(n) && n >= 0 && n <= 255 && String(n) === p;
+    });
+
+    const isIPv6 = host.includes(":"); // URL.hostname strips brackets; simple check
+
+    const isDomain =
+        host.includes(".") &&
+        !host.startsWith(".") &&
+        !host.endsWith(".") &&
+        /^[a-z0-9.-]+$/i.test(host) &&
+        host.split(".").every(label =>
+            label.length > 0 &&
+            label.length <= 63 &&
+            !label.startsWith("-") &&
+            !label.endsWith("-")
+        ) &&
+        host.split(".").at(-1)!.length >= 2;
+
+    if (!(isIPv4 || isIPv6 || isDomain)) return false;
+
+    return true;
 }
+
+export function assertHttpUrl(input: string): string {
+    if (!isHttpUrl(input)) {
+        throw new Error("Invalid URL. Use a full http(s) URL like https://example.com");
+    }
+    return input.trim();
+}
+
 
 function normUrl(s: string): string {
     try {
@@ -573,18 +630,23 @@ function UrlRow({ uid, r }: UrlRowProps) {
                                     href={
                                         locked
                                             ? undefined
-                                            : `/dashboard/view?u=${encodeURIComponent(
-                                                r.url
-                                            )}`
+                                            : `/dashboard/view?u=${encodeURIComponent(r.url)}`
                                     }
-                                    className={`rounded-full bg-accent text-white px-3 py-1.5 text-xs text-white ${locked
-                                        ? "pointer-events-none"
-                                        : ""
+                                    className={`group inline-flex items-center rounded-full bg-accent px-3 py-1.5 text-xs text-white whitespace-nowrap transition-[padding] duration-200 ease-out ${locked ? "pointer-events-none" : ""
                                         }`}
                                     aria-disabled={locked}
                                     tabIndex={locked ? -1 : 0}
                                 >
-                                    Go to Builder
+                                    <span>Start Building</span>
+
+                                    {/* Arrow container starts at zero width; grows on hover so the button expands */}
+                                    <span
+                                        className="ml-0 w-0 overflow-hidden inline-flex items-center transition-[width,margin] duration-200 ease-out
+        group-hover:w-4 group-hover:ml-1"
+                                        aria-hidden="true"
+                                    >
+                                        <ArrowRight className="h-3.5 w-3.5 -translate-x-1 opacity-0 transition-all duration-200 ease-out group-hover:translate-x-0 group-hover:opacity-100" />
+                                    </span>
                                 </a>
                             </>
                         )}
