@@ -1035,7 +1035,7 @@ export default function DeploymentsPage(): JSX.Element {
                                         <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-500 mb-2">
                                             Latest deployment
                                         </h3>
-                                        <article className="rounded-2xl border border-neutral-200 bg-white shadow-sm p-5 flex flex-col gap-1.5">
+                                        <article className="rounded-2xl border border-neutral-200 bg-white shadow-sm p-5 flex flex-col gap-3">
                                             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                                                 <div className="min-w-0">
                                                     <div className="flex items-center gap-2">

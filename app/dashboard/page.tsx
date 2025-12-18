@@ -27,7 +27,7 @@ import {
     type ListResult,
 } from "firebase/storage";
 import { auth, db, storage } from "@/lib/firebase";
-import { CheckCircle2, Clock3, AlertTriangle, Loader2, CrossIcon, DeleteIcon, ArrowRight } from "lucide-react";
+import { CheckCircle2, Clock3, AlertTriangle, Loader2, CrossIcon, DeleteIcon, ArrowRight, AxeIcon } from "lucide-react";
 
 const ACCENT = "#f55f2a";
 
@@ -324,7 +324,6 @@ function UrlForm({ uid, onAdded, disabled }: UrlFormProps) {
         >
             <div className="flex flex-col sm:flex-row gap-3">
                 <input
-                    // type="url"
                     placeholder="https://example.com"
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
@@ -379,6 +378,7 @@ function UrlRowSkeleton() {
 function UrlRow({ uid, r }: UrlRowProps) {
     const [busy, setBusy] = useState<boolean>(false);
     const [err, setErr] = useState<string>("");
+    const [deleteBlocked, setDeleteBlocked] = useState<null | { urlHash: string; url: string; count: number }>(null);
 
     const uiStatus = normalizeUrlStatus(
         r.status as UrlStatusRaw | UrlStatusUi | undefined,
@@ -478,18 +478,44 @@ function UrlRow({ uid, r }: UrlRowProps) {
         }
     }
 
+    async function countRendersForUrl(url: string, urlHash: string) {
+        const rendersCol = collection(db, "kloner_users", uid, "kloner_renders");
+        const qHash = query(rendersCol, where("urlHash", "==", urlHash));
+        const qUrl = query(rendersCol, where("url", "==", url));
+        const [snapHash, snapUrl] = await Promise.all([getDocs(qHash), getDocs(qUrl)]);
+        const ids = new Set<string>();
+        snapHash.forEach((d) => ids.add(d.id));
+        snapUrl.forEach((d) => ids.add(d.id));
+        return ids.size;
+    }
+
     async function remove() {
         if (locked) return;
 
+        const urlHash = r.urlHash || hash64(r.url);
+
+        // ✅ block screenshot deletion if renders exist
+        try {
+            setDeleteBlocked(null);
+            const renderCount = await countRendersForUrl(r.url, urlHash);
+            if (renderCount > 0) {
+                setDeleteBlocked({ urlHash, url: r.url, count: renderCount });
+                return;
+            }
+        } catch {
+            // if counting fails, be safe and block delete
+            setDeleteBlocked({ urlHash, url: r.url, count: 1 });
+            return;
+        }
+
         const ok = window.confirm(
-            `Delete this tracked URL?\n\n${r.url}\n\nThis removes the URL and its screenshots and renders.`
+            `Delete this tracked URL?\n\n${r.url}\n\nThis removes the URL and its screenshots.`
         );
         if (!ok) return;
 
         setErr("");
         setBusy(true);
         try {
-            const urlHash = r.urlHash || hash64(r.url);
             const prefix = r.screenshotsPrefix || `screenshots/${uid}/${urlHash}`;
 
             if (Array.isArray(r.screenshotPaths) && r.screenshotPaths.length > 0) {
@@ -510,23 +536,6 @@ function UrlRow({ uid, r }: UrlRowProps) {
                 }
             }
 
-            const rendersCol = collection(db, "kloner_users", uid, "kloner_renders");
-            const qHash = query(rendersCol, where("urlHash", "==", urlHash));
-            const qUrl = query(rendersCol, where("url", "==", r.url));
-            const [snapHash, snapUrl] = await Promise.all([getDocs(qHash), getDocs(qUrl)]);
-
-            const toDeleteIds = new Set<string>();
-            snapHash.forEach((d) => toDeleteIds.add(d.id));
-            snapUrl.forEach((d) => toDeleteIds.add(d.id));
-
-            if (toDeleteIds.size > 0) {
-                const batch = writeBatch(db);
-                for (const id of toDeleteIds) {
-                    batch.delete(doc(db, "kloner_users", uid, "kloner_renders", id));
-                }
-                await batch.commit();
-            }
-
             await deleteDoc(doc(db, "kloner_users", uid, "kloner_urls", r.id));
         } catch (e: any) {
             setErr(e?.message || "Delete failed.");
@@ -535,6 +544,8 @@ function UrlRow({ uid, r }: UrlRowProps) {
         }
     }
 
+    const builderHref = locked ? undefined : `/dashboard/view?u=${encodeURIComponent(r.url)}`;
+    const rendersHref = locked ? undefined : `/dashboard/view?u=${encodeURIComponent(r.url)}`;
 
     return (
         <div
@@ -552,8 +563,8 @@ function UrlRow({ uid, r }: UrlRowProps) {
                 className={[
                     "absolute -right-3 -top-3 z-40 inline-flex h-6 w-6 items-center justify-center rounded-full border shadow-sm",
                     "transition-all duration-150",
-                    "bg-white/85 border-neutral-200 text-neutral-400",                 // default: visible, subtle
-                    "hover:bg-red-600 hover:border-red-600 hover:text-white hover:shadow-md hover:scale-[1.04]", // hover: red + white icon
+                    "bg-white/85 border-neutral-200 text-neutral-400",
+                    "hover:bg-red-600 hover:border-red-600 hover:text-white hover:shadow-md hover:scale-[1.04]",
                     "active:scale-[0.98]",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 focus-visible:ring-offset-2",
                     "disabled:opacity-60 disabled:pointer-events-none",
@@ -563,7 +574,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
             </button>
 
             <div className="flex flex-col sm:flex-row gap-4 sm:gap-5">
-                {thumbUrl && (
+                {thumbUrl ? (
                     <div className="h-12 w-12 rounded-full overflow-hidden border border-neutral-200 bg-neutral-100 shrink-0">
                         <img
                             src={thumbUrl}
@@ -572,15 +583,17 @@ function UrlRow({ uid, r }: UrlRowProps) {
                             draggable={false}
                         />
                     </div>
+                ) : (
+                    <div className="h-12 w-12 rounded-full overflow-hidden bg-white shrink-0" />
                 )}
 
                 <div className="min-w-0 flex-1 flex flex-col gap-2">
                     {/* top row: URL only */}
                     <div className="flex flex-wrap items-center gap-5 justify-between">
                         <a
-                            href={locked ? undefined : r.url}
-                            target={locked ? undefined : "_blank"}
-                            rel={locked ? undefined : "noreferrer"}
+                            // href={locked ? undefined : r.url}
+                            // target={locked ? undefined : "_blank"}
+                            // rel={locked ? undefined : "noreferrer"}
                             className={`truncate max-w-full sm:max-w-[70%] text-sm ${locked
                                 ? "text-neutral-400 pointer-events-none"
                                 : "text-neutral-800 hover:underline"
@@ -592,6 +605,17 @@ function UrlRow({ uid, r }: UrlRowProps) {
                         </a>
                         <StatusBadge status={uiStatus} />
                     </div>
+
+                    {deleteBlocked && (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                            <div className="font-medium">
+                                Delete blocked: this URL still has {deleteBlocked.count} render{deleteBlocked.count === 1 ? "" : "s"}.
+                            </div>
+                            <div className="mt-1 text-amber-800/90">
+                                Delete the render(s) first, then delete this URL.
+                            </div>
+                        </div>
+                    )}
 
                     {r.lastError && (uiStatus === "stale" || uiStatus === "error") ? (
                         <div className="text-xs text-rose-600">
@@ -619,11 +643,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
                                     </p>
                                 </div>
                                 <a
-                                    href={
-                                        locked
-                                            ? undefined
-                                            : `/dashboard/view?u=${encodeURIComponent(r.url)}`
-                                    }
+                                    href={builderHref}
                                     className={`group inline-flex items-center rounded-full bg-accent px-3 py-1.5 text-xs text-white whitespace-nowrap transition-[padding] duration-200 ease-out ${locked ? "pointer-events-none" : ""
                                         }`}
                                     aria-disabled={locked}
@@ -631,7 +651,6 @@ function UrlRow({ uid, r }: UrlRowProps) {
                                 >
                                     <span>Go to Builder</span>
 
-                                    {/* Arrow container starts at zero width; grows on hover so the button expands */}
                                     <span
                                         className="ml-0 w-0 overflow-hidden inline-flex items-center transition-[width,margin] duration-200 ease-out
         group-hover:w-4 group-hover:ml-1"
@@ -660,7 +679,6 @@ function UrlRow({ uid, r }: UrlRowProps) {
         </div>
     );
 }
-
 
 /* main page */
 export default function DashboardPage() {

@@ -552,7 +552,7 @@ function BlockToolbar({
                             type="button"
                             title="Undo"
                             onClick={() => callApi("historyUndo")}
-                            className="inline-flex h-9 items-center justify-center rounded-xl border border-neutral-200 bg-white px-3 text-neutral-700 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
+                            className="inline-flex h-9 items-center justify-center rounded-xl bg-accent px-3 text-white shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
                             onMouseDown={(e) => e.stopPropagation()}
                         >
                             <Undo2 className="h-4 w-4 mr-1" />
@@ -562,7 +562,7 @@ function BlockToolbar({
                             type="button"
                             title="Redo"
                             onClick={() => callApi("historyRedo")}
-                            className="inline-flex h-9 items-center justify-center rounded-xl border border-neutral-200 bg-white px-3 text-neutral-700 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
+                            className="inline-flex h-9 items-center justify-center rounded-xl bg-accent px-3 text-white shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
                             onMouseDown={(e) => e.stopPropagation()}
                         >
                             <Redo2 className="h-4 w-4 mr-1" />

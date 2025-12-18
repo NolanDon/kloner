@@ -1845,9 +1845,9 @@ export default function PreviewEditor({
     );
 
     const [uiScale, setUiScale] = useState<number>(() => {
-        if (typeof window === "undefined") return (IS_MOBILE ? 1.05 : 0.75)
+        if (typeof window === "undefined") return (IS_MOBILE ? 1.05 : 0.70)
         const v = Number(localStorage.getItem("kloner:uiScale"));
-        return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : (IS_MOBILE ? 1.05 : 0.75)
+        return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : (IS_MOBILE ? 1.05 : 0.70)
     });
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -5186,7 +5186,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                         className={
                                             isPreviewFullscreen
                                                 ? "flex-1 min-h-0 flex items-stretch justify-end"
-                                                : `${device === "desktop" && !sidebarHidden ? 'ml-auto' : 'mx-auto'}`
+                                                : 'mx-auto'
                                         }
                                         style={
                                             isPreviewFullscreen
@@ -5256,7 +5256,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                 }}
                                                 className="mx-auto cursor-move ounded-[28px] border rounded-[36px] border-neutral-700 bg-neutral-950/90 px-4 pt-4 pb-6 shadow-xl"
                                             >
-                                                <div className="flex items-center justify-end gap-1.5"> 
+                                                <div className="flex items-center justify-end gap-1.5">
                                                 </div>
                                                 <div className="mx-auto mb-2 h-1.5 w-20 rounded-full bg-neutral-700" />
                                                 <div
@@ -5591,7 +5591,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                 {closePrompt && (
                     <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/40">
-                        <div className="bg-white/90 rounded-lg shadow-xl p-4 w-full max-w-sm border border-neutral-200">
+                        <div className="bg-white rounded-lg shadow-xl p-4 w-full max-w-sm border border-neutral-200">
                             <div className="text-md font-semibold text-neutral-900 mb-2">
                                 Close editor?
                             </div>
@@ -5615,7 +5615,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 </button>
                                 <button
                                     type="button"
-                                    className="px-2.5 py-1.5 text-xs rounded-full border bg-accent text-white hover:brightness-110 active:scale-[.98]"
+                                    className="px-2.5 py-1.5 text-xs rounded-full bg-accent text-white hover:brightness-110 active:scale-[.98]"
                                     onClick={() => performClose("save")}
                                 >
                                     Save & close

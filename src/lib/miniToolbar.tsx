@@ -284,7 +284,7 @@ export function MiniToolbar({
             )}
 
             {/* EXTREMELY COMPACT MAIN TOOLBAR */}
-            <div className="inline-flex items-center gap-0.5 rounded-full bg-white/90 px-1 py-0.5 text-[10px] border border-neutral-700 font-semibold text-neutral-800 shadow-xl">
+            <div className="inline-flex items-center gap-0.5 rounded-full bg-white px-1 py-0.5 text-[10px] border border-neutral-700 font-semibold text-neutral-800 shadow-xl">
                 <button
                     type="button"
                     onClick={handleMoveUp}

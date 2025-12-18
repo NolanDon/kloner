@@ -743,27 +743,79 @@ function RenderCardInner({
 
                         {/* progress bar / status – only for the active build/deploy and never at 100% */}
                         {hasProgressInfo && (
-                            <div className="mt-1 w-full">
-                                <div className="mb-1 flex items-center justify-between text-[10px] text-neutral-600">
-                                    <span className="max-w-[70%] truncate">
-                                        {normalizedProgressLabel}
-                                    </span>
+                            <div className="mt-2 w-full">
+                                <div className="mb-1.5 flex items-center justify-between text-[10px] text-neutral-600">
+                                    <span className="max-w-[70%] truncate">{normalizedProgressLabel}</span>
                                     {normalizedProgressPercent !== null && (
-                                        <span className="font-semibold">
+                                        <span className="font-semibold tabular-nums">
                                             {Math.round(normalizedProgressPercent)}%
                                         </span>
                                     )}
                                 </div>
+
                                 {normalizedProgressPercent !== null && (
-                                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200/80">
+                                    <div
+                                        className="relative h-3 w-full overflow-hidden rounded-full border border-white/35 bg-white/55 shadow-[inset_0_1px_0_rgba(255,255,255,0.8),inset_0_-8px_16px_rgba(0,0,0,0.06)] backdrop-blur-md"
+                                        aria-label="Progress"
+                                        aria-valuemin={0}
+                                        aria-valuemax={100}
+                                        aria-valuenow={Math.max(0, Math.min(100, normalizedProgressPercent))}
+                                        role="progressbar"
+                                    >
+                                        {/* liquid fill */}
                                         <div
-                                            className="h-full rounded-full bg-accent transition-[width] duration-300 ease-out"
+                                            className="absolute inset-y-0 left-0 overflow-hidden rounded-full transition-[width] duration-500 ease-out"
+                                            style={{ width: `${Math.max(0, Math.min(100, normalizedProgressPercent))}%` }}
+                                        >
+                                            <div className="absolute inset-0 bg-accent opacity-95" />
+
+                                            {/* subtle depth gradient */}
+                                            <div className="absolute inset-0 bg-gradient-to-b from-white/25 via-white/0 to-black/15" />
+
+                                            {/* moving shine */}
+                                            <div className="kloner-liquid-shine absolute -inset-y-6 left-0 w-[40%] rotate-12 bg-gradient-to-r from-white/0 via-white/40 to-white/0 opacity-70" />
+
+                                            {/* wave highlight */}
+                                            <div className="kloner-liquid-wave absolute inset-x-0 top-[35%] h-[60%] bg-gradient-to-r from-white/0 via-white/20 to-white/0 opacity-50" />
+                                        </div>
+
+                                        {/* glass highlight */}
+                                        <div className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-black/5" />
+                                        <div className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-gradient-to-b from-white/70 to-white/0 opacity-70" />
+
+                                        {/* tiny bubbles near the fill edge */}
+                                        <div
+                                            className="pointer-events-none absolute top-1/2 -translate-y-1/2"
                                             style={{
-                                                width: `${normalizedProgressPercent}%`,
+                                                left: `calc(${Math.max(0, Math.min(100, normalizedProgressPercent))}% - 10px)`,
                                             }}
-                                        />
+                                        >
+                                            <span className="kloner-bubble block h-1.5 w-1.5 rounded-full bg-white/70 blur-[0.2px]" />
+                                        </div>
                                     </div>
                                 )}
+
+                                <style>{`
+                                    @keyframes kloner-liquid-shine {
+                                        0% { transform: translateX(-40%) rotate(12deg); opacity: 0.55; }
+                                        50% { opacity: 0.85; }
+                                        100% { transform: translateX(240%) rotate(12deg); opacity: 0.55; }
+                                    }
+                                    @keyframes kloner-liquid-wave {
+                                        0% { transform: translateX(-6%); opacity: 0.35; }
+                                        50% { transform: translateX(6%); opacity: 0.55; }
+                                        100% { transform: translateX(-6%); opacity: 0.35; }
+                                    }
+                                    @keyframes kloner-bubble {
+                                        0% { transform: translateY(0) scale(0.9); opacity: 0.35; }
+                                        50% { transform: translateY(-2px) scale(1); opacity: 0.75; }
+                                        100% { transform: translateY(0) scale(0.9); opacity: 0.35; }
+                                    }
+                                    .kloner-liquid-shine { animation: kloner-liquid-shine 1.6s ease-in-out infinite; }
+                                    .kloner-liquid-wave { animation: kloner-liquid-wave 1.2s ease-in-out infinite; }
+                                    .kloner-bubble { animation: kloner-bubble 900ms ease-in-out infinite; }
+                                    `}
+                                </style>
                             </div>
                         )}
 
@@ -3862,7 +3914,7 @@ export default function PreviewPage(): JSX.Element {
                                     </>
                                 ) : step3Done ? (
                                     <>
-                                        <span>— Customize your preview, when you're ready, deploy it live by clicking </span>
+                                        <span>— Customize your preview, then deploy it by clicking </span>
 
                                         <button
                                             type="button"
