@@ -127,14 +127,6 @@ function isHttpUrl(s: string): s is string {
     return true;
 }
 
-export function assertHttpUrl(input: string): string {
-    if (!isHttpUrl(input)) {
-        throw new Error("Invalid URL. Use a full http(s) URL like https://example.com");
-    }
-    return input.trim();
-}
-
-
 function normUrl(s: string): string {
     try {
         const u = new URL(s);

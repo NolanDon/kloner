@@ -6,3 +6,4 @@ serviceAccount.json
 public/images/transparent_logo.png
 scripts/setSupportAgent.js
 scripts/setRoleClaims.js
+.js
