@@ -629,7 +629,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
                                     aria-disabled={locked}
                                     tabIndex={locked ? -1 : 0}
                                 >
-                                    <span>Start Building</span>
+                                    <span>Go to Builder</span>
 
                                     {/* Arrow container starts at zero width; grows on hover so the button expands */}
                                     <span
