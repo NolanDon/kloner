@@ -837,7 +837,7 @@ function RenderCardInner({
                         {onShareWithCommunity && (
                             <div>
                                 {shareOpen && !alreadyShared && (
-                                    <div className="px-3text-[10px] text-neutral-700">
+                                    <div className="px-3 text-[10px] text-neutral-700">
                                         <p className="mb-2">
                                             Publishing to Kloner community. Name your project and
                                             optionally allow other users to remix a copy of your layout.

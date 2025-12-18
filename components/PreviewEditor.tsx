@@ -5186,7 +5186,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                         className={
                                             isPreviewFullscreen
                                                 ? "flex-1 min-h-0 flex items-stretch justify-end"
-                                                : `${device === "desktop" && !sidebarHidden ? 'ml-auto xl:mx-auto' : 'mx-auto'}`
+                                                : `${device === "desktop" && !sidebarHidden ? 'ml-auto' : 'mx-auto'}`
                                         }
                                         style={
                                             isPreviewFullscreen
