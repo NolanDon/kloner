@@ -2260,7 +2260,7 @@ export default function PreviewEditor({
         const ordered = [...snapshots].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
         return (
-            <div className="flex flex-col gap-2 text-md h-full bg-white">
+            <div className="flex flex-col gap-2 text-md bg-white">
                 <div className="flex items-center justify-between px-2">
                     <span className="text-[11px] font-semibold tracking-widest text-gray-500 uppercase">
                         Click to Revert
@@ -2282,23 +2282,21 @@ export default function PreviewEditor({
                     ) : null}
                 </div>
 
-                <div className="flex-1 overflow-y-auto rounded-md border border-gray-200">
+                {/* Static-height scroll container */}
+                <div className="rounded-md border border-gray-200 max-h-[620px] overflow-y-auto overscroll-contain">
                     {ordered.map((snap) => {
                         const isActive = !!activeId && snap.id === activeId;
 
                         return (
                             <div
                                 key={snap.id}
-                                className={[
-                                    "border-b border-gray-100",
-                                    isActive ? "bg-[#C6F44D]/20" : "",
-                                ].join(" ")}
+                                className={["border-b px-3 border-gray-100", isActive ? "bg-[#C6F44D]/20" : ""].join(" ")}
                             >
                                 <button
                                     type="button"
                                     onClick={() => onRestore(snap)}
                                     className={[
-                                        "w-full text-left px-3 py-2 focus:outline-none",
+                                        "w-full text-left px-5 py-2 focus:outline-none",
                                         isActive ? "" : "hover:bg-gray-50 focus:bg-gray-100",
                                     ].join(" ")}
                                 >
@@ -4484,7 +4482,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     {!sidebarHidden && (
                         <motion.aside
                             id="kloner-style-sidebar"
-                            className="pointer-events-auto fixed left-16 top-20 bottom-20 z-40 flex w-[300px] md:w-[350px] flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white/60 px-3 py-3 pb-5 shadow-lg backdrop-blur-sm"
+                            className="pointer-events-auto fixed left-16 top-20 bottom-20 z-40 flex w-[300px] md:w-[450px] flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white/60 px-3 py-3 pb-5 shadow-lg backdrop-blur-sm"
                             initial={{ x: -16, opacity: 0 }}
                             animate={{ x: 0, opacity: 1 }}
                             exit={{ x: -16, opacity: 0 }}
@@ -5731,51 +5729,71 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                         {aiEditing && !closing && (
                             <div className="absolute inset-0 z-[95] backdrop-blur-[2px] grid place-items-center pointer-events-auto">
-                                {/* gradient border wrapper */}
+                                {/* accent border wrapper */}
                                 <div
                                     className="inline-flex rounded-2xl p-[3px] shadow-sm"
                                     style={{
-                                        backgroundImage: "linear-gradient(90deg,#4f46e5,#ec4899,#f97316)",
-                                        backgroundSize: "200% 200%",
-                                        animation: "kloner-ai-gradient-move 3s linear infinite",
+                                        // use ONLY your accent (and tints) for the moving border
+                                        backgroundImage: "linear-gradient(90deg, rgba(245,95,42,0.35), rgba(245,95,42,0.85), rgba(245,95,42,0.35))",
+                                        backgroundSize: "220% 220%",
+                                        animation: "kloner-accent-move 2.8s linear infinite",
                                     }}
                                 >
-                                    {/* inner content with solid background */}
-                                    <div className="flex items-center gap-2.5 rounded-2xl bg-white/90 px-3.5 py-1.5 text-[15px] text-neutral-800 shadow-[0_10px_30px_rgba(0,0,0,0.08)] ring-1 ring-black/5 backdrop-blur">
+                                    {/* inner content */}
+                                    <div className="flex items-center gap-2.5 rounded-2xl bg-white px-3.5 py-1.5 text-[15px] text-neutral-900 shadow-[0_10px_30px_rgba(0,0,0,0.10)] ring-[0.5] ring-black/5 backdrop-blur">
                                         <span
-                                            className="bg-clip-text text-transparent font-medium"
+                                            className="bg-clip-text text-transparent font-semibold tracking-tight"
                                             style={{
-                                                backgroundImage: "linear-gradient(90deg,#4f46e5,#ec4899,#f97316)",
-                                                backgroundSize: "200% 200%",
-                                                animation: "kloner-ai-gradient-move 3s linear infinite",
+                                                backgroundImage:
+                                                    "linear-gradient(90deg, rgba(245,95,42,0.6), rgba(245,95,42,1), rgba(245,95,42,0.6))",
+                                                backgroundSize: "220% 220%",
+                                                animation: "kloner-accent-move 2.8s linear infinite",
                                             }}
                                         >
-                                            Applying AI Edit
+                                            Applying AI edit…
                                         </span>
-
                                         <span className="inline-flex items-center gap-1 leading-none" aria-hidden="true">
-                                            <span className="h-1.5 w-1.5 rounded-full bg-[#4f46e5] kloner-dot" />
-                                            <span className="h-1.5 w-1.5 rounded-full bg-[#ec4899] kloner-dot" style={{ animationDelay: "0.15s" }} />
-                                            <span className="h-1.5 w-1.5 rounded-full bg-[#f97316] kloner-dot" style={{ animationDelay: "0.30s" }} />
+                                            <span className="h-1.5 w-1.5 rounded-full bg-[#f55f2a] kloner-dot" />
+                                            <span
+                                                className="h-1.5 w-1.5 rounded-full bg-[#f55f2a] kloner-dot"
+                                                style={{ opacity: 0.75, animationDelay: "0.15s" }}
+                                            />
+                                            <span
+                                                className="h-1.5 w-1.5 rounded-full bg-[#f55f2a] kloner-dot"
+                                                style={{ opacity: 0.45, animationDelay: "0.30s" }}
+                                            />
                                         </span>
 
                                         <style jsx>{`
-                                            @keyframes klonerDots {
-                                            0%,
-                                            80%,
-                                            100% {
-                                                transform: translateY(0);
-                                                opacity: 0.35;
+                                            @keyframes kloner-accent-move {
+                                                0% {
+                                                background-position: 0% 50%;
+                                                }
+                                                50% {
+                                                background-position: 100% 50%;
+                                                }
+                                                100% {
+                                                background-position: 0% 50%;
+                                                }
                                             }
-                                            40% {
+
+                                            @keyframes klonerDots {
+                                                0%,
+                                                80%,
+                                                100% {
+                                                transform: translateY(0);
+                                                opacity: 0.25;
+                                                }
+                                                40% {
                                                 transform: translateY(-3px);
                                                 opacity: 1;
+                                                }
                                             }
-                                            }
+
                                             .kloner-dot {
-                                            animation: klonerDots 0.9s ease-in-out infinite;
+                                                animation: klonerDots 0.9s ease-in-out infinite;
                                             }
-                                        `}</style>
+                                            `}</style>
                                     </div>
                                 </div>
                             </div>

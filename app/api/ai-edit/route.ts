@@ -1,18 +1,13 @@
 // app/api/ai-edit/route.ts
 //
-// AI edit endpoint for Kloner.
+// PATCH: abuse alerting + placeholder asset stripping
+// - If a user repeatedly triggers safety systems (moderation flag / safety reject / image-block),
+//   email support@kloner.com with details.
+// - Hard-strip any example.com asset URLs so they can never leak into saved HTML (prevents 404s like example.com/homer-donut.jpg).
 //
-// Responsibilities:
-// - Auth + CSRF guard (requireSessionAndMaybeCsrf)
-// - Safety: moderate user prompt and any AI image prompts BEFORE calling OpenAI
-// - Call Gemini 3 Pro (code mode) or OpenAI gpt-5-mini (imagery mode) to do a small, HTML-scoped edit
-// - Optionally materialize AI images into Firebase Storage via gpt-image-1
-// - Track usage via Firestore and AI-edit credit buckets
-//
-// Safety goals:
-// - Never let obviously illegal / disallowed prompts reach the main model
-// - Force the model to refuse when users push outside allowed content
-// - Keep the feature scoped to "HTML block editing" only
+// Env required:
+// - RESEND_API_KEY
+// - ABUSE_ALERT_FROM (fallback: hello@kloner.app)
 
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "../_lib/auth";
@@ -21,9 +16,9 @@ import OpenAI from "openai";
 import { monthlyLimitFor, type UserTier } from "@/src/lib/credits";
 import { getStorage } from "firebase-admin/storage";
 import sharp from "sharp";
-
-// Gemini import
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { randomUUID, createHash } from "crypto";
+import { Resend } from "resend";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,43 +28,33 @@ const client = new OpenAI({
     maxRetries: 0,
 });
 
-// Gemini client setup
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-const geminiClient = GEMINI_API_KEY
-    ? new GoogleGenerativeAI(GEMINI_API_KEY)
-    : null;
+const geminiClient = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
 
 interface AiEditRequestBody {
     renderId: string;
     html: string;
-
-    // legacy: some clients send the effective instruction here
     prompt?: string;
-
-    // legacy: some clients send a "generated" prompt here (used previously for storage/display)
     originalPrompt?: string;
-
     mode?: "code" | "imagery";
-
-    // NEW
     action?: "edit_block" | "create_page";
-    pageId?: string; // e.g. "/pricing"
-    slug?: string; // e.g. "pricing" or "docs/faq"
-    userPrompt?: string; // raw user text only
+    pageId?: string;
+    slug?: string;
+    userPrompt?: string;
+    requestId?: string;
 }
 
 interface AiEditModelResult {
+    ok: boolean;
     afterHtml: string;
     summary: string;
+    errorCode?: string;
+    errorStatus?: number;
+    userError?: string;
 }
 
-// Hard caps to keep payloads predictable
 const MAX_HTML_CHARS = 8_000;
-
-// This is the cap for what the USER typed and what we store in "prompt"
 const MAX_USER_PROMPT_CHARS = 1_000;
-
-// Model prompt can be a bit larger because it includes guard rails
 const MAX_MODEL_PROMPT_CHARS = 2_200;
 
 const STORAGE_BUCKET =
@@ -77,7 +62,314 @@ const STORAGE_BUCKET =
     process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ||
     undefined;
 
-// helpers
+/* =========================
+   Abuse alert configuration
+   ========================= */
+
+const ABUSE_SUPPORT_TO = "support@kloner.com";
+const ABUSE_THRESHOLD = 5; // triggers in window
+const ABUSE_WINDOW_MINUTES = 30; // rolling window
+const ABUSE_ALERT_COOLDOWN_MINUTES = 120; // do not email more often than this
+
+function getResend() {
+    const key = process.env.RESEND_API_KEY;
+    if (!key) throw new Error("RESEND_API_KEY env not set");
+    return new Resend(key);
+}
+
+function safeSnippet(input: string, max = 220) {
+    const t = String(input || "")
+        .replace(/\s+/g, " ")
+        .trim();
+    if (!t) return "";
+    if (t.length <= max) return t;
+    return t.slice(0, max - 1) + "…";
+}
+
+function hashIp(ip: string) {
+    return createHash("sha256").update(ip).digest("hex").slice(0, 24);
+}
+
+function nowMs() {
+    return Date.now();
+}
+
+function buildAbuseAlertHtml(payload: {
+    uid: string;
+    email?: string | null;
+    ip?: string | null;
+    ua?: string | null;
+    reason: string;
+    requestId: string;
+    promptSnippet?: string;
+    countInWindow: number;
+    windowMinutes: number;
+    lastEventAtMs: number;
+}) {
+    const accent = "#f55f2a";
+    const dark = "#111827";
+    const muted = "#6b7280";
+
+    const {
+        uid,
+        email,
+        ip,
+        ua,
+        reason,
+        requestId,
+        promptSnippet,
+        countInWindow,
+        windowMinutes,
+        lastEventAtMs,
+    } = payload;
+
+    const when = new Date(lastEventAtMs).toISOString();
+
+    return `
+<!doctype html>
+<html lang="en">
+  <head><meta charSet="utf-8" /><title>Kloner Abuse Alert</title></head>
+  <body style="margin:0;padding:0;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#ffffff;padding:24px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:720px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #fee2d5;">
+            <tr>
+              <td style="padding:18px 24px;border-bottom:1px solid #fee2d5;background:${accent};">
+                <div style="display:flex;align-items:center;gap:12px;">
+                  <div style="height:32px;width:32px;border-radius:999px;background:#ffffff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:${accent};">
+                    K
+                  </div>
+                  <div>
+                    <div style="font-size:16px;font-weight:700;color:#ffffff;">Kloner Abuse Alert</div>
+                    <div style="font-size:12px;color:#ffe7dc;margin-top:2px;">Repeated safety-triggering requests detected</div>
+                  </div>
+                </div>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:22px 26px 10px 26px;">
+                <div style="font-size:13px;color:${dark};line-height:1.6;">
+                  <div><strong>UID:</strong> ${uid}</div>
+                  <div><strong>Email:</strong> ${email || "-"}</div>
+                  <div><strong>IP:</strong> ${ip || "-"}</div>
+                  <div style="margin-top:10px;"><strong>Reason:</strong> ${reason}</div>
+                  <div><strong>Request ID:</strong> ${requestId}</div>
+                  <div><strong>Count in last ${windowMinutes} min:</strong> ${countInWindow}</div>
+                  <div><strong>Last event:</strong> ${when}</div>
+                </div>
+
+                ${promptSnippet
+            ? `<div style="margin-top:14px;padding:12px 12px;border:1px solid #fee2d5;border-radius:12px;background:#fff7f3;">
+                         <div style="font-size:12px;color:${muted};font-weight:700;margin-bottom:6px;">Prompt snippet (redacted)</div>
+                         <div style="font-size:12px;color:${dark};line-height:1.6;white-space:pre-wrap;">${promptSnippet
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")}</div>
+                       </div>`
+            : ""
+        }
+
+                ${ua
+            ? `<div style="margin-top:14px;font-size:12px;color:${muted};line-height:1.6;">
+                         <div style="font-weight:700;color:${dark};margin-bottom:4px;">User-Agent</div>
+                         <div style="white-space:pre-wrap;">${safeSnippet(ua, 260)
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")}</div>
+                       </div>`
+            : ""
+        }
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:14px 26px;border-top:1px solid #fee2d5;background:#fff7f3;">
+                <div style="font-size:11px;color:#9ca3af;">
+                  This is an automated security alert from Kloner.
+                </div>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
+`;
+}
+
+function buildAbuseAlertText(payload: {
+    uid: string;
+    email?: string | null;
+    ip?: string | null;
+    ua?: string | null;
+    reason: string;
+    requestId: string;
+    promptSnippet?: string;
+    countInWindow: number;
+    windowMinutes: number;
+    lastEventAtMs: number;
+}) {
+    const when = new Date(payload.lastEventAtMs).toISOString();
+    return (
+        `Kloner Abuse Alert\n\n` +
+        `UID: ${payload.uid}\n` +
+        `Email: ${payload.email || "-"}\n` +
+        `IP: ${payload.ip || "-"}\n` +
+        `Reason: ${payload.reason}\n` +
+        `Request ID: ${payload.requestId}\n` +
+        `Count in last ${payload.windowMinutes} min: ${payload.countInWindow}\n` +
+        `Last event: ${when}\n\n` +
+        (payload.promptSnippet ? `Prompt snippet (redacted): ${payload.promptSnippet}\n\n` : "") +
+        (payload.ua ? `User-Agent: ${safeSnippet(payload.ua, 260)}\n` : "")
+    );
+}
+
+async function recordAbuseAndMaybeAlert(opts: {
+    db: any;
+    uid: string;
+    userEmail?: string | null;
+    reason: string;
+    requestId: string;
+    promptSnippet?: string;
+    ip?: string | null;
+    ua?: string | null;
+}) {
+    const { db, uid, userEmail, reason, requestId, promptSnippet, ip, ua } = opts;
+
+    const from = process.env.ABUSE_ALERT_FROM || "hello@kloner.app";
+    const windowMs = ABUSE_WINDOW_MINUTES * 60_000;
+    const cooldownMs = ABUSE_ALERT_COOLDOWN_MINUTES * 60_000;
+    const ts = nowMs();
+
+    const abuseRef = db
+        .collection("kloner_users")
+        .doc(uid)
+        .collection("security")
+        .doc("abuse_ai_edit");
+
+    const ipHash = ip ? hashIp(ip) : null;
+    const abuseIpRef = ipHash ? db.collection("security_abuse").doc(`ip_${ipHash}`) : null;
+
+    let shouldEmail = false;
+    let countInWindow = 0;
+
+    try {
+        await db.runTransaction(async (tx: any) => {
+            const snap = await tx.get(abuseRef);
+            const data = snap.exists ? (snap.data() as any) : {};
+
+            const events: any[] = Array.isArray(data.events) ? data.events : [];
+            const recent = events.filter((e) => typeof e?.ts === "number" && ts - e.ts <= windowMs);
+
+            const newEvent = {
+                ts,
+                reason: String(reason || "unknown"),
+                requestId: String(requestId || ""),
+                prompt: safeSnippet(promptSnippet || "", 220),
+                ip: ip ? safeSnippet(ip, 64) : null,
+            };
+
+            const nextRecent = [newEvent, ...recent].slice(0, 30);
+            countInWindow = nextRecent.length;
+
+            const lastAlertAtMs = typeof data.lastAlertAtMs === "number" ? data.lastAlertAtMs : 0;
+            const cooldownOk = ts - lastAlertAtMs >= cooldownMs;
+            const thresholdHit = countInWindow >= ABUSE_THRESHOLD;
+
+            shouldEmail = Boolean(thresholdHit && cooldownOk);
+
+            tx.set(
+                abuseRef,
+                {
+                    events: nextRecent,
+                    countInWindow,
+                    windowMinutes: ABUSE_WINDOW_MINUTES,
+                    lastEventAtMs: ts,
+                    lastReason: newEvent.reason,
+                    lastRequestId: newEvent.requestId,
+                    lastAlertAtMs: shouldEmail ? ts : lastAlertAtMs,
+                    lastAlertRequestId: shouldEmail ? requestId : data.lastAlertRequestId || null,
+                    updatedAt: new Date(ts),
+                },
+                { merge: true }
+            );
+
+            if (abuseIpRef) {
+                const ipSnap = await tx.get(abuseIpRef);
+                const ipData = ipSnap.exists ? (ipSnap.data() as any) : {};
+                const ipEvents: any[] = Array.isArray(ipData.events) ? ipData.events : [];
+                const ipRecent = ipEvents.filter((e) => typeof e?.ts === "number" && ts - e.ts <= windowMs);
+                const ipNext = [{ ts, uid, reason, requestId }, ...ipRecent].slice(0, 50);
+
+                tx.set(
+                    abuseIpRef,
+                    {
+                        ipHash,
+                        events: ipNext,
+                        countInWindow: ipNext.length,
+                        lastEventAtMs: ts,
+                        updatedAt: new Date(ts),
+                    },
+                    { merge: true }
+                );
+            }
+        });
+    } catch (e) {
+        console.error("[ai-edit][abuse] failed recording abuse", e);
+        return;
+    }
+
+    if (!shouldEmail) return;
+
+    try {
+        const resend = getResend();
+
+        const html = buildAbuseAlertHtml({
+            uid,
+            email: userEmail || null,
+            ip: ip || null,
+            ua: ua || null,
+            reason,
+            requestId,
+            promptSnippet: safeSnippet(promptSnippet || "", 220),
+            countInWindow,
+            windowMinutes: ABUSE_WINDOW_MINUTES,
+            lastEventAtMs: ts,
+        });
+
+        const text = buildAbuseAlertText({
+            uid,
+            email: userEmail || null,
+            ip: ip || null,
+            ua: ua || null,
+            reason,
+            requestId,
+            promptSnippet: safeSnippet(promptSnippet || "", 220),
+            countInWindow,
+            windowMinutes: ABUSE_WINDOW_MINUTES,
+            lastEventAtMs: ts,
+        });
+
+        const result = await resend.emails.send({
+            from,
+            to: ABUSE_SUPPORT_TO,
+            subject: `Kloner Abuse Alert: AI edit safety triggers (${countInWindow}/${ABUSE_THRESHOLD})`,
+            text,
+            html,
+        });
+
+        if ("error" in result && result.error) {
+            console.error("[ai-edit][abuse] Resend error:", result.error);
+        }
+    } catch (e) {
+        console.error("[ai-edit][abuse] failed sending alert email", e);
+    }
+}
+
+/* =========================
+   Existing route logic
+   ========================= */
 
 function nextPeriodEndUtc(now: Date) {
     const y = now.getUTCFullYear();
@@ -86,62 +378,103 @@ function nextPeriodEndUtc(now: Date) {
     return new Date(firstNext.getTime() - 1);
 }
 
-/**
- * ATOMIC CREDIT RESERVATION (INLINE)
- * - Single source of truth: kloner_users/{uid}.credits.aiEdits
- * - Transaction prevents parallel overspend
- * - Fail closed: caller must treat errors as 503
- */
+function friendlySafetyMessage(requestId?: string) {
+    const rid = requestId ? ` (Request ID: ${requestId})` : "";
+    return {
+        user:
+            `That request can’t be processed because it was flagged by our safety filters. ` +
+            `Try rephrasing with less explicit detail, or remove anything that could be interpreted as harmful or disallowed.` +
+            `${rid}`,
+        dev: `Rejected by safety system${requestId ? `; requestId=${requestId}` : ""}`,
+    };
+}
+
+function creditEventRef(db: any, uid: string, requestId: string) {
+    return db.collection("kloner_users").doc(uid).collection("credit_events").doc(requestId);
+}
+
 async function reserveAiEditCreditsInline(opts: {
     db: any;
     uid: string;
     tier: UserTier;
-    cost: number; // 5
+    cost: number;
     now: Date;
+    requestId: string;
 }): Promise<
-    | { ok: true; remaining: number | null; limit: number | null; periodEnd: Date | null }
-    | { ok: false; status: number; message: string; remaining: number; limit: number; periodEnd: Date | null }
+    | {
+        ok: true;
+        remaining: number | null;
+        limit: number | null;
+        periodEnd: Date | null;
+        alreadyReservedOrCommitted?: boolean;
+    }
+    | {
+        ok: false;
+        status: number;
+        message: string;
+        remaining: number;
+        limit: number;
+        periodEnd: Date | null;
+    }
 > {
-    const { db, uid, tier, cost, now } = opts;
+    const { db, uid, tier, cost, now, requestId } = opts;
 
     const limit = monthlyLimitFor(tier, "edit");
-
-    // 0 => unlimited (enterprise only)
     if (!limit) {
         return { ok: true, remaining: null, limit: 0, periodEnd: null };
     }
 
     const userRef = db.collection("kloner_users").doc(uid);
+    const evtRef = creditEventRef(db, uid, requestId);
 
     return await db.runTransaction(async (tx: any) => {
+        const evtSnap = await tx.get(evtRef);
+        if (evtSnap.exists) {
+            const evt = evtSnap.data() as any;
+            const status = String(evt?.status || "");
+            if (status === "reserved" || status === "committed" || status === "refunded") {
+                const userSnap = await tx.get(userRef);
+                const data = userSnap.exists ? (userSnap.data() as any) : {};
+                const bucket = data["credits.aiEdits"] || (data.credits && data.credits.aiEdits) || {};
+
+                const rawEnd = bucket.periodEnd;
+                let periodEndDate: Date | null = null;
+                if (rawEnd && typeof rawEnd.toDate === "function") periodEndDate = rawEnd.toDate() as Date;
+                else if (rawEnd instanceof Date) periodEndDate = rawEnd;
+
+                const active = periodEndDate !== null && now < periodEndDate;
+                const existingRemaining =
+                    typeof bucket.remaining === "number" && bucket.remaining >= 0 ? bucket.remaining : null;
+
+                const endDate = active ? (periodEndDate as Date) : nextPeriodEndUtc(now);
+                const startRemaining = active && existingRemaining !== null ? existingRemaining : limit;
+
+                return {
+                    ok: true,
+                    remaining: startRemaining,
+                    limit,
+                    periodEnd: endDate,
+                    alreadyReservedOrCommitted: true,
+                };
+            }
+        }
+
         const snap = await tx.get(userRef);
         const data = snap.exists ? (snap.data() as any) : {};
-
-        const bucket =
-            data["credits.aiEdits"] ||
-            (data.credits && data.credits.aiEdits) ||
-            {};
+        const bucket = data["credits.aiEdits"] || (data.credits && data.credits.aiEdits) || {};
 
         const rawEnd = bucket.periodEnd;
         let periodEndDate: Date | null = null;
-
-        if (rawEnd && typeof rawEnd.toDate === "function") {
-            periodEndDate = rawEnd.toDate() as Date;
-        } else if (rawEnd instanceof Date) {
-            periodEndDate = rawEnd;
-        }
+        if (rawEnd && typeof rawEnd.toDate === "function") periodEndDate = rawEnd.toDate() as Date;
+        else if (rawEnd instanceof Date) periodEndDate = rawEnd;
 
         const active = periodEndDate !== null && now < periodEndDate;
-
         const existingRemaining =
-            typeof bucket.remaining === "number" && bucket.remaining >= 0
-                ? bucket.remaining
-                : null;
+            typeof bucket.remaining === "number" && bucket.remaining >= 0 ? bucket.remaining : null;
 
         const endDate = active ? (periodEndDate as Date) : nextPeriodEndUtc(now);
         const startRemaining = active && existingRemaining !== null ? existingRemaining : limit;
 
-        // always keep bucket synced, even if blocked
         if (startRemaining < cost) {
             tx.set(
                 userRef,
@@ -151,6 +484,19 @@ async function reserveAiEditCreditsInline(opts: {
                         monthlyLimit: limit,
                         periodEnd: endDate,
                     },
+                },
+                { merge: true }
+            );
+
+            tx.set(
+                evtRef,
+                {
+                    feature: "ai_edit",
+                    status: "blocked",
+                    reason: "insufficient_credits",
+                    cost,
+                    tier,
+                    createdAt: now,
                 },
                 { merge: true }
             );
@@ -179,14 +525,105 @@ async function reserveAiEditCreditsInline(opts: {
             { merge: true }
         );
 
+        tx.create(evtRef, {
+            feature: "ai_edit",
+            status: "reserved",
+            cost,
+            tier,
+            createdAt: now,
+        });
+
         return { ok: true, remaining: newRemaining, limit, periodEnd: endDate };
     });
 }
 
-/**
- * Ensure credits.aiEdits exists for UI (GET path).
- * Does NOT consume credits.
- */
+async function refundAiEditCreditsInline(opts: {
+    db: any;
+    uid: string;
+    tier: UserTier;
+    cost: number;
+    now: Date;
+    requestId: string;
+    reason: string;
+}) {
+    const { db, uid, tier, cost, now, requestId, reason } = opts;
+
+    const limit = monthlyLimitFor(tier, "edit");
+    if (!limit) return;
+
+    const userRef = db.collection("kloner_users").doc(uid);
+    const evtRef = creditEventRef(db, uid, requestId);
+
+    await db.runTransaction(async (tx: any) => {
+        const evtSnap = await tx.get(evtRef);
+        if (!evtSnap.exists) return;
+
+        const evt = evtSnap.data() as any;
+        const status = String(evt?.status || "");
+        if (status !== "reserved") return;
+
+        const userSnap = await tx.get(userRef);
+        const data = userSnap.exists ? (userSnap.data() as any) : {};
+        const bucket = data["credits.aiEdits"] || (data.credits && data.credits.aiEdits) || {};
+
+        const rawEnd = bucket.periodEnd;
+        let periodEndDate: Date | null = null;
+        if (rawEnd && typeof rawEnd.toDate === "function") periodEndDate = rawEnd.toDate() as Date;
+        else if (rawEnd instanceof Date) periodEndDate = rawEnd;
+
+        const active = periodEndDate !== null && now < periodEndDate;
+        const endDate = active ? (periodEndDate as Date) : nextPeriodEndUtc(now);
+
+        const existingRemaining =
+            typeof bucket.remaining === "number" && bucket.remaining >= 0 ? bucket.remaining : null;
+
+        const startRemaining = active && existingRemaining !== null ? existingRemaining : limit;
+        const newRemaining = Math.min(startRemaining + cost, limit);
+
+        tx.set(
+            userRef,
+            {
+                "credits.aiEdits": {
+                    remaining: newRemaining,
+                    monthlyLimit: limit,
+                    periodEnd: endDate,
+                },
+            },
+            { merge: true }
+        );
+
+        tx.set(
+            evtRef,
+            {
+                status: "refunded",
+                refundedAt: now,
+                refundReason: reason,
+            },
+            { merge: true }
+        );
+    });
+}
+
+async function commitAiEditCreditsInline(opts: { db: any; uid: string; requestId: string; now: Date }) {
+    const { db, uid, requestId, now } = opts;
+    const evtRef = creditEventRef(db, uid, requestId);
+
+    try {
+        await db.runTransaction(async (tx: any) => {
+            const snap = await tx.get(evtRef);
+            if (!snap.exists) return;
+            const evt = snap.data() as any;
+            const status = String(evt?.status || "");
+            if (status === "committed") return;
+            if (status !== "reserved") return;
+
+            tx.set(evtRef, { status: "committed", committedAt: now }, { merge: true });
+        });
+    } catch (e) {
+        console.error("[ai-edit] failed to commit credit event", e);
+    }
+}
+
 async function ensureAiEditBucketInline(opts: {
     db: any;
     uid: string;
@@ -196,8 +633,6 @@ async function ensureAiEditBucketInline(opts: {
     const { db, uid, tier, now } = opts;
 
     const limit = monthlyLimitFor(tier, "edit");
-
-    // unlimited
     if (!limit) return { remaining: null, limit: 0, periodEnd: null };
 
     const userRef = db.collection("kloner_users").doc(uid);
@@ -205,36 +640,23 @@ async function ensureAiEditBucketInline(opts: {
     return await db.runTransaction(async (tx: any) => {
         const snap = await tx.get(userRef);
         const data = snap.exists ? (snap.data() as any) : {};
-
-        const bucket =
-            data["credits.aiEdits"] ||
-            (data.credits && data.credits.aiEdits) ||
-            {};
+        const bucket = data["credits.aiEdits"] || (data.credits && data.credits.aiEdits) || {};
 
         const rawEnd = bucket.periodEnd;
         let periodEndDate: Date | null = null;
-
-        if (rawEnd && typeof rawEnd.toDate === "function") {
-            periodEndDate = rawEnd.toDate() as Date;
-        } else if (rawEnd instanceof Date) {
-            periodEndDate = rawEnd;
-        }
+        if (rawEnd && typeof rawEnd.toDate === "function") periodEndDate = rawEnd.toDate() as Date;
+        else if (rawEnd instanceof Date) periodEndDate = rawEnd;
 
         const active = periodEndDate !== null && now < periodEndDate;
-
         const existingRemaining =
-            typeof bucket.remaining === "number" && bucket.remaining >= 0
-                ? bucket.remaining
-                : null;
+            typeof bucket.remaining === "number" && bucket.remaining >= 0 ? bucket.remaining : null;
 
         const endDate = active ? (periodEndDate as Date) : nextPeriodEndUtc(now);
 
-        // if active and remaining present, keep as-is
         if (active && existingRemaining !== null) {
             return { remaining: existingRemaining, limit, periodEnd: endDate };
         }
 
-        // reset for new period or missing bucket
         tx.set(
             userRef,
             {
@@ -277,36 +699,16 @@ function inferPageIntentFromSlug(slug: string): {
     const pick = (kind: any, hints: string[]) => ({ kind, title, hints });
 
     if (/(^|\/)(about|about-us|team|company|story|mission)(\/|$)/.test(s)) {
-        return pick("about", [
-            "mission + values",
-            "team or founder section",
-            "social proof / testimonials",
-            "cta section",
-        ]);
+        return pick("about", ["mission + values", "team or founder section", "social proof / testimonials", "cta section"]);
     }
     if (/(^|\/)(contact|support|help)(\/|$)/.test(s)) {
-        return pick("contact", [
-            "contact methods",
-            "form area (fields only, no <form> submission logic)",
-            "faq snippets",
-            "cta section",
-        ]);
+        return pick("contact", ["contact methods", "form area (fields only, no <form> submission logic)", "faq snippets", "cta section"]);
     }
     if (/(^|\/)(pricing|plans|fees)(\/|$)/.test(s)) {
-        return pick("pricing", [
-            "tier cards (3 tiers)",
-            "feature comparison bullets (not a table)",
-            "faq section",
-            "cta section",
-        ]);
+        return pick("pricing", ["tier cards (3 tiers)", "feature comparison bullets (not a table)", "faq section", "cta section"]);
     }
     if (/(^|\/)(services|service)(\/|$)/.test(s)) {
-        return pick("services", [
-            "service list with short blurbs",
-            "process steps",
-            "case study highlight",
-            "cta section",
-        ]);
+        return pick("services", ["service list with short blurbs", "process steps", "case study highlight", "cta section"]);
     }
     if (/(^|\/)(faq|faqs)(\/|$)/.test(s)) {
         return pick("faq", ["accordion-like blocks", "cta section"]);
@@ -315,20 +717,12 @@ function inferPageIntentFromSlug(slug: string): {
         return pick("blog", ["blog grid placeholder", "categories strip", "cta section"]);
     }
     if (/(^|\/)(features|product|platform)(\/|$)/.test(s)) {
-        return pick("features", [
-            "hero + value prop",
-            "feature sections (3+)",
-            "cta section",
-        ]);
+        return pick("features", ["hero + value prop", "feature sections (3+)", "cta section"]);
     }
     if (/(^|\/)(home|landing|start)(\/|$)/.test(s)) {
         return pick("landing", ["hero", "benefits", "social proof", "cta"]);
     }
-    return pick("generic", [
-        "hero section",
-        "2–4 content sections based on inferred topic",
-        "cta section",
-    ]);
+    return pick("generic", ["hero section", "2–4 content sections based on inferred topic", "cta section"]);
 }
 
 function isVagueUserPrompt(p: string): boolean {
@@ -336,21 +730,13 @@ function isVagueUserPrompt(p: string): boolean {
     if (!t) return true;
     if (t.length < 18) return true;
     const low = t.toLowerCase();
-    const vagueSignals = [
-        "make a page",
-        "new page",
-        "basic page",
-        "nice page",
-        "simple page",
-        "make it look good",
-        "something about",
-    ];
+    const vagueSignals = ["make a page", "new page", "basic page", "nice page", "simple page", "make it look good", "something about"];
     return vagueSignals.some((s) => low.includes(s));
 }
 
 function buildCreatePagePrompt(args: {
-    pageId: string; // "/pricing"
-    slug: string;   // "pricing" or "docs/faq"
+    pageId: string;
+    slug: string;
     userPrompt: string;
 }): { modelPrompt: string; userPromptForStorage: string } {
     const { pageId, slug, userPrompt } = args;
@@ -408,10 +794,7 @@ CONTRAST RULE (NON-NEGOTIABLE):
         `If you include <style>, scope selectors under main.page-root[data-route="${pageId}"] only. ` +
         `Never target body, html, :root, header, or footer.`;
 
-    const sectionHints =
-        inferred.hints?.length
-            ? `Suggested sections: ${inferred.hints.join(", ")}.`
-            : "";
+    const sectionHints = inferred.hints?.length ? `Suggested sections: ${inferred.hints.join(", ")}.` : "";
 
     const modelPrompt = [
         `Create a brand new page layout inside the provided <main class="page-root" data-route="${pageId}"> block.`,
@@ -435,10 +818,6 @@ CONTRAST RULE (NON-NEGOTIABLE):
     };
 }
 
-/**
- * Trim HTML to a bounded size while trying to keep <head> intact.
- * This keeps model latency and cost under control.
- */
 function trimHtmlForModel(html: string): string {
     if (html.length <= MAX_HTML_CHARS) return html;
 
@@ -460,7 +839,6 @@ function trimHtmlForModel(html: string): string {
     return head + rest.slice(0, remainingBudget);
 }
 
-// Robust extractor for the Responses API shape (OpenAI)
 function extractTextFromResponse(resp: any): string {
     if (!resp || !resp.output) return "";
 
@@ -480,46 +858,26 @@ function extractTextFromResponse(resp: any): string {
     return chunks.join("\n").trim();
 }
 
-/**
- * Moderate user prompts (and image slot prompts) using omni-moderation-latest.
- */
 async function assertPromptSafe(prompt: string) {
-    try {
-        const moderation = await client.moderations.create({
-            model: "omni-moderation-latest",
-            input: prompt,
-        });
+    const moderation = await client.moderations.create({
+        model: "omni-moderation-latest",
+        input: prompt,
+    });
 
-        const result: any = (moderation as any).results?.[0];
-        if (!result) {
-            console.error("[ai-edit] moderation: no results, failing closed");
-            const err = new Error("moderation_failed");
-            (err as any).code = "MODERATION_ERROR";
-            throw err;
-        }
+    const result: any = (moderation as any).results?.[0];
+    if (!result) {
+        const err = new Error("moderation_failed");
+        (err as any).code = "MODERATION_ERROR";
+        throw err;
+    }
 
-        if (result.flagged) {
-            console.warn("[ai-edit] moderation: prompt flagged", {
-                categories: result.categories,
-                category_scores: result.category_scores,
-            });
-            const err = new Error("prompt_unsafe");
-            (err as any).code = "PROMPT_UNSAFE";
-            throw err;
-        }
-    } catch (err: any) {
-        console.error("[ai-edit] moderation error", {
-            name: err?.name,
-            message: err?.message,
-            code: err?.code,
-        });
+    if (result.flagged) {
+        const err = new Error("prompt_unsafe");
+        (err as any).code = "PROMPT_UNSAFE";
         throw err;
     }
 }
 
-/**
- * Parse KLONER_IMAGE_SLOT comments.
- */
 function extractImageSlots(html: string): { index: number; prompt: string }[] {
     const slots: { index: number; prompt: string }[] = [];
     const regex = /<!--\s*KLONER_IMAGE_SLOT_(\d+)\s*:(.*?)-->/gis;
@@ -536,15 +894,9 @@ function extractImageSlots(html: string): { index: number; prompt: string }[] {
     return slots;
 }
 
-/**
- * Simple JPEG compression via sharp.
- */
-async function compressImageBuffer(buf: Buffer): Promise<any> {
+async function compressImageBuffer(buf: Buffer): Promise<Buffer> {
     try {
-        const output = await sharp(buf)
-            .jpeg({ quality: 78, chromaSubsampling: "4:2:0" })
-            .toBuffer();
-        return output;
+        return await sharp(buf).jpeg({ quality: 78, chromaSubsampling: "4:2:0" }).toBuffer();
     } catch (err) {
         console.error("[ai-edit] compressImageBuffer failed, returning original", err);
         return buf;
@@ -559,16 +911,10 @@ type ImageDebug = {
     imageErrorMessage?: string;
 };
 
-/**
- * Generate+upload images for the KLONER slots and wire them into the HTML.
- */
 async function materializeAiImages(
     html: string,
     opts: { uid: string; renderId: string; originalHtml?: string }
-): Promise<{
-    html: string;
-    debug: ImageDebug;
-}> {
+): Promise<{ html: string; debug: ImageDebug }> {
     const originalHtml = opts.originalHtml ?? html;
 
     const debug: ImageDebug = {
@@ -585,12 +931,7 @@ async function materializeAiImages(
     const slots = extractImageSlots(html);
     debug.imageSlotsFound = slots.length;
 
-    if (!slots.length) {
-        console.log("[ai-edit] no KLONER_IMAGE_SLOT markers in HTML");
-        return { html, debug };
-    }
-
-    console.log("[ai-edit] materializeAiImages: found slots", slots);
+    if (!slots.length) return { html, debug };
 
     const bucket = getStorage().bucket(STORAGE_BUCKET);
     const slotUrlMap = new Map<number, string>();
@@ -598,8 +939,6 @@ async function materializeAiImages(
     for (const slot of slots) {
         try {
             await assertPromptSafe(slot.prompt);
-
-            console.log("[ai-edit] generating AI image for slot", slot);
 
             const imgResp = await client.images.generate({
                 model: "gpt-image-1",
@@ -611,16 +950,10 @@ async function materializeAiImages(
             const first = (imgResp as any)?.data?.[0];
             const b64 = first?.b64_json;
 
-            if (!b64 || typeof b64 !== "string") {
-                console.error("[ai-edit] no b64_json in image response for slot", {
-                    slot,
-                    imgRespSnippet: JSON.stringify(imgResp).slice(0, 400),
-                });
-                continue;
-            }
+            if (!b64 || typeof b64 !== "string") continue;
 
             let buf = Buffer.from(b64, "base64");
-            buf = await compressImageBuffer(buf);
+            buf = (await compressImageBuffer(buf)) as any;
 
             const now = Date.now();
             const filePath = `kloner_ai_images/${opts.renderId}/${now}_slot_${slot.index}.jpg`;
@@ -637,26 +970,13 @@ async function materializeAiImages(
                 expires: "2500-01-01",
             });
 
-            console.log("[ai-edit] uploaded AI image", {
-                slotIndex: slot.index,
-                filePath,
-                signedUrl,
-            });
-
             slotUrlMap.set(slot.index, signedUrl);
-            debug.imageUrls.push({
-                index: slot.index,
-                url: signedUrl,
-                prompt: slot.prompt,
-            });
+            debug.imageUrls.push({ index: slot.index, url: signedUrl, prompt: slot.prompt });
         } catch (err: any) {
             const status: number | undefined = err?.status ?? err?.response?.status;
             const message: string = err?.error?.message ?? err?.message ?? String(err);
 
-            console.error("[ai-edit] failed generating/uploading AI image for slot", slot, {
-                status,
-                message,
-            });
+            console.error("[ai-edit] failed generating/uploading AI image for slot", slot, { status, message });
 
             if (status) {
                 debug.imageErrorStatus = status;
@@ -666,8 +986,7 @@ async function materializeAiImages(
 
             if (err?.code === "PROMPT_UNSAFE" || err?.code === "MODERATION_ERROR") {
                 debug.imageErrorStatus = 400;
-                debug.imageErrorMessage =
-                    "Image prompt was blocked or moderation failed; reverting image changes.";
+                debug.imageErrorMessage = "Image prompt was blocked or moderation failed; reverting image changes.";
                 break;
             }
         }
@@ -682,7 +1001,6 @@ async function materializeAiImages(
         outHtml = outHtml.replace(/__KLONER_IMAGE_SLOT_\d+__/g, "");
 
         if (debug.imageErrorStatus === 400 || debug.imageErrorStatus === 403 || debug.imageErrorStatus === 401) {
-            console.warn("[ai-edit] image materialization blocked; reverting to original HTML block");
             return { html: originalHtml, debug };
         }
 
@@ -700,44 +1018,6 @@ async function materializeAiImages(
     return { html: outHtml, debug };
 }
 
-/**
- * Count occurrences of a tag like <div ...> or <section ...>.
- */
-function countTag(html: string, tag: string): number {
-    const re = new RegExp(`<${tag}[^>]*>`, "gi");
-    let count = 0;
-    while (re.exec(html)) count++;
-    return count;
-}
-
-/**
- * Heuristic to block destructive edits.
- */
-function isDestructiveEdit(beforeHtml: string, afterHtml: string): boolean {
-    const beforeLen = beforeHtml.length;
-    const afterLen = afterHtml.length;
-
-    if (!afterLen) return true;
-
-    if (afterLen < beforeLen * 0.4) {
-        return true;
-    }
-
-    const keyTags = ["section", "div", "p", "img", "a"];
-    for (const tag of keyTags) {
-        const beforeCount = countTag(beforeHtml, tag);
-        if (beforeCount === 0) continue;
-        const afterCount = countTag(afterHtml, tag);
-
-        if (afterCount < Math.floor(beforeCount * 0.5)) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-// Shared system prompt used for both Gemini and OpenAI
 const AI_EDIT_SYSTEM_PROMPT = `
 You are an HTML refactoring assistant for the Kloner website editor.
 
@@ -759,82 +1039,72 @@ SAFETY AND POLICY (MUST FOLLOW):
     "Request refused for safety reasons. No changes applied."
   - Under HTML: return the original HTML block unchanged.
 
+- NEVER use example.com or placeholder absolute URLs for images, icons, or backgrounds.
+- If you need a new image, you MUST use the Kloner slot format:
+  - Place __KLONER_IMAGE_SLOT_N__ where the URL goes
+  - Include: <!-- KLONER_IMAGE_SLOT_N: <short safe image description> -->
+- Do not output any external image URLs unless they already exist in the provided HTML.
+
 ROLE:
-- You receive the HTML for a single selected block (for example a section, div, card, or hero area)
-  plus a short user instruction.
-- Your job is to apply a small, focused change to that block while preserving the existing content and layout.
-
-CORE BEHAVIOR:
-- Apply only minimal, targeted changes based on the user instruction.
-- Preserve all existing text, links, and nested elements unless the user explicitly asks to remove them.
-- Preserve all IDs, class names, and data-* attributes.
-- Preserve Kloner-specific guard rails (attributes like data-kloner-root, kloner markers, etc).
-- Do not delete or empty major sections of the block.
-- Do not replace the block with a bare wrapper. The original structure and content must remain,
-  with only small adjustments (for example: colors, gradients, wording tweaks).
-
-MEDIA RULES:
-- Do not remove images or other media unless the user explicitly asks.
-- Preserve all <img>, <picture>, <figure>, <video>, <source> tags and any background-image styles from the original HTML.
-- You may adjust surrounding text or layout, but keep the media elements themselves.
-
-THEME AND DESIGN RULES:
-- Preserve the current theme of the block unless the user explicitly requests design changes.
-- Preserve all existing classes that control theme, such as Tailwind utilities
-  (bg-*, text-*, font-*, rounded-*, shadow-*), color tokens, and spacing.
-- Preserve CSS variables and design tokens (for example: var(--accent), var(--primary), etc).
-- When you add new elements, reuse the same style and theme classes already present
-  in the surrounding HTML so the new content matches the current site.
-
-AI IMAGE GENERATION RULES:
-- You may request new AI-generated images only when the user's instruction clearly asks
-  for a new or changed image or background.
-- When you need a new AI-generated image, do not invent a final URL.
-  Instead, use numbered image slots:
-
-  1) At the top of your HTML output, add one comment per image:
-     <!-- KLONER_IMAGE_SLOT_0: short description of the desired image -->
-     <!-- KLONER_IMAGE_SLOT_1: another short description -->
-
-  2) In the HTML where the image will be used:
-     - For <img> tags, set:
-         src="__KLONER_IMAGE_SLOT_0__"
-       and keep a relevant alt attribute that matches the image.
-     - For CSS backgrounds, use:
-         style="background-image:url('__KLONER_IMAGE_SLOT_0__');"
-
-  3) Reuse the same slot index everywhere that same image is used in this block.
-
-- If the user does not explicitly ask for a new or changed image,
-  do not create any KLONER_IMAGE_SLOT comments or placeholders.
-
-CONFLICT HANDLING:
-- If the user instruction conflicts with these rules,
-  follow these rules first and then satisfy the instruction as much as possible
-  within these constraints.
+- You receive the HTML for a single selected block plus a short user instruction.
+- Apply minimal, targeted changes; preserve existing content and structure.
 
 OUTPUT FORMAT (STRICT):
-Return plain text in exactly this format, with no extra commentary:
-
-SUMMARY: <one short sentence describing what changed or why it was refused>
+SUMMARY: <one short sentence>
 HTML:
-<the edited HTML for the same block, including any KLONER_IMAGE_SLOT comments if used>
-
-Requirements:
-- Return only the edited HTML for that block, not a full document.
-- Do not include <!doctype> or <html> wrappers.
-- Do not return JSON.
-- Do not wrap anything in backticks.
+<edited HTML>
 `.trim();
 
 /**
- * Core model call for AI editing.
+ * Hard kill-switch for placeholder assets.
+ * Fixes your exact symptom: model injects https://example.com/homer-donut.jpg which then 404s in the iframe.
+ *
+ * Strategy:
+ * - Replace any example.com src/href with an inert data URL (NOT empty string, to avoid weird fetch behavior).
+ * - Wipe srcset containing example.com.
+ * - Remove any <link ... href="https://example.com/..."> entirely (icons are common offenders).
+ * - Kill CSS url(https://example.com/...) to "none".
+ * - Catch both quoted and unquoted attribute forms.
  */
+function stripExampleDotComAssets(html: string) {
+    if (!html) return html;
+
+    let out = String(html);
+
+    // Remove <link ... href="https://example.com/..."> tags entirely
+    out = out.replace(/<link\b[^>]*\bhref\s*=\s*(?:"|')https?:\/\/example\.com\/[^"']+(?:"|')[^>]*>/gi, "");
+
+    // src="https://example.com/..." or src='...'
+    out = out.replace(/(\ssrc\s*=\s*["'])https?:\/\/example\.com\/[^"']+(["'])/gi, '$1data:,$2');
+
+    // src=https://example.com/... (unquoted)
+    out = out.replace(/(\ssrc\s*=\s*)https?:\/\/example\.com\/[^\s>]+/gi, "$1data:,");
+
+    // href="https://example.com/..."
+    out = out.replace(/(\shref\s*=\s*["'])https?:\/\/example\.com\/[^"']+(["'])/gi, '$1#$2');
+
+    // href=https://example.com/... (unquoted)
+    out = out.replace(/(\shref\s*=\s*)https?:\/\/example\.com\/[^\s>]+/gi, "$1#");
+
+    // srcset containing example.com -> blank it
+    out = out.replace(/(\ssrcset\s*=\s*["'])[^"']*example\.com[^"']*(["'])/gi, "$1$2");
+    out = out.replace(/(\ssrcset\s*=\s*)[^\s>]*example\.com[^\s>]*/gi, "$1");
+
+    // CSS url(...) pointing to example.com
+    out = out.replace(/url\(\s*["']?\s*https?:\/\/example\.com\/[^)"']+\s*["']?\s*\)/gi, "none");
+
+    // Final sweep: any remaining raw example.com urls
+    out = out.replace(/https?:\/\/example\.com\/[^\s"')>]+/gi, "");
+
+    return out;
+}
+
 async function runAiEditModel(input: {
     html: string;
-    prompt: string; // MODEL PROMPT (may include guard rails)
+    prompt: string;
     uid: string;
     mode?: "code" | "imagery";
+    requestId: string;
 }): Promise<AiEditModelResult> {
     const trimmedHtml = trimHtmlForModel(input.html);
     const { prompt, uid } = input;
@@ -850,178 +1120,113 @@ ${trimmedHtml}
 
     if (mode === "code" && geminiClient) {
         try {
-            console.log("[ai-edit] calling Gemini 3 Pro (code mode)", {
-                htmlLength: trimmedHtml.length,
-                promptSnippet: prompt.slice(0, 120),
-            });
-
-            const model = geminiClient.getGenerativeModel({
-                model: "gemini-3-pro-preview",
-            });
-
+            const model = geminiClient.getGenerativeModel({ model: "gemini-3-pro-preview" });
             const result = await model.generateContent({
-                contents: [
-                    {
-                        role: "user",
-                        parts: [
-                            {
-                                text: `${AI_EDIT_SYSTEM_PROMPT}\n\n${user}`,
-                            },
-                        ],
-                    },
-                ],
+                contents: [{ role: "user", parts: [{ text: `${AI_EDIT_SYSTEM_PROMPT}\n\n${user}` }] }],
             });
 
             const raw = result.response?.text()?.trim() ?? "";
-
             if (!raw) {
-                console.error("[ai-edit] Gemini returned empty text; falling back to original HTML");
                 return {
+                    ok: false,
                     afterHtml: input.html,
-                    summary: "No safe HTML returned; left the block unchanged.",
+                    summary: "AI edit failed; left the block unchanged.",
+                    errorCode: "MODEL_EMPTY",
+                    errorStatus: 502,
+                    userError: "AI edit failed. No changes were applied.",
                 };
             }
 
             const summaryMatch = raw.match(/^SUMMARY:\s*(.+)$/m);
-            const summary =
-                summaryMatch && summaryMatch[1].trim()
-                    ? summaryMatch[1].trim()
-                    : "Minimal changes applied.";
+            const summary = summaryMatch && summaryMatch[1].trim() ? summaryMatch[1].trim() : "Minimal changes applied.";
 
             let htmlSection = raw;
             const htmlMarkerIdx = raw.toLowerCase().indexOf("html:");
-            if (htmlMarkerIdx !== -1) {
-                htmlSection = raw.slice(htmlMarkerIdx + "html:".length).trim();
+            if (htmlMarkerIdx !== -1) htmlSection = raw.slice(htmlMarkerIdx + "html:".length).trim();
+
+            const afterHtml = htmlSection.trim();
+            if (!afterHtml) {
+                return {
+                    ok: false,
+                    afterHtml: input.html,
+                    summary: "AI edit failed; left the block unchanged.",
+                    errorCode: "MODEL_HTML_EMPTY",
+                    errorStatus: 502,
+                    userError: "AI edit failed. No changes were applied.",
+                };
             }
 
-            const lower = htmlSection.toLowerCase();
-            let htmlStart = lower.indexOf("<!doctype html");
-            if (htmlStart === -1) htmlStart = lower.indexOf("<html");
-
-            let afterHtml: string;
-
-            if (htmlStart !== -1) {
-                afterHtml = htmlSection.slice(htmlStart).trim();
-            } else {
-                afterHtml = htmlSection.trim();
-                if (!afterHtml) {
-                    console.error("[ai-edit] Gemini returned empty HTML section; first 300 chars of raw:", raw.slice(0, 300));
-                    return {
-                        afterHtml: input.html,
-                        summary:
-                            summary +
-                            " (Model did not return usable HTML; kept the original block unchanged.)",
-                    };
-                }
-            }
-
-            console.log("[ai-edit] Gemini model output lengths", {
-                rawLength: raw.length,
-                htmlLength: afterHtml.length,
-                summary,
-            });
-
-            return { afterHtml, summary };
+            return { ok: true, afterHtml, summary };
         } catch (err: any) {
-            console.error("[ai-edit] Gemini call failed, falling back to OpenAI", {
-                name: err?.name,
-                message: err?.message,
-            });
+            console.error("[ai-edit] Gemini call failed", { name: err?.name, message: err?.message });
         }
     }
 
     try {
-        console.log("[ai-edit] calling OpenAI gpt-5-mini", {
-            htmlLength: trimmedHtml.length,
-            promptSnippet: prompt.slice(0, 120),
-            mode,
-        });
-
         const resp = await client.responses.create({
             model: "gpt-5-mini",
             input: [
-                {
-                    role: "system",
-                    content: [{ type: "input_text", text: AI_EDIT_SYSTEM_PROMPT }],
-                },
-                {
-                    role: "user",
-                    content: [{ type: "input_text", text: user }],
-                },
+                { role: "system", content: [{ type: "input_text", text: AI_EDIT_SYSTEM_PROMPT }] },
+                { role: "user", content: [{ type: "input_text", text: user }] },
             ],
             max_output_tokens: 12_000,
-            metadata: {
-                feature: "kloner_ai_edit",
-                uid,
-            },
+            metadata: { feature: "kloner_ai_edit", uid, requestId: input.requestId },
         });
 
         const raw = extractTextFromResponse(resp);
-
         if (!raw) {
-            console.error("[ai-edit] empty text from OpenAI model, raw resp snippet:", JSON.stringify(resp, null, 2).slice(0, 2000));
             return {
+                ok: false,
                 afterHtml: input.html,
-                summary: "No safe HTML returned; left the block unchanged.",
+                summary: "AI edit failed; left the block unchanged.",
+                errorCode: "MODEL_EMPTY",
+                errorStatus: 502,
+                userError: "AI edit failed. No changes were applied.",
             };
         }
 
         const summaryMatch = raw.match(/^SUMMARY:\s*(.+)$/m);
-        const summary =
-            summaryMatch && summaryMatch[1].trim()
-                ? summaryMatch[1].trim()
-                : "Minimal changes applied.";
+        const summary = summaryMatch && summaryMatch[1].trim() ? summaryMatch[1].trim() : "Minimal changes applied.";
 
         let htmlSection = raw;
         const htmlMarkerIdx = raw.toLowerCase().indexOf("html:");
-        if (htmlMarkerIdx !== -1) {
-            htmlSection = raw.slice(htmlMarkerIdx + "html:".length).trim();
+        if (htmlMarkerIdx !== -1) htmlSection = raw.slice(htmlMarkerIdx + "html:".length).trim();
+
+        const afterHtml = htmlSection.trim();
+        if (!afterHtml) {
+            return {
+                ok: false,
+                afterHtml: input.html,
+                summary: "AI edit failed; left the block unchanged.",
+                errorCode: "MODEL_HTML_EMPTY",
+                errorStatus: 502,
+                userError: "AI edit failed. No changes were applied.",
+            };
         }
 
-        const lower = htmlSection.toLowerCase();
-        let htmlStart = lower.indexOf("<!doctype html");
-        if (htmlStart === -1) htmlStart = lower.indexOf("<html");
-
-        let afterHtml: string;
-
-        if (htmlStart !== -1) {
-            afterHtml = htmlSection.slice(htmlStart).trim();
-        } else {
-            afterHtml = htmlSection.trim();
-            if (!afterHtml) {
-                console.error("[ai-edit] model returned empty HTML section; first 300 chars of raw:", raw.slice(0, 300));
-                return {
-                    afterHtml: input.html,
-                    summary:
-                        summary +
-                        " (Model did not return usable HTML; kept the original block unchanged.)",
-                };
-            }
-        }
-
-        console.log("[ai-edit] OpenAI model output lengths", {
-            rawLength: raw.length,
-            htmlLength: afterHtml.length,
-            summary,
-        });
-
-        return { afterHtml, summary };
+        return { ok: true, afterHtml, summary };
     } catch (err: any) {
-        console.error("[ai-edit] OpenAI call failed", {
-            name: err?.name,
-            ctor: err?.constructor?.name,
-            message: err?.message,
-        });
+        const status: number | undefined = err?.status ?? err?.response?.status;
+        const message: string = err?.error?.message ?? err?.message ?? String(err);
+
+        const lower = String(message || "").toLowerCase();
+        const looksLikeSafetyReject =
+            lower.includes("rejected by the safety system") ||
+            lower.includes("safety system") ||
+            lower.includes("policy") ||
+            status === 403;
+
         return {
+            ok: false,
             afterHtml: input.html,
             summary: "AI edit failed; left the block unchanged.",
+            errorCode: looksLikeSafetyReject ? "SAFETY_REJECTED" : "OPENAI_ERROR",
+            errorStatus: status || 502,
+            userError: looksLikeSafetyReject ? friendlySafetyMessage(input.requestId).user : "AI edit failed. No changes were applied.",
         };
     }
 }
 
-/**
- * Normalize timestamps to ISO strings for response payloads.
- */
 function normalizeCreatedAtToIso(raw: any): string | null {
     try {
         if (!raw) return null;
@@ -1034,9 +1239,6 @@ function normalizeCreatedAtToIso(raw: any): string | null {
     }
 }
 
-/**
- * POST /api/ai-edit
- */
 async function handlePost(req: NextRequest) {
     return requireSessionAndMaybeCsrf(req, async ({ uid, req }) => {
         let db: any = null;
@@ -1047,32 +1249,29 @@ async function handlePost(req: NextRequest) {
             console.error("[ai-edit] failed to init Firestore", err);
         }
 
-        // FAIL CLOSED: do not allow AI calls without DB, or credits are unenforceable
         if (!db) {
-            return NextResponse.json(
-                { error: "Service temporarily unavailable. Try again shortly." },
-                { status: 503 }
-            );
+            return NextResponse.json({ error: "Service temporarily unavailable. Try again shortly." }, { status: 503 });
         }
 
         const body = (await req.json()) as Partial<AiEditRequestBody>;
+        const requestId = String(body.requestId || "").trim() || randomUUID();
 
         const renderId = body.renderId?.trim();
         const html = body.html ?? "";
         const mode: "code" | "imagery" = body.mode === "imagery" ? "imagery" : "code";
 
-        const action: "edit_block" | "create_page" =
-            body.action === "create_page" ? "create_page" : "edit_block";
+        const action: "edit_block" | "create_page" = body.action === "create_page" ? "create_page" : "edit_block";
 
-        // USER PROMPT: this is what must be saved in DB and used for moderation
-        const rawUserPrompt =
-            (body.userPrompt ?? body.prompt ?? "").trim().slice(0, MAX_USER_PROMPT_CHARS);
+        const rawUserPrompt = (body.userPrompt ?? body.prompt ?? "").trim().slice(0, MAX_USER_PROMPT_CHARS);
+        const rawDisplayPrompt = (body.originalPrompt ?? "").trim().slice(0, MAX_MODEL_PROMPT_CHARS);
 
-        // DISPLAY PROMPT: optional generated prompt that can be shown in history if your UI chooses it
-        const rawDisplayPrompt =
-            (body.originalPrompt ?? "").trim().slice(0, MAX_MODEL_PROMPT_CHARS);
+        const ip =
+            req.headers.get("x-forwarded-for")?.split(",")?.[0]?.trim() ||
+            req.headers.get("x-real-ip")?.trim() ||
+            null;
 
-        // MODEL PROMPT: what we actually send to the model (can include guard rails)
+        const ua = req.headers.get("user-agent") || null;
+
         let modelPrompt = "";
 
         if (!renderId || !html) {
@@ -1087,42 +1286,57 @@ async function handlePost(req: NextRequest) {
                 return NextResponse.json({ error: "pageId and slug are required" }, { status: 400 });
             }
 
-            const built = buildCreatePagePrompt({
-                pageId,
-                slug,
-                userPrompt: rawUserPrompt,
-            });
-
+            const built = buildCreatePagePrompt({ pageId, slug, userPrompt: rawUserPrompt });
             modelPrompt = built.modelPrompt.slice(0, MAX_MODEL_PROMPT_CHARS);
         } else {
-            // edit_block: model prompt is exactly the user prompt
             if (!rawUserPrompt) {
-                return NextResponse.json(
-                    { error: "prompt is required" },
-                    { status: 400 }
-                );
+                return NextResponse.json({ error: "prompt is required" }, { status: 400 });
             }
             modelPrompt = rawUserPrompt.slice(0, MAX_MODEL_PROMPT_CHARS);
         }
 
-        console.log("[ai-edit] POST start", {
-            uid,
-            renderId,
-            htmlLength: html.length,
-            action,
-            userPromptSnippet: rawUserPrompt.slice(0, 120),
-            mode,
-        });
+        // Load user tier + email
+        let userRef: any = null;
+        let tier: UserTier = "free";
+        let userEmail: string | null = null;
 
-        // Safety gate: moderate ONLY the user-entered text
+        try {
+            userRef = db.collection("kloner_users").doc(uid);
+            const userSnap = await userRef.get();
+            if (userSnap.exists) {
+                const data = userSnap.data() as any;
+                const rawTierValue = (data.userTier ?? data.tier) as string | undefined;
+                const rawTier = rawTierValue?.toLowerCase();
+                if (rawTier === "pro" || rawTier === "agency" || rawTier === "enterprise" || rawTier === "free") {
+                    tier = rawTier as UserTier;
+                }
+                userEmail = (data.email || data.userEmail || null) as any;
+            }
+        } catch (e) {
+            console.error("[ai-edit] failed to read userTier/email; defaulting to free", e);
+            tier = "free";
+        }
+
+        // Safety gate BEFORE credits
         try {
             await assertPromptSafe(rawUserPrompt || "create_page");
         } catch (err: any) {
-            if (err?.code === "PROMPT_UNSAFE") {
-                return NextResponse.json(
-                    { error: "This edit request was blocked because it violated our content rules." },
-                    { status: 400 }
-                );
+            const code = err?.code || "MODERATION_ERROR";
+
+            if (code === "PROMPT_UNSAFE") {
+                await recordAbuseAndMaybeAlert({
+                    db,
+                    uid,
+                    userEmail,
+                    reason: "PROMPT_UNSAFE (moderation flagged)",
+                    requestId,
+                    promptSnippet: rawUserPrompt,
+                    ip,
+                    ua,
+                });
+
+                const friendly = friendlySafetyMessage(requestId);
+                return NextResponse.json({ error: friendly.user, requestId }, { status: 400 });
             }
 
             return NextResponse.json(
@@ -1133,36 +1347,7 @@ async function handlePost(req: NextRequest) {
 
         const now = new Date();
 
-        let userRef: any = null;
-        let aiEditsRef: any = null;
-
-        // tier from Firestore user doc (authoritative)
-        let tier: UserTier = "free";
-        try {
-            userRef = db.collection("kloner_users").doc(uid);
-            const userSnap = await userRef.get();
-            if (userSnap.exists) {
-                const data = userSnap.data() as any;
-                const rawTierValue = (data.userTier ?? data.tier) as string | undefined;
-                const rawTier = rawTierValue?.toLowerCase();
-
-                if (
-                    rawTier === "pro" ||
-                    rawTier === "agency" ||
-                    rawTier === "enterprise" ||
-                    rawTier === "free"
-                ) {
-                    tier = rawTier as UserTier;
-                } else {
-                    tier = "free";
-                }
-            }
-        } catch (e) {
-            console.error("[ai-edit] failed to read userTier/tier; defaulting to free", e);
-            tier = "free";
-        }
-
-        // ATOMIC CREDIT RESERVATION (prepay before model call)
+        // Reserve credits
         let creditsRemaining: number | null = null;
         let creditsLimit: number | null = null;
 
@@ -1173,6 +1358,7 @@ async function handlePost(req: NextRequest) {
                 tier,
                 cost: 5,
                 now,
+                requestId,
             });
 
             if (!r.ok) {
@@ -1180,6 +1366,7 @@ async function handlePost(req: NextRequest) {
                     {
                         error: r.message,
                         meta: { tier, creditsRemaining: r.remaining, creditsLimit: r.limit },
+                        requestId,
                     },
                     { status: r.status }
                 );
@@ -1189,59 +1376,68 @@ async function handlePost(req: NextRequest) {
             creditsLimit = r.limit;
         } catch (err) {
             console.error("[ai-edit] credit reserve transaction failed; failing closed", err);
-            return NextResponse.json(
-                { error: "Service temporarily unavailable. Try again shortly." },
-                { status: 503 }
-            );
+            return NextResponse.json({ error: "Service temporarily unavailable. Try again shortly.", requestId }, { status: 503 });
         }
 
-        // bootstrap render + ai_edits ref for history persistence
-        try {
-            const renderRef = userRef.collection("kloner_renders").doc(renderId);
-            const renderSnap = await renderRef.get();
+        // Run model
+        const modelResult = await runAiEditModel({
+            html,
+            prompt: modelPrompt,
+            uid,
+            mode,
+            requestId,
+        });
 
-            if (!renderSnap.exists) {
-                await renderRef.set(
-                    { uid, renderId, createdAt: now, source: "ai-edit-shell" },
-                    { merge: true }
-                );
+        if (!modelResult.ok) {
+            if (modelResult.errorCode === "SAFETY_REJECTED") {
+                await recordAbuseAndMaybeAlert({
+                    db,
+                    uid,
+                    userEmail,
+                    reason: "SAFETY_REJECTED (model response blocked)",
+                    requestId,
+                    promptSnippet: rawUserPrompt,
+                    ip,
+                    ua,
+                });
             }
 
-            aiEditsRef = renderRef.collection("ai_edits");
-        } catch (err) {
-            console.error("[ai-edit] Firestore history bootstrap failed (credits already consumed)", err);
-            // Credits already reserved; keep behavior predictable and fail.
+            await refundAiEditCreditsInline({
+                db,
+                uid,
+                tier,
+                cost: 5,
+                now: new Date(),
+                requestId,
+                reason: modelResult.errorCode || "model_failed",
+            });
+
+            try {
+                const b = await ensureAiEditBucketInline({ db, uid, tier, now: new Date() });
+                creditsRemaining = b.remaining;
+                creditsLimit = b.limit;
+            } catch { }
+
             return NextResponse.json(
-                { error: "Service temporarily unavailable. Try again shortly." },
-                { status: 503 }
+                {
+                    error: modelResult.userError || "AI edit failed. No changes were applied.",
+                    meta: { tier, creditsRemaining, creditsLimit },
+                    requestId,
+                },
+                { status: modelResult.errorStatus || 502 }
             );
         }
 
-        let modelResult: AiEditModelResult;
-        try {
-            modelResult = await runAiEditModel({
-                html,
-                prompt: modelPrompt,
-                uid,
-                mode,
-            });
-        } catch (err: any) {
-            console.error("[ai-edit] model error (unexpected throw)", err);
-            return NextResponse.json({ error: "model_failed" }, { status: 502 });
-        }
-
-        let effectiveAfterHtml = modelResult.afterHtml;
-
-        // Optional destructive diff guard (kept disabled)
-        // if (isDestructiveEdit(html, effectiveAfterHtml)) { ... }
-
-        // Materialize any AI image slots into real URLs
-        let afterHtml = effectiveAfterHtml;
+        // Materialize images + strip placeholder assets (critical)
+        let afterHtml = modelResult.afterHtml;
         let imageDebug: ImageDebug = {
             imageSlotsFound: 0,
             imageSlotsMaterialized: 0,
             imageUrls: [],
         };
+
+        // Strip immediately, even before image pipeline, because model can inject example.com directly
+        afterHtml = stripExampleDotComAssets(afterHtml);
 
         try {
             const result = await materializeAiImages(afterHtml, {
@@ -1249,99 +1445,189 @@ async function handlePost(req: NextRequest) {
                 renderId: renderId!,
                 originalHtml: html,
             });
+
             afterHtml = result.html;
             imageDebug = result.debug;
 
-            console.log("[ai-edit] materializeAiImages debug", imageDebug);
+            // Strip again after image pipeline (belt + suspenders)
+            afterHtml = stripExampleDotComAssets(afterHtml);
 
             if (
                 imageDebug.imageSlotsFound > 0 &&
                 imageDebug.imageSlotsMaterialized === 0 &&
-                (imageDebug.imageErrorStatus === 403 || imageDebug.imageErrorStatus === 400)
+                (imageDebug.imageErrorStatus === 400 ||
+                    imageDebug.imageErrorStatus === 401 ||
+                    imageDebug.imageErrorStatus === 403)
             ) {
-                console.warn("[ai-edit] reverting AI edit because image generation is not allowed or was blocked");
-                afterHtml = html;
+                await recordAbuseAndMaybeAlert({
+                    db,
+                    uid,
+                    userEmail,
+                    reason: `IMAGE_BLOCKED (${imageDebug.imageErrorStatus})`,
+                    requestId,
+                    promptSnippet: safeSnippet(imageDebug.imageErrorMessage || rawUserPrompt, 220),
+                    ip,
+                    ua,
+                });
+
+                await refundAiEditCreditsInline({
+                    db,
+                    uid,
+                    tier,
+                    cost: 5,
+                    now: new Date(),
+                    requestId,
+                    reason: `image_blocked_${imageDebug.imageErrorStatus || "unknown"}`,
+                });
+
+                try {
+                    const b = await ensureAiEditBucketInline({ db, uid, tier, now: new Date() });
+                    creditsRemaining = b.remaining;
+                    creditsLimit = b.limit;
+                } catch { }
+
+                return NextResponse.json(
+                    {
+                        error:
+                            `We couldn’t generate one of the requested images due to safety filters. ` +
+                            `Try a simpler, more general description and run it again. ` +
+                            `(Request ID: ${requestId})`,
+                        meta: { tier, creditsRemaining, creditsLimit },
+                        debug: imageDebug,
+                        requestId,
+                    },
+                    { status: imageDebug.imageErrorStatus || 400 }
+                );
             }
         } catch (err) {
-            console.error("[ai-edit] materializeAiImages failed; falling back to raw HTML", err);
-            afterHtml = effectiveAfterHtml;
+            console.error("[ai-edit] materializeAiImages failed", err);
         }
 
-        // Final safety: never return unresolved KLONER image placeholders or comments
+        // Cleanup any remaining slots/comments, then strip placeholder assets one last time
         afterHtml = afterHtml
             .replace(/__KLONER_IMAGE_SLOT_\d+__/g, "")
             .replace(/<!--\s*KLONER_IMAGE_SLOT_\d+\s*:[\s\S]*?-->/g, "");
 
+        afterHtml = stripExampleDotComAssets(afterHtml);
+
+        if (String(afterHtml || "").trim() === String(html || "").trim()) {
+            await refundAiEditCreditsInline({
+                db,
+                uid,
+                tier,
+                cost: 5,
+                now: new Date(),
+                requestId,
+                reason: "no_change_applied",
+            });
+
+            try {
+                const b = await ensureAiEditBucketInline({ db, uid, tier, now: new Date() });
+                creditsRemaining = b.remaining;
+                creditsLimit = b.limit;
+            } catch { }
+
+            return NextResponse.json(
+                {
+                    error: "No changes were applied for this request.",
+                    meta: { tier, creditsRemaining, creditsLimit },
+                    debug: imageDebug,
+                    requestId,
+                },
+                { status: 422 }
+            );
+        }
+
         const summary = modelResult.summary;
 
-        const docRef = aiEditsRef.doc();
+        // Persist history; if fails, refund
+        let aiEditsRef: any = null;
 
-        await docRef.set({
-            renderId,
-            action,
-            prompt: rawUserPrompt, // USER ENTERED ONLY
-            displayPrompt: rawDisplayPrompt || modelPrompt, // generated/expanded (optional)
-            modelPrompt, // exact sent prompt
-            summary,
-            beforeHtml: html,
-            afterHtml,
-            createdAt: now,
-            uid,
-        });
-
-        // Trim history to last 5 edits for this render
         try {
-            const extraSnap = await aiEditsRef.orderBy("createdAt", "desc").offset(5).get();
+            const renderRef = userRef.collection("kloner_renders").doc(renderId);
 
-            if (!extraSnap.empty) {
-                const batch = db.batch();
-                extraSnap.docs.forEach((d: any) => batch.delete(d.ref));
-                await batch.commit();
+            const renderSnap = await renderRef.get();
+            if (!renderSnap.exists) {
+                await renderRef.set({ uid, renderId, createdAt: now, source: "ai-edit-shell" }, { merge: true });
+            }
+
+            aiEditsRef = renderRef.collection("ai_edits");
+
+            const docRef = aiEditsRef.doc();
+            await docRef.set({
+                renderId,
+                action,
+                prompt: rawUserPrompt,
+                displayPrompt: rawDisplayPrompt || modelPrompt,
+                modelPrompt,
+                summary,
+                beforeHtml: html,
+                afterHtml,
+                createdAt: now,
+                uid,
+                requestId,
+            });
+
+            try {
+                const extraSnap = await aiEditsRef.orderBy("createdAt", "desc").offset(5).get();
+                if (!extraSnap.empty) {
+                    const batch = db.batch();
+                    extraSnap.docs.forEach((d: any) => batch.delete(d.ref));
+                    await batch.commit();
+                }
+            } catch (err) {
+                console.error("[ai-edit] failed trimming history", err);
             }
         } catch (err) {
-            console.error("[ai-edit] failed trimming history", err);
+            console.error("[ai-edit] Firestore history write failed; refunding", err);
+
+            await refundAiEditCreditsInline({
+                db,
+                uid,
+                tier,
+                cost: 5,
+                now: new Date(),
+                requestId,
+                reason: "history_write_failed",
+            });
+
+            try {
+                const b = await ensureAiEditBucketInline({ db, uid, tier, now: new Date() });
+                creditsRemaining = b.remaining;
+                creditsLimit = b.limit;
+            } catch { }
+
+            return NextResponse.json(
+                {
+                    error: "Failed to save this AI edit. No credits were consumed.",
+                    meta: { tier, creditsRemaining, creditsLimit },
+                    requestId,
+                },
+                { status: 503 }
+            );
         }
+
+        await commitAiEditCreditsInline({ db, uid, requestId, now: new Date() });
 
         const latestSnap = await aiEditsRef.orderBy("createdAt", "desc").limit(5).get();
 
         const suggestions = latestSnap.docs.map((d: any) => {
             const data = d.data() as any;
-            return {
-                id: d.id,
-                ...data,
-                createdAt: normalizeCreatedAtToIso(data.createdAt),
-            };
-        });
-
-        console.log("[ai-edit] POST success", {
-            uid,
-            renderId,
-            summary,
-            action,
-            imageSlotsFound: imageDebug.imageSlotsFound,
-            imageSlotsMaterialized: imageDebug.imageSlotsMaterialized,
-            imageErrorStatus: imageDebug.imageErrorStatus,
-            mode,
+            return { id: d.id, ...data, createdAt: normalizeCreatedAtToIso(data.createdAt) };
         });
 
         return NextResponse.json(
             {
                 suggestions,
-                meta: {
-                    tier,
-                    creditsRemaining,
-                    creditsLimit,
-                },
+                meta: { tier, creditsRemaining, creditsLimit },
                 debug: imageDebug,
+                requestId,
             },
             { status: 200 }
         );
     });
 }
 
-/**
- * GET /api/ai-edit?renderId=...
- */
 async function handleGet(req: NextRequest) {
     return requireSessionAndMaybeCsrf(req, async ({ uid, req }) => {
         let db: any = null;
@@ -1361,10 +1647,7 @@ async function handleGet(req: NextRequest) {
 
         if (!db) {
             return NextResponse.json(
-                {
-                    suggestions: [],
-                    meta: { tier: "free", creditsRemaining: null, creditsLimit: null },
-                },
+                { suggestions: [], meta: { tier: "free", creditsRemaining: null, creditsLimit: null } },
                 { status: 200 }
             );
         }
@@ -1379,16 +1662,8 @@ async function handleGet(req: NextRequest) {
                     const data = userSnap.data() as any;
                     const rawTierValue = (data.userTier ?? data.tier) as string | undefined;
                     const rawTier = rawTierValue?.toLowerCase();
-
-                    if (
-                        rawTier === "pro" ||
-                        rawTier === "agency" ||
-                        rawTier === "enterprise" ||
-                        rawTier === "free"
-                    ) {
+                    if (rawTier === "pro" || rawTier === "agency" || rawTier === "enterprise" || rawTier === "free") {
                         tier = rawTier as UserTier;
-                    } else {
-                        tier = "free";
                     }
                 }
             } catch (e) {
@@ -1396,18 +1671,12 @@ async function handleGet(req: NextRequest) {
                 tier = "free";
             }
 
-            // keep bucket fresh for UI
             let creditsRemaining: number | null = null;
             let creditsLimit: number | null = null;
 
             try {
                 const now = new Date();
-                const b = await ensureAiEditBucketInline({
-                    db,
-                    uid,
-                    tier,
-                    now,
-                });
+                const b = await ensureAiEditBucketInline({ db, uid, tier, now });
                 creditsRemaining = b.remaining;
                 creditsLimit = b.limit;
             } catch (e) {
@@ -1418,10 +1687,7 @@ async function handleGet(req: NextRequest) {
             const renderSnap = await renderRef.get();
 
             if (!renderSnap.exists) {
-                return NextResponse.json(
-                    { suggestions: [], meta: { tier, creditsRemaining, creditsLimit } },
-                    { status: 200 }
-                );
+                return NextResponse.json({ suggestions: [], meta: { tier, creditsRemaining, creditsLimit } }, { status: 200 });
             }
 
             const aiEditsRef = renderRef.collection("ai_edits");
@@ -1429,24 +1695,14 @@ async function handleGet(req: NextRequest) {
 
             const suggestions = snap.docs.map((d: any) => {
                 const data = d.data() as any;
-                return {
-                    id: d.id,
-                    ...data,
-                    createdAt: normalizeCreatedAtToIso(data.createdAt),
-                };
+                return { id: d.id, ...data, createdAt: normalizeCreatedAtToIso(data.createdAt) };
             });
 
-            return NextResponse.json(
-                { suggestions, meta: { tier, creditsRemaining, creditsLimit } },
-                { status: 200 }
-            );
+            return NextResponse.json({ suggestions, meta: { tier, creditsRemaining, creditsLimit } }, { status: 200 });
         } catch (err) {
             console.error("[ai-edit] Firestore GET failed", err);
             return NextResponse.json(
-                {
-                    suggestions: [],
-                    meta: { tier: "free", creditsRemaining: null, creditsLimit: null },
-                },
+                { suggestions: [], meta: { tier: "free", creditsRemaining: null, creditsLimit: null } },
                 { status: 200 }
             );
         }

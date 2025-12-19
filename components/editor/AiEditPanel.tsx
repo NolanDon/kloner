@@ -12,6 +12,7 @@ export interface AiEditSuggestion {
     beforeHtml: string;
     afterHtml: string;
     createdAt: string;
+    requestId?: string;
 }
 
 type SelectionMeta = {
@@ -22,10 +23,7 @@ type SelectionMeta = {
 
 interface AiEditPanelProps {
     renderId: string | undefined;
-
-    // NEW: bump this number from parent to force history refresh
     refreshNonce?: number;
-
     getSelectedBlockHtml: () => string | null;
     selectionMeta?: SelectionMeta;
     onApplyBlockHtml: (blockHtml: string, targetPath?: string | null) => void;
@@ -98,8 +96,6 @@ async function getHistoryFetchOnce(renderId: string): Promise<HistoryFetchResult
     }
     const cache: Record<string, Promise<HistoryFetchResult>> = win[GLOBAL_HISTORY_CACHE_KEY];
 
-    // NOTE: your original code had `if (await cache[renderId])` which is wrong and can cause weirdness.
-    // Keeping behavior minimal but fixing it properly:
     if (await cache[renderId]) {
         return cache[renderId];
     }
@@ -120,7 +116,6 @@ async function getHistoryFetchOnce(renderId: string): Promise<HistoryFetchResult
     return p;
 }
 
-// NEW: force fetch (no cache). Used when parent says "refresh now".
 async function getHistoryFetchForce(renderId: string): Promise<HistoryFetchResult> {
     const res = await fetch(`/api/ai-edit?renderId=${encodeURIComponent(renderId)}`, {
         credentials: "include",
@@ -130,10 +125,20 @@ async function getHistoryFetchForce(renderId: string): Promise<HistoryFetchResul
     return { res, json };
 }
 
+function makeRequestId(): string {
+    try {
+        // modern browsers
+        // eslint-disable-next-line no-undef
+        return crypto.randomUUID();
+    } catch {
+        return `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    }
+}
+
 export default function AiEditPanel(props: AiEditPanelProps) {
     const {
         renderId,
-        refreshNonce, // NEW
+        refreshNonce,
         getSelectedBlockHtml,
         selectionMeta,
         onApplyBlockHtml,
@@ -176,7 +181,6 @@ export default function AiEditPanel(props: AiEditPanelProps) {
         else setCreditsRemaining(null);
     }
 
-    // PATCH: refreshNonce added to deps, and it can force-bypass cache.
     useEffect(() => {
         let cancelled = false;
 
@@ -236,7 +240,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
         return () => {
             cancelled = true;
         };
-    }, [renderId, refreshNonce]); // NEW DEP
+    }, [renderId, refreshNonce]);
 
     useEffect(() => {
         if (!loading) {
@@ -272,7 +276,9 @@ export default function AiEditPanel(props: AiEditPanelProps) {
         const blockHtml = blockHtmlRaw.trim();
 
         if (blockHtml.length > MAX_SELECTION_CHARS) {
-            setError(`This selection is too large for a focused AI edit. Try selecting a smaller section. \n ${blockHtml.length}`);
+            setError(
+                `This selection is too large for a focused AI edit. Try selecting a smaller section. \n ${blockHtml.length}`
+            );
             return;
         }
 
@@ -280,6 +286,8 @@ export default function AiEditPanel(props: AiEditPanelProps) {
         const promptForApi = attachedImage
             ? `${basePrompt}\n\n[Attached image: ${attachedImage.name}]`
             : basePrompt;
+
+        const clientRequestId = makeRequestId();
 
         const optimisticId = `pending-${Date.now()}`;
         const optimisticCreatedAt = new Date().toISOString();
@@ -294,6 +302,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                 beforeHtml: blockHtml,
                 afterHtml: "",
                 createdAt: optimisticCreatedAt,
+                requestId: clientRequestId,
             },
         ]);
 
@@ -320,14 +329,24 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                     renderId,
                     html: blockHtml,
                     prompt: promptForApi,
+                    requestId: clientRequestId,
                 }),
             });
 
             const j = await res.json().catch(() => ({}));
 
             if (!res.ok) {
-                setError(j.error || "AI edit failed");
-                applyCreditsMeta(j.meta);
+                const msg =
+                    j?.error ||
+                    (j?.debug?.imageErrorMessage ? String(j.debug.imageErrorMessage) : "") ||
+                    `AI edit failed (status ${res.status})`;
+
+                setError(msg);
+                applyCreditsMeta(j?.meta);
+
+                // remove optimistic entry on error
+                setSuggestions((prev) => prev.filter((s) => s.id !== optimisticId));
+                setPendingSuggestionId(null);
                 return;
             }
 
@@ -348,18 +367,15 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                 };
 
             setSuggestions((prev) => {
-                const baseList =
-                    pendingSuggestionId == null ? prev : prev.filter((s) => s.id !== pendingSuggestionId);
-
+                const baseList = prev.filter((s) => s.id !== optimisticId);
                 if (suggestionsFromApi && suggestionsFromApi.length) return suggestionsFromApi;
 
                 if (suggestionFromApi) {
                     const exists = baseList.some((s) => s.id === suggestionFromApi.id);
-                    if (exists) {
-                        return baseList.map((s) => (s.id === suggestionFromApi.id ? suggestionFromApi : s));
-                    }
+                    if (exists) return baseList.map((s) => (s.id === suggestionFromApi.id ? suggestionFromApi : s));
                     return [...baseList, suggestionFromApi];
                 }
+
                 return baseList;
             });
 
@@ -376,9 +392,14 @@ export default function AiEditPanel(props: AiEditPanelProps) {
             if (latest && latest.afterHtml) {
                 setActivePreviewId(latest.id);
                 onApplyBlockHtml(latest.afterHtml, targetPath || undefined);
+            } else {
+                // server should not return 200 without afterHtml, but fail-safe:
+                setError("AI edit returned no changes. No credits should have been consumed.");
             }
         } catch {
             setError("Network error while calling AI edit");
+            setSuggestions((prev) => prev.filter((s) => s.id !== optimisticId));
+            setPendingSuggestionId(null);
         } finally {
             setLoading(false);
             if (onAiEditingStateChange) {
@@ -454,7 +475,6 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                 </div>
 
                 <div ref={scrollContainerRef} className="flex-1 space-y-2 overflow-y-auto px-3 py-3 text-[12px]">
-
                     {historyError && (
                         <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
                             {historyError}
@@ -601,18 +621,20 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                             )}
                         </div>
 
+
                         <div className="min-h-[18px] text-right text-[11px]">
                             {atMaxChars ? (
                                 <span className="text-red-500">Max {MAX_PROMPT_CHARS} characters reached.</span>
                             ) : !hasScopedBlock && prompt.length > 0 ? (
                                 <span className="text-amber-600">No block selected. Click a section in the preview first.</span>
                             ) : hasScopedBlock && prompt.length > 0 ? (
-                                <span className="text-emerald-600">This edit will only affect your current selection.</span>
+                                <span className="text-neutral-600">This edit will only affect your current selection.</span>
                             ) : null}
                         </div>
                     </div>
+
                     {error && (
-                        <div className="mt-2 rounded-md text-[11px] text-red-700">
+                        <div className="flex justify-center mt-2 rounded-md text-[11px] text-red-700">
                             {error}
                         </div>
                     )}
@@ -620,18 +642,18 @@ export default function AiEditPanel(props: AiEditPanelProps) {
             </div>
 
             <style jsx global>{`
-        @keyframes kloner-ai-gradient-move {
-          0% {
-            background-position: 0% 50%;
-          }
-          50% {
-            background-position: 100% 50%;
-          }
-          100% {
-            background-position: 0% 50%;
-          }
-        }
-      `}</style>
+                @keyframes kloner-ai-gradient-move {
+                    0% {
+                        background-position: 0% 50%;
+                    }
+                    50% {
+                        background-position: 100% 50%;
+                    }
+                    100% {
+                        background-position: 0% 50%;
+                    }
+                }
+            `}</style>
         </>
     );
 }
