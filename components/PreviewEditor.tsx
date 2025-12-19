@@ -71,7 +71,6 @@ type Props = {
 };
 
 const ACCENT = "#f55f2a";
-const STORAGE_KEY = (id?: string) => `kloner:draft:${id || "default"}`;
 const SAVE_NUDGE_KEY = "kloner_save_nudge_seen";
 
 export type SelectionMeta = {
@@ -659,11 +658,6 @@ import { AiImageLibraryPanel } from "./AiImageLibraryPanel";
 import MiniToolbar from "@/src/lib/miniToolbar";
 import { IS_MOBILE, sanitizeImageName } from "./helpers";
 
-const MAX_HISTORY_SNAPSHOTS = 40;
-
-const HISTORY_KEY = (draftId?: string | null) =>
-    draftId ? `kloner:draftHistory:${draftId}` : "kloner:draftHistory:__anonymous";
-
 function formatSnapshotTime(ts: number) {
     try {
         const d = new Date(ts);
@@ -1148,9 +1142,9 @@ export default function PreviewEditor({
     const [aiPreviewHtml, setAiPreviewHtml] = useState<string | null>(null);
     const [showSaveNudge, setShowSaveNudge] = useState(false);
     const [saveNudgeArmed, setSaveNudgeArmed] = useState(false);
-    const [history, setHistory] = useState<DraftSnapshot[]>([]);
+
     const [aiHistory, setAiHistory] = useState<AiEditSuggestion[]>([]);
-    const [historyOpen, setHistoryOpen] = useState(false);
+    const [historyOpen, setHistoryOpen] = useState(true);
     const [sidebarHidden, setSidebarHidden] = useState(IS_MOBILE ? true : false);
     // dragging iframe
     const previewDragControls = useDragControls();
@@ -1168,6 +1162,8 @@ export default function PreviewEditor({
         archive: 0,
         restore: 0,
         historyRestore: 0,
+        historyClear: 0,
+        historyDelete: 0,
         aiEdit: 0,
         aiApply: 0,
         aiMiniToolbar: 0,
@@ -1211,7 +1207,11 @@ export default function PreviewEditor({
             modeSwitch: 0,
             archive: 0,
             restore: 0,
+
             historyRestore: 0,
+            historyClear: 0,
+            historyDelete: 0,
+
             aiEdit: 0,
             aiApply: 0,
             aiMiniToolbar: 0,
@@ -1228,14 +1228,12 @@ export default function PreviewEditor({
 
             if (!u?.uid) {
                 if (process.env.NODE_ENV === "development") {
-                    if (process.env.NODE_ENV === "development") {
-                        console.log(
-                            "[editor-analytics] flush skipped (no user)",
-                            reason,
-                            counters,
-                            durationMs,
-                        );
-                    }
+                    console.log(
+                        "[editor-analytics] flush skipped (no user)",
+                        reason,
+                        counters,
+                        durationMs,
+                    );
                 }
                 return;
             }
@@ -1271,7 +1269,6 @@ export default function PreviewEditor({
             flushSession("unmount");
         };
     }, []); // IMPORTANT: run once per mount, not on [user]
-
 
 
     useEffect(() => {
@@ -1322,7 +1319,6 @@ export default function PreviewEditor({
     const [customBgColor, setCustomBgColor] = useState<string>("#ffffff");
     const [selectionMeta, setSelectionMeta] = useState<SelectionMeta>({ has: false });
     const [lastSelectedPath, setLastSelectedPath] = useState(null);
-    const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
     const [archivedPageIds, setArchivedPageIds] = useState<string[]>([]);
     const [showPageLayers, setShowPageLayers] = useState(false);
 
@@ -1616,47 +1612,6 @@ export default function PreviewEditor({
     }
 
 
-    const mergedHistory: DraftSnapshot[] = [
-        ...history,
-        ...aiHistory.map(aiSuggestionToSnapshot),
-    ].sort((a, b) => b.createdAt - a.createdAt);
-
-    type HtmlSnapshotSource = "manual" | "autosave" | "before-ai" | "apply";
-
-    type HtmlSnapshot = {
-        id: string;
-        createdAt: number;
-        summary: any;
-        source: any;
-        html: string;
-        prompt: any;
-    };
-
-
-    function addSnapshot(opts: { id: string, createdAt: any, html: string; source: DraftSnapshotSource }) {
-        const trimmed = opts.html.trim();
-        if (!trimmed) return;
-
-        setHistory((prev): DraftSnapshot[] => {
-            const next: DraftSnapshot[] = [
-                ...prev as any,
-                {
-                    id:
-                        typeof crypto !== "undefined" && "randomUUID" in crypto
-                            ? crypto.randomUUID()
-                            : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-                    createdAt: Date.now(),
-                    source: opts.source,
-                    html: trimmed,
-                },
-            ];
-
-            // cap at last 50 entries to avoid unbounded growth
-            return next.length > 50 ? next.slice(next.length - 50) : next;
-        });
-    }
-
-
     function applySnapshotHtml(html: string) {
         let cleanedHtml = html;
         try {
@@ -1719,7 +1674,7 @@ export default function PreviewEditor({
     useEffect(() => {
         if (typeof window === "undefined") return;
 
-        const seen = window.localStorage.getItem(SAVE_NUDGE_KEY) === "1";
+        const seen = isDevCodeMode ? false : window.localStorage.getItem(SAVE_NUDGE_KEY) === "1";
         if (!seen) {
             setSaveNudgeArmed(true);
         }
@@ -1849,6 +1804,7 @@ export default function PreviewEditor({
         const v = Number(localStorage.getItem("kloner:uiScale"));
         return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : (IS_MOBILE ? 1.05 : 0.70)
     });
+
     useEffect(() => {
         if (typeof window === "undefined") return;
         localStorage.setItem("kloner:uiScale", String(uiScale));
@@ -1865,93 +1821,6 @@ export default function PreviewEditor({
         setDerivedPages(derived);
     }, [initialHtml, pages]);
 
-    // initialise monolithic HTML once (or when draftId/initialHtml changes)
-    useEffect(() => {
-        const storageKey = STORAGE_KEY(draftId);
-        const fromLs =
-            typeof window !== "undefined"
-                ? localStorage.getItem(storageKey)
-                : null;
-
-        const baseHtml = stripScripts(fromLs || initialHtml || "");
-        setHtmlDraft(baseHtml);
-        setPreviewHtml(baseHtml);
-        setDirty(false);
-    }, [draftId, initialHtml]);
-
-
-
-    // persist monolithic draft to localStorage
-    useEffect(() => {
-        const storageKey = STORAGE_KEY(draftId);
-        if (typeof window !== "undefined") {
-            localStorage.setItem(storageKey, htmlDraft);
-        }
-        setDirty(true);
-    }, [htmlDraft, draftId]);
-
-    // ---------- NEW: snapshot helper for saving/exporting ----------
-    const snapshotFromIframeOrDraft = useCallback(() => {
-        // In code mode, textarea is the source of truth.
-        if (mode === "code") return htmlDraft;
-
-        const doc = iframeRef.current?.contentDocument;
-        if (!doc) return htmlDraft;
-
-        try {
-            const htmlEl = doc.documentElement;
-            if (!htmlEl) return htmlDraft;
-            const raw = "<!doctype html>\n" + htmlEl.outerHTML;
-            return stripEditorArtifacts(raw);
-        } catch {
-            return htmlDraft;
-        }
-    }, [htmlDraft, mode]);
-
-    const snapshotDraft = useCallback(
-        (source: DraftSnapshotSource) => {
-            const html = snapshotFromIframeOrDraft();
-            if (!html) return;
-
-            setHistory((prev) => {
-                const last = prev[prev.length - 1];
-                if (last && last.html === html) return prev;
-
-                const snap: DraftSnapshot = {
-                    id: `${Date.now()}-${Math.random()
-                        .toString(36)
-                        .slice(2, 8)}`,
-                    createdAt: Date.now(),
-                    source,
-                    html,
-                    summary: undefined,
-                    prompt: undefined,
-                };
-
-                const merged = [...prev, snap];
-                if (merged.length > MAX_HISTORY_SNAPSHOTS) merged.shift();
-
-                return merged;
-            });
-
-            setActiveHistoryId((prev) => prev || `${Date.now()}`);
-        },
-        [snapshotFromIframeOrDraft],
-    );
-
-
-    useEffect(() => {
-        if (!draftId) return;
-        if (typeof window === "undefined") return;
-
-        const intervalMs = 60_000;
-        const id = window.setInterval(() => {
-            snapshotDraft("auto");
-            bumpSessionCounter("autosave");
-        }, intervalMs);
-
-        return () => window.clearInterval(id);
-    }, [draftId, snapshotDraft]);
 
 
 
@@ -2016,78 +1885,336 @@ export default function PreviewEditor({
         [onLiveHtml]
     );
 
+
+    // DRAFT & LOCAL STORAGE (render-scoped, timestamped, revert-focused)
+
+    const MAX_HISTORY_SNAPSHOTS = 40;
+
+    // v2 envelopes (so you never accidentally treat valid data as legacy)
+    type V2CurrentDraft = { v: 2; html: string; updatedAt: number };
+    type V2History = { v: 2; items: DraftSnapshot[]; updatedAt: number };
+
+    const safeJsonParse = <T,>(s: string | null): T | null => {
+        if (!s) return null;
+        try {
+            return JSON.parse(s) as T;
+        } catch {
+            return null;
+        }
+    };
+
+    // Render-scoped keys so drafts/history never bleed across previews
+    const CURRENT_DRAFT_KEY = (renderId?: string | null) =>
+        `kloner:render:${renderId || "__anonymous"}:currentHtml`;
+
+    const HISTORY_KEY = (renderId?: string | null) =>
+        `kloner:render:${renderId || "__anonymous"}:history`;
+
+    // --- state ---
+    const [history, setHistory] = useState<DraftSnapshot[]>([]);
+    const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
+
+    // ✅ hydration gate so we NEVER overwrite stored history with [] on first mount
+    const [lsReady, setLsReady] = useState(false);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        if (!draftId) return;
+
+        setLsReady(false);
+
+        const LEGACY_HISTORY_KEY = (id: string) => `kloner:draftHistory:${id}`;
+        const LEGACY_CURRENT_KEY = (id: string) => `kloner:draft:${id}`;
+
+        const makeId = (createdAt: number) =>
+            typeof crypto !== "undefined" && "randomUUID" in crypto
+                ? (crypto as any).randomUUID()
+                : `${createdAt}-${Math.random().toString(36).slice(2, 8)}`;
+
+        // 1) current html (v2)
+        const currentKey = CURRENT_DRAFT_KEY(draftId);
+        const current = safeJsonParse<V2CurrentDraft>(localStorage.getItem(currentKey));
+        const baseHtml = stripScripts((current?.v === 2 ? current.html : null) || initialHtml || "");
+
+        setHtmlDraft(baseHtml);
+        setPreviewHtml(baseHtml);
+        setDirty(false);
+
+        // 2) history (v2)
+        const hk = HISTORY_KEY(draftId);
+        const h = safeJsonParse<V2History>(localStorage.getItem(hk));
+
+        let restored: DraftSnapshot[] =
+            h?.v === 2 && Array.isArray(h.items)
+                ? h.items
+                    .map((s: any) => ({
+                        id: String(s?.id || ""),
+                        createdAt: Number(s?.createdAt || 0),
+                        source: s?.source,
+                        html: typeof s?.html === "string" ? s.html : "",
+                        summary: s?.summary,
+                        prompt: s?.prompt,
+                    }))
+                    .filter((s) => s.id && s.createdAt && s.html && s.html.trim().length > 0)
+                : [];
+
+        // 3) MIGRATE legacy -> v2 (only if v2 history empty)
+        if (restored.length === 0) {
+            const legacyRaw = localStorage.getItem(LEGACY_HISTORY_KEY(draftId));
+            const legacyParsed = safeJsonParse<any>(legacyRaw);
+
+            if (Array.isArray(legacyParsed) && legacyParsed.length) {
+                const normalized: DraftSnapshot[] = legacyParsed
+                    .map((s: any) => {
+                        const html =
+                            (typeof s?.html === "string" && s.html) ||
+                            (typeof s?.value === "string" && s.value) ||
+                            (typeof s?.content === "string" && s.content) ||
+                            "";
+
+                        const createdAt =
+                            Number(s?.createdAt) ||
+                            Number(s?.updatedAt) ||
+                            Number(s?.savedAt) ||
+                            Number(s?.ts) ||
+                            0;
+
+                        const trimmed = (html || "").trim();
+                        if (!trimmed) return null;
+
+                        const id = typeof s?.id === "string" && s.id ? s.id : makeId(createdAt || Date.now());
+                        const source = s?.source || "auto";
+
+                        return {
+                            id,
+                            createdAt: createdAt || Date.now(),
+                            source,
+                            html: trimmed,
+                            summary: s?.summary,
+                            prompt: s?.prompt,
+                        } as any;
+                    })
+                    .filter(Boolean) as DraftSnapshot[];
+
+                normalized.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                restored = normalized.slice(0, MAX_HISTORY_SNAPSHOTS);
+
+                setHistory(restored);
+                setActiveHistoryId(restored[0]?.id || null);
+
+                // persist as v2 immediately
+                const payload: V2History = { v: 2, items: restored, updatedAt: Date.now() };
+                try {
+                    localStorage.setItem(hk, JSON.stringify(payload));
+                    localStorage.removeItem(LEGACY_HISTORY_KEY(draftId));
+                } catch { }
+
+                setLsReady(true);
+                return;
+            }
+
+            // 4) If there is no legacy history, but there is legacy current, seed from that
+            const legacyCurrent = localStorage.getItem(LEGACY_CURRENT_KEY(draftId));
+            const seedHtml = (legacyCurrent || baseHtml || "").trim();
+
+            if (seedHtml) {
+                const createdAt = Number(current?.updatedAt) || Date.now();
+                const seedId = `seed-${createdAt}`;
+
+                const seed: DraftSnapshot = {
+                    id: seedId,
+                    createdAt,
+                    source: "auto",
+                    html: seedHtml,
+                    summary: undefined,
+                    prompt: undefined,
+                } as any;
+
+                restored = [seed];
+
+                setHistory(restored);
+                setActiveHistoryId(seedId);
+
+                const payload: V2History = { v: 2, items: restored, updatedAt: Date.now() };
+                try {
+                    localStorage.setItem(hk, JSON.stringify(payload));
+                } catch { }
+
+                setLsReady(true);
+                return;
+            }
+        }
+
+        restored.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        const capped = restored.slice(0, MAX_HISTORY_SNAPSHOTS);
+
+        setHistory(capped);
+        setActiveHistoryId(capped[0]?.id || null);
+
+        setLsReady(true);
+    }, [draftId, initialHtml]);
+
+    // persist monolithic draft (current) to localStorage (THIS render only) (v2)
+    // ✅ gated so hydration never overwrites stored values
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        if (!draftId) return;
+        if (!lsReady) return;
+
+        const currentKey = CURRENT_DRAFT_KEY(draftId);
+        const payload: V2CurrentDraft = { v: 2, html: htmlDraft, updatedAt: Date.now() };
+
+        try {
+            localStorage.setItem(currentKey, JSON.stringify(payload));
+        } catch { }
+
+        setDirty(true);
+    }, [htmlDraft, draftId, lsReady]);
+
+    // persist history array to localStorage (THIS render only) (v2)
+    // ✅ gated so hydration never overwrites stored values
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        if (!draftId) return;
+        if (!lsReady) return;
+
+        const hk = HISTORY_KEY(draftId);
+        const payload: V2History = {
+            v: 2,
+            items: history.slice(0, MAX_HISTORY_SNAPSHOTS),
+            updatedAt: Date.now(),
+        };
+
+        try {
+            localStorage.setItem(hk, JSON.stringify(payload));
+        } catch { }
+    }, [history, draftId, lsReady]);
+
+    // ---------- snapshot helper for saving/exporting ----------
+    const snapshotFromIframeOrDraft = useCallback(() => {
+        if (mode === "code") return htmlDraft;
+
+        const doc = iframeRef.current?.contentDocument;
+        if (!doc) return htmlDraft;
+
+        try {
+            const htmlEl = doc.documentElement;
+            if (!htmlEl) return htmlDraft;
+            const raw = "<!doctype html>\n" + htmlEl.outerHTML;
+            return stripEditorArtifacts(raw);
+        } catch {
+            return htmlDraft;
+        }
+    }, [htmlDraft, mode]);
+
+    function addSnapshot(opts: { html: string; source: DraftSnapshotSource; createdAt?: number }) {
+        const trimmed = (opts.html || "").trim();
+        if (!trimmed) return;
+
+        const createdAt = typeof opts.createdAt === "number" ? opts.createdAt : Date.now();
+        const id =
+            typeof crypto !== "undefined" && "randomUUID" in crypto
+                ? (crypto as any).randomUUID()
+                : `${createdAt}-${Math.random().toString(36).slice(2, 8)}`;
+
+        setHistory((prev): DraftSnapshot[] => {
+            const last = prev[0];
+            if (last && last.html === trimmed) return prev;
+
+            const next: DraftSnapshot[] = [
+                {
+                    id,
+                    createdAt,
+                    source: opts.source,
+                    html: trimmed,
+                    summary: undefined,
+                    prompt: undefined,
+                } as any,
+                ...prev,
+            ];
+
+            const capped =
+                next.length > MAX_HISTORY_SNAPSHOTS
+                    ? next.slice(0, MAX_HISTORY_SNAPSHOTS)
+                    : next;
+
+            setActiveHistoryId(id);
+
+            return capped;
+        });
+    }
+
+    // ✅ NEW: delete one history item (and keep activeId sane)
+    const deleteHistoryItem = useCallback(
+        (id: string) => {
+            if (!id) return;
+
+            setHistory((prev) => {
+                const next = prev.filter((s) => s.id !== id);
+
+                // if you deleted the active one, fall back to newest remaining
+                setActiveHistoryId((cur) => {
+                    if (cur !== id) return cur;
+                    return next[0]?.id || null;
+                });
+
+                bumpSessionCounter?.("historyDelete");
+                return next;
+            });
+        },
+        [bumpSessionCounter]
+    );
+
+    // ✅ NEW: clear all history for this render (optional, but useful)
+    const clearHistory = useCallback(() => {
+        setHistory([]);
+        setActiveHistoryId(null);
+        bumpSessionCounter?.("historyClear");
+    }, [bumpSessionCounter]);
+
+    // KEEP: snapshotDraft (wrapper that captures html then calls addSnapshot)
+    const snapshotDraft = useCallback(
+        (source: DraftSnapshotSource) => {
+            const html = snapshotFromIframeOrDraft();
+            if (!html) return;
+            addSnapshot({ html, source });
+        },
+        [snapshotFromIframeOrDraft]
+    );
+
+    // autosave snapshots (fallback revert points)
+    useEffect(() => {
+        if (!draftId) return;
+        if (typeof window === "undefined") return;
+        if (!lsReady) return;
+
+        const intervalMs = 60_000;
+        const id = window.setInterval(() => {
+            snapshotDraft("auto");
+            bumpSessionCounter("autosave");
+        }, intervalMs);
+
+        return () => window.clearInterval(id);
+    }, [draftId, snapshotDraft, lsReady]);
+
+    // KEEP: restore behavior (this is the whole point of the fallback)
     const handleRestoreSnapshot = useCallback(
         (snap: DraftSnapshot) => {
-            if (!snap) return;
-
-            const confirmRestore = dirty ? window.confirm("Replace the current draft with this version? Unsaved changes will be lost.") : true;
-
-            if (!confirmRestore) return;
+            if (!snap?.html) return;
 
             setHtmlDraft(snap.html);
             setPreviewHtml(snap.html);
             emitLive(snap.html);
+
             setDirty(false);
             setActiveHistoryId(snap.id);
-            bumpSessionCounter("historyRestore")
-        }, [dirty, emitLive]
+
+            bumpSessionCounter("historyRestore");
+        },
+        [emitLive]
     );
 
-
-    function HistoryPanel(props: {
-        snapshots: DraftSnapshot[];
-        onRestore: (snap: DraftSnapshot) => void;
-    }) {
-        const { snapshots, onRestore } = props;
-
-        if (!snapshots.length) {
-            return (
-                <div className="text-sm text-gray-500 bg-white">
-                    No history yet. Autosaves and applied versions will appear here.
-                </div>
-            );
-        }
-
-        const ordered = [...snapshots].sort((a, b) => b.createdAt - a.createdAt);
-
-        return (
-            <div className="flex flex-col gap-2 text-md h-full bg-white">
-                <div className="flex-1 overflow-y-auto rounded-md border border-gray-200">
-                    {ordered.map((snap) => (
-                        <button
-                            key={snap.id}
-                            type="button"
-                            onClick={() => onRestore(snap)}
-                            className="w-full text-left px-3 py-2 border-b border-gray-100 hover:bg-gray-50 focus:outline-none focus:bg-gray-100"
-                        >
-                            <div className="flex items-center justify-between">
-                                <span className="font-semibold text-[13px] uppercase tracking-wide text-gray-600">
-                                    <span className="font-semibold text-[13px] uppercase tracking-wide text-gray-600">
-                                        {snap.source === "auto"
-                                            ? "Autosave"
-                                            : snap.source === "apply"
-                                                ? "Applied"
-                                                : snap.source === "ai-edit"
-                                                    ? "AI change"
-                                                    : "Manual save"}
-                                    </span>
-
-                                </span>
-                                <span className="text-[13px] text-gray-500">
-                                    {formatSnapshotTime(snap.createdAt)}
-                                </span>
-                            </div>
-                            <p className="mt-0.5 line-clamp-2 text-[13px] text-gray-500">
-                                {formatSnapshotLabel(snap)}
-                            </p>
-                        </button>
-                    ))}
-                </div>
-            </div>
-        );
-    }
-
-
+    // KEEP: applyDraftToPreview (and snapshot "apply" as a revert point)
     function applyDraftToPreview() {
         if (applyingPreview) return;
 
@@ -2099,13 +2226,125 @@ export default function PreviewEditor({
         emitLive(nextHtml);
         setDirty(false);
 
-        // history entry when user explicitly applies to preview
         snapshotDraft("apply");
 
         window.setTimeout(() => {
             setApplyingPreview(false);
         }, 450);
     }
+
+    // merge local history with ai suggestions
+    const mergedHistory: DraftSnapshot[] = useMemo(() => {
+        const merged: DraftSnapshot[] = [...history, ...aiHistory.map(aiSuggestionToSnapshot)];
+        merged.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        return merged;
+    }, [history, aiHistory]);
+
+    function HistoryPanel(props: {
+        snapshots: DraftSnapshot[];
+        onRestore: (snap: DraftSnapshot) => void;
+        activeId: string | null;
+        onDelete: (id: string) => void;
+        onClearAll?: () => void;
+    }) {
+        const { snapshots, onRestore, activeId, onDelete, onClearAll } = props;
+
+        if (!snapshots.length) {
+            return (
+                <div className="text-sm text-gray-500 bg-white">
+                    No history yet. Autosaves and applied versions will appear here.
+                </div>
+            );
+        }
+
+        const ordered = [...snapshots].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+        return (
+            <div className="flex flex-col gap-2 text-md h-full bg-white">
+                <div className="flex items-center justify-between px-2">
+                    <span className="text-[11px] font-semibold tracking-widest text-gray-500 uppercase">
+                        Click to Revert
+                    </span>
+
+                    {onClearAll ? (
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                onClearAll();
+                            }}
+                            className="text-[11px] font-semibold text-gray-500 hover:text-gray-800"
+                            title="Clear history"
+                        >
+                            Clear
+                        </button>
+                    ) : null}
+                </div>
+
+                <div className="flex-1 overflow-y-auto rounded-md border border-gray-200">
+                    {ordered.map((snap) => {
+                        const isActive = !!activeId && snap.id === activeId;
+
+                        return (
+                            <div
+                                key={snap.id}
+                                className={[
+                                    "border-b border-gray-100",
+                                    isActive ? "bg-[#C6F44D]/20" : "",
+                                ].join(" ")}
+                            >
+                                <button
+                                    type="button"
+                                    onClick={() => onRestore(snap)}
+                                    className={[
+                                        "w-full text-left px-3 py-2 focus:outline-none",
+                                        isActive ? "" : "hover:bg-gray-50 focus:bg-gray-100",
+                                    ].join(" ")}
+                                >
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="font-semibold text-[13px] uppercase tracking-wide text-gray-600">
+                                            {snap.source === "auto"
+                                                ? "Autosave"
+                                                : snap.source === "apply"
+                                                    ? "Applied"
+                                                    : snap.source === "ai-edit"
+                                                        ? "AI change"
+                                                        : "Manual save"}
+                                        </span>
+
+                                        <span className="text-[13px] text-gray-500">
+                                            {formatSnapshotTime(snap.createdAt)}
+                                        </span>
+                                    </div>
+
+                                    <p className="mt-0.5 line-clamp-2 text-[13px] text-gray-500">
+                                        {formatSnapshotLabel(snap)}
+                                    </p>
+                                </button>
+
+                                <div className="flex justify-end px-2 pb-2">
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            onDelete(snap.id);
+                                        }}
+                                        className="text-[11px] font-semibold text-gray-500 hover:text-red-600"
+                                        title="Delete snapshot"
+                                    >
+                                        Delete
+                                    </button>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        );
+    }
+
 
     const [aiEditing, setAiEditing] = useState(false);
 
@@ -2494,11 +2733,13 @@ export default function PreviewEditor({
         const promptRaw = (newPagePrompt || "").trim();
         const slugRaw = (newPageUrl || "").trim();
 
+
         const v = validatePageSlug(slugRaw);
         if (!v.ok) {
             setCreatePageErr(v.msg || "Invalid URL.");
             return;
         }
+
         if (!draftId) {
             setCreatePageErr("Missing renderId.");
             return;
@@ -2821,9 +3062,17 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         if (/^\//.test(raw)) return { ok: false, msg: `Do not include "/". Type only the slug.` };
         if (raw.length > 80) return { ok: false, msg: "Too long. Keep it under 80 characters." };
 
-        // allow only letters/numbers/spaces/_/- and "/" in raw typing
-        if (/[^a-zA-Z0-9\-_/ ]/.test(raw)) return { ok: false, msg: "Only letters, numbers, '-', and '/' are allowed." };
-        if (/\/{2,}/.test(raw)) return { ok: false, msg: "Avoid consecutive '/'." };
+        // allow only letters/numbers/_/- and "/" — no spaces
+        if (/[^a-zA-Z0-9\-_/]/.test(raw))
+            return { ok: false, msg: "Only letters, numbers, '-', '_', and '/' are allowed." };
+
+        // block spaces explicitly (covers pasted edge cases)
+        if (/\s/.test(raw))
+            return { ok: false, msg: "Spaces are not allowed." };
+
+        // avoid consecutive slashes
+        if (/\/{2,}/.test(raw))
+            return { ok: false, msg: "Avoid consecutive '/'." };
 
         const sanitized = sanitizePageSlug(raw);
         if (!sanitized) return { ok: false, msg: "Invalid slug. Use letters/numbers with optional '-' and '/'." };
@@ -3617,7 +3866,6 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         }
     };
 
-
     const performClose = useCallback(
         async (closeMode: "save" | "discard") => {
             if (closing) return;
@@ -3642,12 +3890,11 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         [closing, doSave, onClose, tryClearIframeSelection]
     );
 
+    // pre-AI save
     function snapshotBeforeAiEdit(fullHtml: string) {
         addSnapshot({
-            id: crypto.randomUUID(),
-            createdAt: Date.now(),
-            source: "auto", // pre-AI label
             html: fullHtml,
+            source: "auto",
         });
     }
 
@@ -3720,24 +3967,23 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
             // 5) Update local editor state with the AI-edited HTML
             setDirty(true);
+            setHistoryOpen(true)
             setHtmlDraft(cleanedHtml);
             setPreviewHtml(cleanedHtml);
             if (onLiveHtml) onLiveHtml(cleanedHtml);
 
             // 6) Snapshot the *post-AI* full HTML so you can "keep / discard" this edit
-            try {
-                addSnapshot({
-                    id: crypto.randomUUID(),
-                    createdAt: Date.now(),
-                    source: "ai-edit", // distinct label from "auto"
-                    html: cleanedHtml,
-                });
-            } catch (err) {
-                console.warn(
-                    "[PreviewEditor] failed to snapshot after AI edit",
-                    err,
-                );
-            }
+            // try {
+            //     addSnapshot({
+            //         source: "ai-edit",
+            //         html: cleanedHtml,
+            //     });
+            // } catch (err) {
+            //     console.warn(
+            //         "[PreviewEditor] failed to snapshot after AI edit",
+            //         err,
+            //     );
+            // }
 
             // 7) Immediately persist the AI-edited HTML (blocking save for this helper)
             try {
@@ -5384,6 +5630,9 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                         <HistoryPanel
                                             snapshots={mergedHistory}
                                             onRestore={handleRestoreSnapshot}
+                                            activeId={activeHistoryId}
+                                            onDelete={deleteHistoryItem}
+                                            onClearAll={clearHistory}
                                         />
                                     </div>
                                 </div>
@@ -5531,21 +5780,19 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 </div>
                             </div>
                         )}
-
-                        {!aiEditing && !closing && (
-                            <div id="kloner-quick-undo">
-                                <FloatingBlockToolbar
-                                    iframeRef={iframeRef}
-                                    wrapperRef={iframeWrapperRef}
-                                    selectionMeta={selectionMeta}
-                                    uiScale={0}
-                                />
-                            </div>
-                        )}
-
                     </section>
                 </div>
 
+                {!aiEditing && (
+                    <div id="kloner-quick-undo">
+                        <FloatingBlockToolbar
+                            iframeRef={iframeRef}
+                            wrapperRef={iframeWrapperRef}
+                            selectionMeta={selectionMeta}
+                            uiScale={0}
+                        />
+                    </div>
+                )}
                 <AnimatePresence>
                     {pageSwitchConfirm && (
                         <motion.div

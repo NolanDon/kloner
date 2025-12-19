@@ -16,6 +16,7 @@ import {
     Image as ImageIcon,
     ArrowLeft,
     ArrowRight,
+    Trash2,
 } from "lucide-react";
 import type { SelectionMeta } from "@/components/PreviewEditor";
 
@@ -172,12 +173,10 @@ export function MiniToolbar({
         callApi(iframeRef, "blockMoveLeft");
     };
 
-
     const handleMoveRight = () => {
         if (disabled) return;
         callApi(iframeRef, "blockMoveRight");
     };
-
 
     const handleInsertBelowSimple = () => {
         if (disabled) return;
@@ -189,6 +188,36 @@ export function MiniToolbar({
             api.blockDuplicate();
         } catch {
             // swallow
+        }
+    };
+
+    const handleDeleteBlock = () => {
+        if (disabled) return;
+
+        // Tie to your existing block deletion logic.
+        // Preferred: __klonerApi.blockDelete()
+        // Fallback: __klonerApi.blockRemove() if that's what you already expose.
+        const win = iframeRef.current?.contentWindow as any;
+        const api = win?.__klonerApi;
+
+        if (!api) return;
+
+        try {
+            if (typeof api.blockDelete === "function") {
+                api.blockDelete();
+                return;
+            }
+            if (typeof api.blockRemove === "function") {
+                api.blockRemove();
+                return;
+            }
+            // last-resort compatibility: some builds used "blockTrash"
+            if (typeof api.blockTrash === "function") {
+                api.blockTrash();
+                return;
+            }
+        } catch {
+            // ignore
         }
     };
 
@@ -214,7 +243,7 @@ export function MiniToolbar({
         >
             {aiOpen && !disabled && (
                 <div
-                    className={`rounded-xl border border-neutral-200 bg-white shadow-2xl p-2 text-[11px] text-neutral-800 w-[220px]"
+                    className={`rounded-xl border border-black/10 bg-white shadow-2xl p-2 text-[11px] text-neutral-800 w-[220px]"
                         }`}
                 >
                     <div className="mb-1.5 flex items-center justify-between gap-2">
@@ -227,7 +256,7 @@ export function MiniToolbar({
                             className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-100"
                             title="Close"
                         >
-                            <X className="h-3 w-3" />
+                            <X className="h-4 w-4" />
                         </button>
                     </div>
 
@@ -251,7 +280,7 @@ export function MiniToolbar({
 
                     <label className="mb-1.5 inline-flex w-full cursor-pointer items-center justify-between gap-1.5 rounded-md border border-dashed border-neutral-300 bg-neutral-50 px-1.5 py-1 text-[10px] text-neutral-600 hover:bg-neutral-100">
                         <span className="inline-flex items-center gap-1">
-                            <ImageIcon className="h-3 w-3" />
+                            <ImageIcon className="h-4 w-4" />
                             {imageFile ? (
                                 <span className="truncate max-w-[130px]">
                                     {imageFile.name}
@@ -277,7 +306,7 @@ export function MiniToolbar({
                         disabled={!prompt.trim() || disabled}
                         className="mt-0.5 inline-flex w-full items-center justify-center gap-1 rounded-md bg-accent px-2 py-1 text-[11px] font-semibold text-white shadow-sm hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                        <Sparkles className="h-3 w-3" />
+                        <Sparkles className="h-4 w-4" />
                         <span>Apply</span>
                     </button>
                 </div>
@@ -289,11 +318,11 @@ export function MiniToolbar({
                     type="button"
                     onClick={handleMoveUp}
                     disabled={disabled}
-                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-accent hover:text-white hover:text-white ${disabled ? "cursor-not-allowed opacity-50" : ""
+                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-accent hover:text-white ${disabled ? "cursor-not-allowed opacity-50" : ""
                         }`}
                     title="Move section up"
                 >
-                    <ArrowUp className="h-3.5 w-3.5" />
+                    <ArrowUp className="h-5 w-5" />
                 </button>
                 <button
                     type="button"
@@ -303,7 +332,7 @@ export function MiniToolbar({
                         }`}
                     title="Move section down"
                 >
-                    <ArrowDown className="h-3.5 w-3.5" />
+                    <ArrowDown className="h-5 w-5" />
                 </button>
                 <button
                     type="button"
@@ -313,7 +342,7 @@ export function MiniToolbar({
                         }`}
                     title="Move section left"
                 >
-                    <ArrowLeft className="h-3.5 w-3.5" />
+                    <ArrowLeft className="h-5 w-5" />
                 </button>
                 <button
                     type="button"
@@ -323,7 +352,7 @@ export function MiniToolbar({
                         }`}
                     title="Move section right"
                 >
-                    <ArrowRight className="h-3.5 w-3.5" />
+                    <ArrowRight className="h-5 w-5" />
                 </button>
                 <button
                     type="button"
@@ -333,8 +362,10 @@ export function MiniToolbar({
                         }`}
                     title="Duplicate this block"
                 >
-                    <Plus className="h-3.5 w-3.5" />
+                    <Plus className="h-5 w-5" />
                 </button>
+
+                {/* AI */}
                 <button
                     type="button"
                     onClick={() => {
@@ -346,7 +377,19 @@ export function MiniToolbar({
                         }`}
                     title="AI edit this block"
                 >
-                    <Sparkles className="h-3.5 w-3.5" />
+                    <Sparkles className="h-5 w-5" />
+                </button>
+
+                {/* DELETE (red trash, at far right) */}
+                <button
+                    type="button"
+                    onClick={handleDeleteBlock}
+                    disabled={disabled}
+                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-red-600 hover:bg-red-500/50 hover:text-red-700 ${disabled ? "cursor-not-allowed opacity-50" : ""
+                        }`}
+                    title="Delete this block"
+                >
+                    <Trash2 className="h-5 w-5" />
                 </button>
             </div>
         </div>

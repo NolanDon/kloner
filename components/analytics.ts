@@ -231,6 +231,10 @@ export type EditorSessionMetrics = {
     modeSwitchCount?: number;
     deviceSwitchCount?: number;
     historyRestoreCount?: number;
+
+    // NEW
+    historyClearCount?: number;
+    historyDeleteCount?: number;
 };
 
 export type EditorSessionCounters = {
@@ -242,7 +246,11 @@ export type EditorSessionCounters = {
     modeSwitch: number;
     archive: number;
     restore: number;
+
     historyRestore: number;
+    historyClear: number;
+    historyDelete: number;
+
     aiEdit: number;
     aiApply: number;
     aiMiniToolbar: number;
@@ -262,7 +270,6 @@ export async function recordEditorSessionAnalytics(
             return;
         }
 
-        // Capture a concrete string so TS stops complaining inside async callbacks
         const uid = user.uid as string;
 
         const editorRef = doc(
@@ -293,7 +300,11 @@ export async function recordEditorSessionAnalytics(
             modeSwitch: counters?.modeSwitch ?? 0,
             archive: counters?.archive ?? 0,
             restore: counters?.restore ?? 0,
+
             historyRestore: counters?.historyRestore ?? 0,
+            historyClear: counters?.historyClear ?? 0,
+            historyDelete: counters?.historyDelete ?? 0,
+
             aiEdit: counters?.aiEdit ?? 0,
             aiApply: counters?.aiApply ?? 0,
             aiMiniToolbar: counters?.aiMiniToolbar ?? 0,
@@ -310,7 +321,7 @@ export async function recordEditorSessionAnalytics(
 
         const now = serverTimestamp();
 
-        // 1) Aggregate doc: last session + totals (+ last visit fields)
+        // 1) Aggregate doc
         await runTransaction(db, async (tx) => {
             const snap = await tx.get(editorRef);
             const data = (snap.data() || {}) as Record<string, any>;
@@ -342,35 +353,35 @@ export async function recordEditorSessionAnalytics(
                 editorModeSwitchTotal: safeNum(data.editorModeSwitchTotal),
                 editorArchiveTotal: safeNum(data.editorArchiveTotal),
                 editorRestoreTotal: safeNum(data.editorRestoreTotal),
-                editorHistoryRestoreTotal: safeNum(
-                    data.editorHistoryRestoreTotal,
-                ),
+                editorHistoryRestoreTotal: safeNum(data.editorHistoryRestoreTotal),
+
+                // NEW totals
+                editorHistoryClearTotal: safeNum(data.editorHistoryClearTotal),
+                editorHistoryDeleteTotal: safeNum(data.editorHistoryDeleteTotal),
+
                 editorAiEditTotal: safeNum(data.editorAiEditTotal),
                 editorAiApplyTotal: safeNum(data.editorAiApplyTotal),
-                editorAiMiniToolbarTotal: safeNum(
-                    data.editorAiMiniToolbarTotal,
-                ),
+                editorAiMiniToolbarTotal: safeNum(data.editorAiMiniToolbarTotal),
             };
 
             const totalsPatch = {
                 editorSaveTotal: prevTotals.editorSaveTotal + c.save,
                 editorExportTotal: prevTotals.editorExportTotal + c.export,
-                editorAutosaveTotal:
-                    prevTotals.editorAutosaveTotal + c.autosave,
-                editorPageSwitchTotal:
-                    prevTotals.editorPageSwitchTotal + c.pageSwitch,
-                editorDeviceSwitchTotal:
-                    prevTotals.editorDeviceSwitchTotal + c.deviceSwitch,
-                editorModeSwitchTotal:
-                    prevTotals.editorModeSwitchTotal + c.modeSwitch,
+                editorAutosaveTotal: prevTotals.editorAutosaveTotal + c.autosave,
+                editorPageSwitchTotal: prevTotals.editorPageSwitchTotal + c.pageSwitch,
+                editorDeviceSwitchTotal: prevTotals.editorDeviceSwitchTotal + c.deviceSwitch,
+                editorModeSwitchTotal: prevTotals.editorModeSwitchTotal + c.modeSwitch,
                 editorArchiveTotal: prevTotals.editorArchiveTotal + c.archive,
                 editorRestoreTotal: prevTotals.editorRestoreTotal + c.restore,
-                editorHistoryRestoreTotal:
-                    prevTotals.editorHistoryRestoreTotal + c.historyRestore,
+                editorHistoryRestoreTotal: prevTotals.editorHistoryRestoreTotal + c.historyRestore,
+
+                // NEW totals patch
+                editorHistoryClearTotal: prevTotals.editorHistoryClearTotal + c.historyClear,
+                editorHistoryDeleteTotal: prevTotals.editorHistoryDeleteTotal + c.historyDelete,
+
                 editorAiEditTotal: prevTotals.editorAiEditTotal + c.aiEdit,
                 editorAiApplyTotal: prevTotals.editorAiApplyTotal + c.aiApply,
-                editorAiMiniToolbarTotal:
-                    prevTotals.editorAiMiniToolbarTotal + c.aiMiniToolbar,
+                editorAiMiniToolbarTotal: prevTotals.editorAiMiniToolbarTotal + c.aiMiniToolbar,
             };
 
             const basePatch = {
@@ -395,12 +406,17 @@ export async function recordEditorSessionAnalytics(
                 modeSwitchCount: c.modeSwitch,
                 archiveCount: c.archive,
                 restoreCount: c.restore,
+
                 historyRestoreCount: c.historyRestore,
+
+                // NEW per-session fields
+                historyClearCount: c.historyClear,
+                historyDeleteCount: c.historyDelete,
+
                 aiEditCount: c.aiEdit,
                 aiApplyCount: c.aiApply,
                 aiMiniToolbarCount: c.aiMiniToolbar,
 
-                // new last-session fields
                 lastSessionStartedApproxIso: approxStartedAtIso,
                 lastSessionEndedAt: now,
                 lastSessionDurationMinutes: durationMinutes,
@@ -421,7 +437,6 @@ export async function recordEditorSessionAnalytics(
                 tx.set(editorRef, basePatch, { merge: true });
             }
 
-            // also stamp lightweight last-visit info on root user doc
             const userRef = doc(db, "kloner_users", uid);
             tx.set(
                 userRef,
@@ -465,7 +480,13 @@ export async function recordEditorSessionAnalytics(
                 modeSwitchCount: c.modeSwitch,
                 archiveCount: c.archive,
                 restoreCount: c.restore,
+
                 historyRestoreCount: c.historyRestore,
+
+                // NEW
+                historyClearCount: c.historyClear,
+                historyDeleteCount: c.historyDelete,
+
                 aiEditCount: c.aiEdit,
                 aiApplyCount: c.aiApply,
                 aiMiniToolbarCount: c.aiMiniToolbar,
@@ -479,4 +500,3 @@ export async function recordEditorSessionAnalytics(
         console.error("recordEditorSessionAnalytics failed", err);
     }
 }
-

@@ -29,10 +29,242 @@ type FloatingBlockToolbarProps = {
 
 type ToolbarPos = { top: number; left: number } | null;
 
-type BlockHrefInfo = {
-    hasLink: boolean;
-    href: string;
-} | null;
+type BlockHrefInfo =
+    | {
+        hasLink: boolean;
+        href: string;
+    }
+    | null;
+
+const FONTS = [
+    { label: "Inter", value: "Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
+    { label: "Plus Jakarta Sans", value: '"Plus Jakarta Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' },
+    { label: "Manrope", value: "Manrope, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
+    { label: "DM Sans", value: '"DM Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' },
+    { label: "Space Grotesk", value: '"Space Grotesk", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' },
+    { label: "Outfit", value: "Outfit, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
+    { label: "Sora", value: "Sora, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
+    { label: "Urbanist", value: "Urbanist, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
+    { label: "Rubik", value: "Rubik, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
+    { label: "Work Sans", value: '"Work Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' },
+    { label: "Noto Sans", value: '"Noto Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' },
+
+    { label: "Poppins", value: "Poppins, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
+    { label: "Montserrat", value: "Montserrat, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
+    { label: "Raleway", value: "Raleway, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
+    { label: "Nunito Sans", value: '"Nunito Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' },
+    { label: "Figtree", value: "Figtree, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
+    { label: "Lexend", value: "Lexend, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
+
+    { label: "Playfair Display", value: '"Playfair Display", Georgia, "Times New Roman", serif' },
+    { label: "Cormorant Garamond", value: '"Cormorant Garamond", Georgia, "Times New Roman", serif' },
+    { label: "DM Serif Display", value: '"DM Serif Display", Georgia, "Times New Roman", serif' },
+    { label: "Libre Baskerville", value: '"Libre Baskerville", Georgia, "Times New Roman", serif' },
+    { label: "Crimson Pro", value: '"Crimson Pro", Georgia, "Times New Roman", serif' },
+    { label: "EB Garamond", value: '"EB Garamond", Georgia, "Times New Roman", serif' },
+    { label: "Merriweather", value: "Merriweather, Georgia, 'Times New Roman', serif" },
+    { label: "Lora", value: "Lora, Georgia, 'Times New Roman', serif" },
+    { label: "Spectral", value: "Spectral, Georgia, 'Times New Roman', serif" },
+    { label: "Source Serif 4", value: '"Source Serif 4", Georgia, "Times New Roman", serif' },
+
+    { label: "Orbitron", value: "Orbitron, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
+    { label: "Space Mono", value: '"Space Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace' },
+    { label: "IBM Plex Sans", value: '"IBM Plex Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' },
+    { label: "IBM Plex Serif", value: '"IBM Plex Serif", Georgia, "Times New Roman", serif' },
+    { label: "IBM Plex Mono", value: '"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace' },
+    { label: "JetBrains Mono", value: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace' },
+    { label: "Fira Code", value: '"Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace' },
+
+    { label: "Atkinson Hyperlegible", value: '"Atkinson Hyperlegible", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' },
+    { label: "Source Sans 3", value: '"Source Sans 3", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' },
+
+    { label: "Roboto", value: "Roboto, system-ui, -apple-system, Segoe UI, Arial, sans-serif" },
+    { label: "System UI", value: "system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
+] as const;
+
+function FontFamilyPicker({
+    compact,
+    initialFontFamily,
+    onApply,
+    onPreview,
+    onRevertPreview,
+    Btn,
+}: {
+    compact?: boolean;
+    initialFontFamily?: string;
+    onApply: (family: string) => void;
+    onPreview?: (family: string) => void;
+    onRevertPreview?: () => void;
+    Btn: React.ComponentType<{
+        title: string;
+        onClick: () => void;
+        className?: string;
+        children: React.ReactNode;
+        danger?: boolean;
+        compact?: boolean;
+    }>;
+}) {
+    const fonts = useMemo(() => [...FONTS], []);
+
+    const [open, setOpen] = useState(false);
+    const [applied, setApplied] = useState<string>(
+        (initialFontFamily || "").trim() || fonts[0]?.value || ""
+    );
+
+    // NEW: track which row is currently being previewed (hovered)
+    const [hovered, setHovered] = useState<string>("");
+
+    const rootRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        const next = (initialFontFamily || "").trim();
+        if (!next) return;
+        if (!open) setApplied(next);
+    }, [initialFontFamily, open]);
+
+    useEffect(() => {
+        if (!open) {
+            setHovered("");
+            return;
+        }
+
+        const onDown = (e: MouseEvent) => {
+            const el = rootRef.current;
+            if (!el) return;
+            if (el.contains(e.target as Node)) return;
+            setOpen(false);
+            setHovered("");
+            onRevertPreview?.();
+        };
+
+        window.addEventListener("mousedown", onDown);
+        return () => window.removeEventListener("mousedown", onDown);
+    }, [open, onRevertPreview]);
+
+    useEffect(() => {
+        if (!open) return;
+
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === "Escape") {
+                setOpen(false);
+                setHovered("");
+                onRevertPreview?.();
+            }
+        };
+
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [open, onRevertPreview]);
+
+    const activeLabel = fonts.find((f) => f.value === applied)?.label || "Font";
+
+    const stopWheel = (e: React.WheelEvent) => {
+        e.stopPropagation();
+    };
+
+    return (
+        <div
+            ref={rootRef}
+            className="relative inline-flex"
+            onMouseDown={(e) => e.stopPropagation()}
+        >
+            <Btn
+                title="Font"
+                compact={!!compact}
+                onClick={() => {
+                    setOpen((v) => {
+                        const next = !v;
+                        if (!next) {
+                            setHovered("");
+                            onRevertPreview?.();
+                        }
+                        return next;
+                    });
+                }}
+            >
+                <span className="inline-flex items-center gap-2">
+                    <span className="truncate text-left">{activeLabel}</span>
+                    <ChevronDown className="h-4 w-4 opacity-70" />
+                </span>
+            </Btn>
+
+            {open && (
+                <div
+                    className="
+                        absolute left-0 top-full z-50 mt-2
+                        w-[280px] rounded-2xl border border-black/10 bg-white
+                        shadow-[0_18px_50px_rgba(0,0,0,0.18)]
+                    "
+                    role="menu"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onWheel={stopWheel}
+                >
+                    <div
+                        className="p-1"
+                        style={{
+                            maxHeight: 360,
+                            overflowY: "auto",
+                            WebkitOverflowScrolling: "touch",
+                            overscrollBehavior: "contain",
+                        }}
+                        onWheel={stopWheel}
+                        onMouseLeave={() => {
+                            // when leaving the list, revert to the applied font
+                            if (hovered) {
+                                setHovered("");
+                                onRevertPreview?.();
+                            }
+                        }}
+                    >
+                        {fonts.map((f) => {
+                            const isApplied = f.value === applied;
+                            const isPreviewing = hovered === f.value;
+
+                            return (
+                                <button
+                                    key={f.label}
+                                    type="button"
+                                    role="menuitem"
+                                    className={[
+                                        "w-full rounded-xl px-3 py-2 text-left text-sm",
+                                        "focus:outline-none",
+                                        // NEW: highlight the previewed row more strongly than normal hover
+                                        isPreviewing
+                                            ? "bg-black/10 ring-1 ring-black/10"
+                                            : "hover:bg-black/5 focus:bg-black/5",
+                                        // keep applied row subtly marked even when not previewing
+                                        isApplied && !isPreviewing ? "bg-black/5" : "",
+                                    ].join(" ")}
+                                    style={{ fontFamily: f.value }}
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                    onWheel={stopWheel}
+                                    onMouseEnter={() => {
+                                        setHovered(f.value);
+                                        onPreview?.(f.value);
+                                    }}
+                                    onFocus={() => {
+                                        setHovered(f.value);
+                                        onPreview?.(f.value);
+                                    }}
+                                    onClick={() => {
+                                        setApplied(f.value);
+                                        setHovered("");
+                                        onApply(f.value);
+                                    }}
+                                >
+                                    <span className="flex items-center justify-between gap-3">
+                                        <span className="truncate">{f.label}</span>
+                                        {isApplied ? <Check className="h-4 w-4 opacity-70" /> : null}
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
 
 function BlockToolbar({
     style,
@@ -93,9 +325,7 @@ function BlockToolbar({
                             "";
                         if (typeof s === "string" && s.trim()) return s.trim();
                     }
-                } catch {
-                    // keep trying
-                }
+                } catch { }
             }
             return "";
         };
@@ -130,9 +360,7 @@ function BlockToolbar({
                     setHasNavLink(!!info.hasLink);
                     setNavHref(info.href || "");
                 }
-            } catch {
-                // swallow
-            }
+            } catch { }
             (e.currentTarget as HTMLInputElement).blur();
         }
     };
@@ -177,185 +405,37 @@ function BlockToolbar({
         </div>
     );
 
-    function FontFamilyPicker({
-        compact,
-        initialFontFamily,
-        onApply,
-    }: {
-        compact?: boolean;
-        initialFontFamily?: string;
-        onApply: (family: string) => void;
-    }) {
-        const fonts = useMemo(
-            () => [
-                { label: "Inter", value: "Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
-                { label: "Plus Jakarta Sans", value: '"Plus Jakarta Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' },
-                { label: "Manrope", value: "Manrope, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
-                { label: "DM Sans", value: '"DM Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' },
-                { label: "Space Grotesk", value: '"Space Grotesk", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' },
-                { label: "Outfit", value: "Outfit, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
-                { label: "Sora", value: "Sora, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
-                { label: "Urbanist", value: "Urbanist, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
-                { label: "Rubik", value: "Rubik, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
-                { label: "Work Sans", value: '"Work Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' },
-                { label: "Noto Sans", value: '"Noto Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' },
+    const tryCallFontApi = (method: string, family: string) => {
+        try {
+            const r1 = callApi(method, family);
+            if (r1 !== undefined) return r1;
+        } catch { }
+        try {
+            const r2 = callApi(method, { fontFamily: family });
+            if (r2 !== undefined) return r2;
+        } catch { }
+        try {
+            const r3 = callApi(method, { family });
+            if (r3 !== undefined) return r3;
+        } catch { }
+        return;
+    };
 
-                { label: "Poppins", value: "Poppins, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
-                { label: "Montserrat", value: "Montserrat, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
-                { label: "Raleway", value: "Raleway, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
-                { label: "Nunito Sans", value: '"Nunito Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' },
-                { label: "Figtree", value: "Figtree, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
-                { label: "Lexend", value: "Lexend, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
+    const previewFont = (family: string) => {
+        if (!family) return;
+        tryCallFontApi("fontFamilyPreview", family);
+    };
 
-                { label: "Playfair Display", value: '"Playfair Display", Georgia, "Times New Roman", serif' },
-                { label: "Cormorant Garamond", value: '"Cormorant Garamond", Georgia, "Times New Roman", serif' },
-                { label: "DM Serif Display", value: '"DM Serif Display", Georgia, "Times New Roman", serif' },
-                { label: "Libre Baskerville", value: '"Libre Baskerville", Georgia, "Times New Roman", serif' },
-                { label: "Crimson Pro", value: '"Crimson Pro", Georgia, "Times New Roman", serif' },
-                { label: "EB Garamond", value: '"EB Garamond", Georgia, "Times New Roman", serif' },
-                { label: "Merriweather", value: "Merriweather, Georgia, 'Times New Roman', serif" },
-                { label: "Lora", value: "Lora, Georgia, 'Times New Roman', serif" },
-                { label: "Spectral", value: "Spectral, Georgia, 'Times New Roman', serif" },
-                { label: "Source Serif 4", value: '"Source Serif 4", Georgia, "Times New Roman", serif' },
+    const revertPreviewFont = () => {
+        try {
+            const r = callApi("fontFamilyPreviewClear");
+            if (r !== undefined) return;
+        } catch { }
 
-                { label: "Orbitron", value: "Orbitron, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
-                { label: "Space Mono", value: '"Space Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace' },
-                { label: "IBM Plex Sans", value: '"IBM Plex Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' },
-                { label: "IBM Plex Serif", value: '"IBM Plex Serif", Georgia, "Times New Roman", serif' },
-                { label: "IBM Plex Mono", value: '"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace' },
-                { label: "JetBrains Mono", value: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace' },
-                { label: "Fira Code", value: '"Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace' },
-
-                { label: "Atkinson Hyperlegible", value: '"Atkinson Hyperlegible", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' },
-                { label: "Source Sans 3", value: '"Source Sans 3", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' },
-
-                { label: "Roboto", value: "Roboto, system-ui, -apple-system, Segoe UI, Arial, sans-serif" },
-                { label: "System UI", value: "system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
-            ],
-            []
-        );
-
-        const [open, setOpen] = useState(false);
-
-        const [applied, setApplied] = useState<string>(
-            (initialFontFamily || "").trim() || fonts[0]?.value || ""
-        );
-
-        const rootRef = useRef<HTMLDivElement | null>(null);
-
-        useEffect(() => {
-            const next = (initialFontFamily || "").trim();
-            if (!next) return;
-            if (!open) setApplied(next);
-        }, [initialFontFamily, open]);
-
-        useEffect(() => {
-            if (!open) return;
-
-            const onDown = (e: MouseEvent) => {
-                const el = rootRef.current;
-                if (!el) return;
-                if (el.contains(e.target as Node)) return;
-                setOpen(false);
-            };
-
-            window.addEventListener("mousedown", onDown);
-            return () => window.removeEventListener("mousedown", onDown);
-        }, [open]);
-
-        useEffect(() => {
-            if (!open) return;
-
-            const onKey = (e: KeyboardEvent) => {
-                if (e.key === "Escape") setOpen(false);
-            };
-
-            window.addEventListener("keydown", onKey);
-            return () => window.removeEventListener("keydown", onKey);
-        }, [open]);
-
-        const activeLabel =
-            fonts.find((f) => f.value === applied)?.label || "Font";
-
-        const stopWheel = (e: React.WheelEvent) => {
-            // prevent the wrapper/toolbar area from eating scroll and closing/dragging
-            e.stopPropagation();
-        };
-
-        return (
-            <div
-                ref={rootRef}
-                className="relative inline-flex"
-                onMouseDown={(e) => e.stopPropagation()}
-            >
-                <Btn
-                    title="Font"
-                    compact={!!compact}
-                    onClick={() => setOpen((v) => !v)}
-                >
-                    <span className="inline-flex items-center gap-2">
-                        <span className="truncate text-left">{activeLabel}</span>
-                        <ChevronDown className="h-4 w-4 opacity-70" />
-                    </span>
-                </Btn>
-
-                {open && (
-                    <div
-                        className="
-                            absolute left-0 top-full z-50 mt-2
-                            w-[280px] rounded-2xl border border-black/10 bg-white
-                            shadow-[0_18px_50px_rgba(0,0,0,0.18)]
-                        "
-                        role="menu"
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onWheel={stopWheel}
-                    >
-                        <div
-                            className="p-1"
-                            style={{
-                                maxHeight: 360,
-                                overflowY: "auto",
-                                WebkitOverflowScrolling: "touch",
-                                overscrollBehavior: "contain",
-                            }}
-                            onWheel={stopWheel}
-                        >
-                            {fonts.map((f) => {
-                                const isActive = f.value === applied;
-                                return (
-                                    <button
-                                        key={f.label}
-                                        type="button"
-                                        role="menuitem"
-                                        className={[
-                                            "w-full rounded-xl px-3 py-2 text-left text-sm",
-                                            "hover:bg-black/5 focus:bg-black/5 focus:outline-none",
-                                            isActive ? "bg-black/5" : "bg-transparent",
-                                        ].join(" ")}
-                                        style={{ fontFamily: f.value }}
-                                        onMouseDown={(e) => e.stopPropagation()}
-                                        onWheel={stopWheel}
-                                        onClick={() => {
-                                            setApplied(f.value);
-                                            onApply(f.value);
-                                            // keep menu open
-                                        }}
-                                    >
-                                        <span className="flex items-center justify-between gap-3">
-                                            <span className="truncate">{f.label}</span>
-                                            {isActive ? (
-                                                <Check className="h-4 w-4 opacity-70" />
-                                            ) : null}
-                                        </span>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
-            </div>
-        );
-    }
+        if (currentFontFamily) {
+            tryCallFontApi("fontFamilySet", currentFontFamily);
+        }
+    };
 
     const MiniPill = ({
         title,
@@ -512,8 +592,11 @@ function BlockToolbar({
                         <FontFamilyPicker
                             compact={false}
                             initialFontFamily={currentFontFamily || ""}
+                            Btn={Btn}
+                            onPreview={(family) => previewFont(family)}
+                            onRevertPreview={() => revertPreviewFont()}
                             onApply={(family) => {
-                                callApi("fontFamilySet", { fontFamily: family });
+                                tryCallFontApi("fontFamilySet", family);
                                 setCurrentFontFamily(family);
                             }}
                         />
@@ -552,7 +635,7 @@ function BlockToolbar({
                             type="button"
                             title="Undo"
                             onClick={() => callApi("historyUndo")}
-                            className="inline-flex h-9 items-center justify-center rounded-xl bg-accent px-3 text-white shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
+                            className="inline-flex h-9 items-center justify-center rounded-xl bg-accent px-3 text-white shadow-sm active:scale-[0.98] transition"
                             onMouseDown={(e) => e.stopPropagation()}
                         >
                             <Undo2 className="h-4 w-4 mr-1" />
@@ -562,7 +645,7 @@ function BlockToolbar({
                             type="button"
                             title="Redo"
                             onClick={() => callApi("historyRedo")}
-                            className="inline-flex h-9 items-center justify-center rounded-xl bg-accent px-3 text-white shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
+                            className="inline-flex h-9 items-center justify-center rounded-xl bg-accent px-3 text-white shadow-sm active:scale-[0.98] transition"
                             onMouseDown={(e) => e.stopPropagation()}
                         >
                             <Redo2 className="h-4 w-4 mr-1" />
@@ -810,15 +893,17 @@ export function FloatingBlockToolbar({
 
         const panelWidth = 268;
         const panelHeight = 520;
-        const padding = 14;
+        const padding = 30;
 
-        const rawTop =
-            wrapper.scrollTop + (iframeBox.top - wrapperBox.top) + padding;
+        const rawTop = wrapper.scrollTop + (iframeBox.top - wrapperBox.top) + padding;
+
+        const GUTTER = 32; // visual separation from iframe
+
         const rawLeft =
             wrapper.scrollLeft +
-            (iframeBox.left - wrapperBox.left) -
-            panelWidth -
-            padding;
+            (iframeBox.right - wrapperBox.left) +
+            GUTTER;
+
 
         const minTop = padding;
         const maxTop = wrapper.scrollHeight - panelHeight - padding;
@@ -826,9 +911,7 @@ export function FloatingBlockToolbar({
         const maxLeft = wrapper.scrollWidth - panelWidth - padding;
 
         const top =
-            maxTop <= minTop
-                ? Math.max(minTop, rawTop)
-                : Math.max(minTop, Math.min(maxTop, rawTop));
+            maxTop <= minTop ? Math.max(minTop, rawTop) : Math.max(minTop, Math.min(maxTop, rawTop));
 
         const left =
             maxLeft <= minLeft
@@ -838,9 +921,7 @@ export function FloatingBlockToolbar({
         setToolbarPos({ top, left });
     }, [selectionMeta?.has, iframeRef, wrapperRef]);
 
-    if (!selectionMeta || !selectionMeta.has || !(selectionMeta as any).rect) {
-        return null;
-    }
+    if (!selectionMeta || !selectionMeta.has || !(selectionMeta as any).rect) return null;
 
     const wrapper = wrapperRef.current;
     if (!wrapper) return null;
@@ -849,20 +930,8 @@ export function FloatingBlockToolbar({
 
     const baseStyle: React.CSSProperties =
         toolbarPos != null
-            ? {
-                  position: "absolute",
-                  top: toolbarPos.top,
-                  left: toolbarPos.left,
-                  zIndex: 120,
-                  pointerEvents: "auto",
-              }
-            : {
-                  position: "absolute",
-                  top: wrapper.scrollTop + 80,
-                  left: wrapper.scrollLeft + 14,
-                  zIndex: 120,
-                  pointerEvents: "auto",
-              };
+            ? { position: "absolute", top: toolbarPos.top, left: toolbarPos.left, zIndex: 120, pointerEvents: "auto" }
+            : { position: "absolute", top: wrapper.scrollTop + 80, left: wrapper.scrollLeft + 14, zIndex: 120, pointerEvents: "auto" };
 
     function callApi(method: string, ...args: any[]) {
         const win = iframeRef.current?.contentWindow as any;
