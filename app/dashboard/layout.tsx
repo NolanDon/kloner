@@ -1,11 +1,6 @@
 "use client";
 
-import {
-    ReactNode,
-    useEffect,
-    useMemo,
-    useState,
-} from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import {
     onAuthStateChanged,
@@ -13,11 +8,7 @@ import {
     signOut,
 } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
-import {
-    collection,
-    onSnapshot,
-    DocumentData,
-} from "firebase/firestore";
+import { collection, onSnapshot, DocumentData } from "firebase/firestore";
 import Link from "next/link";
 import Image from "next/image";
 import logo from "@/public/images/orange_logo.png";
@@ -38,6 +29,7 @@ import {
     CreditCard,
     Users,
     ShieldCheck,
+    Sparkles,
 } from "lucide-react";
 import KlonerLoader from "@/components/KlonerLoader";
 
@@ -62,6 +54,8 @@ const BASE_NAV_SECTIONS: NavSectionConfig[] = [
         items: [
             { href: "/", label: "Home", icon: Home },
             { href: "/affiliate", label: "Affiliate Hub", icon: Users },
+            // NEW: community templates link
+            { href: "/community-builds", label: "Community templates", icon: Sparkles },
         ],
     },
     {
@@ -73,35 +67,19 @@ const BASE_NAV_SECTIONS: NavSectionConfig[] = [
     },
     {
         label: "Archive",
-        items: [
-            {
-                href: "/dashboard/archived",
-                label: "Archive",
-                icon: Archive,
-            },
-        ],
+        items: [{ href: "/dashboard/archived", label: "Archive", icon: Archive }],
     },
     {
         label: "Deployments",
-        items: [
-            {
-                href: "/dashboard/deployments",
-                label: "Deployments",
-                icon: Rocket,
-            },
-        ],
+        items: [{ href: "/dashboard/deployments", label: "Deployments", icon: Rocket }],
     },
     {
         label: "Settings",
-        items: [
-            { href: "/dashboard/settings", label: "Settings", icon: SettingsIcon },
-        ],
+        items: [{ href: "/dashboard/settings", label: "Settings", icon: SettingsIcon }],
     },
     {
         label: "Quick Start",
-        items: [
-            { href: "/dashboard/docs", label: "Docs", icon: BookText },
-        ],
+        items: [{ href: "/dashboard/docs", label: "Docs", icon: BookText }],
     },
     {
         label: "Support",
@@ -189,8 +167,7 @@ function NavItem({
         }
     };
 
-    const showBadge =
-        typeof unreadCount === "number" && unreadCount > 0;
+    const showBadge = typeof unreadCount === "number" && unreadCount > 0;
 
     return (
         <Link
@@ -198,8 +175,8 @@ function NavItem({
             onClick={handleClick}
             aria-disabled={active}
             className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${active
-                ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
-                : "text-neutral-700 hover:bg-neutral-50"
+                    ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
+                    : "text-neutral-700 hover:bg-neutral-50"
                 }`}
         >
             {Icon && (
@@ -310,13 +287,7 @@ function SidebarShell({
                     className="flex items-center gap-2 font-black tracking-tight text-xl md:text-2xl shrink-0"
                 >
                     <div className="relative h-[90px] w-[90px]">
-                        <Image
-                            src={logo}
-                            alt="kloner logo"
-                            fill
-                            priority
-                            className="object-contain"
-                        />
+                        <Image src={logo} alt="kloner logo" fill priority className="object-contain" />
                     </div>
                 </Link>
             </div>
@@ -333,11 +304,7 @@ function SidebarShell({
                                     label={item.label}
                                     icon={item.icon}
                                     active={navItemIsActive(pathname, item.href)}
-                                    unreadCount={
-                                        item.href === "/support/agent"
-                                            ? supportUnreadCount
-                                            : undefined
-                                    }
+                                    unreadCount={item.href === "/support/agent" ? supportUnreadCount : undefined}
                                 />
                             ))}
                         </div>
@@ -373,10 +340,7 @@ function MobileHeader({
     const close = () => setOpen(false);
 
     const flatItems: NavItemConfig[] = useMemo(
-        () =>
-            filterNavSections(pathname, isAdmin, isSupportAgent).flatMap(
-                (s) => s.items,
-            ),
+        () => filterNavSections(pathname, isAdmin, isSupportAgent).flatMap((s) => s.items),
         [pathname, isAdmin, isSupportAgent],
     );
 
@@ -402,13 +366,7 @@ function MobileHeader({
                     className="flex items-center gap-2 font-black tracking-tight text-xl md:text-2xl shrink-0"
                 >
                     <div className="relative h-[70px] w-[70px]">
-                        <Image
-                            src={logo}
-                            alt="kloner logo"
-                            fill
-                            priority
-                            className="object-contain"
-                        />
+                        <Image src={logo} alt="kloner logo" fill priority className="object-contain" />
                     </div>
                 </Link>
 
@@ -444,9 +402,7 @@ function MobileHeader({
                             aria-modal="true"
                         >
                             <div className="flex items-center justify-between px-4 pt-3 pb-2">
-                                <div className="text-sm font-semibold text-neutral-800">
-                                    Quick Menu
-                                </div>
+                                <div className="text-sm font-semibold text-neutral-800">Quick Menu</div>
                                 <button
                                     onClick={close}
                                     aria-label="Close"
@@ -461,9 +417,7 @@ function MobileHeader({
                                 {flatItems.map(({ href, label, icon: Icon }) => {
                                     const active = navItemIsActive(pathname, href);
 
-                                    const handleClick = (
-                                        e: React.MouseEvent<HTMLAnchorElement>,
-                                    ) => {
+                                    const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
                                         if (active) {
                                             e.preventDefault();
                                             e.stopPropagation();
@@ -480,8 +434,8 @@ function MobileHeader({
                                                 onClick={handleClick}
                                                 aria-disabled={active}
                                                 className={`flex items-center gap-3 rounded-xl px-3 py-3 text-[15px] ${active
-                                                    ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
-                                                    : "text-neutral-800 hover:bg-neutral-50"
+                                                        ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
+                                                        : "text-neutral-800 hover:bg-neutral-50"
                                                     }`}
                                             >
                                                 {Icon && (
@@ -563,14 +517,9 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
                 snap.forEach((doc) => {
                     const data = doc.data() as DocumentData;
                     const status = (data.status as string) || "open";
-                    const unread =
-                        typeof data.unreadCount === "number"
-                            ? data.unreadCount
-                            : 0;
+                    const unread = typeof data.unreadCount === "number" ? data.unreadCount : 0;
 
-                    if (status !== "closed") {
-                        total += unread;
-                    }
+                    if (status !== "closed") total += unread;
                 });
                 setSupportUnreadCount(total);
             },
@@ -598,10 +547,7 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
                 </aside>
 
                 <section className="min-h-screen overflow-y-scroll scrollbar-hide">
-                    <MobileHeader
-                        isAdmin={isAdmin}
-                        isSupportAgent={isSupportAgent}
-                    />
+                    <MobileHeader isAdmin={isAdmin} isSupportAgent={isSupportAgent} />
                     <div className="flex-1">{children}</div>
                 </section>
             </div>

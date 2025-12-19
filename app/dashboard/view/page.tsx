@@ -50,7 +50,6 @@ import { auth, db, storage } from "@/lib/firebase";
 import PreviewEditor, { buildFinalExport, buildSeoMetaMapForExport, SeoMeta, SeoMetaMap } from "@/components/PreviewEditor";
 import {
     Rocket,
-    Plus,
     ChevronDown,
     Hammer,
     CheckCircle2,
@@ -60,11 +59,11 @@ import {
     MessageCircleWarning,
     Archive,
     Share2,
-    ScanFace,
     WrenchIcon,
     DeleteIcon,
     CheckCheck,
     ExternalLink,
+    ArrowUpRight,
 } from "lucide-react";
 import {
     isHttpUrl,
@@ -1103,14 +1102,13 @@ const CenterSpinner = memo(function CenterSpinner({
 const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     locked,
     onClick,
+    onStartFromCommunityBuild,
 }: {
     locked: boolean;
     onClick: () => void;
+    onStartFromCommunityBuild?: () => void;
     compact?: boolean;
 }) {
-    // Rely entirely on the parent-provided 'locked' prop.
-    // The parent tracks pendingByKey and renders with queued status,
-    // so this card will naturally disable when a render appears.
     const effectiveLocked = locked;
 
     const handleClick = () => {
@@ -1131,17 +1129,13 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     const subtitleSize = "text-sm";
 
     return (
-        <>
-
-
+        <div className={`flex flex-col ${sizeMinW} ${sizeMaxW}`}>
             <button
                 type="button"
                 onClick={handleClick}
                 disabled={effectiveLocked}
                 aria-busy={effectiveLocked}
-                className={`group relative flex ${sizeMinH} ${sizeMinW} ${sizeMaxW} items-center justify-center rounded-xl border-2 border-dashed bg-white text-center transition ${effectiveLocked
-                    ? "opacity-70 cursor-wait"
-                    : "hover:border-neutral-400"
+                className={`group relative flex ${sizeMinH} w-full items-center justify-center rounded-xl border-2 border-dashed bg-white text-center transition ${effectiveLocked ? "opacity-70 cursor-wait" : "hover:border-neutral-400"
                     }`}
                 title={title}
                 aria-disabled={effectiveLocked}
@@ -1158,20 +1152,38 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                             aria-hidden
                         />
                     </div>
-                    <div
-                        className={`mt-3 font-semibold text-neutral-800 ${titleSize}`}
-                    >
+                    <div className={`mt-3 font-semibold text-neutral-800 ${titleSize}`}>
                         {title}
                     </div>
-                    <div className={`mt-1 text-neutral-500 ${subtitleSize}`}>
-                        {subtitle}
-                    </div>
+                    <div className={`mt-1 text-neutral-500 ${subtitleSize}`}>{subtitle}</div>
                 </div>
             </button>
-        </>
+
+            {onStartFromCommunityBuild ? (
+                <button
+                    type="button"
+                    onClick={() => {
+                        if (effectiveLocked) return;
+                        onStartFromCommunityBuild();
+                    }}
+                    disabled={effectiveLocked}
+                    aria-disabled={effectiveLocked}
+                    className={`group mt-2 inline-flex mx-auto w-[200px] items-center justify-center rounded-full bg-[#f55f2a] px-4 py-1 text-[12px] font-semibold text-white whitespace-nowrap transition-all duration-200 ease-out ${effectiveLocked ? "pointer-events-none opacity-60" : "hover:opacity-95"
+                        }`}
+                >
+                    <span>Start from template</span>
+
+                    <span
+                        className="ml-1 inline-flex items-center"
+                        aria-hidden="true"
+                    >
+                        <ArrowUpRight className="h-3.5 w-3.5 opacity-90 transition-all duration-200 ease-out group-hover:translate-x-[1px] group-hover:-translate-y-[1px] group-hover:opacity-100" />
+                    </span>
+                </button>
+            ) : null}
+        </div>
     );
 });
-
 
 
 // ---------------------------------------------------------------------
@@ -3890,6 +3902,7 @@ export default function PreviewPage(): JSX.Element {
                                             key={`ghost-${first.path}`}
                                             locked={locked}
                                             onClick={() => buildFromCollection(collectionKeys)}
+                                            onStartFromCommunityBuild={() => router.push("/community-builds")}
                                         />
                                     );
                                 })}

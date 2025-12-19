@@ -530,7 +530,7 @@ export default function CommunityBuildsClient() {
                                 >
                                     <div className="relative h-[62%] w-full overflow-hidden bg-neutral-100 group">
                                         {firstPageHtml ? (
-                                            <div className="absolute inset-0 overflow-hidden opacity-35 transition group-hover:opacity-25">
+                                            <div className="absolute inset-0 overflow-hidden opacity-90 transition group-hover:opacity-25">
                                                 <div className="absolute left-0 top-0 origin-top-left scale-[0.32] pointer-events-none">
                                                     <iframe
                                                         title={item.name}
