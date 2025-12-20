@@ -3997,6 +3997,7 @@ export default function PreviewPage(): JSX.Element {
                                             key={`ghost-${first.path}`}
                                             locked={locked}
                                             onClick={() => buildFromCollection(collectionKeys)}
+                                            onStartFromCommunityBuild={() => router.push("/community-builds")}
                                         />
                                     );
                                 })}
