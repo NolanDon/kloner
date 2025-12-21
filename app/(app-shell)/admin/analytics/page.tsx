@@ -6,8 +6,11 @@ import { onAuthStateChanged } from "firebase/auth";
 import { collection, doc, getDoc, getDocs, Timestamp } from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
 
 type GateState = "loading" | "allowed" | "denied";
+
+const ACCENT = "#f55f2a";
 
 type UserAnalyticsRow = {
     id: string;
@@ -592,6 +595,8 @@ export default function AdminAnalyticsPage() {
                 </div>
             </header>
 
+
+
             <div className="flex gap-2 border-b border-neutral-200 text-xs">
                 {[
                     { id: "overview", label: "Overview" },
@@ -604,340 +609,368 @@ export default function AdminAnalyticsPage() {
                         type="button"
                         onClick={() => setActiveTab(t.id as TabId)}
                         className={`rounded-t-lg px-3 py-1.5 ${activeTab === t.id
-                                ? "border border-b-transparent border-neutral-200 bg-white text-neutral-900"
-                                : "border border-transparent text-neutral-500 hover:text-neutral-800"
+                            ? "border border-b-transparent border-neutral-200 bg-white text-neutral-900"
+                            : "border border-transparent text-neutral-500 hover:text-neutral-800"
                             }`}
                     >
                         {t.label}
                     </button>
                 ))}
             </div>
+            {!loadingData ? (
+                <>
+                    {activeTab === "overview" && (
+                        <div className="space-y-6">
+                            <section className="grid gap-4 md:grid-cols-3">
+                                <div className="rounded-xl border border-neutral-200 bg-white p-4">
+                                    <p className="mb-1 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Total kloner users</p>
+                                    <p className="text-2xl font-semibold text-neutral-900">{overview.totalUsers}</p>
+                                    <p className="mt-1 text-[11px] text-neutral-500">
+                                        Last signup: {overview.lastSignupDate ?? "No signups in this filter"}
+                                    </p>
+                                </div>
 
-            {activeTab === "overview" && (
-                <div className="space-y-6">
-                    <section className="grid gap-4 md:grid-cols-3">
-                        <div className="rounded-xl border border-neutral-200 bg-white p-4">
-                            <p className="mb-1 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Total kloner users</p>
-                            <p className="text-2xl font-semibold text-neutral-900">{overview.totalUsers}</p>
-                            <p className="mt-1 text-[11px] text-neutral-500">
-                                Last signup: {overview.lastSignupDate ?? "No signups in this filter"}
-                            </p>
+                                <div className="rounded-xl border border-neutral-200 bg-white p-4">
+                                    <p className="mb-1 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Vercel connected</p>
+                                    <p className="text-2xl font-semibold text-neutral-900">{overview.vercelConnectedCount}</p>
+                                    <p className="mt-1 text-[11px] text-neutral-500">Users with a Vercel integration doc</p>
+                                </div>
+
+                                <div className="rounded-xl border border-neutral-200 bg-white p-4">
+                                    <p className="mb-1 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Active this week</p>
+                                    <p className="text-2xl font-semibold text-neutral-900">{overview.activeThisWeek}</p>
+                                    <p className="mt-1 text-[11px] text-neutral-500">Based on last editor session end time</p>
+                                </div>
+                            </section>
+
+                            <section className="grid gap-4 md:grid-cols-3">
+                                <div className="rounded-xl border border-neutral-200 bg-white p-4">
+                                    <p className="mb-1 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Users with deployments</p>
+                                    <p className="text-2xl font-semibold text-neutral-900">{overview.usersWithDeployments}</p>
+                                    <p className="mt-1 text-[11px] text-neutral-500">Total deployments: {overview.totalDeployments}</p>
+                                </div>
+
+                                <div className="rounded-xl border border-neutral-200 bg-white p-4">
+                                    <p className="mb-1 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Total editor minutes</p>
+                                    <p className="text-2xl font-semibold text-neutral-900">{overview.totalEditorMinutes}</p>
+                                    <p className="mt-1 text-[11px] text-neutral-500">Across all editor meta docs</p>
+                                </div>
+
+                                <div className="rounded-xl border border-neutral-200 bg-white p-4">
+                                    <p className="mb-1 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Avg minutes per user</p>
+                                    <p className="text-2xl font-semibold text-neutral-900">{overview.avgMinutesPerUser}</p>
+                                </div>
+                            </section>
+
+                            <section className="rounded-xl border border-neutral-200 bg-white p-4">
+                                <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-neutral-500">New kloner users per day</p>
+                                {dailyBuckets.length === 0 ? (
+                                    <p className="text-xs text-neutral-500">No signups recorded for this filter.</p>
+                                ) : (
+                                    <div className="flex items-end gap-2 overflow-x-auto pb-2">
+                                        {dailyBuckets.map((b) => {
+                                            const height = (b.count / maxDailyCount) * 140;
+                                            return (
+                                                <div key={b.date} className="flex flex-col items-center gap-1">
+                                                    <div
+                                                        className="w-6 rounded-t-md bg-accent"
+                                                        style={{ height }}
+                                                        title={`${b.date}: ${b.count}`}
+                                                    />
+                                                    <span className="text-[9px] text-neutral-500">{b.date.slice(5)}</span>
+                                                    <span className="text-[9px] text-neutral-700">{b.count}</span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </section>
                         </div>
+                    )}
 
-                        <div className="rounded-xl border border-neutral-200 bg-white p-4">
-                            <p className="mb-1 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Vercel connected</p>
-                            <p className="text-2xl font-semibold text-neutral-900">{overview.vercelConnectedCount}</p>
-                            <p className="mt-1 text-[11px] text-neutral-500">Users with a Vercel integration doc</p>
-                        </div>
+                    {activeTab === "usage" && (
+                        <div className="space-y-6">
+                            <section className="rounded-xl border border-neutral-200 bg-white p-4">
+                                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                    <div>
+                                        <p className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">Usage performance</p>
+                                        <p className="mt-1 text-xs text-neutral-500">
+                                            Returning users are users with editorSessionCount ≥ 2.
+                                        </p>
+                                    </div>
 
-                        <div className="rounded-xl border border-neutral-200 bg-white p-4">
-                            <p className="mb-1 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Active this week</p>
-                            <p className="text-2xl font-semibold text-neutral-900">{overview.activeThisWeek}</p>
-                            <p className="mt-1 text-[11px] text-neutral-500">Based on last editor session end time</p>
-                        </div>
-                    </section>
+                                    <div className="flex items-center gap-2">
+                                        {([7, 14, 30, 90] as const).map((d) => (
+                                            <button
+                                                key={d}
+                                                type="button"
+                                                onClick={() => setUsageRangeDays(d)}
+                                                className={`rounded-lg border px-3 py-1.5 text-xs ${usageRangeDays === d
+                                                    ? "border-neutral-300 bg-neutral-900 text-white"
+                                                    : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300"
+                                                    }`}
+                                            >
+                                                Last {d}d
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
 
-                    <section className="grid gap-4 md:grid-cols-3">
-                        <div className="rounded-xl border border-neutral-200 bg-white p-4">
-                            <p className="mb-1 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Users with deployments</p>
-                            <p className="text-2xl font-semibold text-neutral-900">{overview.usersWithDeployments}</p>
-                            <p className="mt-1 text-[11px] text-neutral-500">Total deployments: {overview.totalDeployments}</p>
-                        </div>
+                                <div className="mt-4 grid gap-4 md:grid-cols-4 text-sm">
+                                    <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                        <p className="text-[11px] text-neutral-500 mb-1">Active users (window)</p>
+                                        <p className="text-xl font-semibold text-neutral-900">{usageTotals.activeInWindow}</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">Last session ended inside window</p>
+                                    </div>
 
-                        <div className="rounded-xl border border-neutral-200 bg-white p-4">
-                            <p className="mb-1 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Total editor minutes</p>
-                            <p className="text-2xl font-semibold text-neutral-900">{overview.totalEditorMinutes}</p>
-                            <p className="mt-1 text-[11px] text-neutral-500">Across all editor meta docs</p>
-                        </div>
+                                    <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                        <p className="text-[11px] text-neutral-500 mb-1">Returning active (window)</p>
+                                        <p className="text-xl font-semibold text-neutral-900">{usageTotals.returningActiveInWindow}</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">Active + 2+ sessions</p>
+                                    </div>
 
-                        <div className="rounded-xl border border-neutral-200 bg-white p-4">
-                            <p className="mb-1 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Avg minutes per user</p>
-                            <p className="text-2xl font-semibold text-neutral-900">{overview.avgMinutesPerUser}</p>
-                        </div>
-                    </section>
+                                    <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                        <p className="text-[11px] text-neutral-500 mb-1">Returning users (all time)</p>
+                                        <p className="text-xl font-semibold text-neutral-900">{usageTotals.returningUsersAllTime}</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">editorSessionCount ≥ 2</p>
+                                    </div>
 
-                    <section className="rounded-xl border border-neutral-200 bg-white p-4">
-                        <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-neutral-500">New kloner users per day</p>
-                        {dailyBuckets.length === 0 ? (
-                            <p className="text-xs text-neutral-500">No signups recorded for this filter.</p>
-                        ) : (
-                            <div className="flex items-end gap-2 overflow-x-auto pb-2">
-                                {dailyBuckets.map((b) => {
-                                    const height = (b.count / maxDailyCount) * 140;
-                                    return (
-                                        <div key={b.date} className="flex flex-col items-center gap-1">
-                                            <div
-                                                className="w-6 rounded-t-md bg-accent"
-                                                style={{ height }}
-                                                title={`${b.date}: ${b.count}`}
-                                            />
-                                            <span className="text-[9px] text-neutral-500">{b.date.slice(5)}</span>
-                                            <span className="text-[9px] text-neutral-700">{b.count}</span>
-                                        </div>
-                                    );
-                                })}
+                                    <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                        <p className="text-[11px] text-neutral-500 mb-1">Avg minutes per user</p>
+                                        <p className="text-xl font-semibold text-neutral-900">{overview.avgMinutesPerUser}</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">All-time minutes / users</p>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <div className="grid gap-4 xl:grid-cols-3">
+                                <LineChartCard
+                                    title="Active users per day"
+                                    subtitle="Users whose last session ended on each day"
+                                    points={activeUsersSeries}
+                                />
+                                <LineChartCard
+                                    title="Returning active users per day"
+                                    subtitle="Active users with 2+ sessions total"
+                                    points={returningActiveUsersSeries}
+                                />
+                                <LineChartCard
+                                    title="Signups per day"
+                                    subtitle="New kloner_users created (createdAt) per day"
+                                    points={signupsSeries}
+                                />
                             </div>
-                        )}
-                    </section>
-                </div>
-            )}
 
-            {activeTab === "usage" && (
-                <div className="space-y-6">
-                    <section className="rounded-xl border border-neutral-200 bg-white p-4">
-                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                            <div>
-                                <p className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">Usage performance</p>
-                                <p className="mt-1 text-xs text-neutral-500">
-                                    Returning users are users with editorSessionCount ≥ 2.
-                                </p>
-                            </div>
+                            {/* WHO the returning users are */}
+                            <section className="rounded-xl border border-neutral-200 bg-white p-4">
+                                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                                    <div>
+                                        <p className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
+                                            Returning users (identity)
+                                        </p>
+                                        <p className="mt-1 text-xs text-neutral-500">
+                                            Sorted by most recent session end. Showing up to 50.
+                                        </p>
+                                    </div>
 
-                            <div className="flex items-center gap-2">
-                                {([7, 14, 30, 90] as const).map((d) => (
-                                    <button
-                                        key={d}
-                                        type="button"
-                                        onClick={() => setUsageRangeDays(d)}
-                                        className={`rounded-lg border px-3 py-1.5 text-xs ${usageRangeDays === d
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setReturningOnly(true)}
+                                            className={`rounded-lg border px-3 py-1.5 text-xs ${returningOnly
                                                 ? "border-neutral-300 bg-neutral-900 text-white"
                                                 : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300"
-                                            }`}
-                                    >
-                                        Last {d}d
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="mt-4 grid gap-4 md:grid-cols-4 text-sm">
-                            <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
-                                <p className="text-[11px] text-neutral-500 mb-1">Active users (window)</p>
-                                <p className="text-xl font-semibold text-neutral-900">{usageTotals.activeInWindow}</p>
-                                <p className="mt-1 text-[11px] text-neutral-500">Last session ended inside window</p>
-                            </div>
-
-                            <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
-                                <p className="text-[11px] text-neutral-500 mb-1">Returning active (window)</p>
-                                <p className="text-xl font-semibold text-neutral-900">{usageTotals.returningActiveInWindow}</p>
-                                <p className="mt-1 text-[11px] text-neutral-500">Active + 2+ sessions</p>
-                            </div>
-
-                            <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
-                                <p className="text-[11px] text-neutral-500 mb-1">Returning users (all time)</p>
-                                <p className="text-xl font-semibold text-neutral-900">{usageTotals.returningUsersAllTime}</p>
-                                <p className="mt-1 text-[11px] text-neutral-500">editorSessionCount ≥ 2</p>
-                            </div>
-
-                            <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
-                                <p className="text-[11px] text-neutral-500 mb-1">Avg minutes per user</p>
-                                <p className="text-xl font-semibold text-neutral-900">{overview.avgMinutesPerUser}</p>
-                                <p className="mt-1 text-[11px] text-neutral-500">All-time minutes / users</p>
-                            </div>
-                        </div>
-                    </section>
-
-                    <div className="grid gap-4 xl:grid-cols-3">
-                        <LineChartCard
-                            title="Active users per day"
-                            subtitle="Users whose last session ended on each day"
-                            points={activeUsersSeries}
-                        />
-                        <LineChartCard
-                            title="Returning active users per day"
-                            subtitle="Active users with 2+ sessions total"
-                            points={returningActiveUsersSeries}
-                        />
-                        <LineChartCard
-                            title="Signups per day"
-                            subtitle="New kloner_users created (createdAt) per day"
-                            points={signupsSeries}
-                        />
-                    </div>
-
-                    {/* WHO the returning users are */}
-                    <section className="rounded-xl border border-neutral-200 bg-white p-4">
-                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                            <div>
-                                <p className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
-                                    Returning users (identity)
-                                </p>
-                                <p className="mt-1 text-xs text-neutral-500">
-                                    Sorted by most recent session end. Showing up to 50.
-                                </p>
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setReturningOnly(true)}
-                                    className={`rounded-lg border px-3 py-1.5 text-xs ${returningOnly
-                                            ? "border-neutral-300 bg-neutral-900 text-white"
-                                            : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300"
-                                        }`}
-                                >
-                                    Returning only
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setReturningOnly(false)}
-                                    className={`rounded-lg border px-3 py-1.5 text-xs ${!returningOnly
-                                            ? "border-neutral-300 bg-neutral-900 text-white"
-                                            : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300"
-                                        }`}
-                                >
-                                    All active
-                                </button>
-                            </div>
-                        </div>
-
-                        {userListForUsage.length === 0 ? (
-                            <p className="mt-3 text-xs text-neutral-500">No users match this list.</p>
-                        ) : (
-                            <div className="mt-3 space-y-1 text-xs">
-                                {userListForUsage.map((r) => (
-                                    <div
-                                        key={r.id}
-                                        className="flex items-center justify-between rounded-md border border-neutral-100 bg-neutral-50 px-3 py-2"
-                                    >
-                                        <div className="flex flex-col min-w-0">
-                                            <span className="font-medium text-neutral-900 truncate">{r.email ?? r.id}</span>
-                                            <span className="text-[10px] text-neutral-500">
-                                                UID: {r.id} · Tier: {r.tier ?? "free"}
-                                            </span>
-                                        </div>
-                                        <div className="text-right flex-shrink-0">
-                                            <div className="text-[11px] text-neutral-700">
-                                                {r.lastSessionEndedAt
-                                                    ? r.lastSessionEndedAt.toLocaleString(undefined, {
-                                                        dateStyle: "medium",
-                                                        timeStyle: "short",
-                                                    })
-                                                    : "No activity"}
-                                            </div>
-                                            <div className="text-[10px] text-neutral-500">
-                                                Sessions: {r.editorSessionCount ?? 0} · Minutes: {r.editorSessionTotalMinutes ?? 0}
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </section>
-                </div>
-            )}
-
-            {activeTab === "power" && (
-                <div className="space-y-6">
-                    <section className="rounded-xl border border-neutral-200 bg-white p-4">
-                        <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Top editor usage (minutes)</p>
-                        <div className="space-y-1 text-xs">
-                            {topByMinutes.length === 0 && <p className="text-neutral-500">No editor activity yet.</p>}
-                            {topByMinutes.map((r, idx) => (
-                                <div
-                                    key={r.id}
-                                    className="flex items-center justify-between rounded-md border border-neutral-100 bg-neutral-50 px-3 py-2"
-                                >
-                                    <div className="flex items-center gap-2">
-                                        <span className="w-5 text-[10px] text-neutral-500">#{idx + 1}</span>
-                                        <div className="flex flex-col">
-                                            <span className="font-medium text-neutral-900">{r.email ?? r.id}</span>
-                                            <span className="text-[10px] text-neutral-500">Tier: {r.tier ?? "free"}</span>
-                                        </div>
-                                    </div>
-                                    <div className="text-right text-[11px] text-neutral-700">
-                                        {r.editorSessionTotalMinutes ?? 0} min · saves {r.editorSaveTotal ?? 0}
+                                                }`}
+                                        >
+                                            Returning only
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setReturningOnly(false)}
+                                            className={`rounded-lg border px-3 py-1.5 text-xs ${!returningOnly
+                                                ? "border-neutral-300 bg-neutral-900 text-white"
+                                                : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300"
+                                                }`}
+                                        >
+                                            All active
+                                        </button>
                                     </div>
                                 </div>
-                            ))}
-                        </div>
-                    </section>
 
-                    <section className="rounded-xl border border-neutral-200 bg-white p-4">
-                        <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Top by deployments</p>
-                        <div className="space-y-1 text-xs">
-                            {topByDeployments.length === 0 && <p className="text-neutral-500">No deployments yet.</p>}
-                            {topByDeployments.map((r, idx) => (
-                                <div
-                                    key={r.id}
-                                    className="flex items-center justify-between rounded-md border border-neutral-100 bg-neutral-50 px-3 py-2"
-                                >
-                                    <div className="flex items-center gap-2">
-                                        <span className="w-5 text-[10px] text-neutral-500">#{idx + 1}</span>
-                                        <div className="flex flex-col">
-                                            <span className="font-medium text-neutral-900">{r.email ?? r.id}</span>
-                                            <span className="text-[10px] text-neutral-500">Tier: {r.tier ?? "free"}</span>
-                                        </div>
+                                {userListForUsage.length === 0 ? (
+                                    <p className="mt-3 text-xs text-neutral-500">No users match this list.</p>
+                                ) : (
+                                    <div className="mt-3 space-y-1 text-xs">
+                                        {userListForUsage.map((r) => (
+                                            <div
+                                                key={r.id}
+                                                className="flex items-center justify-between rounded-md border border-neutral-100 bg-neutral-50 px-3 py-2"
+                                            >
+                                                <div className="flex flex-col min-w-0">
+                                                    <span className="font-medium text-neutral-900 truncate">{r.email ?? r.id}</span>
+                                                    <span className="text-[10px] text-neutral-500">
+                                                        UID: {r.id} · Tier: {r.tier ?? "free"}
+                                                    </span>
+                                                </div>
+                                                <div className="text-right flex-shrink-0">
+                                                    <div className="text-[11px] text-neutral-700">
+                                                        {r.lastSessionEndedAt
+                                                            ? r.lastSessionEndedAt.toLocaleString(undefined, {
+                                                                dateStyle: "medium",
+                                                                timeStyle: "short",
+                                                            })
+                                                            : "No activity"}
+                                                    </div>
+                                                    <div className="text-[10px] text-neutral-500">
+                                                        Sessions: {r.editorSessionCount ?? 0} · Minutes: {r.editorSessionTotalMinutes ?? 0}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
-                                    <div className="text-right text-[11px] text-neutral-700">
-                                        {r.deploymentCount ?? 0} deployments · {r.vercelConnected ? "Vercel linked" : "No Vercel"}
+                                )}
+                            </section>
+                        </div>
+                    )}
+
+                    {activeTab === "power" && (
+                        <div className="space-y-6">
+                            <section className="rounded-xl border border-neutral-200 bg-white p-4">
+                                <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Top editor usage (minutes)</p>
+                                <div className="space-y-1 text-xs">
+                                    {topByMinutes.length === 0 && <p className="text-neutral-500">No editor activity yet.</p>}
+                                    {topByMinutes.map((r, idx) => (
+                                        <div
+                                            key={r.id}
+                                            className="flex items-center justify-between rounded-md border border-neutral-100 bg-neutral-50 px-3 py-2"
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <span className="w-5 text-[10px] text-neutral-500">#{idx + 1}</span>
+                                                <div className="flex flex-col">
+                                                    <span className="font-medium text-neutral-900">{r.email ?? r.id}</span>
+                                                    <span className="text-[10px] text-neutral-500">Tier: {r.tier ?? "free"}</span>
+                                                </div>
+                                            </div>
+                                            <div className="text-right text-[11px] text-neutral-700">
+                                                {r.editorSessionTotalMinutes ?? 0} min · saves {r.editorSaveTotal ?? 0}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </section>
+
+                            <section className="rounded-xl border border-neutral-200 bg-white p-4">
+                                <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Top by deployments</p>
+                                <div className="space-y-1 text-xs">
+                                    {topByDeployments.length === 0 && <p className="text-neutral-500">No deployments yet.</p>}
+                                    {topByDeployments.map((r, idx) => (
+                                        <div
+                                            key={r.id}
+                                            className="flex items-center justify-between rounded-md border border-neutral-100 bg-neutral-50 px-3 py-2"
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <span className="w-5 text-[10px] text-neutral-500">#{idx + 1}</span>
+                                                <div className="flex flex-col">
+                                                    <span className="font-medium text-neutral-900">{r.email ?? r.id}</span>
+                                                    <span className="text-[10px] text-neutral-500">Tier: {r.tier ?? "free"}</span>
+                                                </div>
+                                            </div>
+                                            <div className="text-right text-[11px] text-neutral-700">
+                                                {r.deploymentCount ?? 0} deployments · {r.vercelConnected ? "Vercel linked" : "No Vercel"}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </section>
+                        </div>
+                    )}
+
+                    {activeTab === "credits" && (
+                        <div className="space-y-6">
+                            <section className="rounded-xl border border-neutral-200 bg-white p-4">
+                                <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Credit pools (remaining)</p>
+                                <div className="grid gap-4 md:grid-cols-3 text-sm">
+                                    <div>
+                                        <p className="text-[11px] text-neutral-500 mb-1">AI edits</p>
+                                        <p className="text-xl font-semibold">{creditsSummary.aiRemaining}</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">Users ≤ 5 remaining: {creditsSummary.aiLow}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[11px] text-neutral-500 mb-1">Previews</p>
+                                        <p className="text-xl font-semibold">{creditsSummary.previewRemaining}</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">Users ≤ 5 remaining: {creditsSummary.previewLow}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[11px] text-neutral-500 mb-1">Snapshots</p>
+                                        <p className="text-xl font-semibold">{creditsSummary.snapshotRemaining}</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">Users ≤ 5 remaining: {creditsSummary.snapshotLow}</p>
                                     </div>
                                 </div>
-                            ))}
-                        </div>
-                    </section>
-                </div>
-            )}
+                            </section>
 
-            {activeTab === "credits" && (
-                <div className="space-y-6">
-                    <section className="rounded-xl border border-neutral-200 bg-white p-4">
-                        <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Credit pools (remaining)</p>
-                        <div className="grid gap-4 md:grid-cols-3 text-sm">
-                            <div>
-                                <p className="text-[11px] text-neutral-500 mb-1">AI edits</p>
-                                <p className="text-xl font-semibold">{creditsSummary.aiRemaining}</p>
-                                <p className="mt-1 text-[11px] text-neutral-500">Users ≤ 5 remaining: {creditsSummary.aiLow}</p>
-                            </div>
-                            <div>
-                                <p className="text-[11px] text-neutral-500 mb-1">Previews</p>
-                                <p className="text-xl font-semibold">{creditsSummary.previewRemaining}</p>
-                                <p className="mt-1 text-[11px] text-neutral-500">Users ≤ 5 remaining: {creditsSummary.previewLow}</p>
-                            </div>
-                            <div>
-                                <p className="text-[11px] text-neutral-500 mb-1">Snapshots</p>
-                                <p className="text-xl font-semibold">{creditsSummary.snapshotRemaining}</p>
-                                <p className="mt-1 text-[11px] text-neutral-500">Users ≤ 5 remaining: {creditsSummary.snapshotLow}</p>
-                            </div>
+                            <section className="rounded-xl border border-neutral-200 bg-white p-4">
+                                <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Users closest to running out</p>
+                                <div className="space-y-1 text-xs">
+                                    {[...filteredRows]
+                                        .sort((a, b) => {
+                                            const aMin = Math.min(
+                                                a.creditsAiEditsRemaining ?? Infinity,
+                                                a.creditsPreviewRemaining ?? Infinity,
+                                                a.creditsSnapshotRemaining ?? Infinity,
+                                            );
+                                            const bMin = Math.min(
+                                                b.creditsAiEditsRemaining ?? Infinity,
+                                                b.creditsPreviewRemaining ?? Infinity,
+                                                b.creditsSnapshotRemaining ?? Infinity,
+                                            );
+                                            return aMin - bMin;
+                                        })
+                                        .slice(0, 15)
+                                        .map((r) => (
+                                            <div
+                                                key={r.id}
+                                                className="flex items-center justify-between rounded-md border border-neutral-100 bg-neutral-50 px-3 py-2"
+                                            >
+                                                <div className="flex flex-col">
+                                                    <span className="font-medium text-neutral-900">{r.email ?? r.id}</span>
+                                                    <span className="text-[10px] text-neutral-500">Tier: {r.tier ?? "free"}</span>
+                                                </div>
+                                                <div className="text-right text-[10px] text-neutral-700">
+                                                    AI: {r.creditsAiEditsRemaining ?? 0} · Prev: {r.creditsPreviewRemaining ?? 0} · Snap:{" "}
+                                                    {r.creditsSnapshotRemaining ?? 0}
+                                                </div>
+                                            </div>
+                                        ))}
+                                </div>
+                            </section>
                         </div>
-                    </section>
-
-                    <section className="rounded-xl border border-neutral-200 bg-white p-4">
-                        <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Users closest to running out</p>
-                        <div className="space-y-1 text-xs">
-                            {[...filteredRows]
-                                .sort((a, b) => {
-                                    const aMin = Math.min(
-                                        a.creditsAiEditsRemaining ?? Infinity,
-                                        a.creditsPreviewRemaining ?? Infinity,
-                                        a.creditsSnapshotRemaining ?? Infinity,
-                                    );
-                                    const bMin = Math.min(
-                                        b.creditsAiEditsRemaining ?? Infinity,
-                                        b.creditsPreviewRemaining ?? Infinity,
-                                        b.creditsSnapshotRemaining ?? Infinity,
-                                    );
-                                    return aMin - bMin;
-                                })
-                                .slice(0, 15)
-                                .map((r) => (
-                                    <div
-                                        key={r.id}
-                                        className="flex items-center justify-between rounded-md border border-neutral-100 bg-neutral-50 px-3 py-2"
-                                    >
-                                        <div className="flex flex-col">
-                                            <span className="font-medium text-neutral-900">{r.email ?? r.id}</span>
-                                            <span className="text-[10px] text-neutral-500">Tier: {r.tier ?? "free"}</span>
-                                        </div>
-                                        <div className="text-right text-[10px] text-neutral-700">
-                                            AI: {r.creditsAiEditsRemaining ?? 0} · Prev: {r.creditsPreviewRemaining ?? 0} · Snap:{" "}
-                                            {r.creditsSnapshotRemaining ?? 0}
-                                        </div>
-                                    </div>
-                                ))}
-                        </div>
-                    </section>
-                </div>
+                    )}
+                </>
+            ) : (
+                <>
+                    <motion.div
+                        className="relative mt-20 mx-auto flex h-20 w-20 items-center justify-center"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.25 }}
+                    >
+                        <motion.span
+                            className="absolute inset-1 rounded-full border-2 border-t-transparent"
+                            style={{
+                                borderColor: ACCENT,
+                                borderTopColor: "transparent",
+                            }}
+                            initial={{ rotate: 0 }}
+                            animate={{ rotate: 360 }}
+                            transition={{
+                                duration: 1.1,
+                                repeat: Infinity,
+                                repeatType: "loop",
+                                ease: "linear",
+                            }}
+                        />
+                    </motion.div>
+                </>
             )}
         </div>
     );
