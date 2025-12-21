@@ -13,16 +13,28 @@ const GROUPS: Group[] = [
         heading: 'How it works',
         items: [
             {
+                q: 'Will it copy entire web applications, or mobile applications?',
+                a: 'No, Kloner is specifically for users looking to create high-performing, secure, single or mulit-page websites without strict database requirements'
+            },
+            {
+                q: 'How can I customize or change fonts, colors after generating a preview?',
+                a: 'Kloner has it\'s own editor, after generating a website you can fine-tune fonts, colors, images, seo data, and much more.'
+            },
+            {
                 q: 'How long does the process take from entering a URL to deployment?',
-                a: 'Whether you choose to customize or not will differ this timeframe, without customization, your site can be generated and live in as little as 10 minutes.'
+                a: 'Your site can be generated and live in as little as 5 minutes.'
             },
             {
                 q: 'What exactly gets exported?',
-                a: 'A clean, secure and well-structured project, componentized layouts, optimized images, subset fonts.'
+                a: 'A clean, secure and well-structured HTML project, componentized layouts, optimized images, subset fonts.'
+            },
+            {
+                q: 'Can I attach my own domain?',
+                a: 'Yes, Kloner deploys to Vercel, and from Vercel you can manage custom domains, analytics and much more.'
             },
             {
                 q: 'Will forms and client scripts work?',
-                a: 'We preserve markup and isolate scripts. Forms are kept but may require hooking to your backend. Third-party widgets are bridged where possible or flagged if manual wiring is needed.'
+                a: 'We preserve markup and isolate scripts. Full form integration is currently in development'
             },
             {
                 q: 'Do internal links keep working?',
@@ -30,7 +42,7 @@ const GROUPS: Group[] = [
             },
             {
                 q: 'Can I run the exported project anywhere?',
-                a: 'Yes. The output is standard HTML. It runs on Vercel, Netlify, or any Node/Edge host.'
+                a: 'Yes. The output is standard HTML. It runs on Vercel, Netlify, or any Node/Edge host. However Kloner strictly deploys to Vercel only'
             },
         ],
     },
@@ -43,7 +55,7 @@ const GROUPS: Group[] = [
             },
             {
                 q: 'What’s included in Pro?',
-                a: 'Unlimited previews on your domain, clean HTML export, image/SEO/route setup, font subsetting, and one-click deploy integrations.'
+                a: '40 website generations per month for any domain, clean HTML export, image/SEO/route setup, font subsetting, and one-click deploy integrations.'
             },
             {
                 q: 'Can I cancel anytime?',
@@ -71,12 +83,8 @@ const GROUPS: Group[] = [
                 a: 'Yes. You can choose pages/ or app/ output. We scaffold route groups where appropriate.'
             },
             {
-                q: 'What about frameworks other than hTML?',
+                q: 'What about frameworks other than HTML?',
                 a: 'Exporters for Remix, SvelteKit, and Astro are in development and will be available soon. You can still export raw assets and wire your framework of choice.'
-            },
-            {
-                q: 'SEO fidelity guarantees?',
-                a: 'We extract titles, descriptions, canonical, robots, OG/Twitter, and JSON-LD blocks when present. A diff report highlights anything missing.'
             },
         ],
     },
