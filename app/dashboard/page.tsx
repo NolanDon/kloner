@@ -619,7 +619,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
 
                     {r.lastError && (uiStatus === "stale" || uiStatus === "error") ? (
                         <div className="text-xs text-rose-600">
-                            Last error: {r.lastError}
+                            {r.lastError}
                         </div>
                     ) : null}
                     {err ? <div className="text-xs text-red-600">{err}</div> : null}
