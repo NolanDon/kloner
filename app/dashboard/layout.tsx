@@ -30,6 +30,7 @@ import {
     Users,
     ShieldCheck,
     Sparkles,
+    Monitor,
 } from "lucide-react";
 import KlonerLoader from "@/components/KlonerLoader";
 
@@ -95,6 +96,12 @@ const BASE_NAV_SECTIONS: NavSectionConfig[] = [
     {
         label: "Admin",
         items: [
+            {
+                href: "/admin/renders",
+                label: "User renders",
+                icon: Monitor,
+                adminOnly: true,
+            },
             {
                 href: "/admin/analytics",
                 label: "Analytics",
@@ -175,8 +182,8 @@ function NavItem({
             onClick={handleClick}
             aria-disabled={active}
             className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${active
-                    ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
-                    : "text-neutral-700 hover:bg-neutral-50"
+                ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
+                : "text-neutral-700 hover:bg-neutral-50"
                 }`}
         >
             {Icon && (
@@ -434,8 +441,8 @@ function MobileHeader({
                                                 onClick={handleClick}
                                                 aria-disabled={active}
                                                 className={`flex items-center gap-3 rounded-xl px-3 py-3 text-[15px] ${active
-                                                        ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
-                                                        : "text-neutral-800 hover:bg-neutral-50"
+                                                    ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
+                                                    : "text-neutral-800 hover:bg-neutral-50"
                                                     }`}
                                             >
                                                 {Icon && (
