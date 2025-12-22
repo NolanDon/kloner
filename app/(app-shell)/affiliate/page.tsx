@@ -666,12 +666,12 @@ export default function AffiliatePage() {
                                 Start application
                             </button>
 
-                            <button
+                            {/* <button
                                 onClick={() => setShowApply(false)}
                                 className="rounded-full border border-neutral-200 bg-white px-5 py-2.5 text-sm text-neutral-800"
                             >
                                 Not now
-                            </button>
+                            </button> */}
                         </div>
                     </section>
 
