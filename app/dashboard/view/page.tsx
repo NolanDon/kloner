@@ -64,6 +64,7 @@ import {
     CheckCheck,
     ExternalLink,
     ArrowUpRight,
+    Plus,
 } from "lucide-react";
 import {
     isHttpUrl,
@@ -267,8 +268,8 @@ function RenderCardInner({
             : null;
 
     // finished when at 100% and not queued/deploying
-    const isComplete =
-        normalizedProgressPercent !== null &&
+    const isComplete = false
+    normalizedProgressPercent !== null &&
         normalizedProgressPercent >= 100 &&
         !isQueued &&
         !isDeploying;
@@ -580,7 +581,7 @@ function RenderCardInner({
             )}
 
             {/* model badge – bottom left */}
-            {model && isDev && (
+            {/* {model && isDev && (
                 <span
                     className="absolute left-2 bottom-1 z-30 inline-flex items-center gap-1 rounded-full bg-neutral-900/85 px-2 py-0.5 text-[10px] text-neutral-50 shadow-sm"
                     title={`Model ${model}`}
@@ -588,7 +589,7 @@ function RenderCardInner({
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                     <span>{model}</span>
                 </span>
-            )}
+            )} */}
 
             {isArchivedFlag && (
                 <span
@@ -783,14 +784,14 @@ function RenderCardInner({
                                         <div className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-gradient-to-b from-white/70 to-white/0 opacity-70" />
 
                                         {/* tiny bubbles near the fill edge */}
-                                        <div
+                                        {/* <div
                                             className="pointer-events-none absolute top-1/2 -translate-y-1/2"
                                             style={{
                                                 left: `calc(${Math.max(0, Math.min(100, normalizedProgressPercent))}% - 10px)`,
                                             }}
                                         >
                                             <span className="kloner-bubble block h-1.5 w-1.5 rounded-full bg-white/70 blur-[0.2px]" />
-                                        </div>
+                                        </div> */}
                                     </div>
                                 )}
 
@@ -1135,7 +1136,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                 onClick={handleClick}
                 disabled={effectiveLocked}
                 aria-busy={effectiveLocked}
-                className={`group relative flex ${sizeMinH} w-full items-center justify-center rounded-xl border-2 border-dashed bg-white text-center transition ${effectiveLocked ? "opacity-70 cursor-wait" : "hover:border-neutral-400"
+                className={`group relative flex ${sizeMinH} w-full items-center justify-center rounded-xl border-2 border-dashed bg-white border-neutral-300 text-center transition ${effectiveLocked ? "opacity-70 cursor-wait" : "hover:border-neutral-400"
                     }`}
                 title={title}
                 aria-disabled={effectiveLocked}
@@ -1144,13 +1145,16 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                     <div
                         className={`grid ${iconWrapperSize} place-items-center rounded-full border border-neutral-200 bg-neutral-50 transition group-hover:scale-105`}
                     >
-                        <Hammer
-                            className={`h-7 w-7 text-neutral-600 ${effectiveLocked
-                                ? "ghost-hammer-swing"
-                                : "transition-transform group-hover:-rotate-6"
-                                }`}
-                            aria-hidden
-                        />
+                        {effectiveLocked ? (
+                            <Hammer
+                                className="h-7 w-7 text-neutral-600 ghost-hammer-swing aria-hidden"
+                            />
+                        ) : (
+                            <Plus
+                                className="h-7 w-7 text-neutral-600 aria-hidden"
+                            />
+                        )}
+
                     </div>
                     <div className={`mt-3 font-semibold text-neutral-800 ${titleSize}`}>
                         {title}
@@ -3678,7 +3682,7 @@ export default function PreviewPage(): JSX.Element {
 
                                 <div className="mt-3 flex flex-wrap gap-2 text-xs gap-2">
                                     <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-neutral-700">
-                                        Screenshots:&nbsp;
+                                        Screenshot credits:&nbsp;
                                         <span className="font-semibold text-neutral-900">
                                             {screenshotRemaining === null || !screenshotLimitDisplay
                                                 ? "-"
@@ -3687,7 +3691,7 @@ export default function PreviewPage(): JSX.Element {
                                     </span>
 
                                     <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-neutral-700">
-                                        Previews:&nbsp;
+                                        Preview credits:&nbsp;
                                         <span className="font-semibold text-neutral-900">
                                             {previewRemaining === null || !previewLimitDisplay
                                                 ? "-"
@@ -3719,110 +3723,61 @@ export default function PreviewPage(): JSX.Element {
 
                 {/* Step 1: URL selection */}
                 <section className="mb-8 rounded-3xl border border-neutral-200 bg-white/70 px-4 py-4 sm:px-5 sm:py-5 shadow-sm">
-                    <div className="flex items-center justify-between gap-3 flex-wrap">
-                        <div className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/80 px-3 py-1.5 text-xs sm:text-sm text-neutral-700 shadow-sm">
-                            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-white shadow-sm">
-                                1
-                            </span>
-                            <div className="flex flex-col leading-tight">
-                                <span className="text-[10px] uppercase tracking-[0.18em] text-neutral-400">
-                                    Step 1
-                                </span>
-                                <span className="text-[13px] sm:text-[14px] text-neutral-800">
-                                    URLs
-                                </span>
-                            </div>
+                    <button
+                        type="button"
+                        onClick={() => setUrlMenuOpen((v) => !v)}
+                        className="inline-flex max-w-[540px] items-center gap-2 truncate rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-800 hover:bg-neutral-50"
+                        title={activeUrlDoc?.url}
+                        aria-haspopup="listbox"
+                        aria-expanded={urlMenuOpen}
+                    >
+                        <span className="truncate">
+                            {activeUrlDoc?.url || "Select a URL"}
+                        </span>
+                        <ChevronDown className="h-4 w-4 shrink-0 text-neutral-500" />
+                    </button>
+
+                    {urlMenuOpen && (
+                        <div
+                            role="listbox"
+                            aria-activedescendant={activeUrlDoc?.id}
+                            className="absolute z-40 mt-2 w-[min(640px,90vw)] overflow-hidden rounded-md border border-neutral-200 bg-white shadow-lg"
+                        >
+                            <ul className="max-h-[280px] overflow-auto py-1">
+                                {orderedUrls.map((u) => {
+                                    const isActive =
+                                        activeUrlDoc?.id === u.id;
+                                    return (
+                                        <li key={u.id}>
+                                            <button
+                                                role="option"
+                                                aria-selected={isActive}
+                                                onClick={() => {
+                                                    setUrlMenuOpen(false);
+                                                    selectUrl(u.url);
+                                                }}
+                                                title={u.url}
+                                                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm ${isActive
+                                                    ? "bg-neutral-100 text-neutral-700"
+                                                    : "text-neutral-800 hover:bg-neutral-50"
+                                                    }`}
+                                            >
+                                                <span
+                                                    className={`inline-block h-2.5 w-2.5 rounded-full ${isActive
+                                                        ? "bg-neutral-800"
+                                                        : "bg-neutral-300"
+                                                        }`}
+                                                />
+                                                <span className="truncate">
+                                                    {u.url}
+                                                </span>
+                                            </button>
+                                        </li>
+                                    );
+                                })}
+                            </ul>
                         </div>
-                    </div>
-
-                    {/* url selector */}
-                    <div className="mt-4">
-                        {urlsLoading ? (
-                            <div className="h-10 rounded-xl bg-neutral-100 animate-pulse" />
-                        ) : urls.length === 0 ? (
-                            <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-2 text-sm text-neutral-700 my-2 flex items-center gap-2">
-                                <strong className="text-neutral-800 font-semibold inline-flex items-center gap-2">
-                                    {step1Done ? (
-                                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                                    ) : (
-                                        <Clock10 className="h-4 w-4 text-amber-500" />
-                                    )}
-                                    Step 1
-                                </strong>{" "}
-                                — Add a URL in Dashboard.
-                            </div>
-                        ) : (
-                            <div className="relative inline-block" ref={urlMenuRef}>
-                                <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-2 text-sm text-neutral-700 my-2 flex items-center gap-2">
-                                    <strong className="text-neutral-800 font-semibold inline-flex gap-1 flex items-center">
-                                        {step1Done ? (
-                                            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                                        ) :
-                                            <Clock10 className="h-4 w-4 text-amber-500" />
-                                        }
-                                        Step 1
-                                    </strong>{" "}
-                                    — chosen URL.
-                                </div>
-
-                                <button
-                                    type="button"
-                                    onClick={() => setUrlMenuOpen((v) => !v)}
-                                    className="inline-flex max-w-[540px] items-center gap-2 truncate rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-800 hover:bg-neutral-50"
-                                    title={activeUrlDoc?.url}
-                                    aria-haspopup="listbox"
-                                    aria-expanded={urlMenuOpen}
-                                >
-                                    <span className="truncate">
-                                        {activeUrlDoc?.url || "Select a URL"}
-                                    </span>
-                                    <ChevronDown className="h-4 w-4 shrink-0 text-neutral-500" />
-                                </button>
-
-                                {urlMenuOpen && (
-                                    <div
-                                        role="listbox"
-                                        aria-activedescendant={activeUrlDoc?.id}
-                                        className="absolute z-40 mt-2 w-[min(640px,90vw)] overflow-hidden rounded-md border border-neutral-200 bg-white shadow-lg"
-                                    >
-                                        <ul className="max-h-[280px] overflow-auto py-1">
-                                            {orderedUrls.map((u) => {
-                                                const isActive =
-                                                    activeUrlDoc?.id === u.id;
-                                                return (
-                                                    <li key={u.id}>
-                                                        <button
-                                                            role="option"
-                                                            aria-selected={isActive}
-                                                            onClick={() => {
-                                                                setUrlMenuOpen(false);
-                                                                selectUrl(u.url);
-                                                            }}
-                                                            title={u.url}
-                                                            className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm ${isActive
-                                                                ? "bg-neutral-100 text-neutral-700"
-                                                                : "text-neutral-800 hover:bg-neutral-50"
-                                                                }`}
-                                                        >
-                                                            <span
-                                                                className={`inline-block h-2.5 w-2.5 rounded-full ${isActive
-                                                                    ? "bg-neutral-800"
-                                                                    : "bg-neutral-300"
-                                                                    }`}
-                                                            />
-                                                            <span className="truncate">
-                                                                {u.url}
-                                                            </span>
-                                                        </button>
-                                                    </li>
-                                                );
-                                            })}
-                                        </ul>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
+                    )}
                 </section>
 
                 {err ? (
@@ -3855,11 +3810,11 @@ export default function PreviewPage(): JSX.Element {
                         </div>
                     </div>
 
-                    <p className="mt-1 mb-2 text-sm text-neutral-500">
+                    {/* <p className="mt-1 mb-2 text-sm text-neutral-500">
                         {(renders.length === 0 ? 'This section will host your editable websites'
                             :
                             'These are the website previews generated from your url.')}
-                    </p>
+                    </p> */}
 
                     {(renders.length === 0 || hasGhostPending) ? (
                         <>
@@ -3911,7 +3866,7 @@ export default function PreviewPage(): JSX.Element {
 
                     ) : (
                         <>
-                            <div className="mt-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-1 text-sm text-neutral-700 flex flex-wrap items-center gap-1 my-4">
+                            {/* <div className="mt-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-1 text-sm text-neutral-700 flex flex-wrap items-center gap-1 my-4">
                                 <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1">
                                     {step3Done ? (
                                         <CheckCircle2 className="h-4 w-4 text-emerald-500" />
@@ -3943,7 +3898,7 @@ export default function PreviewPage(): JSX.Element {
                                         — Generate previews from the collections above.
                                     </span>
                                 )}
-                            </div>
+                            </div> */}
 
                             <div
                                 className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"

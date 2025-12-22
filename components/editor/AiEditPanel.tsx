@@ -557,7 +557,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                     </div>
 
                     <div className="flex items-center gap-2">
-                        <div className="flex flex-1 items-center gap-2 rounded-2xl border border-neutral-300 bg-white px-3 py-1 shadow-sm">
+                        <div className="flex flex-1 items-center gap-2 rounded-2xl border border-accent bg-white px-3 py-1 shadow-sm">
                             <input
                                 type="text"
                                 value={prompt}

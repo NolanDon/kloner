@@ -400,6 +400,18 @@ async function reserveAiEditCreditsInline(opts: {
     cost: number;
     now: Date;
     requestId: string;
+
+    // NEW (optional, non-bloat debug)
+    debug?: {
+        renderId?: string;
+        action?: "edit_block" | "create_page";
+        mode?: "code" | "imagery";
+        pageId?: string;
+        slug?: string;
+        userPrompt?: string; // the "question"
+        ipHash?: string | null;
+        ua?: string | null;
+    };
 }): Promise<
     | {
         ok: true;
@@ -417,7 +429,7 @@ async function reserveAiEditCreditsInline(opts: {
         periodEnd: Date | null;
     }
 > {
-    const { db, uid, tier, cost, now, requestId } = opts;
+    const { db, uid, tier, cost, now, requestId, debug } = opts;
 
     const limit = monthlyLimitFor(tier, "edit");
     if (!limit) {
@@ -426,6 +438,20 @@ async function reserveAiEditCreditsInline(opts: {
 
     const userRef = db.collection("kloner_users").doc(uid);
     const evtRef = creditEventRef(db, uid, requestId);
+
+    const debugPayload = debug
+        ? {
+            renderId: debug.renderId || null,
+            action: debug.action || null,
+            mode: debug.mode || null,
+            pageId: debug.pageId || null,
+            slug: debug.slug || null,
+            // keep this small; you already cap rawUserPrompt earlier
+            question: safeSnippet(debug.userPrompt || "", 420) || null,
+            ipHash: debug.ipHash || null,
+            ua: debug.ua ? safeSnippet(debug.ua, 180) : null,
+        }
+        : null;
 
     return await db.runTransaction(async (tx: any) => {
         const evtSnap = await tx.get(evtRef);
@@ -448,6 +474,18 @@ async function reserveAiEditCreditsInline(opts: {
 
                 const endDate = active ? (periodEndDate as Date) : nextPeriodEndUtc(now);
                 const startRemaining = active && existingRemaining !== null ? existingRemaining : limit;
+
+                // NEW: merge in debug info if provided (safe, low bloat)
+                if (debugPayload) {
+                    tx.set(
+                        evtRef,
+                        {
+                            debug: debugPayload,
+                            updatedAt: now,
+                        },
+                        { merge: true }
+                    );
+                }
 
                 return {
                     ok: true,
@@ -497,6 +535,10 @@ async function reserveAiEditCreditsInline(opts: {
                     cost,
                     tier,
                     createdAt: now,
+                    createdAtMs: now.getTime(),
+
+                    // NEW
+                    debug: debugPayload,
                 },
                 { merge: true }
             );
@@ -531,6 +573,10 @@ async function reserveAiEditCreditsInline(opts: {
             cost,
             tier,
             createdAt: now,
+            createdAtMs: now.getTime(),
+
+            // NEW
+            debug: debugPayload,
         });
 
         return { ok: true, remaining: newRemaining, limit, periodEnd: endDate };
@@ -545,8 +591,12 @@ async function refundAiEditCreditsInline(opts: {
     now: Date;
     requestId: string;
     reason: string;
+
+    // NEW (optional, non-bloat debug)
+    errorCode?: string;
+    errorStatus?: number;
 }) {
-    const { db, uid, tier, cost, now, requestId, reason } = opts;
+    const { db, uid, tier, cost, now, requestId, reason, errorCode, errorStatus } = opts;
 
     const limit = monthlyLimitFor(tier, "edit");
     if (!limit) return;
@@ -597,15 +647,20 @@ async function refundAiEditCreditsInline(opts: {
             {
                 status: "refunded",
                 refundedAt: now,
+                refundedAtMs: now.getTime(),
                 refundReason: reason,
+
+                // NEW (minimal)
+                errorCode: errorCode || null,
+                errorStatus: typeof errorStatus === "number" ? errorStatus : null,
             },
             { merge: true }
         );
     });
 }
 
-async function commitAiEditCreditsInline(opts: { db: any; uid: string; requestId: string; now: Date }) {
-    const { db, uid, requestId, now } = opts;
+async function commitAiEditCreditsInline(opts: { db: any; uid: string; requestId: string; now: Date; summary?: string }) {
+    const { db, uid, requestId, now, summary } = opts;
     const evtRef = creditEventRef(db, uid, requestId);
 
     try {
@@ -617,12 +672,24 @@ async function commitAiEditCreditsInline(opts: { db: any; uid: string; requestId
             if (status === "committed") return;
             if (status !== "reserved") return;
 
-            tx.set(evtRef, { status: "committed", committedAt: now }, { merge: true });
+            tx.set(
+                evtRef,
+                {
+                    status: "committed",
+                    committedAt: now,
+                    committedAtMs: now.getTime(),
+
+                    // NEW: tiny breadcrumb to correlate credit event ↔ outcome
+                    summarySnippet: summary ? safeSnippet(summary, 220) : null,
+                },
+                { merge: true }
+            );
         });
     } catch (e) {
         console.error("[ai-edit] failed to commit credit event", e);
     }
 }
+
 
 async function ensureAiEditBucketInline(opts: {
     db: any;
@@ -1351,6 +1418,18 @@ async function handlePost(req: NextRequest) {
         let creditsRemaining: number | null = null;
         let creditsLimit: number | null = null;
 
+        const ipHash = ip ? hashIp(ip) : null;
+        const debugForCreditEvent = {
+            renderId,
+            action,
+            mode,
+            pageId: action === "create_page" ? String(body.pageId || "").trim() || undefined : undefined,
+            slug: action === "create_page" ? String(body.slug || "").trim() || undefined : undefined,
+            userPrompt: rawUserPrompt, // the "question"
+            ipHash,
+            ua,
+        };
+
         try {
             const r = await reserveAiEditCreditsInline({
                 db,
@@ -1359,6 +1438,7 @@ async function handlePost(req: NextRequest) {
                 cost: 5,
                 now,
                 requestId,
+                debug: debugForCreditEvent,
             });
 
             if (!r.ok) {
@@ -1410,6 +1490,8 @@ async function handlePost(req: NextRequest) {
                 now: new Date(),
                 requestId,
                 reason: modelResult.errorCode || "model_failed",
+                errorCode: modelResult.errorCode,
+                errorStatus: modelResult.errorStatus,
             });
 
             try {
@@ -1478,6 +1560,8 @@ async function handlePost(req: NextRequest) {
                     now: new Date(),
                     requestId,
                     reason: `image_blocked_${imageDebug.imageErrorStatus || "unknown"}`,
+                    errorCode: "IMAGE_BLOCKED",
+                    errorStatus: imageDebug.imageErrorStatus,
                 });
 
                 try {
@@ -1607,7 +1691,7 @@ async function handlePost(req: NextRequest) {
             );
         }
 
-        await commitAiEditCreditsInline({ db, uid, requestId, now: new Date() });
+        await commitAiEditCreditsInline({ db, uid, requestId, now: new Date(), summary });
 
         const latestSnap = await aiEditsRef.orderBy("createdAt", "desc").limit(5).get();
 
