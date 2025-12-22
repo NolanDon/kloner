@@ -11,13 +11,49 @@ type Reel = {
   followers: string;
   avatar?: string;
   alt?: string;
+
+  // minimal context
+  clonedUrl?: string;
+  resultLabel?: string;   // e.g. "Rebuilt as a clean landing page"
 };
 
 const reels: Reel[] = [
-  { src: '/reel1.webm', handle: '@mytechceo', followers: '254k followers', avatar: '/images/avatars/portfolio1.jpg', alt: 'Review by @mytechceo' },
-  { src: '/reel2.webm', handle: '@emmyxtech', followers: '368k followers', avatar: '/images/avatars/portfolio2.jpg', alt: 'Review by @emmyxtech' },
-  { src: '/reel3.webm', handle: '@stefarmstead', followers: '90.2k followers', avatar: '/images/avatars/portfolio4.jpg', alt: 'Review by @stefarmstead' },
-  { src: '/reel4.webm', handle: '@avnibarman_', followers: '228k followers', avatar: '/images/avatars/portfolio3.jpg', alt: 'Review by @avnibarman_' },
+  {
+    src: '/reel1.webm',
+    handle: '@mytechceo',
+    followers: '254k followers',
+    avatar: '/images/avatars/portfolio1.jpg',
+    alt: 'Review by @mytechceo',
+    clonedUrl: 'surf instructor landing page',
+    resultLabel: 'Saw 60% increase in organic traffic from performance improvements alone.',
+  },
+  {
+    src: '/reel2.webm',
+    handle: '@emmyxtech',
+    followers: '368k followers',
+    avatar: '/images/avatars/portfolio2.jpg',
+    alt: 'Review by @emmyxtech',
+    clonedUrl: 'photography portfolio site',
+    resultLabel: 'Managed perfect pagescores for a large gallery website, all from a reference URL.',
+  },
+  {
+    src: '/reel3.webm',
+    handle: '@stefarmstead',
+    followers: '90.2k followers',
+    avatar: '/images/avatars/portfolio4.jpg',
+    alt: 'Review by @stefarmstead',
+    clonedUrl: 'podcast landing page',
+    resultLabel: 'Saved thousands on developer costs, by rebuilding a popular design and tweaking copy.',
+  },
+  {
+    src: '/reel4.webm',
+    handle: '@avnibarman_',
+    followers: '228k followers',
+    avatar: '/images/avatars/portfolio3.jpg',
+    alt: 'Review by @avnibarman_',
+    clonedUrl: 'sales funnel site',
+    resultLabel: 'Cloned their clunky wordpress site, increasing page score by 70%',
+  },
 ];
 
 function BlueCheck({ className = 'h-4 w-4' }: { className?: string }) {
@@ -32,6 +68,34 @@ function BlueCheck({ className = 'h-4 w-4' }: { className?: string }) {
         d="M10.8 14.8l-3-3 1.4-1.4 1.6 1.6 3.9-3.9 1.4 1.4z"
       />
     </svg>
+  );
+}
+
+function ReelContextPill({ r }: { r: Reel }) {
+  if (!r.clonedUrl && !r.resultLabel) return null;
+
+  return (
+    <div className="pointer-events-none absolute left-3 right-3 bottom-3">
+      <div className="inline-flex max-w-full items-start gap-2 rounded-2xl bg-black/55 px-3 py-2 text-white ring-1 ring-white/10 backdrop-blur">
+        <span className="relative mt-[1px] h-5 w-5 shrink-0">
+          <Image src={logo} alt="Kloner" fill className="object-contain" />
+        </span>
+
+        <div className="min-w-0">
+          {r.clonedUrl ? (
+            <div className="text-[11px] leading-4 text-white/85">
+              Cloned: <span className="font-semibold text-white">{r.clonedUrl}</span>
+            </div>
+          ) : null}
+
+          {r.resultLabel ? (
+            <div className="mt-[2px] text-[12px] font-semibold leading-4">
+              {r.resultLabel}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -67,6 +131,8 @@ function ReelCard({ r, i }: { r: Reel; i: number }) {
 
           <span className="ml-auto text-xs text-white/80">{r.followers}</span>
         </div>
+
+        <ReelContextPill r={r} />
       </div>
     </SectionReveal>
   );

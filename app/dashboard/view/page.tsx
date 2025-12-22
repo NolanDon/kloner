@@ -3690,12 +3690,7 @@ export default function PreviewPage(): JSX.Element {
                hover:bg-white/10 hover:scale-[1.06] active:scale-[0.98]
                focus:outline-none focus:ring-2 focus:ring-[#C6F44D]/60 focus:ring-offset-2 focus:ring-offset-transparent"
                                                 >
-                                                    {userTier === "free" ? (
-                                                        <CrownIcon className="h-3 w-3 opacity-80 transition-opacity group-hover:opacity-100" />
-                                                    ) : (
-                                                        <Edit2 className="h-3 w-3 opacity-80 transition-opacity group-hover:opacity-100" />
-                                                    )}
-
+                                                    <Edit2 className="h-3 w-3 opacity-80 transition-opacity group-hover:opacity-100" />
                                                     <span
                                                         className="pointer-events-none absolute z-50 -translate-y-8 scale-95 rounded-md bg-black/80 px-2 py-1
                  text-[11px] text-white opacity-0 shadow-lg ring-1 ring-white/10 transition

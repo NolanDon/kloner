@@ -1,7 +1,7 @@
-// components/DeckImageCarousel.tsx
+// components/KlonerExamples.tsx
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import Image from "next/image";
 import logo from "@/public/images/orange_logo.png";
 
@@ -50,12 +50,50 @@ type DeckImageCarouselProps = {
     autoPlayMs?: number;
 };
 
+function ChevronLeft({ className = "h-4 w-4" }: { className?: string }) {
+    return (
+        <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+            <path
+                d="M14.5 5.5L8 12l6.5 6.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+        </svg>
+    );
+}
+
+function ChevronRight({ className = "h-4 w-4" }: { className?: string }) {
+    return (
+        <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+            <path
+                d="M9.5 5.5L16 12l-6.5 6.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+        </svg>
+    );
+}
+
 export default function DeckImageCarousel({
     items,
     autoPlayMs = 6500,
 }: DeckImageCarouselProps) {
     const data = items && items.length > 0 ? items : slides;
     const [activeIndex, setActiveIndex] = useState(0);
+
+    const goPrev = useCallback(() => {
+        setActiveIndex((prev) => (prev - 1 + data.length) % data.length);
+    }, [data.length]);
+
+    const goNext = useCallback(() => {
+        setActiveIndex((prev) => (prev + 1) % data.length);
+    }, [data.length]);
 
     // autoplay
     useEffect(() => {
@@ -66,6 +104,16 @@ export default function DeckImageCarousel({
         return () => clearInterval(id);
     }, [data.length, autoPlayMs]);
 
+    // keyboard support (minimal, no UI change)
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === "ArrowLeft") goPrev();
+            if (e.key === "ArrowRight") goNext();
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [goPrev, goNext]);
+
     // core layout logic: compute relative position in deck
     const layout = useMemo(() => {
         const len = data.length;
@@ -73,7 +121,6 @@ export default function DeckImageCarousel({
             let delta = (idx - activeIndex + len) % len;
             if (delta > len / 2) delta -= len;
 
-            // completely hidden cards (keep same "state" but we won't render them)
             if (delta < -2 || delta > 2) {
                 return {
                     translateX: 0,
@@ -82,10 +129,10 @@ export default function DeckImageCarousel({
                     opacity: 0,
                     zIndex: 0,
                     blur: 3,
+                    delta,
                 };
             }
 
-            // center card
             if (delta === 0) {
                 return {
                     translateX: 0,
@@ -94,13 +141,14 @@ export default function DeckImageCarousel({
                     opacity: 1,
                     zIndex: 40,
                     blur: 0,
+                    delta,
                 };
             }
 
             const sign = delta > 0 ? 1 : -1;
             const abs = Math.abs(delta);
 
-            const translateX = sign * (abs === 1 ? 40 : 70); // px
+            const translateX = sign * (abs === 1 ? 40 : 70);
             const translateY = abs === 1 ? 10 : 24;
             const scale = abs === 1 ? 0.96 : 0.92;
             const opacity = abs === 1 ? 0.9 : 0.7;
@@ -114,11 +162,12 @@ export default function DeckImageCarousel({
                 opacity,
                 zIndex,
                 blur,
+                delta,
             };
         });
     }, [data, activeIndex]);
 
-       return (
+    return (
         <section className="w-full py-10 sm:py-12">
             <div className="mx-auto flex w-full max-w-6xl flex-col items-center px-4 sm:px-6 lg:px-8">
                 <div className="mb-6 flex w-full items-center gap-4">
@@ -176,18 +225,54 @@ export default function DeckImageCarousel({
                             <div className="absolute inset-x-10 bottom-0 h-32 rounded-full bg-white blur-3xl" />
                         </div>
 
+                        {/* subtle left/right arrows */}
+                        {data.length > 1 ? (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={goPrev}
+                                    aria-label="Previous card"
+                                    className={[
+                                        "absolute left-0 top-1/2 z-50 -translate-y-1/2",
+                                        "h-9 w-9 rounded-full",
+                                        "bg-white/90 text-black/90 backdrop-blur",
+                                        "shadow-[0_10px_24px_rgba(0,0,0,0.35)]",
+                                        "transition-transform duration-150 ease-out hover:-translate-x-[2px]",
+                                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-900",
+                                    ].join(" ")}
+                                >
+                                    <ChevronLeft className="mx-auto h-4 w-4" />
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={goNext}
+                                    aria-label="Next card"
+                                    className={[
+                                        "absolute right-0 top-1/2 z-50 -translate-y-1/2",
+                                        "h-9 w-9 rounded-full",
+                                        "bg-white/90 text-black/90 backdrop-blur",
+                                        "shadow-[0_10px_24px_rgba(0,0,0,0.35)]",
+                                        "transition-transform duration-150 ease-out hover:translate-x-[2px]",
+                                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-900",
+                                    ].join(" ")}
+                                >
+                                    <ChevronRight className="mx-auto h-4 w-4" />
+                                </button>
+                            </>
+                        ) : null}
+
                         {data.map((item, idx) => {
                             const state = layout[idx];
                             if (!state) return null;
-
-                            // do not render fully hidden cards (same visual, less work)
                             if (state.opacity === 0) return null;
 
+                            // only center card is clickable now
+                            const isCenter = state.delta === 0;
+
                             return (
-                                <button
+                                <div
                                     key={idx}
-                                    type="button"
-                                    onClick={() => setActiveIndex(idx)}
                                     className={[
                                         "absolute inset-0 mx-auto flex h-full max-w-[96%] items-stretch justify-center",
                                         "rounded-[28px] border border-white/6 bg-gradient-to-br from-neutral-900 via-neutral-950 to-black",
@@ -195,15 +280,15 @@ export default function DeckImageCarousel({
                                         "transition-[transform,opacity] duration-[1300ms]",
                                         "ease-[cubic-bezier(0.25,0.8,0.3,1)] will-change-transform",
                                         "overflow-hidden",
-                                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-900",
                                     ].join(" ")}
                                     style={{
                                         transform: `translate3d(${state.translateX}px, ${state.translateY}px, 0) scale(${state.scale})`,
                                         opacity: state.opacity,
                                         zIndex: state.zIndex,
-                                        pointerEvents:
-                                            state.opacity < 0.15 ? "none" : "auto",
+                                        pointerEvents: state.opacity < 0.15 ? "none" : "auto",
+                                        filter: state.blur ? `blur(${state.blur}px)` : undefined,
                                     }}
+                                    aria-hidden={!isCenter}
                                 >
                                     <div className="flex w-full flex-col">
                                         <div className="relative h-3/4 w-full">
@@ -221,7 +306,7 @@ export default function DeckImageCarousel({
                                             </div>
                                         </div>
 
-                                        <div className="flex flex-1 items-center bg-white justify-between gap-4 px-5 py-4 sm:px-6 sm:py-5">
+                                        <div className="flex flex-1 items-center bg-white justify-between gap-4 px-5 py-2">
                                             <div className="min-w-0">
                                                 {item.sublabel && (
                                                     <p className="text-[10px] uppercase tracking-[0.28em] text-neutral-800 sm:text-[11px]">
@@ -234,14 +319,19 @@ export default function DeckImageCarousel({
                                                     </p>
                                                 )}
                                             </div>
-                                            <div className="flex flex-col items-end">
-                                                <span className="text-[10px] text-neutral-500 sm:text-[11px]">
-                                                    Click to bring forward
-                                                </span>
-                                            </div>
                                         </div>
+
+                                        {/* center-only click target (keeps “card is clickable” behavior without bring-forward) */}
+                                        {isCenter ? (
+                                            <button
+                                                type="button"
+                                                onClick={goNext}
+                                                className="absolute inset-0"
+                                                aria-label="Next card"
+                                            />
+                                        ) : null}
                                     </div>
-                                </button>
+                                </div>
                             );
                         })}
                     </div>
