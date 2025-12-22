@@ -61,12 +61,12 @@ export default function Page() {
           <WhatsIncluded />
         </section>
 
-        <section
+        {/* <section
           id="membership"
           className="snap-start snap-always min-h-screen flex flex-col"
         >
           <MembershipHero />
-        </section>
+        </section> */}
 
         <section
           id="faq"
