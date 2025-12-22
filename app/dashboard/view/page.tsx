@@ -65,6 +65,8 @@ import {
     ExternalLink,
     ArrowUpRight,
     Plus,
+    CrownIcon,
+    Edit2,
 } from "lucide-react";
 import {
     isHttpUrl,
@@ -1172,19 +1174,18 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                     }}
                     disabled={effectiveLocked}
                     aria-disabled={effectiveLocked}
-                    className={`group mt-2 inline-flex mx-auto w-[200px] items-center justify-center rounded-full bg-[#f55f2a] px-4 py-1 text-[12px] font-semibold text-white whitespace-nowrap transition-all duration-200 ease-out ${effectiveLocked ? "pointer-events-none opacity-60" : "hover:opacity-95"
-                        }`}
+                    className={`group mt-2 inline-flex mx-auto w-[200px] items-center justify-center rounded-full bg-[#f55f2a] px-4 py-1 text-[12px] font-semibold text-white whitespace-nowrap transition-transform duration-200 ease-out
+      ${effectiveLocked ? "pointer-events-none opacity-60" : "hover:translate-x-[2px]"}
+    `}
                 >
                     <span>Start from template</span>
 
-                    <span
-                        className="ml-1 inline-flex items-center"
-                        aria-hidden="true"
-                    >
-                        <ArrowUpRight className="h-3.5 w-3.5 opacity-90 transition-all duration-200 ease-out group-hover:translate-x-[1px] group-hover:-translate-y-[1px] group-hover:opacity-100" />
+                    <span className="ml-1 inline-flex items-center" aria-hidden="true">
+                        <ArrowUpRight className="h-3.5 w-3.5 opacity-90 transition-transform duration-200 ease-out group-hover:translate-x-[1px] group-hover:-translate-y-[1px]" />
                     </span>
                 </button>
             ) : null}
+
         </div>
     );
 });
@@ -3671,11 +3672,41 @@ export default function PreviewPage(): JSX.Element {
                                         Builder
                                     </h1>
                                     {userTier !== "unknown" && (
-                                        <div className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-1">
-                                            <Crown className="h-2.5 w-2.5 text-amber-500" />
-                                            <span className="text-[9px] font-semibold uppercase tracking-wide text-amber-700">
-                                                {planLabel}
+                                        <div className="inline-flex items-center">
+                                            <div className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-1">
+                                                <Crown className="h-2.5 w-2.5 text-amber-500" />
+                                                <span className="text-[9px] font-semibold uppercase tracking-wide text-amber-700">
+                                                    {planLabel}
+                                                </span>
+
+                                            </div>
+                                            <span className="inline-flex">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => router.push("/price")}
+                                                    title={userTier === "free" ? "Upgrade plan" : "Manage plan"}
+                                                    aria-label={userTier === "free" ? "Upgrade plan" : "Manage plan"}
+                                                    className="group inline-flex items-center justify-center rounded-md p-1 transition-all duration-150
+               hover:bg-white/10 hover:scale-[1.06] active:scale-[0.98]
+               focus:outline-none focus:ring-2 focus:ring-[#C6F44D]/60 focus:ring-offset-2 focus:ring-offset-transparent"
+                                                >
+                                                    {userTier === "free" ? (
+                                                        <CrownIcon className="h-3 w-3 opacity-80 transition-opacity group-hover:opacity-100" />
+                                                    ) : (
+                                                        <Edit2 className="h-3 w-3 opacity-80 transition-opacity group-hover:opacity-100" />
+                                                    )}
+
+                                                    <span
+                                                        className="pointer-events-none absolute z-50 -translate-y-8 scale-95 rounded-md bg-black/80 px-2 py-1
+                 text-[11px] text-white opacity-0 shadow-lg ring-1 ring-white/10 transition
+                 group-hover:opacity-100 group-hover:scale-100"
+                                                        style={{ marginLeft: 0 }}
+                                                    >
+                                                        {userTier === "free" ? "Upgrade" : "Manage"}
+                                                    </span>
+                                                </button>
                                             </span>
+
                                         </div>
                                     )}
                                 </div>
@@ -3707,7 +3738,7 @@ export default function PreviewPage(): JSX.Element {
                                 )}
                             </div>
 
-                            <div className="flex flex-col items-start gap-2 sm:items-end sm:flex-row sm:mt-1">
+                            {/* <div className="flex flex-col items-start gap-2 sm:items-end sm:flex-row sm:mt-1">
                                 <button
                                     type="button"
                                     onClick={() => router.push("/price")}
@@ -3716,7 +3747,7 @@ export default function PreviewPage(): JSX.Element {
                                     <Crown className="h-3 w-3 text-amber-500" />
                                     <span>{userTier === "free" ? "View upgrades" : "Manage plan"}</span>
                                 </button>
-                            </div>
+                            </div> */}
                         </div>
                     </div>
                 </section>
@@ -3800,7 +3831,7 @@ export default function PreviewPage(): JSX.Element {
                                 </span>
                                 <div className="flex flex-col leading-tight">
                                     <span className="text-[10px] uppercase tracking-[0.18em] text-neutral-400">
-                                        Step 2
+                                        CREATE
                                     </span>
                                     <span className="text-[13px] sm:text-[14px] text-neutral-800">
                                         Websites
@@ -3818,7 +3849,7 @@ export default function PreviewPage(): JSX.Element {
 
                     {(renders.length === 0 || hasGhostPending) ? (
                         <>
-                            <div className="mt-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-2 text-sm text-neutral-700 flex flex-wrap items-center gap-2 my-4">
+                            {/* <div className="mt-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-2 text-sm text-neutral-700 flex flex-wrap items-center gap-2 my-4">
                                 <div className="flex items-center gap-1">
                                     <strong className="inline-flex items-center gap-2 text-neutral-800 font-semibold">
                                         {step3Done ? (
@@ -3832,7 +3863,7 @@ export default function PreviewPage(): JSX.Element {
                                         — Generate a preview.
                                     </span>
                                 </div>
-                            </div>
+                            </div> */}
                             <div className="mt-4 flex flex-wrap gap-4 text-sm text-neutral-500">
                                 {groupedShots.map((group, groupIndex) => {
                                     if (groupIndex > 0) return null;
