@@ -25,6 +25,7 @@ type FloatingBlockToolbarProps = {
     wrapperRef: React.RefObject<HTMLDivElement>;
     selectionMeta: SelectionMeta | null;
     uiScale: number;
+    bottomBarRef?: React.RefObject<HTMLElement>; // add
 };
 
 type ToolbarPos = { top: number; left: number } | null;
@@ -105,15 +106,9 @@ function FontFamilyPicker({
     }>;
 }) {
     const fonts = useMemo(() => [...FONTS], []);
-
     const [open, setOpen] = useState(false);
-    const [applied, setApplied] = useState<string>(
-        (initialFontFamily || "").trim() || fonts[0]?.value || ""
-    );
-
-    // NEW: track which row is currently being previewed (hovered)
+    const [applied, setApplied] = useState<string>((initialFontFamily || "").trim() || fonts[0]?.value || "");
     const [hovered, setHovered] = useState<string>("");
-
     const rootRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
@@ -158,16 +153,10 @@ function FontFamilyPicker({
 
     const activeLabel = fonts.find((f) => f.value === applied)?.label || "Font";
 
-    const stopWheel = (e: React.WheelEvent) => {
-        e.stopPropagation();
-    };
+    const stopWheel = (e: React.WheelEvent) => e.stopPropagation();
 
     return (
-        <div
-            ref={rootRef}
-            className="relative inline-flex"
-            onMouseDown={(e) => e.stopPropagation()}
-        >
+        <div ref={rootRef} className="relative inline-flex" onMouseDown={(e) => e.stopPropagation()}>
             <Btn
                 title="Font"
                 compact={!!compact}
@@ -191,10 +180,10 @@ function FontFamilyPicker({
             {open && (
                 <div
                     className="
-                        absolute left-0 top-full z-50 mt-2
-                        w-[280px] rounded-2xl border border-black/10 bg-white
-                        shadow-[0_18px_50px_rgba(0,0,0,0.18)]
-                    "
+            absolute left-0 top-full z-50 mt-2
+            w-[280px] rounded-2xl border border-black/10 bg-white
+            shadow-[0_18px_50px_rgba(0,0,0,0.18)]
+          "
                     role="menu"
                     onMouseDown={(e) => e.stopPropagation()}
                     onWheel={stopWheel}
@@ -209,7 +198,6 @@ function FontFamilyPicker({
                         }}
                         onWheel={stopWheel}
                         onMouseLeave={() => {
-                            // when leaving the list, revert to the applied font
                             if (hovered) {
                                 setHovered("");
                                 onRevertPreview?.();
@@ -228,11 +216,7 @@ function FontFamilyPicker({
                                     className={[
                                         "w-full rounded-xl px-3 py-2 text-left text-sm",
                                         "focus:outline-none",
-                                        // NEW: highlight the previewed row more strongly than normal hover
-                                        isPreviewing
-                                            ? "bg-black/10 ring-1 ring-black/10"
-                                            : "hover:bg-black/5 focus:bg-black/5",
-                                        // keep applied row subtly marked even when not previewing
+                                        isPreviewing ? "bg-black/10 ring-1 ring-black/10" : "hover:bg-black/5 focus:bg-black/5",
                                         isApplied && !isPreviewing ? "bg-black/5" : "",
                                     ].join(" ")}
                                     style={{ fontFamily: f.value }}
@@ -278,14 +262,11 @@ function BlockToolbar({
     onDragStart: (e: React.MouseEvent<HTMLDivElement>) => void;
 }) {
     const tagName =
-        selectionMeta.tagName?.toUpperCase?.() ||
-        (selectionMeta as any).tagName ||
-        "DIV";
+        selectionMeta.tagName?.toUpperCase?.() || (selectionMeta as any).tagName || "DIV";
 
     const [hasNavLink, setHasNavLink] = useState(false);
     const [navHref, setNavHref] = useState("");
     const [expanded, setExpanded] = useState(false);
-
     const [currentFontFamily, setCurrentFontFamily] = useState<string>("");
 
     useEffect(() => {
@@ -306,30 +287,19 @@ function BlockToolbar({
 
     useEffect(() => {
         const tryGet = () => {
-            const candidates = [
-                "fontFamilyGet",
-                "blockGetFontFamily",
-                "getCurrentFontFamily",
-                "selectionGetFontFamily",
-            ] as const;
-
+            const candidates = ["fontFamilyGet", "blockGetFontFamily", "getCurrentFontFamily", "selectionGetFontFamily"] as const;
             for (const m of candidates) {
                 try {
                     const v = callApi(m);
                     if (typeof v === "string" && v.trim()) return v.trim();
                     if (v && typeof v === "object") {
-                        const s =
-                            (v.fontFamily as string) ||
-                            (v.value as string) ||
-                            (v.family as string) ||
-                            "";
+                        const s = (v.fontFamily as string) || (v.value as string) || (v.family as string) || "";
                         if (typeof s === "string" && s.trim()) return s.trim();
                     }
                 } catch { }
             }
             return "";
         };
-
         setCurrentFontFamily(tryGet());
     }, [selectionMeta, callApi]);
 
@@ -338,13 +308,8 @@ function BlockToolbar({
         callApi("blockSetHref", trimmed);
     };
 
-    const handleNavInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setNavHref(e.target.value);
-    };
-
-    const handleNavInputBlur = () => {
-        commitNavHref(navHref);
-    };
+    const handleNavInputChange = (e: React.ChangeEvent<HTMLInputElement>) => setNavHref(e.target.value);
+    const handleNavInputBlur = () => commitNavHref(navHref);
 
     const handleNavInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === "Enter") {
@@ -387,9 +352,7 @@ function BlockToolbar({
             className={[
                 "inline-flex items-center justify-center rounded-xl border text-neutral-700 shadow-sm",
                 compact ? "h-9 w-9" : "h-9 px-3",
-                danger
-                    ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
-                    : "border-neutral-200 bg-white hover:bg-neutral-50",
+                danger ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100" : "border-neutral-200 bg-white hover:bg-neutral-50",
                 "active:scale-[0.98] transition",
                 className || "",
             ].join(" ")}
@@ -431,10 +394,7 @@ function BlockToolbar({
             const r = callApi("fontFamilyPreviewClear");
             if (r !== undefined) return;
         } catch { }
-
-        if (currentFontFamily) {
-            tryCallFontApi("fontFamilySet", currentFontFamily);
-        }
+        if (currentFontFamily) tryCallFontApi("fontFamilySet", currentFontFamily);
     };
 
     const MiniPill = ({
@@ -454,9 +414,7 @@ function BlockToolbar({
             onClick={onClick}
             className={[
                 "inline-flex items-center justify-center gap-1 rounded-lg border px-2 py-1 text-[10px] shadow-sm transition active:scale-[0.98]",
-                danger
-                    ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
-                    : "border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50",
+                danger ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100" : "border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50",
             ].join(" ")}
             onMouseDown={(e) => e.stopPropagation()}
         >
@@ -532,247 +490,251 @@ function BlockToolbar({
         </div>
     );
 
+    const MobileActionBtn = ({
+        title,
+        onClick,
+        children,
+        danger,
+    }: {
+        title: string;
+        onClick: () => void;
+        children: React.ReactNode;
+        danger?: boolean;
+    }) => (
+        <button
+            type="button"
+            title={title}
+            onClick={onClick}
+            className={[
+                "inline-flex items-center justify-center rounded-xl border shadow-sm active:scale-[0.98] transition",
+                "h-9 w-9",
+                danger ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100" : "border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50",
+            ].join(" ")}
+            onMouseDown={(e) => e.stopPropagation()}
+        >
+            {children}
+        </button>
+    );
+
     return (
         <div className="bg-transparent">
             <div
                 style={style}
                 className={[
-                    "cursor-default flex flex-col overflow-hidden rounded-3xl border border-neutral-200 bg-white text-neutral-800 shadow-2xl",
-                    "w-[268px]",
+                    "cursor-default overflow-hidden border border-neutral-200 bg-white text-neutral-800 shadow-2xl",
+                    "w-[268px] rounded-3xl",
+                    "sm:w-[268px] sm:rounded-3xl",
+                    "max-sm:w-[min(96vw,560px)] max-sm:rounded-2xl",
                 ].join(" ")}
             >
-                <div
-                    className="flex items-center justify-between border-b border-neutral-200 px-3 py-2 cursor-move select-none"
-                    onMouseDown={onDragStart}
-                >
-                    <div className="flex items-center gap-2">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-200 bg-neutral-50 text-neutral-500">
-                            <Move className="h-4 w-4" />
-                        </div>
-                        <div className="flex flex-col leading-tight">
-                            <span className="text-[9px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
-                                Selected
-                            </span>
-                            <span className="text-[13px] font-semibold text-neutral-700">
-                                &lt;{tagName.toLowerCase()}&gt;
-                            </span>
-                        </div>
-                    </div>
-
-                    <div className="flex items-center gap-1">
-                        <button
-                            type="button"
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-200 bg-white text-neutral-600 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
-                            title={expanded ? "Collapse" : "Expand"}
-                            onClick={() => setExpanded((v) => !v)}
-                            onMouseDown={(e) => e.stopPropagation()}
-                        >
-                            <ChevronsUp
-                                className={[
-                                    "h-4 w-4 transition-transform",
-                                    expanded ? "rotate-0" : "rotate-180",
-                                ].join(" ")}
-                            />
-                        </button>
-
-                        <button
-                            type="button"
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-200 bg-white text-neutral-600 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
-                            title="Deselect block"
-                            onClick={() => callApi("clear")}
-                            onMouseDown={(e) => e.stopPropagation()}
-                        >
-                            <span className="text-[18px] leading-none">×</span>
-                        </button>
-                    </div>
-                </div>
-
-                <div className="px-3 pt-3">
-                    <div className="grid grid-cols-4 gap-1.5">
-                        <FontFamilyPicker
-                            compact={false}
-                            initialFontFamily={currentFontFamily || ""}
-                            Btn={Btn}
-                            onPreview={(family) => previewFont(family)}
-                            onRevertPreview={() => revertPreviewFont()}
-                            onApply={(family) => {
-                                tryCallFontApi("fontFamilySet", family);
-                                setCurrentFontFamily(family);
-                            }}
-                        />
-
-                        <button
-                            type="button"
-                            title="Edit link"
-                            onClick={() => callApi("linkEdit")}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-700 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
-                            onMouseDown={(e) => e.stopPropagation()}
-                        >
-                            <Link2 className="h-4 w-4" />
-                        </button>
-                        <button
-                            type="button"
-                            title="Add image"
-                            onClick={() => callApi("imgInsert")}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-700 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
-                            onMouseDown={(e) => e.stopPropagation()}
-                        >
-                            <ImageIcon className="h-4 w-4" />
-                        </button>
-                        <button
-                            type="button"
-                            title="Background image"
-                            onClick={() => callApi("imgBg")}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-700 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
-                            onMouseDown={(e) => e.stopPropagation()}
-                        >
-                            <Layers className="h-4 w-4" />
-                        </button>
-                    </div>
-
-                    <div className="mt-2 grid grid-cols-2 gap-1.5">
-                        <button
-                            type="button"
-                            title="Undo"
-                            onClick={() => callApi("historyUndo")}
-                            className="inline-flex h-9 items-center justify-center rounded-xl bg-accent px-3 text-white shadow-sm active:scale-[0.98] transition"
-                            onMouseDown={(e) => e.stopPropagation()}
-                        >
-                            <Undo2 className="h-4 w-4 mr-1" />
-                            Undo
-                        </button>
-                        <button
-                            type="button"
-                            title="Redo"
-                            onClick={() => callApi("historyRedo")}
-                            className="inline-flex h-9 items-center justify-center rounded-xl bg-accent px-3 text-white shadow-sm active:scale-[0.98] transition"
-                            onMouseDown={(e) => e.stopPropagation()}
-                        >
-                            <Redo2 className="h-4 w-4 mr-1" />
-                            Redo
-                        </button>
-                    </div>
-                </div>
-
-                {hasNavLink && expanded && (
-                    <div className="mt-3 border-t border-neutral-200 px-3 py-2.5">
-                        <div className="flex items-start justify-between gap-2">
-                            <div className="flex flex-col flex-1">
-                                <span className="flex items-center gap-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
-                                    <Link2 className="h-3 w-3" />
-                                    Link
-                                </span>
-                                <input
-                                    type="text"
-                                    className="mt-1 w-full rounded-xl border border-neutral-200 bg-white px-2 py-1.5 text-[11px] text-neutral-800 shadow-sm outline-none focus:border-neutral-400 focus:ring-0"
-                                    placeholder="/about"
-                                    value={navHref}
-                                    onChange={handleNavInputChange}
-                                    onBlur={handleNavInputBlur}
-                                    onKeyDown={handleNavInputKeyDown}
-                                    onMouseDown={(e) => e.stopPropagation()}
-                                />
+                {/* MOBILE: fixed-position horizontal bar content */}
+                <div className="sm:hidden border-b border-neutral-200">
+                    <div className="px-2 py-2">
+                        <div className="flex items-center gap-2">
+                            <div
+                                className="inline-flex items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-2 py-1.5 cursor-move select-none"
+                                onMouseDown={onDragStart}
+                            >
+                                <Move className="h-4 w-4 text-neutral-600" />
+                                <span className="text-[11px] font-semibold text-neutral-700">{tagName.toLowerCase()}</span>
                             </div>
+
+                            <div className="ml-auto flex items-center gap-1">
+                                <MobileActionBtn title="Undo" onClick={() => callApi("historyUndo")}>
+                                    <Undo2 className="h-4 w-4" />
+                                </MobileActionBtn>
+                                <MobileActionBtn title="Redo" onClick={() => callApi("historyRedo")}>
+                                    <Redo2 className="h-4 w-4" />
+                                </MobileActionBtn>
+                                <MobileActionBtn title="Edit link" onClick={() => callApi("linkEdit")}>
+                                    <Link2 className="h-4 w-4" />
+                                </MobileActionBtn>
+                                <MobileActionBtn title="Add image" onClick={() => callApi("imgInsert")}>
+                                    <ImageIcon className="h-4 w-4" />
+                                </MobileActionBtn>
+                                <MobileActionBtn title="Delete block" onClick={() => callApi("blockDelete")} danger>
+                                    <Trash2 className="h-4 w-4" />
+                                </MobileActionBtn>
+
+                                <button
+                                    type="button"
+                                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-600 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
+                                    title="Deselect block"
+                                    onClick={() => callApi("clear")}
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <span className="text-[18px] leading-none">×</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {hasNavLink ? (
+                            <div className="mt-2 flex items-center gap-2">
+                                <div className="flex-1 min-w-0 rounded-xl border border-neutral-200 bg-white px-2 py-1.5 shadow-sm">
+                                    <input
+                                        type="text"
+                                        className="w-full bg-transparent text-[12px] text-neutral-800 outline-none"
+                                        placeholder="/about"
+                                        value={navHref}
+                                        onChange={handleNavInputChange}
+                                        onBlur={handleNavInputBlur}
+                                        onKeyDown={handleNavInputKeyDown}
+                                        onMouseDown={(e) => e.stopPropagation()}
+                                    />
+                                </div>
+                                <MobileActionBtn
+                                    title="Clear link"
+                                    onClick={() => {
+                                        setNavHref("");
+                                        commitNavHref("");
+                                    }}
+                                    danger
+                                >
+                                    <Trash2 className="h-4 w-4" />
+                                </MobileActionBtn>
+                            </div>
+                        ) : null}
+                    </div>
+                </div>
+
+                {/* DESKTOP: original panel */}
+                <div className="hidden sm:block">
+                    <div
+                        className="flex items-center justify-between border-b border-neutral-200 px-3 py-2 cursor-move select-none"
+                        onMouseDown={onDragStart}
+                    >
+                        <div className="flex items-center gap-2">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-200 bg-neutral-50 text-neutral-500">
+                                <Move className="h-4 w-4" />
+                            </div>
+                            <div className="flex flex-col leading-tight">
+                                <span className="text-[9px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                                    Selected
+                                </span>
+                                <span className="text-[13px] font-semibold text-neutral-700">
+                                    &lt;{tagName.toLowerCase()}&gt;
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-1">
                             <button
                                 type="button"
-                                title="Clear link"
-                                onClick={() => {
-                                    setNavHref("");
-                                    commitNavHref("");
-                                }}
-                                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-700 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-200 bg-white text-neutral-600 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
+                                title={expanded ? "Collapse" : "Expand"}
+                                onClick={() => setExpanded((v) => !v)}
                                 onMouseDown={(e) => e.stopPropagation()}
                             >
-                                <Trash2 className="h-4 w-4" />
+                                <ChevronsUp
+                                    className={[
+                                        "h-4 w-4 transition-transform",
+                                        expanded ? "rotate-0" : "rotate-180",
+                                    ].join(" ")}
+                                />
+                            </button>
+
+                            <button
+                                type="button"
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-200 bg-white text-neutral-600 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
+                                title="Deselect block"
+                                onClick={() => callApi("clear")}
+                                onMouseDown={(e) => e.stopPropagation()}
+                            >
+                                <span className="text-[18px] leading-none">×</span>
                             </button>
                         </div>
                     </div>
-                )}
 
-                <div className="flex-1 overflow-y-auto p-3">
-                    <SectionTitle>Padding</SectionTitle>
-                    <PadGrid
-                        titleTop="Pad top"
-                        titleBottom="Pad bottom"
-                        titleLeft="Pad left"
-                        titleRight="Pad right"
-                        onTop={() => callApi("blockPad", "top", 8)}
-                        onBottom={() => callApi("blockPad", "bottom", 8)}
-                        onLeft={() => callApi("blockPad", "left", 8)}
-                        onRight={() => callApi("blockPad", "right", 8)}
-                    />
-                    <div className="mt-2 flex items-center justify-between gap-1.5">
-                        <MiniPill title="Less padding" onClick={() => callApi("blockPad", "all", -8)}>
-                            Less
-                        </MiniPill>
-                        <MiniPill title="More padding" onClick={() => callApi("blockPad", "all", 8)}>
-                            More
-                        </MiniPill>
-                        <button
-                            type="button"
-                            title="Reset padding for this device"
-                            onClick={() => callApi("blockPadReset")}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-700 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
-                            onMouseDown={(e) => e.stopPropagation()}
-                        >
-                            <RotateCcw className="h-4 w-4" />
-                        </button>
-                    </div>
+                    <div className="px-3 pt-3">
+                        <div className="grid grid-cols-4 gap-1.5">
+                            <FontFamilyPicker
+                                compact={false}
+                                initialFontFamily={currentFontFamily || ""}
+                                Btn={Btn}
+                                onPreview={(family) => previewFont(family)}
+                                onRevertPreview={() => revertPreviewFont()}
+                                onApply={(family) => {
+                                    tryCallFontApi("fontFamilySet", family);
+                                    setCurrentFontFamily(family);
+                                }}
+                            />
 
-                    <SectionTitle>Margin</SectionTitle>
-                    <PadGrid
-                        titleTop="Margin top"
-                        titleBottom="Margin bottom"
-                        titleLeft="Margin left"
-                        titleRight="Margin right"
-                        onTop={() => callApi("blockMargin", "top", 8)}
-                        onBottom={() => callApi("blockMargin", "bottom", 8)}
-                        onLeft={() => callApi("blockMargin", "left", 8)}
-                        onRight={() => callApi("blockMargin", "right", 8)}
-                    />
-                    <div className="mt-2 flex items-center justify-between gap-1.5">
-                        <MiniPill title="Less margin" onClick={() => callApi("blockMargin", "all", -8)}>
-                            Less
-                        </MiniPill>
-                        <MiniPill title="More margin" onClick={() => callApi("blockMargin", "all", 8)}>
-                            More
-                        </MiniPill>
-                        <button
-                            type="button"
-                            title="Reset margin for this device"
-                            onClick={() => callApi("blockMarginReset")}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-700 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
-                            onMouseDown={(e) => e.stopPropagation()}
-                        >
-                            <RotateCcw className="h-4 w-4" />
-                        </button>
-                    </div>
-                </div>
-
-                {expanded && (
-                    <div className="flex-1 overflow-y-auto px-3 pb-3">
-                        <SectionTitle>Size</SectionTitle>
-                        <div className="flex items-center gap-1.5">
-                            <MiniPill title="Shrink" onClick={() => callApi("blockShrink")}>
-                                Shrink
-                            </MiniPill>
-                            <MiniPill title="Grow" onClick={() => callApi("blockGrow")}>
-                                Grow
-                            </MiniPill>
+                            <button
+                                type="button"
+                                title="Edit link"
+                                onClick={() => callApi("linkEdit")}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-700 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
+                                onMouseDown={(e) => e.stopPropagation()}
+                            >
+                                <Link2 className="h-4 w-4" />
+                            </button>
+                            <button
+                                type="button"
+                                title="Add image"
+                                onClick={() => callApi("imgInsert")}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-700 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
+                                onMouseDown={(e) => e.stopPropagation()}
+                            >
+                                <ImageIcon className="h-4 w-4" />
+                            </button>
+                            <button
+                                type="button"
+                                title="Background image"
+                                onClick={() => callApi("imgBg")}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-700 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
+                                onMouseDown={(e) => e.stopPropagation()}
+                            >
+                                <Layers className="h-4 w-4" />
+                            </button>
                         </div>
 
-                        <SectionTitle>Corners</SectionTitle>
-                        <div className="flex items-center gap-1.5">
-                            <MiniPill title="Straighter corners" onClick={() => callApi("blockRadius", -4)}>
-                                Straight
+                        <div className="mt-2 grid grid-cols-2 gap-1.5">
+                            <button
+                                type="button"
+                                title="Undo"
+                                onClick={() => callApi("historyUndo")}
+                                className="inline-flex h-9 items-center justify-center rounded-xl bg-accent px-3 text-white shadow-sm active:scale-[0.98] transition"
+                                onMouseDown={(e) => e.stopPropagation()}
+                            >
+                                <Undo2 className="h-4 w-4 mr-1" />
+                                Undo
+                            </button>
+                            <button
+                                type="button"
+                                title="Redo"
+                                onClick={() => callApi("historyRedo")}
+                                className="inline-flex h-9 items-center justify-center rounded-xl bg-accent px-3 text-white shadow-sm active:scale-[0.98] transition"
+                                onMouseDown={(e) => e.stopPropagation()}
+                            >
+                                <Redo2 className="h-4 w-4 mr-1" />
+                                Redo
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-3">
+                        <SectionTitle>Padding</SectionTitle>
+                        <PadGrid
+                            titleTop="Pad top"
+                            titleBottom="Pad bottom"
+                            titleLeft="Pad left"
+                            titleRight="Pad right"
+                            onTop={() => callApi("blockPad", "top", 8)}
+                            onBottom={() => callApi("blockPad", "bottom", 8)}
+                            onLeft={() => callApi("blockPad", "left", 8)}
+                            onRight={() => callApi("blockPad", "right", 8)}
+                        />
+                        <div className="mt-2 flex items-center justify-between gap-1.5">
+                            <MiniPill title="Less padding" onClick={() => callApi("blockPad", "all", -8)}>
+                                Less
                             </MiniPill>
-                            <MiniPill title="Rounder corners" onClick={() => callApi("blockRadius", 4)}>
-                                Round
+                            <MiniPill title="More padding" onClick={() => callApi("blockPad", "all", 8)}>
+                                More
                             </MiniPill>
                             <button
                                 type="button"
-                                title="Reset radius for this device"
-                                onClick={() => callApi("blockRadiusReset")}
+                                title="Reset padding for this device"
+                                onClick={() => callApi("blockPadReset")}
                                 className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-700 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
                                 onMouseDown={(e) => e.stopPropagation()}
                             >
@@ -780,70 +742,36 @@ function BlockToolbar({
                             </button>
                         </div>
 
-                        <SectionTitle>Layer</SectionTitle>
-                        <div className="flex items-center gap-1.5">
-                            <MiniPill title="Bring forward" onClick={() => callApi("bringBlockForward")}>
-                                <ArrowUp className="h-3.5 w-3.5" />
-                                Front
+                        <SectionTitle>Margin</SectionTitle>
+                        <PadGrid
+                            titleTop="Margin top"
+                            titleBottom="Margin bottom"
+                            titleLeft="Margin left"
+                            titleRight="Margin right"
+                            onTop={() => callApi("blockMargin", "top", 8)}
+                            onBottom={() => callApi("blockMargin", "bottom", 8)}
+                            onLeft={() => callApi("blockMargin", "left", 8)}
+                            onRight={() => callApi("blockMargin", "right", 8)}
+                        />
+                        <div className="mt-2 flex items-center justify-between gap-1.5">
+                            <MiniPill title="Less margin" onClick={() => callApi("blockMargin", "all", -8)}>
+                                Less
                             </MiniPill>
-                            <MiniPill title="Send backward" onClick={() => callApi("sendBlockBackward")}>
-                                <ArrowDown className="h-3.5 w-3.5" />
-                                Back
+                            <MiniPill title="More margin" onClick={() => callApi("blockMargin", "all", 8)}>
+                                More
                             </MiniPill>
-                        </div>
-
-                        <SectionTitle>Images</SectionTitle>
-                        <div className="grid grid-cols-2 gap-1.5">
-                            <MiniPill title="Smaller image" onClick={() => callApi("imgShrink")}>
-                                Smaller
-                            </MiniPill>
-                            <MiniPill title="Larger image" onClick={() => callApi("imgGrow")}>
-                                Larger
-                            </MiniPill>
-                        </div>
-                        <div className="mt-2 flex items-center gap-1.5">
                             <button
                                 type="button"
-                                title="Bring image forward"
-                                onClick={() => callApi("bringImageForward")}
+                                title="Reset margin for this device"
+                                onClick={() => callApi("blockMarginReset")}
                                 className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-700 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
                                 onMouseDown={(e) => e.stopPropagation()}
                             >
-                                <ArrowUp className="h-4 w-4" />
-                            </button>
-                            <button
-                                type="button"
-                                title="Send image backward"
-                                onClick={() => callApi("sendImageBackward")}
-                                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-700 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
-                                onMouseDown={(e) => e.stopPropagation()}
-                            >
-                                <ArrowDown className="h-4 w-4" />
-                            </button>
-                            <button
-                                type="button"
-                                title="Remove image"
-                                onClick={() => callApi("imgDelete")}
-                                className="ml-auto inline-flex h-9 w-9 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-rose-700 shadow-sm hover:bg-rose-100 active:scale-[0.98] transition"
-                                onMouseDown={(e) => e.stopPropagation()}
-                            >
-                                <Trash2 className="h-4 w-4" />
+                                <RotateCcw className="h-4 w-4" />
                             </button>
                         </div>
-
-                        <SectionTitle>Danger</SectionTitle>
-                        <button
-                            type="button"
-                            onClick={() => callApi("blockDelete")}
-                            className="inline-flex w-full items-center justify-center gap-1 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-medium text-rose-700 shadow-sm hover:bg-rose-100 active:scale-[0.98] transition"
-                            onMouseDown={(e) => e.stopPropagation()}
-                            title="Delete block"
-                        >
-                            <Trash2 className="h-4 w-4" />
-                            Delete block
-                        </button>
                     </div>
-                )}
+                </div>
             </div>
         </div>
     );
@@ -853,12 +781,44 @@ export function FloatingBlockToolbar({
     iframeRef,
     wrapperRef,
     selectionMeta,
+    bottomBarRef,
 }: FloatingBlockToolbarProps) {
     const [toolbarPos, setToolbarPos] = useState<ToolbarPos>(null);
     const toolbarPosRef = useRef<ToolbarPos>(null);
 
     const [isDraggingToolbar, setIsDraggingToolbar] = useState(false);
     const iframePrevPointerEventsRef = useRef<string | null>(null);
+
+    // CRITICAL FIX: on mobile, ignore absolute wrapper math entirely and pin the toolbar to the viewport
+    const [isMobile, setIsMobile] = useState(false);
+    const [bottomBarH, setBottomBarH] = useState(72);
+
+    useEffect(() => {
+        if (!isMobile) return;
+        const el = bottomBarRef?.current;
+        if (!el) return;
+
+        const read = () => setBottomBarH(Math.max(0, Math.round(el.getBoundingClientRect().height || 0)));
+        read();
+
+        const ro = new ResizeObserver(() => read());
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, [isMobile, bottomBarRef]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const mq = window.matchMedia("(max-width: 639px)");
+        const apply = () => setIsMobile(!!mq.matches);
+        apply();
+        if (typeof mq.addEventListener === "function") {
+            mq.addEventListener("change", apply);
+            return () => mq.removeEventListener("change", apply);
+        }
+        // Safari fallback
+        mq.addListener(apply);
+        return () => mq.removeListener(apply);
+    }, []);
 
     useEffect(() => {
         toolbarPosRef.current = toolbarPos;
@@ -882,6 +842,8 @@ export function FloatingBlockToolbar({
     }, [isDraggingToolbar, iframeRef]);
 
     useEffect(() => {
+        if (isMobile) return;
+
         const iframe = iframeRef.current;
         const wrapper = wrapperRef.current;
         if (!selectionMeta?.has || !iframe || !wrapper) return;
@@ -897,13 +859,8 @@ export function FloatingBlockToolbar({
 
         const rawTop = wrapper.scrollTop + (iframeBox.top - wrapperBox.top) + padding;
 
-        const GUTTER = 32; // visual separation from iframe
-
-        const rawLeft =
-            wrapper.scrollLeft +
-            (iframeBox.right - wrapperBox.left) +
-            GUTTER;
-
+        const GUTTER = 32;
+        const rawLeft = wrapper.scrollLeft + (iframeBox.right - wrapperBox.left) + GUTTER;
 
         const minTop = padding;
         const maxTop = wrapper.scrollHeight - panelHeight - padding;
@@ -919,7 +876,7 @@ export function FloatingBlockToolbar({
                 : Math.max(minLeft, Math.min(maxLeft, rawLeft));
 
         setToolbarPos({ top, left });
-    }, [selectionMeta?.has, iframeRef, wrapperRef]);
+    }, [selectionMeta?.has, iframeRef, wrapperRef, isMobile]);
 
     if (!selectionMeta || !selectionMeta.has || !(selectionMeta as any).rect) return null;
 
@@ -928,10 +885,24 @@ export function FloatingBlockToolbar({
 
     const panelWidth = 268;
 
-    const baseStyle: React.CSSProperties =
+    const APPLY_BAR_ESTIMATED_H = 72; // tune: 64–96 depending on your Apply/Close bar height
+
+    const mobileFixedStyle: React.CSSProperties = {
+        position: "fixed",
+        left: "50%",
+        // was: bottom: "calc(env(safe-area-inset-bottom, 0px) + 12px)",
+        bottom: `calc(env(safe-area-inset-bottom, 0px) + ${APPLY_BAR_ESTIMATED_H}px + 10px)`,
+        transform: "translateX(-50%)",
+        zIndex: 9999,
+        pointerEvents: "auto",
+    };
+
+    const desktopStyle: React.CSSProperties =
         toolbarPos != null
             ? { position: "absolute", top: toolbarPos.top, left: toolbarPos.left, zIndex: 120, pointerEvents: "auto" }
             : { position: "absolute", top: wrapper.scrollTop + 80, left: wrapper.scrollLeft + 14, zIndex: 120, pointerEvents: "auto" };
+
+    const baseStyle = isMobile ? mobileFixedStyle : desktopStyle;
 
     function callApi(method: string, ...args: any[]) {
         const win = iframeRef.current?.contentWindow as any;
@@ -945,6 +916,8 @@ export function FloatingBlockToolbar({
     }
 
     const handleDragStart = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (isMobile) return;
+
         e.preventDefault();
         const wrapperEl = wrapperRef.current;
         if (!wrapperEl) return;

@@ -1,6 +1,7 @@
 // components/support/ChatWidgetProvider.tsx
 "use client";
 
+import { MessagesSquare, SquareX } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 type ChatMessage = {
@@ -322,7 +323,7 @@ export default function ChatWidgetProvider() {
                 onClick={() => setOpen((o) => !o)}
                 className="fixed bottom-6 right-6 z-50 rounded-full bg-accent text-white px-4 py-2 text-sm shadow-lg hover:brightness-80 focus:outline-none"
             >
-                {open ? "Close chat" : "Chat with us"}
+                {open ? <SquareX /> : <MessagesSquare />}
             </button>
 
             {open && (
@@ -381,10 +382,10 @@ export default function ChatWidgetProvider() {
                                 >
                                     <div
                                         className={`max-w-[80%] rounded-2xl px-3 py-2 ${isUser
-                                                ? "bg-accent text-white"
-                                                : isSystem
-                                                    ? "bg-neutral-100 text-neutral-700 text-xs"
-                                                    : "bg-neutral-100 text-neutral-900"
+                                            ? "bg-accent text-white"
+                                            : isSystem
+                                                ? "bg-neutral-100 text-neutral-700 text-xs"
+                                                : "bg-neutral-100 text-neutral-900"
                                             }`}
                                     >
                                         {isConnecting ? (

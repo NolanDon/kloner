@@ -4482,7 +4482,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     {!sidebarHidden && (
                         <motion.aside
                             id="kloner-style-sidebar"
-                            className="pointer-events-auto fixed left-16 top-20 bottom-20 z-40 flex w-[300px] md:w-[450px] flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white/60 px-3 py-3 pb-5 shadow-lg backdrop-blur-sm"
+                            className="pointer-events-auto fixed left-16 top-20 bottom-20 z-40 bg-white/90 flex w-[300px] md:w-[450px] flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white/60 px-3 py-3 pb-5 shadow-lg backdrop-blur-sm"
                             initial={{ x: -16, opacity: 0 }}
                             animate={{ x: 0, opacity: 1 }}
                             exit={{ x: -16, opacity: 0 }}

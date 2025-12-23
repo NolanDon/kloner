@@ -13,14 +13,13 @@ import {
   LayoutGrid,
   Home,
   ChevronRight,
-  Camera,
   Hammer,
-  Rocket,
-  Wand2,
-  Settings2,
-  Eye,
   ScanSearch,
   Users,
+  Settings as SettingsIcon,
+  BookText,
+  CreditCard,
+  Sparkles,
 } from "lucide-react";
 import { useAuth } from "@/src/hooks/useAuth";
 import { signOut, type User } from "firebase/auth";
@@ -94,7 +93,6 @@ export default function NavBar(): JSX.Element {
   };
 
   const br = brand as unknown as BrandShape;
-
   const baseNav: NavItem[] = br?.nav ?? [];
 
   const extraNav: NavItem[] = [
@@ -115,9 +113,26 @@ export default function NavBar(): JSX.Element {
     return merged;
   }, [baseNav]);
 
+  const resolveNavIcon = (label: string): React.ComponentType<
+    React.SVGProps<SVGSVGElement>
+  > | null => {
+    const s = label.toLowerCase().trim();
+
+    if (s === "home") return Home;
+    if (s.includes("community")) return Sparkles;
+    if (s.includes("docs") || s.includes("documentation")) return BookText;
+    if (s.includes("pricing") || s.includes("price") || s.includes("plans"))
+      return CreditCard;
+    if (s.includes("affiliate")) return Users;
+    if (s.includes("settings")) return SettingsIcon;
+    if (s.includes("dashboard")) return LayoutGrid;
+
+    return null;
+  };
+
   return (
     <div
-      className="p-1 md:p-4 fixed left-0 right-0 top-1 md:top-5 z-50"
+      className="p-3 md:p-4 fixed left-0 right-0 top-4 md:top-5 z-50"
       onMouseLeave={() => setOpen(false)}
     >
       <div className="mx-auto max-w-6xl">
@@ -192,14 +207,12 @@ export default function NavBar(): JSX.Element {
 
             {/* Auth (desktop) */}
             {!user ? (
-              <>
-                <a
-                  href="/login"
-                  className="hidden lg:inline text-[15px] text-white/85 hover:text-white"
-                >
-                  Login
-                </a>
-              </>
+              <a
+                href="/login"
+                className="hidden lg:inline text-[15px] text-white/85 hover:text-white"
+              >
+                Login
+              </a>
             ) : (
               <>
                 <Link
@@ -208,6 +221,7 @@ export default function NavBar(): JSX.Element {
                 >
                   Dashboard
                 </Link>
+
                 <div className="relative hidden lg:block">
                   <button
                     onClick={() => setUserMenuOpen((v) => !v)}
@@ -217,6 +231,7 @@ export default function NavBar(): JSX.Element {
                   >
                     <span className="text-[11px]">{initials || "ME"}</span>
                   </button>
+
                   <AnimatePresence>
                     {userMenuOpen && (
                       <motion.div
@@ -283,7 +298,7 @@ export default function NavBar(): JSX.Element {
           </AnimatePresence>
         </div>
 
-        {/* Mobile Menu */}
+        {/* Mobile Menu: right-side drawer + pinned quick actions + proper icons */}
         <AnimatePresence>
           {mOpen && (
             <>
@@ -292,171 +307,212 @@ export default function NavBar(): JSX.Element {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.18 }}
+                transition={{ duration: 0.16 }}
                 className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm"
                 onClick={() => setMOpen(false)}
               />
 
-              <motion.nav
-                key="mb-sheet"
-                initial={{ y: -16, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                exit={{ y: -12, opacity: 0 }}
-                transition={{ duration: 0.22, ease: "easeOut" }}
-                className="fixed inset-x-3 top-[max(12px,env(safe-area-inset-top))] z-[70] max-h-[calc(100dvh-24px-env(safe-area-inset-top))] overflow-y-auto rounded-3xl border border-white/15 bg-white/95 shadow-2xl backdrop-blur"
+              <motion.aside
+                key="mb-drawer"
+                initial={{ x: 22, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{ x: 16, opacity: 0 }}
+                transition={{ duration: 0.18, ease: "easeOut" }}
+                className="fixed right-[max(10px,env(safe-area-inset-right))] top-[max(10px,env(safe-area-inset-top))] z-[70] w-[min(420px,calc(100dvw-20px-env(safe-area-inset-right)))] max-h-[calc(100dvh-20px-env(safe-area-inset-top)-env(safe-area-inset-bottom))] overflow-hidden rounded-3xl border border-white/15 bg-white/95 shadow-2xl backdrop-blur"
                 role="dialog"
                 aria-modal="true"
               >
-                <div className="flex items-center justify-between px-4 pt-3 pb-2">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="inline-grid h-7 w-7 place-items-center rounded-xl"
-                      style={{ background: ACCENT }}
-                    >
-                      <LayoutGrid className="h-3.5 w-3.5 text-white" />
-                    </span>
-                    <span className="text-sm font-semibold text-neutral-800">Menu</span>
-                  </div>
-                  <button
-                    onClick={() => setMOpen(false)}
-                    aria-label="Close menu"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-full text-neutral-700 hover:bg-neutral-100"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
-                </div>
-
-                <div className="h-px bg-neutral-200/70" />
-
-                {/* IMPORTANT QUICK LINKS */}
-                <div className="px-4 pt-3 pb-2">
-                  <div className="mb-2 flex items-center justify-between">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
-                      Quick links
-                    </div>
-                    <div className="text-[11px] text-neutral-400">Most used</div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <QuickAction
-                      href="/dashboard/view"
-                      icon={Hammer}
-                      label="Builder"
-                      onNavigate={() => setMOpen(false)}
-                    />
-                    <QuickAction
-                      href="/dashboard"
-                      icon={ScanSearch}
-                      label="Add URL"
-                      onNavigate={() => setMOpen(false)}
-                    />
-                    <QuickAction
-                      href="/dashboard/docs"
-                      icon={Wand2}
-                      label="Docs"
-                      onNavigate={() => setMOpen(false)}
-                    />
-                    <QuickAction
-                      href="/affiliate"
-                      icon={Users}
-                      label="Affiliate"
-                      onNavigate={() => setMOpen(false)}
-                    />
-                    <QuickAction
-                      href="/dashboard/settings"
-                      icon={Settings2}
-                      label="Settings"
-                      onNavigate={() => setMOpen(false)}
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-3 h-px bg-neutral-200/70" />
-
-                {/* SECONDARY NAV */}
-                <ul className="px-2 py-2">
-                  {navItems.map((i) => (
-                    <li key={i.label}>
-                      <MobileLink
-                        href={i.href}
-                        label={i.label}
-                        onNavigate={() => setMOpen(false)}
-                      />
-                    </li>
-                  ))}
-                </ul>
-
-                <div className="h-px bg-neutral-200/70" />
-
-                {/* AUTH ACTIONS */}
-                <div className="px-4 py-3">
-                  {!user ? (
-                    <div className="flex gap-2">
-                      <a
-                        href="/login"
-                        onClick={() => setMOpen(false)}
-                        className="inline-flex flex-1 items-center justify-center rounded-full border border-neutral-300 bg-white px-4 py-2.5 text-sm font-medium text-neutral-800"
+                {/* Header */}
+                <div className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-neutral-200/70">
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="inline-grid h-8 w-8 place-items-center rounded-xl"
+                        style={{ background: ACCENT }}
                       >
-                        <User2 className="mr-2 h-4 w-4" /> Login
-                      </a>
+                        <LayoutGrid className="h-4 w-4 text-white" />
+                      </span>
+                      <div className="leading-tight">
+                        <div className="text-sm font-semibold text-neutral-900">
+                          Menu
+                        </div>
+                        <div className="text-[11px] text-neutral-500">
+                          Navigate fast
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => setMOpen(false)}
+                      aria-label="Close menu"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full text-neutral-700 hover:bg-neutral-100"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+
+                  {/* Primary actions (pinned) */}
+                  <div className="px-4 pb-3">
+                    <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
                         onClick={() => {
                           setMOpen(false);
                           openUrlOverlay();
                         }}
-                        className="inline-flex flex-1 items-center justify-center rounded-full px-4 py-2.5 text-sm font-semibold text-white shadow-sm"
+                        className="inline-flex items-center justify-center gap-2 rounded-2xl px-3 py-3 text-sm font-semibold text-white shadow-sm"
                         style={{ background: ACCENT }}
                       >
-                        Start Project
+                        <ScanSearch className="h-4 w-4" />
+                        Start project
                       </button>
+
+                      {!user ? (
+                        <Link
+                          href="/login"
+                          onClick={() => setMOpen(false)}
+                          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-neutral-300 bg-white px-3 py-3 text-sm font-semibold text-neutral-900"
+                        >
+                          <User2 className="h-4 w-4" />
+                          Login
+                        </Link>
+                      ) : (
+                        <Link
+                          href="/dashboard/view"
+                          onClick={() => setMOpen(false)}
+                          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-neutral-300 bg-white px-3 py-3 text-sm font-semibold text-neutral-900"
+                        >
+                          <Hammer className="h-4 w-4" />
+                          Builder
+                        </Link>
+                      )}
                     </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-2">
-                      <a
-                        href="/dashboard/view"
-                        onClick={() => setMOpen(false)}
-                        className="inline-flex items-center justify-center rounded-full border border-neutral-300 bg-white px-4 py-2.5 text-sm font-semibold text-neutral-900"
-                      >
-                        <Hammer className="mr-2 h-4 w-4" /> Builder
-                      </a>
-
-                      <a
-                        href="/dashboard"
-                        onClick={() => setMOpen(false)}
-                        className="inline-flex items-center justify-center rounded-full border border-neutral-300 bg-white px-4 py-2.5 text-sm font-semibold text-neutral-900"
-                      >
-                        <Home className="mr-2 h-4 w-4" /> Add URL
-                      </a>
-
-                      <a
-                        href="/dashboard/docs"
-                        onClick={() => setMOpen(false)}
-                        className="inline-flex items-center justify-center rounded-full border border-neutral-300 bg-white px-4 py-2.5 text-sm font-semibold text-neutral-900"
-                      >
-                        <Wand2 className="mr-2 h-4 w-4" /> Docs
-                      </a>
-
-                      <button
-                        onClick={async () => {
-                          await onSignOut();
-                          setMOpen(false);
-                        }}
-                        className="inline-flex items-center justify-center rounded-full px-4 py-2.5 text-sm font-semibold text-white shadow-sm"
-                        style={{ background: ACCENT }}
-                      >
-                        <LogOut className="mr-2 h-4 w-4" /> Sign out
-                      </button>
-                    </div>
-                  )}
+                  </div>
                 </div>
 
-                <div className="pb-[max(10px,env(safe-area-inset-bottom))]" />
-              </motion.nav>
+                {/* Content */}
+                <div className="max-h-[calc(100dvh-180px)] overflow-y-auto">
+                  {/* Quick links (icon set matches appshell) */}
+                  <div className="px-4 pt-4">
+                    <div className="mb-2 flex items-center justify-between">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+                        Quick links
+                      </div>
+                      <div className="text-[11px] text-neutral-400">
+                        Most used
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <QuickAction
+                        href="/dashboard/view"
+                        icon={Hammer}
+                        label="Builder"
+                        onNavigate={() => setMOpen(false)}
+                      />
+                      <QuickAction
+                        href="/dashboard"
+                        icon={LayoutGrid}
+                        label="Dashboard"
+                        onNavigate={() => setMOpen(false)}
+                      />
+                      <QuickAction
+                        href="/community-builds"
+                        icon={Sparkles}
+                        label="Community"
+                        onNavigate={() => setMOpen(false)}
+                      />
+                      <QuickAction
+                        href="/dashboard/docs"
+                        icon={BookText}
+                        label="Docs"
+                        onNavigate={() => setMOpen(false)}
+                      />
+                      <QuickAction
+                        href="/affiliate"
+                        icon={Users}
+                        label="Affiliate"
+                        onNavigate={() => setMOpen(false)}
+                      />
+                      <QuickAction
+                        href="/dashboard/settings"
+                        icon={SettingsIcon}
+                        label="Settings"
+                        onNavigate={() => setMOpen(false)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-5 h-px bg-neutral-200/70" />
+
+                  {/* Secondary nav list (clean, consistent, icon-mapped) */}
+                  <div className="px-2 py-2">
+                    <div className="px-2 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+                      Pages
+                    </div>
+
+                    <ul className="space-y-1">
+                      {navItems.map((i) => (
+                        <li key={i.label}>
+                          <MobileNavLink
+                            href={i.href}
+                            label={i.label}
+                            icon={resolveNavIcon(i.label)}
+                            onNavigate={() => setMOpen(false)}
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="mt-2 h-px bg-neutral-200/70" />
+
+                  {/* Auth actions */}
+                  <div className="px-4 py-4">
+                    {user ? (
+                      <div className="rounded-2xl border border-neutral-200 bg-white/70 p-3">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="h-10 w-10 rounded-full grid place-items-center text-white text-[12px] font-semibold"
+                            style={{ backgroundColor: ACCENT }}
+                          >
+                            {initials || "ME"}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold text-neutral-900 truncate">
+                              {user.displayName || user.email}
+                            </div>
+                            <div className="text-[11px] text-neutral-500 truncate">
+                              Signed in
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={async () => {
+                            await onSignOut();
+                            setMOpen(false);
+                          }}
+                          className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold text-white"
+                          style={{ background: ACCENT }}
+                        >
+                          <LogOut className="h-4 w-4" />
+                          Sign out
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="text-[12px] text-neutral-500">
+                        Sign in for Builder and Dashboard.
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="pb-[max(10px,env(safe-area-inset-bottom))]" />
+                </div>
+              </motion.aside>
             </>
           )}
         </AnimatePresence>
-
       </div>
     </div>
   );
@@ -464,24 +520,39 @@ export default function NavBar(): JSX.Element {
 
 /* ------------------------------- pieces -------------------------------- */
 
-function MobileLink({
+function MobileNavLink({
   href,
   label,
+  icon: Icon,
   onNavigate,
 }: {
   href: string;
   label: string;
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>> | null;
   onNavigate: () => void;
 }) {
   return (
-    <a
+    <Link
       href={href}
       onClick={onNavigate}
-      className="group flex items-center justify-between rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-50"
+      className="group flex items-center gap-3 rounded-2xl px-3 py-3 text-neutral-900 hover:bg-neutral-50"
     >
-      <span className="text-[15px]">{label}</span>
+      {Icon ? (
+        <span className="grid h-9 w-9 place-items-center rounded-xl border border-neutral-200 bg-white">
+          <Icon className="h-4 w-4" />
+        </span>
+      ) : (
+        <span className="grid h-9 w-9 place-items-center rounded-xl border border-neutral-200 bg-white">
+          <ChevronRight className="h-4 w-4 text-neutral-400" />
+        </span>
+      )}
+
+      <div className="min-w-0 flex-1">
+        <div className="text-[15px] leading-tight truncate">{label}</div>
+      </div>
+
       <ChevronRight className="h-4 w-4 text-neutral-400 group-hover:translate-x-0.5 transition-transform" />
-    </a>
+    </Link>
   );
 }
 
@@ -497,10 +568,10 @@ function QuickAction({
   onNavigate: () => void;
 }) {
   return (
-    <a
+    <Link
       href={href}
       onClick={onNavigate}
-      className="group grid place-items-center gap-2 rounded-2xl border border-neutral-200 bg-white/70 px-3 py-4 text-center hover:border-neutral-300"
+      className="group flex items-center gap-3 rounded-2xl border border-neutral-200 bg-white/70 px-3 py-3 hover:border-neutral-300 hover:bg-white"
     >
       <div
         className="grid h-10 w-10 place-items-center rounded-xl"
@@ -508,8 +579,16 @@ function QuickAction({
       >
         <Icon className="h-5 w-5 text-white" />
       </div>
-      <span className="text-xs font-semibold text-neutral-800">{label}</span>
-    </a>
+
+      <div className="min-w-0">
+        <div className="text-[13px] font-semibold text-neutral-900 leading-tight">
+          {label}
+        </div>
+        <div className="text-[11px] text-neutral-500 leading-tight">
+          Open
+        </div>
+      </div>
+    </Link>
   );
 }
 
@@ -587,17 +666,17 @@ export function AnimatedPromoCard(): JSX.Element {
     <div className="relative w-full max-w-sm rounded-2xl border border-neutral-200 bg-gradient-to-br from-orange-50/70 via-white to-white shadow-sm overflow-hidden h-[220px]">
       <div className="pointer-events-none absolute -inset-x-1/2 -top-1/3 h-1/2 rotate-12 bg-white/50 blur-2xl animate-[sheen_5s_linear_infinite]" />
       <div className="flex items-center gap-2 px-4 pt-4">
-        <Wand2 className="h-4 w-4" style={{ color: ACCENT }} />
+        <BookText className="h-4 w-4" style={{ color: ACCENT }} />
         <h3 className="text-sm font-semibold text-neutral-800 tracking-tight">
           Kloner Workflow
         </h3>
       </div>
       <div className="absolute left-4 top-12 space-y-2 ">
         <MetricPill icon={ScanSearch} label="Crawl" delay={0} />
-        <MetricPill icon={Camera} label="Screenshot" delay={0.25} />
+        <MetricPill icon={LayoutGrid} label="Snapshot" delay={0.25} />
         <MetricPill icon={Hammer} label="Generate" delay={0.5} />
-        <MetricPill icon={Eye} label="Customize" delay={0.75} />
-        <MetricPill icon={Rocket} label="Deploy" delay={1.0} />
+        <MetricPill icon={Users} label="Share" delay={0.75} />
+        <MetricPill icon={CreditCard} label="Deploy" delay={1.0} />
       </div>
       <style jsx>{`
         @keyframes sheen {

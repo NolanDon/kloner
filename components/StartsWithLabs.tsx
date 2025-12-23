@@ -15,7 +15,11 @@ import { ClickyCursor } from "./ClickyCursor";
 import { useUrlOverlay } from "./UrlOverlayProvider";
 
 /**
- * Fixed-height canvas prevents reflow. Transitions shortened aggressively.
+ * Responsive, alignment-safe layout:
+ * - Removes fragile absolute top offsets (top-40/top-45/etc).
+ * - Uses a single flow layout inside BrowserFrame.
+ * - Header panel is sticky within the browser viewport.
+ * - Grid sits below header with consistent spacing on all breakpoints.
  */
 
 type PageCard = { name: string; path: string; hint?: string };
@@ -126,9 +130,11 @@ export default function PreviewDashboard({
 
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-    // fixed height canvas
+    // stable viewport sizing for the browser content area
     const CANVAS_CLASS =
-        "relative overflow-hidden min-h-[560px] md:min-h-[580px] lg:min-h-[600px]";
+        "relative overflow-hidden " +
+        "min-h-[560px] sm:min-h-[600px] lg:min-h-[640px] " +
+        "max-h-[720px] md:max-h-[760px]";
 
     const runLoop = async () => {
         setPhase("idle");
@@ -201,8 +207,8 @@ export default function PreviewDashboard({
 
     const gridVisible =
         phase === "loading" || phase === "revealing" || phase === "highlight";
-    const controls = useAnimation();
 
+    const controls = useAnimation();
     useEffect(() => {
         controls.start({ opacity: 1, y: 0 });
     }, [controls]);
@@ -244,21 +250,22 @@ export default function PreviewDashboard({
                     transition={{ duration: 0.35 }}
                     className="text-center px-2 pb-8"
                 >
-                    <div className="items-center gap-2">
-                        <h2 className="text-4xl sm:text-5xl md:text-6xl text-neutral-950 mb-3 md:mb-5">
+                    <div className="flex flex-col items-center gap-3">
+                        <h2 className="text-4xl sm:text-5xl md:text-6xl text-neutral-950 leading-[1.05]">
                             Generate your website in a few clicks
                         </h2>
                         <ClickyCursor size={30} />
                     </div>
 
-                    <p className="text-neutral-600 mt-2 md:mt-3 max-w-2xl mx-auto text-base sm:text-lg">
+                    <p className="text-neutral-600 mt-3 max-w-2xl mx-auto text-base sm:text-lg leading-relaxed">
                         Drop a link. We generate assets, normalize code, and spin up a live
                         preview you can deploy in one click.
                     </p>
 
-                    <a
+                    <button
+                        type="button"
                         onClick={openUrlOverlay}
-                        className="group inline-flex items-center rounded-full bg-accent px-4 py-2 text-sm text-white mt-4 whitespace-nowrap transition-[padding] duration-200 ease-out"
+                        className="group inline-flex items-center rounded-full bg-accent px-4 py-2 text-sm text-white mt-5 whitespace-nowrap transition-[padding] duration-200 ease-out"
                     >
                         <span>Get started</span>
 
@@ -280,7 +287,7 @@ export default function PreviewDashboard({
                                 />
                             </svg>
                         </span>
-                    </a>
+                    </button>
                 </motion.div>
 
                 {/* Showcase area with browser frame + faded side demos */}
@@ -294,166 +301,187 @@ export default function PreviewDashboard({
                     <SideFadedDemo side="right" />
 
                     {/* Center browser */}
-                    <div className="mx-auto max-w-6xl px-2 md:px-0">
+                    <div className="mx-auto max-w-6xl px-2 sm:px-3 md:px-0">
                         <BrowserFrame
                             urlDisplay={url}
                             className="mx-auto"
                             contentClassName={CANVAS_CLASS}
                         >
-                            {/* Header / Address bar (in-app) */}
-                            <motion.div
-                                initial={{ opacity: 0, y: 6 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ duration: 0.2 }}
-                                className="absolute left-0 right-0 top-10 rounded-2xl border border-neutral-200 bg-white/90 backdrop-blur p-4 md:p-5 shadow-sm mx-auto max-w-5xl"
-                            >
-                                <div className="flex items-center gap-2 text-xs text-neutral-500">
-                                    <span className="text-neutral-800">{headerHint}</span>
-                                </div>
-
-                                <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center">
-                                    <div className="flex-1 rounded-xl ring-1 ring-neutral-200 bg-neutral-50 px-3 py-2.5 md:py-3 text-sm text-neutral-700 overflow-hidden">
-                                        <span className="text-neutral-400 mr-1">URL:</span>
-                                        <AnimatedCaret
-                                            text={typed}
-                                            showCaret={phase === "typing"}
-                                            className="font-medium text-neutral-800 break-all"
-                                        />
-                                    </div>
-
-                                    <div className="flex gap-2">
-                                        <button
-                                            aria-disabled
-                                            className="pointer-events-none inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm text-neutral-400"
-                                        >
-                                            <RefreshCw className="h-4 w-4" />
-                                            Rescan
-                                        </button>
-                                        <button
-                                            aria-disabled
-                                            className={[
-                                                "pointer-events-none relative inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm text-white",
-                                                primaryBg,
-                                                pulseDeploy ? "ring-4 ring-neutral-900/10" : "ring-0",
-                                            ].join(" ")}
-                                        >
-                                            <Rocket className="h-4 w-4" />
-                                            {primaryLabel}
-                                        </button>
-                                    </div>
-                                </div>
-                            </motion.div>
-
-                            {/* Deploying / Success overlay */}
-                            <AnimatePresence>
-                                {(phase === "deploying" || phase === "success") && (
-                                    <motion.div
-                                        key="overlay"
-                                        initial={{ opacity: 0 }}
-                                        animate={{ opacity: 1 }}
-                                        exit={{ opacity: 0 }}
-                                        transition={{ duration: 0.18 }}
-                                        className="absolute inset-x-0 top-40 md:top-35 mx-auto max-w-5xl rounded-2xl border border-neutral-200 bg-white p-10 md:p-14 shadow-sm grid place-items-center"
-                                    >
-                                        {phase === "deploying" && (
-                                            <div className="text-center">
-                                                <motion.div
-                                                    animate={{ rotate: 360 }}
-                                                    transition={{
-                                                        repeat: Infinity,
-                                                        ease: "linear",
-                                                        duration: 1.1,
-                                                    }}
-                                                    className="mx-auto mb-4 h-10 w-10 rounded-full border-2 border-neutral-200 border-t-neutral-900"
-                                                />
-                                                <div className="text-lg font-medium">
-                                                    Deploying to Vercel…
+                            {/* Inner app layout (flow-based, no absolute offsets) */}
+                            <div className="relative">
+                                {/* In-app header panel (sticky) */}
+                                <div className="sticky top-0 z-20">
+                                    <div className="px-3 sm:px-4 md:px-6 pt-3 sm:pt-4">
+                                        <div className="rounded-2xl border border-neutral-200 bg-white/90 backdrop-blur shadow-sm">
+                                            <div className="px-4 sm:px-5 py-4 sm:py-5">
+                                                <div className="flex items-center gap-2 text-xs text-neutral-500">
+                                                    <span className="text-neutral-800">{headerHint}</span>
                                                 </div>
-                                                <div className="text-sm text-neutral-500 mt-1">
-                                                    Building, optimizing, shipping
+
+                                                <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center">
+                                                    <div className="flex-1 rounded-xl ring-1 ring-neutral-200 bg-neutral-50 px-3 py-3 text-sm text-neutral-700 overflow-hidden">
+                                                        <span className="text-neutral-400 mr-1">URL:</span>
+                                                        <AnimatedCaret
+                                                            text={typed}
+                                                            showCaret={phase === "typing"}
+                                                            className="font-medium text-neutral-800 break-all"
+                                                        />
+                                                    </div>
+
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            aria-disabled
+                                                            className="pointer-events-none inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-4 py-2.5 text-sm text-neutral-400"
+                                                        >
+                                                            <RefreshCw className="h-4 w-4" />
+                                                            Rescan
+                                                        </button>
+
+                                                        <button
+                                                            aria-disabled
+                                                            className={[
+                                                                "pointer-events-none relative inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm text-white",
+                                                                primaryBg,
+                                                                pulseDeploy
+                                                                    ? "ring-4 ring-neutral-900/10"
+                                                                    : "ring-0",
+                                                            ].join(" ")}
+                                                        >
+                                                            <Rocket className="h-4 w-4" />
+                                                            {primaryLabel}
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        )}
-                                        {phase === "success" && (
-                                            <div className="text-center">
-                                                <CheckCircle2 className="h-10 w-10 text-emerald-600 mx-auto mb-3" />
-                                                <div className="text-lg font-medium">
-                                                    Success! Your preview was deployed.
-                                                </div>
-                                                <div className="text-sm text-neutral-500 mt-1">
-                                                    Continuing in a moment…
-                                                </div>
-                                            </div>
-                                        )}
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
+                                        </div>
+                                    </div>
 
-                            {/* Grid */}
-                            {gridVisible && (
-                                <div className="absolute inset-x-0 top-40 md:top-40 mx-auto max-w-5xl">
-                                    <motion.div
-                                        initial={{ opacity: 0 }}
-                                        animate={{ opacity: 1 }}
-                                        transition={{ duration: 0.25, delay: 0.02 }}
-                                        className="text-sm text-neutral-600 my-3"
-                                    >
-                                        Generated pages
-                                    </motion.div>
+                                    {/* subtle fade separator under sticky header */}
+                                    <div className="pointer-events-none h-6 bg-gradient-to-b from-white/80 to-transparent" />
+                                </div>
 
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
-                                        {PAGES.map((p, i) => {
-                                            const revealed =
-                                                i < visibleCount &&
-                                                (phase === "revealing" || phase === "highlight");
-                                            const loading =
-                                                phase === "loading" || (!revealed && phase !== "highlight");
-                                            return (
-                                                <motion.div
-                                                    key={p.path}
-                                                    initial={{ opacity: 0, y: 8, scale: 0.99 }}
-                                                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                                                    transition={{ duration: 0.25, delay: 0.02 + i * 0.02 }}
-                                                    className="group rounded-2xl border border-neutral-200 bg-white overflow-hidden shadow-sm"
-                                                >
-                                                    <Thumb
-                                                        url={url}
-                                                        path={p.path}
-                                                        revealed={revealed}
-                                                        loading={loading}
-                                                    />
-                                                    <div className="p-3">
-                                                        <div className="flex items-center justify-between">
-                                                            <div className="min-w-0">
-                                                                {revealed ? (
-                                                                    <>
-                                                                        <div className="text-sm font-medium text-neutral-800">
-                                                                            {p.name}
-                                                                        </div>
-                                                                        {p.hint && (
-                                                                            <div className="text-xs text-neutral-500 truncate">
-                                                                                {p.hint}
-                                                                            </div>
-                                                                        )}
-                                                                    </>
-                                                                ) : (
-                                                                    <div className="h-6 w-24 rounded bg-neutral-200 animate-pulse" />
-                                                                )}
-                                                            </div>
-                                                            <button
-                                                                aria-disabled
-                                                                className="pointer-events-none text-xs rounded-full px-3 py-1 border border-neutral-200 text-neutral-400"
-                                                            >
-                                                                Open
-                                                            </button>
+                                {/* Content area */}
+                                <div className="px-3 sm:px-4 md:px-6 pb-6 sm:pb-8">
+                                    {/* Deploying / Success overlay */}
+                                    <AnimatePresence>
+                                        {(phase === "deploying" || phase === "success") && (
+                                            <motion.div
+                                                key="overlay"
+                                                initial={{ opacity: 0, y: 6 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                exit={{ opacity: 0, y: 6 }}
+                                                transition={{ duration: 0.18 }}
+                                                className="mb-4 rounded-2xl border border-neutral-200 bg-white p-8 sm:p-10 shadow-sm grid place-items-center"
+                                            >
+                                                {phase === "deploying" && (
+                                                    <div className="text-center">
+                                                        <motion.div
+                                                            animate={{ rotate: 360 }}
+                                                            transition={{
+                                                                repeat: Infinity,
+                                                                ease: "linear",
+                                                                duration: 1.1,
+                                                            }}
+                                                            className="mx-auto mb-4 h-10 w-10 rounded-full border-2 border-neutral-200 border-t-neutral-900"
+                                                        />
+                                                        <div className="text-lg font-medium">
+                                                            Deploying to Vercel…
+                                                        </div>
+                                                        <div className="text-sm text-neutral-500 mt-1">
+                                                            Building, optimizing, shipping
                                                         </div>
                                                     </div>
-                                                </motion.div>
-                                            );
-                                        })}
-                                    </div>
+                                                )}
+
+                                                {phase === "success" && (
+                                                    <div className="text-center">
+                                                        <CheckCircle2 className="h-10 w-10 text-emerald-600 mx-auto mb-3" />
+                                                        <div className="text-lg font-medium">
+                                                            Success! Your preview was deployed.
+                                                        </div>
+                                                        <div className="text-sm text-neutral-500 mt-1">
+                                                            Continuing in a moment…
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
+
+                                    {/* Grid */}
+                                    {gridVisible && (
+                                        <div>
+                                            <motion.div
+                                                initial={{ opacity: 0, y: 6 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                transition={{ duration: 0.22 }}
+                                                className="text-sm text-neutral-600 mb-3"
+                                            >
+                                                Generated pages
+                                            </motion.div>
+
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
+                                                {PAGES.map((p, i) => {
+                                                    const revealed =
+                                                        i < visibleCount &&
+                                                        (phase === "revealing" || phase === "highlight");
+                                                    const loading =
+                                                        phase === "loading" ||
+                                                        (!revealed && phase !== "highlight");
+
+                                                    return (
+                                                        <motion.div
+                                                            key={p.path}
+                                                            initial={{ opacity: 0, y: 8, scale: 0.99 }}
+                                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                            transition={{
+                                                                duration: 0.25,
+                                                                delay: 0.02 + i * 0.02,
+                                                            }}
+                                                            className="group rounded-2xl border border-neutral-200 bg-white overflow-hidden shadow-sm"
+                                                        >
+                                                            <Thumb
+                                                                url={url}
+                                                                path={p.path}
+                                                                revealed={revealed}
+                                                                loading={loading}
+                                                            />
+
+                                                            <div className="p-3">
+                                                                <div className="flex items-center justify-between gap-3">
+                                                                    <div className="min-w-0">
+                                                                        {revealed ? (
+                                                                            <>
+                                                                                <div className="text-sm font-medium text-neutral-800">
+                                                                                    {p.name}
+                                                                                </div>
+                                                                                {p.hint && (
+                                                                                    <div className="text-xs text-neutral-500 truncate">
+                                                                                        {p.hint}
+                                                                                    </div>
+                                                                                )}
+                                                                            </>
+                                                                        ) : (
+                                                                            <div className="h-6 w-24 rounded bg-neutral-200 animate-pulse" />
+                                                                        )}
+                                                                    </div>
+
+                                                                    <button
+                                                                        aria-disabled
+                                                                        className="pointer-events-none text-xs rounded-full px-3 py-1 border border-neutral-200 text-neutral-400 shrink-0"
+                                                                    >
+                                                                        Open
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        </motion.div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
-                            )}
+                            </div>
                         </BrowserFrame>
                     </div>
                 </div>
@@ -515,7 +543,7 @@ function Thumb({
                 <div className="ml-2 text-[11px] text-neutral-500 truncate">{full}</div>
             </div>
 
-            <div className="absolute inset-0 pt-8">
+            <div className="absolute inset-0 pt-8 px-3">
                 <div className="p-3 md:p-4 relative h-full">
                     <AnimatePresence>
                         {loading && !revealed && (
@@ -606,7 +634,12 @@ function BrowserFrame({
             </div>
 
             {/* content viewport */}
-            <div className={["relative rounded-b-[34px] overflow-hidden", contentClassName].join(" ")}>
+            <div
+                className={[
+                    "relative rounded-b-[34px] overflow-hidden",
+                    contentClassName,
+                ].join(" ")}
+            >
                 <div className="absolute inset-0 bg-gradient-to-b from-neutral-50 to-white" />
                 <div className="relative">{children}</div>
             </div>
