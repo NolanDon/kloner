@@ -264,7 +264,7 @@ export default function Hero() {
 
           <div className="mt-12 flex justify-center">
             <a
-              href="#how-it-works"
+              href="/community-builds"
               className={[
                 "group inline-flex items-center gap-2 text-xs sm:text-sm",
                 isMobile ? "text-neutral-600" : "text-white/80",
@@ -277,7 +277,7 @@ export default function Hero() {
                     isMobile ? "group-hover:text-neutral-900" : "group-hover:text-white",
                   ].join(" ")}
                 >
-                  See how it works
+                  Start from a template
                 </span>
                 <span
                   className={[

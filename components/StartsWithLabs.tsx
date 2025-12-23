@@ -1,11 +1,18 @@
 // components/PreviewDashboard.tsx
-'use client';
+"use client";
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { motion, AnimatePresence, useAnimation } from 'framer-motion';
-import { Rocket, RefreshCw, CheckCircle2, Hand, ListChecks, TimerOff } from 'lucide-react';
-import { ClickyCursor } from './ClickyCursor';
-import { useUrlOverlay } from './UrlOverlayProvider';
+import React, { useEffect, useMemo, useState } from "react";
+import { motion, AnimatePresence, useAnimation } from "framer-motion";
+import {
+    Rocket,
+    RefreshCw,
+    CheckCircle2,
+    Hand,
+    ListChecks,
+    TimerOff,
+} from "lucide-react";
+import { ClickyCursor } from "./ClickyCursor";
+import { useUrlOverlay } from "./UrlOverlayProvider";
 
 /**
  * Fixed-height canvas prevents reflow. Transitions shortened aggressively.
@@ -13,31 +20,43 @@ import { useUrlOverlay } from './UrlOverlayProvider';
 
 type PageCard = { name: string; path: string; hint?: string };
 const PAGES: PageCard[] = [
-    { name: 'Home', path: '/' },
-    { name: 'About', path: '/about', hint: 'Team • Mission' },
-    { name: 'Pricing', path: '/price', hint: 'Plans • Tiers' },
+    { name: "Home", path: "/" },
+    { name: "About", path: "/about", hint: "Team • Mission" },
+    { name: "Pricing", path: "/price", hint: "Plans • Tiers" },
 ] as const;
 
 type Phase =
-    | 'idle'
-    | 'typing'
-    | 'loading'
-    | 'revealing'
-    | 'highlight'
-    | 'deploying'
-    | 'success'
-    | 'cooldown';
+    | "idle"
+    | "typing"
+    | "loading"
+    | "revealing"
+    | "highlight"
+    | "deploying"
+    | "success"
+    | "cooldown";
 
 /* ------------------------------ Mini features strip (static) ----------------- */
 function FeaturesStrip() {
     const items = [
-        { icon: <TimerOff className="h-5 w-5 text-neutral-800" />, title: 'No setup', sub: 'Paste a URL, get a project' },
-        { icon: <ListChecks className="h-5 w-5 text-neutral-800" />, title: 'Instant preview', sub: 'See the clone in seconds' },
-        { icon: <Hand className="h-5 w-5 text-neutral-800" />, title: 'One-click deploy', sub: 'Vercel, Netlify, or zip' },
+        {
+            icon: <TimerOff className="h-5 w-5 text-neutral-800" />,
+            title: "No setup",
+            sub: "Paste a URL, get a project",
+        },
+        {
+            icon: <ListChecks className="h-5 w-5 text-neutral-800" />,
+            title: "Instant preview",
+            sub: "See the clone in seconds",
+        },
+        {
+            icon: <Hand className="h-5 w-5 text-neutral-800" />,
+            title: "One-click deploy",
+            sub: "Vercel, Netlify, or zip",
+        },
     ];
 
     return (
-        <div className="mt-10 md:mt-20 mb-16 md:mb-40 px-1">
+        <div className="mt-10 md:mt-20 mb-10 md:mb-20 px-1">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-10">
                 {items.map((it, i) => (
                     <motion.div
@@ -50,7 +69,9 @@ function FeaturesStrip() {
                     >
                         <div className="mt-0.5 shrink-0">{it.icon}</div>
                         <div>
-                            <div className="text-base md:text-xl font-semibold leading-tight text-neutral-800">{it.title}</div>
+                            <div className="text-base md:text-xl font-semibold leading-tight text-neutral-800">
+                                {it.title}
+                            </div>
                             <div className="text-sm text-neutral-500 mt-1">{it.sub}</div>
                         </div>
                     </motion.div>
@@ -61,7 +82,7 @@ function FeaturesStrip() {
 }
 
 export default function PreviewDashboard({
-    url = 'https://example.com',
+    url = "https://example.com",
     timings = {
         startDelayMs: 300,
         typeMsPerChar: 18,
@@ -96,8 +117,8 @@ export default function PreviewDashboard({
         cooldownMs: timings.cooldownMs ?? 300,
     };
 
-    const [phase, setPhase] = useState<Phase>('idle');
-    const [typed, setTyped] = useState<string>('');
+    const [phase, setPhase] = useState<Phase>("idle");
+    const [typed, setTyped] = useState<string>("");
     const [visibleCount, setVisibleCount] = useState<number>(0);
     const [pulseDeploy, setPulseDeploy] = useState<boolean>(false);
     const [previewReadyFlash, setPreviewReadyFlash] = useState<boolean>(false);
@@ -106,18 +127,19 @@ export default function PreviewDashboard({
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
     // fixed height canvas
-    const CANVAS_CLASS = 'relative overflow-hidden min-h-[500px] md:min-h-[500px] lg:min-h-[500px]';
+    const CANVAS_CLASS =
+        "relative overflow-hidden min-h-[560px] md:min-h-[580px] lg:min-h-[600px]";
 
     const runLoop = async () => {
-        setPhase('idle');
-        setTyped('');
+        setPhase("idle");
+        setTyped("");
         setVisibleCount(0);
         setPulseDeploy(false);
         setPreviewReadyFlash(false);
 
         await sleep(T.startDelayMs);
 
-        setPhase('typing');
+        setPhase("typing");
         for (let i = 1; i <= url.length; i++) {
             setTyped(url.slice(0, i));
             await sleep(T.typeMsPerChar);
@@ -127,28 +149,28 @@ export default function PreviewDashboard({
         await sleep(500);
         setPreviewReadyFlash(false);
 
-        setPhase('loading');
+        setPhase("loading");
         await sleep(T.skeletonMs);
 
-        setPhase('revealing');
+        setPhase("revealing");
         for (let i = 1; i <= PAGES.length; i++) {
             setVisibleCount(i);
             await sleep(T.revealStaggerMs);
         }
 
-        setPhase('highlight');
+        setPhase("highlight");
         setPulseDeploy(true);
         await sleep(T.highlightMs);
         setPulseDeploy(false);
 
-        setPhase('deploying');
+        setPhase("deploying");
         await sleep(T.deployingMs);
 
-        setPhase('success');
-        setTyped('');
+        setPhase("success");
+        setTyped("");
         await sleep(T.successMs);
 
-        setPhase('cooldown');
+        setPhase("cooldown");
         await sleep(T.cooldownMs);
 
         runLoop();
@@ -161,48 +183,55 @@ export default function PreviewDashboard({
 
     const headerHint = useMemo(() => {
         switch (phase) {
-            case 'typing':
-                return 'Typing…';
-            case 'loading':
-                return 'Building preview…';
-            case 'revealing':
-            case 'highlight':
-                return 'Preview ready';
-            case 'deploying':
-                return 'Deploying to Vercel…';
-            case 'success':
-                return 'Deployed';
+            case "typing":
+                return "Typing…";
+            case "loading":
+                return "Building preview…";
+            case "revealing":
+            case "highlight":
+                return "Preview ready";
+            case "deploying":
+                return "Deploying to Vercel…";
+            case "success":
+                return "Deployed";
             default:
-                return 'Ready';
+                return "Ready";
         }
     }, [phase]);
 
-    const gridVisible = phase === 'loading' || phase === 'revealing' || phase === 'highlight';
+    const gridVisible =
+        phase === "loading" || phase === "revealing" || phase === "highlight";
     const controls = useAnimation();
 
     useEffect(() => {
         controls.start({ opacity: 1, y: 0 });
     }, [controls]);
 
-    const primaryLabel: 'Preview' | 'Deploy' =
-        previewReadyFlash
-            ? 'Preview'
-            : ['loading', 'revealing', 'highlight', 'deploying', 'success'].includes(phase)
-                ? 'Deploy'
-                : 'Preview';
+    const primaryLabel: "Preview" | "Deploy" = previewReadyFlash
+        ? "Preview"
+        : ["loading", "revealing", "highlight", "deploying", "success"].includes(
+            phase,
+        )
+            ? "Deploy"
+            : "Preview";
 
     const primaryDisabled: boolean = (() => {
         if (previewReadyFlash) return false;
-        if (phase === 'typing') return true;
-        if (phase === 'loading') return true;
-        if (phase === 'revealing') return true;
-        if (phase === 'highlight') return false;
-        if (phase === 'deploying' || phase === 'success') return true;
-        if (phase === 'idle' || phase === 'cooldown') return true;
+        if (phase === "typing") return true;
+        if (phase === "loading") return true;
+        if (phase === "revealing") return true;
+        if (phase === "highlight") return false;
+        if (phase === "deploying" || phase === "success") return true;
+        if (phase === "idle" || phase === "cooldown") return true;
         return true;
     })();
 
-    const primaryBg = phase === 'highlight' ? 'bg-accent' : primaryDisabled ? 'bg-neutral-300' : 'bg-accent';
+    const primaryBg =
+        phase === "highlight"
+            ? "bg-accent"
+            : primaryDisabled
+                ? "bg-neutral-300"
+                : "bg-accent";
 
     return (
         <section className="section bg-white text-neutral-800">
@@ -222,156 +251,211 @@ export default function PreviewDashboard({
                         <ClickyCursor size={30} />
                     </div>
 
-
                     <p className="text-neutral-600 mt-2 md:mt-3 max-w-2xl mx-auto text-base sm:text-lg">
-                        Drop a link. We generate assets, normalize code, and spin up a live preview you can deploy in one click.
+                        Drop a link. We generate assets, normalize code, and spin up a live
+                        preview you can deploy in one click.
                     </p>
+
                     <a
                         onClick={openUrlOverlay}
                         className="group inline-flex items-center rounded-full bg-accent px-4 py-2 text-sm text-white mt-4 whitespace-nowrap transition-[padding] duration-200 ease-out"
                     >
                         <span>Get started</span>
 
-                        {/* Arrow container starts at zero width; grows on hover so the button expands */}
                         <span
-                            className="ml-0 w-0 overflow-hidden inline-flex items-center transition-[width,margin] duration-200 ease-out
-               group-hover:w-4 group-hover:ml-1"
+                            className="ml-0 w-0 overflow-hidden inline-flex items-center transition-[width,margin] duration-200 ease-out group-hover:w-4 group-hover:ml-1"
                             aria-hidden="true"
                         >
-                            <svg viewBox="0 0 20 20" className="h-4 w-4 -translate-x-1 opacity-0 transition-all duration-200 ease-out group-hover:translate-x-0 group-hover:opacity-100">
-                                <path d="M7 4l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                            <svg
+                                viewBox="0 0 20 20"
+                                className="h-4 w-4 -translate-x-1 opacity-0 transition-all duration-200 ease-out group-hover:translate-x-0 group-hover:opacity-100"
+                            >
+                                <path
+                                    d="M7 4l6 6-6 6"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                />
                             </svg>
                         </span>
                     </a>
-
                 </motion.div>
 
-                {/* Fixed-height canvas. All changing content is absolutely positioned in here. */}
-                <div className={CANVAS_CLASS}>
-                    {/* Header / Address bar */}
-                    <motion.div
-                        initial={{ opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="absolute left-0 right-0 top-0 rounded-2xl border border-neutral-200 bg-white/90 backdrop-blur p-4 md:p-5 shadow-sm mx-auto max-w-5xl"
-                    >
-                        <div className="flex items-center gap-2 text-xs text-neutral-500">
-                            <span className="text-neutral-800">{headerHint}</span>
-                        </div>
+                {/* Showcase area with browser frame + faded side demos */}
+                <div className="relative">
+                    {/* soft background behind everything */}
+                    <div className="pointer-events-none absolute inset-0 -z-10 rounded-[36px] bg-gradient-to-b from-neutral-50 to-white" />
+                    <div className="pointer-events-none absolute inset-0 -z-10 rounded-[36px] ring-1 ring-neutral-200/60" />
 
-                        <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center">
-                            <div className="flex-1 rounded-xl ring-1 ring-neutral-200 bg-neutral-50 px-3 py-2.5 md:py-3 text-sm text-neutral-700 overflow-hidden">
-                                <span className="text-neutral-400 mr-1">URL:</span>
-                                <AnimatedCaret text={typed} showCaret={phase === 'typing'} className="font-medium text-neutral-800 break-all" />
-                            </div>
+                    {/* Side faded demos */}
+                    <SideFadedDemo side="left" />
+                    <SideFadedDemo side="right" />
 
-                            <div className="flex gap-2">
-                                <button
-                                    aria-disabled
-                                    className="pointer-events-none inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm text-neutral-400"
-                                >
-                                    <RefreshCw className="h-4 w-4" />
-                                    Rescan
-                                </button>
-                                <button
-                                    aria-disabled
-                                    className={[
-                                        'pointer-events-none relative inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm text-white',
-                                        primaryBg,
-                                        pulseDeploy ? 'ring-4 ring-neutral-900/10' : 'ring-0',
-                                    ].join(' ')}
-                                >
-                                    <Rocket className="h-4 w-4" />
-                                    {primaryLabel}
-                                </button>
-                            </div>
-                        </div>
-                    </motion.div>
-
-                    {/* Deploying / Success overlay */}
-                    <AnimatePresence>
-                        {(phase === 'deploying' || phase === 'success') && (
+                    {/* Center browser */}
+                    <div className="mx-auto max-w-6xl px-2 md:px-0">
+                        <BrowserFrame
+                            urlDisplay={url}
+                            className="mx-auto"
+                            contentClassName={CANVAS_CLASS}
+                        >
+                            {/* Header / Address bar (in-app) */}
                             <motion.div
-                                key="overlay"
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                transition={{ duration: 0.18 }}
-                                className="absolute inset-x-0 top-40 md:top-35 mx-auto max-w-5xl rounded-2xl border border-neutral-200 bg-white p-10 md:p-14 shadow-sm grid place-items-center"
+                                initial={{ opacity: 0, y: 6 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.2 }}
+                                className="absolute left-0 right-0 top-10 rounded-2xl border border-neutral-200 bg-white/90 backdrop-blur p-4 md:p-5 shadow-sm mx-auto max-w-5xl"
                             >
-                                {phase === 'deploying' && (
-                                    <div className="text-center">
-                                        <motion.div
-                                            animate={{ rotate: 360 }}
-                                            transition={{ repeat: Infinity, ease: 'linear', duration: 1.1 }}
-                                            className="mx-auto mb-4 h-10 w-10 rounded-full border-2 border-neutral-200 border-t-neutral-900"
+                                <div className="flex items-center gap-2 text-xs text-neutral-500">
+                                    <span className="text-neutral-800">{headerHint}</span>
+                                </div>
+
+                                <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center">
+                                    <div className="flex-1 rounded-xl ring-1 ring-neutral-200 bg-neutral-50 px-3 py-2.5 md:py-3 text-sm text-neutral-700 overflow-hidden">
+                                        <span className="text-neutral-400 mr-1">URL:</span>
+                                        <AnimatedCaret
+                                            text={typed}
+                                            showCaret={phase === "typing"}
+                                            className="font-medium text-neutral-800 break-all"
                                         />
-                                        <div className="text-lg font-medium">Deploying to Vercel…</div>
-                                        <div className="text-sm text-neutral-500 mt-1">Building, optimizing, shipping</div>
                                     </div>
-                                )}
-                                {phase === 'success' && (
-                                    <div className="text-center">
-                                        <CheckCircle2 className="h-10 w-10 text-emerald-600 mx-auto mb-3" />
-                                        <div className="text-lg font-medium">Success! Your preview was deployed.</div>
-                                        <div className="text-sm text-neutral-500 mt-1">Continuing in a moment…</div>
-                                    </div>
-                                )}
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
 
-                    {/* Grid */}
-                    {gridVisible && (
-                        <div className="absolute inset-x-0 top-40 md:top-28 mx-auto max-w-5xl">
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                transition={{ duration: 0.25, delay: 0.02 }}
-                                className="text-sm text-neutral-600 mt-5 mb-3 px-1"
-                            >
-                                Generated pages
-                            </motion.div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
-                                {PAGES.map((p, i) => {
-                                    const revealed = i < visibleCount && (phase === 'revealing' || phase === 'highlight');
-                                    const loading = phase === 'loading' || (!revealed && phase !== 'highlight');
-                                    return (
-                                        <motion.div
-                                            key={p.path}
-                                            initial={{ opacity: 0, y: 8, scale: 0.99 }}
-                                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                                            transition={{ duration: 0.25, delay: 0.02 + i * 0.02 }}
-                                            className="group rounded-2xl border border-neutral-200 bg-white overflow-hidden shadow-sm"
+                                    <div className="flex gap-2">
+                                        <button
+                                            aria-disabled
+                                            className="pointer-events-none inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm text-neutral-400"
                                         >
-                                            <Thumb url={url} path={p.path} revealed={revealed} loading={loading} />
-                                            <div className="p-3">
-                                                <div className="flex items-center justify-between">
-                                                    <div className="min-w-0">
-                                                        {revealed ? (
-                                                            <>
-                                                                <div className="text-sm font-medium text-neutral-800">{p.name}</div>
-                                                                {p.hint && <div className="text-xs text-neutral-500 truncate">{p.hint}</div>}
-                                                            </>
-                                                        ) : (
-                                                            <div className="h-6 w-24 rounded bg-neutral-200 animate-pulse" />
-                                                        )}
-                                                    </div>
-                                                    <button
-                                                        aria-disabled
-                                                        className="pointer-events-none text-xs rounded-full px-3 py-1 border border-neutral-200 text-neutral-400"
-                                                    >
-                                                        Open
-                                                    </button>
+                                            <RefreshCw className="h-4 w-4" />
+                                            Rescan
+                                        </button>
+                                        <button
+                                            aria-disabled
+                                            className={[
+                                                "pointer-events-none relative inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm text-white",
+                                                primaryBg,
+                                                pulseDeploy ? "ring-4 ring-neutral-900/10" : "ring-0",
+                                            ].join(" ")}
+                                        >
+                                            <Rocket className="h-4 w-4" />
+                                            {primaryLabel}
+                                        </button>
+                                    </div>
+                                </div>
+                            </motion.div>
+
+                            {/* Deploying / Success overlay */}
+                            <AnimatePresence>
+                                {(phase === "deploying" || phase === "success") && (
+                                    <motion.div
+                                        key="overlay"
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        exit={{ opacity: 0 }}
+                                        transition={{ duration: 0.18 }}
+                                        className="absolute inset-x-0 top-40 md:top-35 mx-auto max-w-5xl rounded-2xl border border-neutral-200 bg-white p-10 md:p-14 shadow-sm grid place-items-center"
+                                    >
+                                        {phase === "deploying" && (
+                                            <div className="text-center">
+                                                <motion.div
+                                                    animate={{ rotate: 360 }}
+                                                    transition={{
+                                                        repeat: Infinity,
+                                                        ease: "linear",
+                                                        duration: 1.1,
+                                                    }}
+                                                    className="mx-auto mb-4 h-10 w-10 rounded-full border-2 border-neutral-200 border-t-neutral-900"
+                                                />
+                                                <div className="text-lg font-medium">
+                                                    Deploying to Vercel…
+                                                </div>
+                                                <div className="text-sm text-neutral-500 mt-1">
+                                                    Building, optimizing, shipping
                                                 </div>
                                             </div>
-                                        </motion.div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
+                                        )}
+                                        {phase === "success" && (
+                                            <div className="text-center">
+                                                <CheckCircle2 className="h-10 w-10 text-emerald-600 mx-auto mb-3" />
+                                                <div className="text-lg font-medium">
+                                                    Success! Your preview was deployed.
+                                                </div>
+                                                <div className="text-sm text-neutral-500 mt-1">
+                                                    Continuing in a moment…
+                                                </div>
+                                            </div>
+                                        )}
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+
+                            {/* Grid */}
+                            {gridVisible && (
+                                <div className="absolute inset-x-0 top-40 md:top-28 mx-auto max-w-5xl">
+                                    <motion.div
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        transition={{ duration: 0.25, delay: 0.02 }}
+                                        className="text-sm text-neutral-600 mt-5 mb-3 px-1"
+                                    >
+                                        Generated pages
+                                    </motion.div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
+                                        {PAGES.map((p, i) => {
+                                            const revealed =
+                                                i < visibleCount &&
+                                                (phase === "revealing" || phase === "highlight");
+                                            const loading =
+                                                phase === "loading" || (!revealed && phase !== "highlight");
+                                            return (
+                                                <motion.div
+                                                    key={p.path}
+                                                    initial={{ opacity: 0, y: 8, scale: 0.99 }}
+                                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                    transition={{ duration: 0.25, delay: 0.02 + i * 0.02 }}
+                                                    className="group rounded-2xl border border-neutral-200 bg-white overflow-hidden shadow-sm"
+                                                >
+                                                    <Thumb
+                                                        url={url}
+                                                        path={p.path}
+                                                        revealed={revealed}
+                                                        loading={loading}
+                                                    />
+                                                    <div className="p-3">
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="min-w-0">
+                                                                {revealed ? (
+                                                                    <>
+                                                                        <div className="text-sm font-medium text-neutral-800">
+                                                                            {p.name}
+                                                                        </div>
+                                                                        {p.hint && (
+                                                                            <div className="text-xs text-neutral-500 truncate">
+                                                                                {p.hint}
+                                                                            </div>
+                                                                        )}
+                                                                    </>
+                                                                ) : (
+                                                                    <div className="h-6 w-24 rounded bg-neutral-200 animate-pulse" />
+                                                                )}
+                                                            </div>
+                                                            <button
+                                                                aria-disabled
+                                                                className="pointer-events-none text-xs rounded-full px-3 py-1 border border-neutral-200 text-neutral-400"
+                                                            >
+                                                                Open
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </motion.div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+                        </BrowserFrame>
+                    </div>
                 </div>
             </div>
         </section>
@@ -383,7 +467,7 @@ export default function PreviewDashboard({
 function AnimatedCaret({
     text,
     showCaret,
-    className = '',
+    className = "",
 }: {
     text: string;
     showCaret?: boolean;
@@ -392,7 +476,12 @@ function AnimatedCaret({
     return (
         <span className={className}>
             {text}
-            <span className={['inline-block w-[0.55ch] -mb-[2px]', showCaret ? 'opacity-100' : 'opacity-0'].join(' ')}>
+            <span
+                className={[
+                    "inline-block w-[0.55ch] -mb-[2px]",
+                    showCaret ? "opacity-100" : "opacity-0",
+                ].join(" ")}
+            >
                 <motion.span
                     aria-hidden
                     className="inline-block h-[1.05em] w-[1px] align-middle bg-neutral-800"
@@ -415,7 +504,7 @@ function Thumb({
     revealed: boolean;
     loading: boolean;
 }) {
-    const full = (url.replace(/\/+$/, '') || '') + path;
+    const full = (url.replace(/\/+$/, "") || "") + path;
 
     return (
         <div className="relative aspect-[4/3] bg-gradient-to-br from-neutral-50 to-white">
@@ -464,6 +553,197 @@ function Thumb({
                             </div>
                         </motion.div>
                     )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/* ---------- browser chrome + side demos ---------- */
+
+function BrowserFrame({
+    children,
+    urlDisplay,
+    className = "",
+    contentClassName = "",
+}: {
+    children: React.ReactNode;
+    urlDisplay: string;
+    className?: string;
+    contentClassName?: string;
+}) {
+    return (
+        <div
+            className={[
+                "relative rounded-[34px] border border-neutral-200 bg-white shadow-[0_20px_70px_rgba(0,0,0,0.08)]",
+                className,
+            ].join(" ")}
+        >
+            {/* outer glow */}
+            <div className="pointer-events-none absolute -inset-[1px] rounded-[36px] ring-1 ring-neutral-200/50" />
+
+            {/* chrome */}
+            <div className="h-12 flex items-center gap-3 px-4 border-b border-neutral-200 bg-white rounded-t-[34px]">
+                <div className="flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                </div>
+
+                <div className="flex-1">
+                    <div className="mx-auto max-w-[820px]">
+                        <div className="h-8 rounded-full bg-neutral-50 border border-neutral-200 px-4 flex items-center">
+                            <div className="text-[12px] text-neutral-500 truncate">
+                                {urlDisplay}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="hidden sm:flex items-center gap-2">
+                    <span className="h-7 w-7 rounded-full bg-neutral-100 border border-neutral-200" />
+                </div>
+            </div>
+
+            {/* content viewport */}
+            <div className={["relative rounded-b-[34px] overflow-hidden", contentClassName].join(" ")}>
+                <div className="absolute inset-0 bg-gradient-to-b from-neutral-50 to-white" />
+                <div className="relative">{children}</div>
+            </div>
+        </div>
+    );
+}
+
+function SideFadedDemo({ side }: { side: "left" | "right" }) {
+    return (
+        <div
+            className={[
+                "pointer-events-none hidden lg:block absolute top-10 bottom-10",
+                side === "left"
+                    ? "left-0 -translate-x-[20%]"
+                    : "right-0 translate-x-[20%]",
+            ].join(" ")}
+            aria-hidden="true"
+        >
+            <div
+                className={[
+                    "relative h-full w-[420px] xl:w-[480px]",
+                    "opacity-[0.22] blur-[0.2px]",
+                ].join(" ")}
+                style={{
+                    maskImage:
+                        side === "left"
+                            ? "linear-gradient(to right, transparent, black 22%, black 78%, transparent)"
+                            : "linear-gradient(to left, transparent, black 22%, black 78%, transparent)",
+                    WebkitMaskImage:
+                        side === "left"
+                            ? "linear-gradient(to right, transparent, black 22%, black 78%, transparent)"
+                            : "linear-gradient(to left, transparent, black 22%, black 78%, transparent)",
+                }}
+            >
+                <div
+                    className={[
+                        "absolute inset-0",
+                        side === "left" ? "rotate-[-1.25deg]" : "rotate-[1.25deg]",
+                    ].join(" ")}
+                >
+                    <div className="h-full rounded-[28px] border border-neutral-200 bg-white shadow-sm overflow-hidden">
+                        <div className="h-10 border-b border-neutral-200 bg-white flex items-center gap-2 px-3">
+                            <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
+                            <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
+                            <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                            <div className="ml-2 h-6 w-[70%] rounded-full bg-neutral-50 border border-neutral-200" />
+                        </div>
+
+                        <div className="h-full grid grid-cols-[160px,1fr]">
+                            <DemoSidebar />
+                            <DemoContent />
+                        </div>
+                    </div>
+                </div>
+
+                {/* extra fade wash so it stays subtle */}
+                <div className="absolute inset-0 bg-gradient-to-b from-white/40 via-transparent to-white/40" />
+            </div>
+        </div>
+    );
+}
+
+function DemoSidebar() {
+    const items = [
+        "Home",
+        "Dashboard",
+        "Builder",
+        "Deployments",
+        "Community templates",
+        "Settings",
+        "Docs",
+    ];
+
+    return (
+        <div className="border-r border-neutral-200 bg-white">
+            <div className="p-4 border-b border-neutral-200">
+                <div className="h-8 w-24 rounded-lg bg-neutral-200" />
+            </div>
+            <div className="p-3 space-y-2">
+                {items.map((t, idx) => (
+                    <div
+                        key={t}
+                        className={[
+                            "h-9 rounded-xl border border-neutral-200 bg-white flex items-center px-3",
+                            idx === 1 ? "bg-neutral-50" : "",
+                        ].join(" ")}
+                    >
+                        <div className="h-5 w-5 rounded-md bg-neutral-200 mr-2" />
+                        <div className="h-3 w-[70%] rounded bg-neutral-200" />
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+function DemoContent() {
+    return (
+        <div className="bg-white">
+            <div className="p-4 border-b border-neutral-200">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <div className="h-4 w-40 rounded bg-neutral-200" />
+                        <div className="h-3 w-64 rounded bg-neutral-200 mt-2" />
+                    </div>
+                    <div className="h-9 w-28 rounded-full bg-neutral-200" />
+                </div>
+            </div>
+
+            <div className="p-4">
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-2xl border border-neutral-200 bg-white overflow-hidden">
+                        <div className="h-20 bg-neutral-200" />
+                        <div className="p-3">
+                            <div className="h-3 w-24 rounded bg-neutral-200" />
+                            <div className="h-3 w-40 rounded bg-neutral-200 mt-2" />
+                        </div>
+                    </div>
+                    <div className="rounded-2xl border border-neutral-200 bg-white overflow-hidden">
+                        <div className="h-20 bg-neutral-200" />
+                        <div className="p-3">
+                            <div className="h-3 w-24 rounded bg-neutral-200" />
+                            <div className="h-3 w-40 rounded bg-neutral-200 mt-2" />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="mt-4 rounded-2xl border border-neutral-200 bg-white p-4">
+                    <div className="flex items-center justify-between">
+                        <div className="h-3 w-44 rounded bg-neutral-200" />
+                        <div className="h-7 w-20 rounded-full bg-neutral-200" />
+                    </div>
+                    <div className="mt-3 space-y-2">
+                        <div className="h-3 w-[92%] rounded bg-neutral-200" />
+                        <div className="h-3 w-[86%] rounded bg-neutral-200" />
+                        <div className="h-3 w-[74%] rounded bg-neutral-200" />
+                    </div>
                 </div>
             </div>
         </div>
