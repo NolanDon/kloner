@@ -32,7 +32,7 @@ export default function CommunityBuildsPage() {
                     </div>
                 </header>
 
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center justify-center text-center">
                     <div className="flex flex-col gap-1">
                         <p className="text-[11px] uppercase tracking-[0.24em] text-black/45">
                             Featured builds

@@ -4264,7 +4264,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                 <div className={`absolute ${IS_MOBILE ? 'bottom-20 left-3' : 'top-5 left-5'} z-10 flex items-center gap-2 rounded-full ${IS_MOBILE ? '' : 'bg-white/90 shadow-md'} px-2 py-1 `}>
                     <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-600">
                         <button
-                            className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-white/90 text-neutral-600 shadow-sm hover:bg-neutral-100"
+                            className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-white/90 text-neutral-600 shadow-md hover:bg-neutral-100"
                             onClick={() => setUiScale((s) => Math.max(0.5, +(s - 0.05).toFixed(2)))}
                             disabled={closing}
                         >
@@ -4272,7 +4272,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                         </button>
                         {!IS_MOBILE && (<span className="w-10 text-center">{Math.round(uiScale * 100)}%</span>)}
                         <button
-                            className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-white/90 text-neutral-600 shadow-sm hover:bg-neutral-100"
+                            className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-white/90 text-neutral-600 shadow-md hover:bg-neutral-100"
                             onClick={() => setUiScale((s) => Math.min(1.25, +(s + 0.05).toFixed(2)))}
                             disabled={closing}
                         >

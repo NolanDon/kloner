@@ -83,7 +83,7 @@ const tiers = [
         features: [
             "400 monthly screenshot credits (40 site captures)",
             "1500 monthly preview credits (100 site generations)",
-            "1200 monhtly AI credits",
+            "1200 monthly AI credits",
             "Up to 30 Pages in every generation",
             "Team seats and client projects",
             "Change tracking and audit history",
