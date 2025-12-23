@@ -391,12 +391,12 @@ export default function PreviewDashboard({
 
                             {/* Grid */}
                             {gridVisible && (
-                                <div className="absolute inset-x-0 top-40 md:top-28 mx-auto max-w-5xl">
+                                <div className="absolute inset-x-0 top-40 md:top-40 mx-auto max-w-5xl">
                                     <motion.div
                                         initial={{ opacity: 0 }}
                                         animate={{ opacity: 1 }}
                                         transition={{ duration: 0.25, delay: 0.02 }}
-                                        className="text-sm text-neutral-600 mt-5 mb-3 px-1"
+                                        className="text-sm text-neutral-600 my-3"
                                     >
                                         Generated pages
                                     </motion.div>

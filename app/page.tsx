@@ -37,7 +37,7 @@ export default function Page() {
 
         <section
           id="stats"
-          className="snap-start snap-always min-h-screen flex flex-col"
+          className="snap-start snap-always flex flex-col"
         >
           <StatsStrip />
         </section>

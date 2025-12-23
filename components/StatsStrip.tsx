@@ -92,7 +92,7 @@ export default function StatsStrip() {
   ];
 
   return (
-    <section className="section bg-white" id="stories">
+    <section className="section bg-white py-20 md:py-80" id="stories">
       <div className="container-soft">
         <SectionReveal>
           <blockquote className="text-center text-2xl md:text-3xl font-semibold max-w-4xl mx-auto text-black/70">
