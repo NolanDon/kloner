@@ -1175,7 +1175,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                     disabled={effectiveLocked}
                     aria-disabled={effectiveLocked}
                     className={`group mt-2 inline-flex mx-auto w-[200px] items-center justify-center rounded-full bg-[#f55f2a] px-4 py-1 text-[12px] font-semibold text-white whitespace-nowrap transition-transform duration-200 ease-out
-      ${effectiveLocked ? "pointer-events-none opacity-60" : "hover:translate-x-[2px]"}
+      ${effectiveLocked ? "pointer-events-none opacity-60" : "hover:translate-y-[2px]"}
     `}
                 >
                     <span>Start from template</span>
