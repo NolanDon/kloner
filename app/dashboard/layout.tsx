@@ -55,6 +55,7 @@ const BASE_NAV_SECTIONS: NavSectionConfig[] = [
         items: [
             { href: "/", label: "Home", icon: Home },
             { href: "/affiliate", label: "Affiliate Hub", icon: Users },
+            // NEW: community templates link
             { href: "/community-builds", label: "Community templates", icon: Sparkles },
         ],
     },
@@ -180,11 +181,10 @@ function NavItem({
             href={href}
             onClick={handleClick}
             aria-disabled={active}
-            className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
-                active
-                    ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
-                    : "text-neutral-700 hover:bg-neutral-50"
-            }`}
+            className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${active
+                ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
+                : "text-neutral-700 hover:bg-neutral-50"
+                }`}
         >
             {Icon && (
                 <span className="grid h-7 w-7 place-items-center rounded-md border border-neutral-200 bg-white">
@@ -335,7 +335,6 @@ function MobileHeader({
     const pathname = usePathname();
     const [open, setOpen] = useState(false);
 
-    // Lock scroll while menu is open (prevents underlying page scroll + "behind" feeling)
     useEffect(() => {
         const el = document.documentElement;
         const prev = el.style.overflow;
@@ -390,30 +389,22 @@ function MobileHeader({
             <AnimatePresence>
                 {open && (
                     <>
-                        {/* BACKDROP: real overlay + very high z-index so it never sits behind page UI */}
                         <motion.div
                             key="mbl-backdrop"
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
                             transition={{ duration: 0.18 }}
-                            className="fixed inset-0 z-[9998] bg-black/35 backdrop-blur-[1px]"
+                            className="fixed inset-0 z-[80]"
                             onClick={close}
                         />
-
-                        {/* SHEET: capped height + internal scrolling so items never overlap/clip */}
                         <motion.div
                             key="mbl-sheet"
                             initial={{ y: -12, opacity: 0 }}
                             animate={{ y: 0, opacity: 1 }}
                             exit={{ y: -10, opacity: 0 }}
                             transition={{ duration: 0.2, ease: "easeOut" }}
-                            className="fixed inset-x-3 z-[9999] rounded-3xl border border-neutral-200 bg-white shadow-2xl"
-                            style={{
-                                top: "max(12px, env(safe-area-inset-top))",
-                                maxHeight:
-                                    "calc(100vh - max(24px, env(safe-area-inset-top)) - max(24px, env(safe-area-inset-bottom)))",
-                            }}
+                            className="fixed inset-x-3 top-[max(12px,env(safe-area-inset-top))] z-[90] rounded-3xl border border-neutral-200 bg-white shadow-2xl"
                             role="dialog"
                             aria-modal="true"
                         >
@@ -427,64 +418,59 @@ function MobileHeader({
                                     <X className="h-5 w-5" />
                                 </button>
                             </div>
+                            <div className="h-px bg-neutral-200/80" />
+
+                            <ul className="px-2 py-2">
+                                {flatItems.map(({ href, label, icon: Icon }) => {
+                                    const active = navItemIsActive(pathname, href);
+
+                                    const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+                                        if (active) {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            close();
+                                            return;
+                                        }
+                                        close();
+                                    };
+
+                                    return (
+                                        <li key={href}>
+                                            <a
+                                                href={href}
+                                                onClick={handleClick}
+                                                aria-disabled={active}
+                                                className={`flex items-center gap-3 rounded-xl px-3 py-3 text-[15px] ${active
+                                                    ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
+                                                    : "text-neutral-800 hover:bg-neutral-50"
+                                                    }`}
+                                            >
+                                                {Icon && (
+                                                    <span className="grid h-8 w-8 place-items-center rounded-lg border border-neutral-200 bg-white">
+                                                        <Icon className="h-4 w-4" />
+                                                    </span>
+                                                )}
+                                                {label}
+                                            </a>
+                                        </li>
+                                    );
+                                })}
+                            </ul>
 
                             <div className="h-px bg-neutral-200/80" />
 
-                            {/* SCROLL REGION */}
-                            <div className="flex flex-col overflow-hidden">
-                                <ul className="px-2 py-2 overflow-y-auto overscroll-contain">
-                                    {flatItems.map(({ href, label, icon: Icon }) => {
-                                        const active = navItemIsActive(pathname, href);
-
-                                        const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
-                                            if (active) {
-                                                e.preventDefault();
-                                                e.stopPropagation();
-                                                close();
-                                                return;
-                                            }
-                                            close();
-                                        };
-
-                                        return (
-                                            <li key={href}>
-                                                <a
-                                                    href={href}
-                                                    onClick={handleClick}
-                                                    aria-disabled={active}
-                                                    className={`flex items-center gap-3 rounded-xl px-3 py-3 text-[15px] ${
-                                                        active
-                                                            ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
-                                                            : "text-neutral-800 hover:bg-neutral-50"
-                                                    }`}
-                                                >
-                                                    {Icon && (
-                                                        <span className="grid h-8 w-8 place-items-center rounded-lg border border-neutral-200 bg-white">
-                                                            <Icon className="h-4 w-4" />
-                                                        </span>
-                                                    )}
-                                                    {label}
-                                                </a>
-                                            </li>
-                                        );
-                                    })}
-                                </ul>
-
-                                <div className="h-px bg-neutral-200/80" />
-
-                                <div className="px-4 py-3 shrink-0">
-                                    <button
-                                        onClick={onSignOut}
-                                        className="w-full inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold text-white"
-                                        style={{ background: ACCENT }}
-                                    >
-                                        <LogOut className="h-4 w-4" />
-                                        Sign out
-                                    </button>
-                                </div>
-
-                                <div className="pb-[max(8px,env(safe-area-inset-bottom))] shrink-0" />
+                            <div className="px-4 py-3">
+                                <button
+                                    onClick={onSignOut}
+                                    className="w-full inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold text-white"
+                                    style={{ background: ACCENT }}
+                                >
+                                    <LogOut className="h-4 w-4" />
+                                    Sign out
+                                </button>
                             </div>
+
+                            <div className="pb-[max(8px,env(safe-area-inset-bottom))]" />
                         </motion.div>
                     </>
                 )}
