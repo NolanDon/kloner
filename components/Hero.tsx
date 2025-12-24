@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
 import { ArrowRightSquare } from "lucide-react";
+import Image from 'next/image'
 
 const display = Outfit({
   subsets: ["latin"],
@@ -166,7 +167,7 @@ export default function Hero() {
           {!isMobile ? (
             <>
               {/* LCP FIX: make poster discoverable immediately + high priority */}
-              <img
+              <Image
                 src="/images/hero-poster.jpg"
                 alt=""
                 aria-hidden="true"

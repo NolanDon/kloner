@@ -9,6 +9,7 @@ import React, {
     useRef,
     memo,
 } from "react";
+import Image from 'next/image'
 import { flushSync } from "react-dom";
 import { toast } from "react-hot-toast";
 
@@ -630,7 +631,7 @@ function RenderCardInner({
                     </div>
                 ) : (
                     <a className="block h-full w-full" title="Open the base screenshot">
-                        <img
+                        <Image
                             src={refImgUrl}
                             alt={r.nameHint || "preview"}
                             loading="lazy"
@@ -4564,7 +4565,7 @@ export default function PreviewPage(): JSX.Element {
                                     </div>
                                     <div className="absolute inset-0 mt-8 mb-8 overflow-auto rounded-md ring-1 ring-white/10 bg-black/40">
                                         <div className="min-h-full w-full grid place-items-center p-4">
-                                            <img
+                                            <Image
                                                 src={shots[viewerIdx].url}
                                                 alt={shots[viewerIdx].fileName}
                                                 style={{

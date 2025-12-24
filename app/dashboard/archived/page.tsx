@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback } from "react";
 import { getUserRenders, RenderRecord, unarchiveRender, useResolvedImg } from "@/src/lib/renders";
 import { Trash2 as DeleteIcon } from "lucide-react";
 import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
+import Image from 'next/image'
 
 type ArchiveCardProps = {
     r: RenderRecord;
@@ -44,7 +45,7 @@ function ArchiveCard({ r, onUnarchive, onDiscard, isDeleting }: ArchiveCardProps
 
             <div className="relative">
                 {refImgUrl ? (
-                    <img
+                    <Image
                         src={refImgUrl}
                         alt={name}
                         loading="lazy"

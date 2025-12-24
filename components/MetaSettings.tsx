@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, ChangeEvent } from "react";
+import Image from 'next/image'
 
 // meta-settings.ts
 
@@ -302,8 +303,8 @@ export function MetaSettings({
                 <div className="flex h-14 w-14 my-2 items-center justify-center overflow-hidden rounded-md border border-neutral-200 bg-neutral-50">
                     {hasFavicon ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                            src={draftMeta.faviconUrl}
+                        <Image
+                            src={draftMeta.faviconUrl as any}
                             alt="Current favicon"
                             className="h-full w-full object-contain"
                         />

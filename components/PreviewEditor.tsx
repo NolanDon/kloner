@@ -4,6 +4,7 @@
 import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 import { useEffect, useMemo, useRef, useState, useCallback, ChangeEvent } from "react";
 import { motion, AnimatePresence, useDragControls } from "framer-motion";
+import Image from 'next/image'
 
 export type Device = "desktop" | "tablet" | "mobile";
 export type ViewMode = "code" | "preview" | "screenshot";
@@ -5581,7 +5582,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     style={{ width: devicePx, minWidth: 320 }}
                                 >
                                     {activeSourceImage ? (
-                                        <img
+                                        <Image
                                             src={activeSourceImage}
                                             alt="Reference"
                                             className="w-full h-auto rounded border bg-white/90"

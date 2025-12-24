@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
+import Image from 'next/image'
 import {
     addDoc,
     collection,
@@ -576,7 +577,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
             <div className="flex flex-col sm:flex-row gap-4 sm:gap-5">
                 {thumbUrl ? (
                     <div className="h-12 w-12 rounded-full overflow-hidden border border-neutral-200 bg-neutral-100 shrink-0">
-                        <img
+                        <Image
                             src={thumbUrl}
                             alt=""
                             className="object-cover"

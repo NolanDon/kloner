@@ -7,6 +7,7 @@ import { ref, listAll, getDownloadURL } from "firebase/storage";
 import { Image as ImageIcon, RefreshCcw } from "lucide-react";
 import { storage } from "@/lib/firebase";
 import type { User as FirebaseUser } from "firebase/auth";
+import Image from 'next/image'
 
 type AiLibraryItem = {
     url: string;
@@ -244,7 +245,7 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId }: Props) {
                             className="group relative flex flex-col overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50 text-left text-[0px] shadow-sm transition hover:z-10 hover:border-[#f55f2a] hover:bg-white"
                         >
                             <div className="relative aspect-[4/3] w-full max-h-24 overflow-hidden bg-neutral-900/5">
-                                <img
+                                <Image
                                     src={item.url}
                                     alt={item.name}
                                     className="h-full w-full object-cover transition group-hover:scale-[1.08]"

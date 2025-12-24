@@ -4,6 +4,7 @@
 import React, { useRef } from 'react';
 import { motion, useInView } from 'framer-motion';
 import { useUrlOverlay } from './UrlOverlayProvider';
+import Image from 'next/image'
 
 /* ----------------------------------------------------------------
    Shared bits
@@ -56,7 +57,7 @@ function FeatureFrame({
 function MiniData() {
   return (
     <CardShell>
-      <img
+      <Image
         src="/images/included-section/5.jpg"
         alt="Clean capture preview"
         className="absolute rounded-md inset-0 h-full w-full object-cover"
@@ -71,7 +72,7 @@ function MiniData() {
 function MiniUpload() {
   return (
     <CardShell>
-      <img
+      <Image
         src="/images/included-section/2.jpg"
         alt="Import and route mapping"
         className="absolute inset-0 h-full w-full object-cover"
@@ -86,7 +87,7 @@ function MiniUpload() {
 function MiniPlan() {
   return (
     <CardShell>
-      <img
+      <Image
         src="/images/included-section/1.jpg"
         alt="Export-ready checklist"
         className="absolute inset-0 h-full w-full object-cover"
@@ -101,7 +102,7 @@ function MiniPlan() {
 function MiniConcierge() {
   return (
     <CardShell>
-      <img
+      <Image
         src="/images/included-section/4.jpg"
         alt="Live preview edits"
         className="absolute inset-0 h-full w-full object-cover"
@@ -116,7 +117,7 @@ function MiniConcierge() {
 function MiniAddons() {
   return (
     <CardShell>
-      <img
+      <Image
         src="/images/included-section/3.jpg"
         alt="Add-ons marketplace"
         className="absolute inset-0 h-full w-full object-cover"
@@ -131,7 +132,7 @@ function MiniAddons() {
 function MiniClinic() {
   return (
     <CardShell>
-      <img
+      <Image
         src="/images/included-section/6.jpg"
         alt="One-click deploy providers"
         className="absolute inset-0 h-full w-full object-cover"

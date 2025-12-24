@@ -13,6 +13,7 @@ import {
     updateDoc,
     serverTimestamp,
 } from "firebase/firestore";
+import Image from 'next/image'
 import { getAuth, onAuthStateChanged, getIdTokenResult } from "firebase/auth";
 import { getDownloadURL, getStorage, ref as storageRef } from "firebase/storage";
 import { ExternalLink, CheckCircle2, XCircle, RefreshCw, ShieldAlert } from "lucide-react";
@@ -286,7 +287,7 @@ function AdminBuildCard({
             <div className="relative flex flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
                 <div className="relative">
                     {src ? (
-                        <img
+                        <Image
                             src={src}
                             alt={name}
                             className="h-44 w-full object-cover"
