@@ -321,10 +321,13 @@ export default function ChatWidgetProvider() {
             <button
                 type="button"
                 onClick={() => setOpen((o) => !o)}
+                aria-label={open ? "Close chat" : "Open chat"}
+                aria-expanded={open}
                 className="fixed bottom-6 right-6 z-50 rounded-full bg-accent text-white px-4 py-2 text-sm shadow-lg hover:brightness-80 focus:outline-none"
             >
-                {open ? <SquareX /> : <MessagesSquare />}
+                {open ? <SquareX aria-hidden="true" focusable="false" /> : <MessagesSquare aria-hidden="true" focusable="false" />}
             </button>
+
 
             {open && (
                 <div className="fixed bottom-16 right-6 z-50 w-[320px] max-w-[90vw] rounded-2xl border border-neutral-200 bg-white shadow-xl flex flex-col overflow-hidden">

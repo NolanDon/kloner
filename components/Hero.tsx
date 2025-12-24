@@ -153,7 +153,6 @@ export default function Hero() {
           "max(env(safe-area-inset-left), clamp(12px, 4vw, 10px))",
       }}
     >
-      {/* Mobile-only: moving gradient for the H1 text */}
       <style>{`
         @keyframes kloner-hero-gradient-move {
           0% { background-position: 0% 50%; }
@@ -162,11 +161,19 @@ export default function Hero() {
         }
       `}</style>
 
-      {/* Background: desktop video; mobile white-only */}
       <div className="absolute inset-0 p-[var(--hero-gutter)]">
         <div className="relative h-full w-full overflow-hidden rounded-2xl md:rounded-3xl ring-1 ring-black/10 shadow-2xl">
           {!isMobile ? (
             <>
+              {/* LCP FIX: make poster discoverable immediately + high priority */}
+              <img
+                src="/images/hero-poster.jpg"
+                alt=""
+                aria-hidden="true"
+                fetchPriority="high"
+                className="absolute inset-0 h-full w-full object-cover opacity-0"
+              />
+
               <video
                 className="absolute inset-0 h-full w-full object-cover"
                 src="/hero.webm"
@@ -174,7 +181,7 @@ export default function Hero() {
                 loop
                 muted
                 playsInline
-                preload="metadata"
+                preload="auto"
                 poster="/images/hero-poster.jpg"
               />
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/45 via-black/15 to-transparent" />
@@ -200,16 +207,12 @@ export default function Hero() {
             className={[
               display.className,
               "pt-10 md:pt-20 leading-[0.96] font-semibold text-[3.5rem] md:text-[5rem] tracking-[-0.015em]",
-              // Desktop: normal white text.
-              // Mobile: gradient text (handled via inline style below).
               isMobile ? "" : "text-white",
             ].join(" ")}
             style={{
               textWrap: "balance" as any,
               WebkitFontSmoothing: "antialiased",
               MozOsxFontSmoothing: "grayscale",
-
-              // MOBILE ONLY: gradient + glow
               ...(isMobile
                 ? {
                   color: "transparent",
@@ -229,7 +232,6 @@ export default function Hero() {
                     "drop-shadow(0 10px 24px rgba(245,95,42,0.25)) drop-shadow(0 2px 10px rgba(0,0,0,0.18))",
                 }
                 : {
-                  // DESKTOP ONLY: hard-disable gradient behavior so it can’t leak
                   backgroundImage: "none",
                   WebkitTextFillColor: "currentColor",
                   WebkitBackgroundClip: "border-box",
@@ -291,6 +293,8 @@ export default function Hero() {
                   "h-4 w-4 transform transition-transform duration-200 group-hover:translate-x-1 mt-0.5",
                   isMobile ? "text-neutral-600" : "text-white/80",
                 ].join(" ")}
+                aria-hidden="true"
+                focusable="false"
               />
             </a>
           </div>
@@ -308,7 +312,9 @@ export default function Hero() {
                 isMobile ? "ring-black/10 focus-within:ring-black/20" : "ring-white/25 focus-within:ring-white/70",
               ].join(" ")}
             >
-              <label htmlFor="hero-url" className="sr-only">Website URL</label>
+              <label htmlFor="hero-url" className="sr-only">
+                Website URL
+              </label>
               <span className="hidden sm:inline text-neutral-500 text-lg">https://</span>
               <input
                 id="hero-url"
@@ -322,7 +328,7 @@ export default function Hero() {
                 onChange={handleChange}
                 onPaste={handlePaste}
                 ref={inputRef}
-                className="flex-1 bg-transparent outline-none text-neutral-600 placeholder:text-neutral-400 text-[16px] sm:text-[18px]"
+                className="flex-1 bg-transparent outline-none text-neutral-700 placeholder:text-neutral-500 text-[16px] sm:text-[18px]"
               />
               <button
                 type="submit"
@@ -330,7 +336,7 @@ export default function Hero() {
                   shrink-0 rounded-full
                   h-[48px] sm:h-[56px] px-5 sm:px-6
                   bg-accent
-                  text-white text-[15px] tracking-wide
+                  text-[15px] text-white tracking-wide
                   shadow-[0_6px_18px_rgba(0,0,0,0.25)]
                   hover:bg-accent
                   hover:shadow-[0_14px_40px_rgba(0,0,0,0.35)]

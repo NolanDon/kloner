@@ -19,15 +19,6 @@ type Reel = {
 
 const reels: Reel[] = [
   {
-    src: '/reel1.webm',
-    handle: '@mytechceo',
-    followers: '254k followers',
-    avatar: '/images/avatars/portfolio1.jpg',
-    alt: 'Review by @mytechceo',
-    clonedUrl: 'surf instructor landing page',
-    resultLabel: 'Saw 60% increase in organic traffic from performance improvements alone.',
-  },
-  {
     src: '/reel2.webm',
     handle: '@emmyxtech',
     followers: '368k followers',
@@ -42,7 +33,7 @@ const reels: Reel[] = [
     followers: '90.2k followers',
     avatar: '/images/avatars/portfolio4.jpg',
     alt: 'Review by @stefarmstead',
-    clonedUrl: 'podcast landing page',
+    clonedUrl: 'podcast site',
     resultLabel: 'Saved thousands on developer costs, by rebuilding a popular design and tweaking copy.',
   },
   {
