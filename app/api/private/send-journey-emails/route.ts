@@ -240,7 +240,7 @@ export async function POST(req: NextRequest) {
     const denied = requireInternal(req);
     if (denied) return denied;
 
-    const ONLY_TEST_EMAIL = true;
+    const ONLY_TEST_EMAIL = false;
     const TEST_TO = "nolan796@live.ca";
 
     try {
