@@ -91,7 +91,7 @@ export default function ParallaxTypeHero({
 
                     <motion.div initial={{ opacity: 0, y: 8 }} style={{ opacity: subOpacity }}>
                         <div className="mt-5 md:mt-6">
-                            <a
+                            <div
                                 onClick={openUrlOverlay}
                                 className="
                   group relative inline-flex items-center gap-3 whitespace-nowrap
@@ -128,7 +128,7 @@ export default function ParallaxTypeHero({
                                     <path d="M6 12h12" />
                                     <path d="M12 6l6 6-6 6" />
                                 </svg>
-                            </a>
+                            </div>
                         </div>
                     </motion.div>
                 </div>

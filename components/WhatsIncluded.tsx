@@ -184,12 +184,12 @@ export default function MembershipSticky() {
                 </p>
               </div>
 
-              <a
+              <div
                 onClick={openUrlOverlay}
                 className="mt-10 inline-flex bg-accent hover:bg-accent2 items-center gap-2 rounded-full px-6 py-4 text-white"
               >
                 Start free preview <span aria-hidden>›</span>
-              </a>
+              </div>
 
             </div>
           </div>

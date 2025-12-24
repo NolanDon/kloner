@@ -1,4 +1,4 @@
 User-agent: *
 Disallow: 
 Disallow: /cgi-bin/
-Sitemap: kloner.app/sitemap.xml
+Sitemap: https://kloner.app/sitemap.xml
