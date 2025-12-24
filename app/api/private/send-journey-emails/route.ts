@@ -286,7 +286,7 @@ export async function POST(req: NextRequest) {
             );
 
             const unsubUrl = buildUtm(
-                `https://kloner.app/settings?tab=notifications&uid=${encodeURIComponent(uid)}&t=${encodeURIComponent(unsubToken)}`,
+                `https://kloner.app/settings?tab=notifications`,
                 tierNum,
                 "unsub",
             );
