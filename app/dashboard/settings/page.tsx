@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { auth } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import {
     CheckCircle2,
@@ -17,6 +17,7 @@ import {
 import { useSearchParams } from "next/navigation";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 import { ensureSessionAndCsrf } from "../../login/LoginForm";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 
 const ACCENT = "#f55f2a";
 const VERCEL_INTEGRATION_SLUG =
@@ -262,6 +263,85 @@ export default function SettingsPage(): JSX.Element {
             setTierLoading(false);
         }
     };
+
+    useEffect(() => {
+        if (!user) return;
+
+        const uid = (searchParams.get("uid") || "").trim();
+        const token = (searchParams.get("t") || "").trim();
+        const tab = (searchParams.get("tab") || "").toLowerCase();
+
+        if (tab === "notifications") setActiveTab("notifications");
+
+        // Only run unsub flow when both are present
+        if (!uid && !token) return;
+
+        if (!uid || !token) {
+            const sp = new URLSearchParams(searchParams.toString());
+            sp.set("tab", "notifications");
+            sp.set("unsub", "missing");
+            sp.delete("uid");
+            sp.delete("t");
+            window.history.replaceState({}, "", `/settings?${sp.toString()}`);
+            return;
+        }
+
+        let cancelled = false;
+
+        (async () => {
+            try {
+                const ref = doc(db, "kloner_users", uid);
+                const snap = await getDoc(ref);
+                const data = snap.exists() ? snap.data() : null;
+
+                const expected =
+                    typeof (data as any)?.notificationUnsubToken === "string"
+                        ? (data as any).notificationUnsubToken
+                        : "";
+
+                if (!expected || expected !== token) {
+                    throw new Error("invalid");
+                }
+
+                const existingPrefs = ((data as any)?.notificationPrefs || {}) as any;
+
+                await setDoc(
+                    ref,
+                    {
+                        notificationPrefs: {
+                            ...existingPrefs,
+                            journeyEmails: false,
+                        },
+                        notificationPrefsUpdatedAt: Date.now(),
+                        notificationUnsubbedAt: Date.now(),
+                    },
+                    { merge: true },
+                );
+
+                if (cancelled) return;
+
+                const sp = new URLSearchParams(searchParams.toString());
+                sp.set("tab", "notifications");
+                sp.set("unsub", "ok");
+                sp.delete("uid");
+                sp.delete("t");
+                window.history.replaceState({}, "", `/settings?${sp.toString()}`);
+            } catch {
+                if (cancelled) return;
+
+                const sp = new URLSearchParams(searchParams.toString());
+                sp.set("tab", "notifications");
+                sp.set("unsub", "invalid");
+                sp.delete("uid");
+                sp.delete("t");
+                window.history.replaceState({}, "", `/settings?${sp.toString()}`);
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [user, searchParams]);
 
     const loadPrefs = async (signal?: AbortSignal) => {
         setPrefsLoading(true);
