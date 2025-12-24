@@ -877,10 +877,6 @@ export default function SettingsPage(): JSX.Element {
                                             />
                                         </button>
                                     </div>
-
-                                    <div className="mt-2 text-[11px] text-neutral-500">
-                                        Disable link in emails goes to a short URL: /s/unsub
-                                    </div>
                                 </div>
 
                                 <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3">
@@ -949,7 +945,7 @@ export default function SettingsPage(): JSX.Element {
                         <div className="mt-4 rounded-xl border border-neutral-200 bg-white p-3">
                             <div className="text-xs font-semibold text-neutral-900">Email tracking</div>
                             <p className="mt-1 text-xs text-neutral-600">
-                                Links include UTM parameters for analytics. Settings short link is /s/settings and unsubscribe short link is /s/unsub.
+                                Links include UTM parameters for analytics.
                             </p>
                         </div>
                     </section>

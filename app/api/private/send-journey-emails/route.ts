@@ -291,7 +291,6 @@ export async function POST(req: NextRequest) {
                 "unsub",
             );
 
-
             const to = ONLY_TEST_EMAIL ? TEST_TO : email;
 
             await sendWithRateLimit(resend, {
