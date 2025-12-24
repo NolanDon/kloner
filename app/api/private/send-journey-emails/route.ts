@@ -286,10 +286,11 @@ export async function POST(req: NextRequest) {
             );
 
             const unsubUrl = buildUtm(
-                `https://kloner.app/settings?tab=notifications`,
+                `https://kloner.app/dashboard/settings?tab=notifications&uid=${encodeURIComponent(uid)}&t=${encodeURIComponent(unsubToken)}`,
                 tierNum,
                 "unsub",
             );
+
 
             const to = ONLY_TEST_EMAIL ? TEST_TO : email;
 
