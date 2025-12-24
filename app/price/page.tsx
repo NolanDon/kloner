@@ -196,7 +196,7 @@ export default function PricingPage(): JSX.Element {
                 <section className="mx-auto max-w-5xl">
                     <header className="max-w-3xl">
                         <div className="flex flex-wrap items-center gap-2">
-                            <span
+                            {/* <span
                                 className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold tracking-wide"
                                 style={{ backgroundColor: "#fef3e7", color: ACCENT }}
                             >
@@ -205,7 +205,7 @@ export default function PricingPage(): JSX.Element {
 
                             <span className="inline-flex items-center rounded-full bg-neutral-900 px-3 py-1 text-[11px] font-semibold text-white">
                                 7-day free trial on Pro and Agency
-                            </span>
+                            </span> */}
                         </div>
 
                         <h1 className="mt-4 text-3xl sm:text-4xl font-semibold tracking-tight">
