@@ -49,6 +49,8 @@ function ArchiveCard({ r, onUnarchive, onDiscard, isDeleting }: ArchiveCardProps
                         src={refImgUrl}
                         alt={name}
                         loading="lazy"
+                        width={704}
+                        height={176}
                         onError={refImgErr}
                         className="h-40 w-full object-cover opacity-70"
                         draggable={false}

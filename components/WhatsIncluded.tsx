@@ -4,7 +4,7 @@
 import React, { useRef } from 'react';
 import { motion, useInView } from 'framer-motion';
 import { useUrlOverlay } from './UrlOverlayProvider';
-import Image from 'next/image'
+import Image from 'next/image';
 
 /* ----------------------------------------------------------------
    Shared bits
@@ -60,7 +60,9 @@ function MiniData() {
       <Image
         src="/images/included-section/5.jpg"
         alt="Clean capture preview"
-        className="absolute rounded-md inset-0 h-full w-full object-cover"
+        fill
+        sizes="(min-width: 1024px) 66vw, 100vw"
+        className="absolute inset-0 h-full w-full object-cover rounded-md"
       />
     </CardShell>
   );
@@ -75,6 +77,8 @@ function MiniUpload() {
       <Image
         src="/images/included-section/2.jpg"
         alt="Import and route mapping"
+        fill
+        sizes="(min-width: 1024px) 66vw, 100vw"
         className="absolute inset-0 h-full w-full object-cover"
       />
     </CardShell>
@@ -90,6 +94,8 @@ function MiniPlan() {
       <Image
         src="/images/included-section/1.jpg"
         alt="Export-ready checklist"
+        fill
+        sizes="(min-width: 1024px) 66vw, 100vw"
         className="absolute inset-0 h-full w-full object-cover"
       />
     </CardShell>
@@ -105,6 +111,8 @@ function MiniConcierge() {
       <Image
         src="/images/included-section/4.jpg"
         alt="Live preview edits"
+        fill
+        sizes="(min-width: 1024px) 66vw, 100vw"
         className="absolute inset-0 h-full w-full object-cover"
       />
     </CardShell>
@@ -120,6 +128,8 @@ function MiniAddons() {
       <Image
         src="/images/included-section/3.jpg"
         alt="Add-ons marketplace"
+        fill
+        sizes="(min-width: 1024px) 66vw, 100vw"
         className="absolute inset-0 h-full w-full object-cover"
       />
     </CardShell>
@@ -135,6 +145,8 @@ function MiniClinic() {
       <Image
         src="/images/included-section/6.jpg"
         alt="One-click deploy providers"
+        fill
+        sizes="(min-width: 1024px) 66vw, 100vw"
         className="absolute inset-0 h-full w-full object-cover"
       />
     </CardShell>
@@ -159,12 +171,10 @@ const CARDS: CardData[] = [
   // { title: 'Capture Engine', sub: 'Built by strong engineers with the power to capture long, multi-section pages.', Mini: MiniConcierge },
 ];
 
-
 /* ----------------------------------------------------------------
    Section
 ------------------------------------------------------------------*/
 export default function MembershipSticky() {
-
   const { openUrlOverlay } = useUrlOverlay();
 
   return (
@@ -174,13 +184,12 @@ export default function MembershipSticky() {
           {/* LEFT (sticky) */}
           <div className="lg:col-span-4">
             <div className="md:sticky top-24">
+              <h2 className="text-4xl md:text-6xl md:mb-10 text-black/80 bg-white pt-40 md:py-15 mt-20">
+                What's included
+              </h2>
 
-              {/* <div className=" md:sticky md:top-44"> */}
-              <h2 className="text-4xl md:text-6xl md:mb-10 text-black/80 bg-white pt-40 md:py-15 mt-20">What's included</h2>
-              {/* </div> */}
               <div className="mt-20">
                 <p className="mt-[-40px] md:mt-3 max-w-md text-neutral-600">
-
                   Capture any public site, edit in a live preview, export a clean HTML project, and deploy with one click.
                 </p>
               </div>
@@ -191,7 +200,6 @@ export default function MembershipSticky() {
               >
                 Start free preview <span aria-hidden>›</span>
               </div>
-
             </div>
           </div>
 

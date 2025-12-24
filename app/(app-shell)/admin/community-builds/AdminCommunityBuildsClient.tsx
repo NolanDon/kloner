@@ -290,10 +290,13 @@ function AdminBuildCard({
                         <Image
                             src={src}
                             alt={name}
+                            width={704}
+                            height={176}
                             className="h-44 w-full object-cover"
                             draggable={false}
                             loading="lazy"
                         />
+
                     ) : (
                         <div className="grid h-44 w-full place-items-center text-xs text-neutral-500 bg-neutral-50">
                             No screenshot

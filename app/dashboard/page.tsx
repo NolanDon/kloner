@@ -577,12 +577,17 @@ function UrlRow({ uid, r }: UrlRowProps) {
             <div className="flex flex-col sm:flex-row gap-4 sm:gap-5">
                 {thumbUrl ? (
                     <div className="h-12 w-12 rounded-full overflow-hidden border border-neutral-200 bg-neutral-100 shrink-0">
-                        <Image
-                            src={thumbUrl}
-                            alt=""
-                            className="object-cover"
-                            draggable={false}
-                        />
+                        <div className="relative h-8 w-8 overflow-hidden rounded">
+                            <Image
+                                src={thumbUrl}
+                                alt=""
+                                fill
+                                sizes="32px"
+                                className="object-cover"
+                                draggable={false}
+                            />
+                        </div>
+
                     </div>
                 ) : (
                     <div className="h-12 w-12 rounded-full overflow-hidden bg-white shrink-0" />

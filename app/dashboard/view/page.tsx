@@ -634,9 +634,11 @@ function RenderCardInner({
                         <Image
                             src={refImgUrl}
                             alt={r.nameHint || "preview"}
+                            fill
+                            sizes="(min-width: 1024px) 420px, 100vw"
                             loading="lazy"
                             onError={refImgErr}
-                            className={`pointer-events-none h-full w-full select-none object-cover opacity-[0.25] ${isArchivedFlag ? "grayscale" : ""
+                            className={`pointer-events-none select-none object-cover opacity-[0.25] ${isArchivedFlag ? "grayscale" : ""
                                 }`}
                             draggable={false}
                         />
@@ -4568,11 +4570,12 @@ export default function PreviewPage(): JSX.Element {
                                             <Image
                                                 src={shots[viewerIdx].url}
                                                 alt={shots[viewerIdx].fileName}
-                                                style={{
-                                                    width: "auto",
-                                                    height: "auto",
-                                                }}
+                                                width={1600}
+                                                height={1000}
+                                                sizes="(min-width: 1024px) 900px, 100vw"
+                                                className="h-auto w-full max-w-full object-contain"
                                             />
+
                                         </div>
                                     </div>
                                     <button

@@ -1,8 +1,5 @@
 // src/app/admin/community-builds/page.tsx
 import type { Metadata } from "next";
-import NavBar from "@/components/NavBar";
-import Image from "next/image";
-import logo from "@/public/images/orange_logo.png";
 import AdminCommunityBuildsClient from "./AdminCommunityBuildsClient";
 
 export const metadata: Metadata = {

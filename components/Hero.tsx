@@ -171,8 +171,10 @@ export default function Hero() {
                 src="/images/hero-poster.jpg"
                 alt=""
                 aria-hidden="true"
-                fetchPriority="high"
-                className="absolute inset-0 h-full w-full object-cover opacity-0"
+                fill
+                priority
+                sizes="100vw"
+                className="absolute inset-0 object-cover opacity-0"
               />
 
               <video
