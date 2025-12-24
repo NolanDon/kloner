@@ -1,7 +1,7 @@
 // app/price/page.tsx
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import NavBar from "@/components/NavBar";
 
 const ACCENT = "#f55f2a";
@@ -33,25 +33,41 @@ async function ensureCsrf(): Promise<string | null> {
 
 /* ───────── Pricing config ───────── */
 
-const tiers = [
+type Tier = {
+    name: "Free" | "Pro" | "Agency";
+    badge: string;
+    price: string;
+    period: string;
+    highlight: boolean;
+    blurb: string;
+    topFeatures: string[];
+    allFeatures: string[];
+    cta: string;
+    fineprint?: string;
+};
+
+const tiers: Tier[] = [
     {
         name: "Free",
-        badge: "Get started",
+        badge: "Try it",
         price: "$0",
         period: "/month",
         highlight: false,
-        blurb: "Experiment with cloning and previews on a small scale.",
-        features: [
-            "30 monthly screenshot credits (3 site captures)",
-            "60 monthly preview credits (4 site generations)",
-            "50 monthly AI credits",
+        blurb: "Clone a few pages, test the workflow, learn the limits.",
+        topFeatures: [
+            "30 screenshot credits (3 site captures)",
+            "60 preview credits (4 site generations)",
+            "50 AI credits",
+        ],
+        allFeatures: [
             "Limited to 3 pages per generation",
-            "No Deployments",
-            "No AI Assisted Editing",
+            "No deployments",
+            "No AI assisted editing",
             "Single user workspace",
             "Community-level email support",
         ],
-        cta: "Start for free",
+        cta: "Start free",
+        fineprint: "No card required.",
     },
     {
         name: "Pro",
@@ -59,19 +75,23 @@ const tiers = [
         price: "$29",
         period: "/month",
         highlight: true,
-        blurb: "For freelancers and small teams running live projects.",
-        features: [
-            "100 monthly screenshot credits (10 site captures)",
-            "400 monthly preview credits (15 site generations)",
+        blurb: "For shipping real client work fast without rebuilding from scratch.",
+        topFeatures: [
+            "100 screenshot credits (10 site captures)",
+            "400 preview credits (15 site generations)",
+            "AI editing + SEO tools included",
+        ],
+        allFeatures: [
             "300 monthly AI credits",
-            "Up to 10 Pages in every generation",
-            "Access to AI Editing",
-            "Access to SEO Generation Tools",
+            "Up to 10 pages in every generation",
+            "Access to AI editing",
+            "Access to SEO generation tools",
             "Priority capture queue",
             "Multiple projects and workspaces",
             "Email support with faster response targets",
         ],
-        cta: "Upgrade with Stripe",
+        cta: "Start 7-day free trial",
+        fineprint: "Then $29/month. Cancel anytime. Secure checkout via Stripe.",
     },
     {
         name: "Agency",
@@ -79,23 +99,44 @@ const tiers = [
         price: "$99",
         period: "/month",
         highlight: false,
-        blurb: "For those managing multiple active deployments, teams or simply just love to create, includes everything from Pro.",
-        features: [
-            "400 monthly screenshot credits (40 site captures)",
-            "1500 monthly preview credits (100 site generations)",
+        blurb: "For higher volume teams managing multiple projects and iterations.",
+        topFeatures: [
+            "400 screenshot credits (40 site captures)",
+            "1500 preview credits (100 site generations)",
+            "30 pages per generation + team seats",
+        ],
+        allFeatures: [
             "1200 monthly AI credits",
-            "Up to 30 Pages in every generation",
+            "Up to 30 pages in every generation",
             "Team seats and client projects",
             "Change tracking and audit history",
             "Priority to new design tools",
-            "Priority support"
+            "Priority support",
         ],
-        cta: "Upgrade with Stripe",
+        cta: "Start 7-day free trial",
+        fineprint: "Then $99/month. Cancel anytime. Secure checkout via Stripe.",
     },
 ];
 
+function Bullet({ children }: { children: React.ReactNode }) {
+    return (
+        <li className="flex gap-2">
+            <span
+                className="mt-[6px] h-1.5 w-1.5 rounded-full"
+                style={{ backgroundColor: ACCENT }}
+            />
+            <span>{children}</span>
+        </li>
+    );
+}
+
 export default function PricingPage(): JSX.Element {
     const [loadingPlan, setLoadingPlan] = useState<null | "pro" | "agency">(null);
+
+    const trustPoints = useMemo(
+        () => ["7-day free trial on paid plans", "Cancel anytime", "Secure Stripe checkout"],
+        []
+    );
 
     async function startCheckout(plan: "pro" | "agency") {
         if (loadingPlan) return;
@@ -137,7 +178,7 @@ export default function PricingPage(): JSX.Element {
         }
     }
 
-    function handleClick(tierName: string) {
+    function handleClick(tierName: Tier["name"]) {
         if (tierName === "Pro") {
             void startCheckout("pro");
         } else if (tierName === "Agency") {
@@ -150,28 +191,47 @@ export default function PricingPage(): JSX.Element {
     return (
         <main className="min-h-screen bg-white text-neutral-900">
             <NavBar />
+
             <div className="pt-28 pb-20 px-4">
                 <section className="mx-auto max-w-5xl">
                     <header className="max-w-3xl">
-                        <span
-                            className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold tracking-wide"
-                            style={{ backgroundColor: "#fef3e7", color: ACCENT }}
-                        >
-                            Pricing
-                        </span>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span
+                                className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold tracking-wide"
+                                style={{ backgroundColor: "#fef3e7", color: ACCENT }}
+                            >
+                                Pricing
+                            </span>
+
+                            <span className="inline-flex items-center rounded-full bg-neutral-900 px-3 py-1 text-[11px] font-semibold text-white">
+                                7-day free trial on Pro and Agency
+                            </span>
+                        </div>
+
                         <h1 className="mt-4 text-3xl sm:text-4xl font-semibold tracking-tight">
-                            Simple plans, clear limits, no surprises.
+                            Pick a plan, clone fast, ship cleaner sites.
                         </h1>
+
                         <p className="mt-3 text-sm sm:text-base text-neutral-600">
-                            Kloner uses a credit system tied to your plan. Each preview or
-                            screenshot consumes a small number of credits. Free users get a
-                            limited amount to experiment. Paid plans unlock higher limits and
-                            features suited for real client work.
+                            Start free. Upgrade when you need AI editing, SEO tooling, higher limits, and
+                            priority capture.
                         </p>
-                        <p className="mt-2 text-xs text-neutral-500">
-                            All paid payments are processed securely by Stripe. You will be
-                            able to upgrade or cancel at any time from your account settings.
-                        </p>
+
+                        <ul className="mt-4 flex flex-wrap gap-2 text-[11px] text-neutral-600">
+                            {trustPoints.map((t) => (
+                                <li
+                                    key={t}
+                                    className="inline-flex items-center rounded-full border border-black/10 bg-white px-3 py-1"
+                                >
+                                    <span
+                                        className="mr-2 inline-block h-1.5 w-1.5 rounded-full"
+                                        style={{ backgroundColor: ACCENT }}
+                                        aria-hidden="true"
+                                    />
+                                    {t}
+                                </li>
+                            ))}
+                        </ul>
                     </header>
 
                     <div className="mt-10 grid gap-6 md:grid-cols-3">
@@ -201,6 +261,7 @@ export default function PricingPage(): JSX.Element {
                                                 {tier.blurb}
                                             </p>
                                         </div>
+
                                         <span
                                             className={
                                                 "rounded-full px-2.5 py-1 text-[10px] whitespace-nowrap font-semibold uppercase tracking-wide " +
@@ -213,26 +274,51 @@ export default function PricingPage(): JSX.Element {
                                         </span>
                                     </div>
 
-                                    <div className="mt-4 flex items-baseline gap-1">
-                                        <span className="text-2xl font-semibold">
-                                            {tier.price}
-                                        </span>
-                                        <span className="text-xs text-neutral-500">
-                                            {tier.period}
-                                        </span>
+                                    <div className="mt-4 flex items-end justify-between gap-3">
+                                        <div className="flex items-baseline gap-1">
+                                            <span className="text-3xl font-semibold">
+                                                {tier.price}
+                                            </span>
+                                            <span className="text-xs text-neutral-500">
+                                                {tier.period}
+                                            </span>
+                                        </div>
+
+                                        {tier.name !== "Free" ? (
+                                            <span className="text-[11px] font-semibold text-neutral-900">
+                                                7-day free trial
+                                            </span>
+                                        ) : null}
                                     </div>
 
-                                    <ul className="mt-4 space-y-1.5 text-xs text-neutral-700">
-                                        {tier.features.map((f) => (
-                                            <li key={f} className="flex gap-2">
-                                                <span
-                                                    className="mt-[5px] h-1.5 w-1.5 rounded-full"
-                                                    style={{ backgroundColor: ACCENT }}
-                                                />
-                                                <span>{f}</span>
-                                            </li>
-                                        ))}
-                                    </ul>
+                                    {tier.fineprint ? (
+                                        <p className="mt-2 text-[11px] text-neutral-500">
+                                            {tier.fineprint}
+                                        </p>
+                                    ) : null}
+
+                                    <div className="mt-5">
+                                        <p className="text-[11px] font-semibold text-neutral-900">
+                                            What you get
+                                        </p>
+
+                                        <ul className="mt-2 space-y-1.5 text-xs text-neutral-700">
+                                            {tier.topFeatures.map((f) => (
+                                                <Bullet key={f}>{f}</Bullet>
+                                            ))}
+                                        </ul>
+
+                                        <details className="mt-3">
+                                            <summary className="cursor-pointer select-none text-[11px] font-semibold text-neutral-600 hover:text-neutral-900">
+                                                See all limits
+                                            </summary>
+                                            <ul className="mt-2 space-y-1.5 text-xs text-neutral-700">
+                                                {tier.allFeatures.map((f) => (
+                                                    <Bullet key={f}>{f}</Bullet>
+                                                ))}
+                                            </ul>
+                                        </details>
+                                    </div>
 
                                     <div className="mt-6 flex-1" />
 
@@ -253,35 +339,42 @@ export default function PricingPage(): JSX.Element {
                                                 : undefined
                                         }
                                     >
-                                        {isLoading
-                                            ? "Redirecting to Stripe…"
-                                            : tier.cta}
+                                        {isLoading ? "Redirecting to Stripe…" : tier.cta}
                                     </button>
 
-                                    {tier.name === "Pro" && (
+                                    {tier.name !== "Free" ? (
                                         <p className="mt-2 text-[11px] text-neutral-500">
-                                            This button opens a secure Stripe Checkout session.
-                                            Card details are handled by Stripe, not Kloner.
+                                            Trial starts today. Billing begins after 7 days unless canceled.
                                         </p>
-                                    )}
-
-                                    {tier.name === "Free" && (
+                                    ) : (
                                         <p className="mt-2 text-[11px] text-neutral-500">
-                                            Ideal for testing a few URLs and understanding how the
-                                            preview and credit system work before upgrading.
-                                        </p>
-                                    )}
-
-                                    {tier.name === "Agency" && (
-                                        <p className="mt-2 text-[11px] text-neutral-500">
-                                            For higher volumes or custom terms, you can start with
-                                            Stripe checkout now and adjust with the founder later if
-                                            you need a tailored agreement.
+                                            Start cloning immediately. Upgrade when you hit limits.
                                         </p>
                                     )}
                                 </article>
                             );
                         })}
+                    </div>
+
+                    <div className="mx-auto mt-10 max-w-3xl rounded-2xl border border-black/10 bg-neutral-50 p-5">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <p className="text-sm font-semibold text-neutral-900">
+                                    Need to validate the workflow before paying?
+                                </p>
+                                <p className="mt-1 text-[12px] text-neutral-600">
+                                    Start with Free. When you’re ready, Pro unlocks AI editing and SEO tools with a 7-day trial.
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="inline-flex items-center rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-neutral-700 border border-black/10">
+                                    Cancel anytime
+                                </span>
+                                <span className="inline-flex items-center rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-neutral-700 border border-black/10">
+                                    Stripe-secured
+                                </span>
+                            </div>
+                        </div>
                     </div>
                 </section>
             </div>
