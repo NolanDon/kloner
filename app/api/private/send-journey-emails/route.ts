@@ -9,6 +9,8 @@ export const revalidate = 0;
 export const fetchCache = "force-no-store";
 export const runtime = "nodejs";
 
+const JOURNEY_EMAIL_COOLDOWN_MS = 72 * 60 * 60 * 1000; // 72 hours
+
 function getResend() {
     const key = process.env.RESEND_API_KEY;
     if (!key) throw new Error("RESEND_API_KEY env not set");
@@ -28,7 +30,7 @@ function buildUtm(url: string, tier: number, step: string) {
     const u = new URL(url);
     u.searchParams.set("utm_source", "journey_email");
     u.searchParams.set("utm_medium", "email");
-    u.searchParams.set("utm_campaign", "daily_nudge");
+    u.searchParams.set("utm_campaign", "journey_nudge");
     u.searchParams.set("utm_content", `tier${tier}_${step}`);
     return u.toString();
 }
@@ -57,49 +59,31 @@ function buildJourneyHtml(args: {
 <html lang="en">
 <head><meta charSet="utf-8" /><title>${args.headline}</title></head>
 <body style="margin:0;padding:0;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
-  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#ffffff;padding:24px 0;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0;">
     <tr>
       <td align="center">
-        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:640px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #fee2d5;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;border:1px solid #fee2d5;border-radius:16px;overflow:hidden;">
           <tr>
-            <td style="padding:18px 24px;border-bottom:1px solid #fee2d5;background:${accent};">
-              <div style="display:flex;align-items:center;gap:12px;">
-                <div style="height:32px;width:32px;border-radius:999px;background:#ffffff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:${accent};">K</div>
-                <div>
-                  <div style="font-size:16px;font-weight:700;color:#ffffff;">${args.headline}</div>
-                  <div style="font-size:12px;color:#ffe7dc;margin-top:2px;">Daily progress nudge · Tier ${args.tierNum}</div>
-                </div>
-              </div>
+            <td style="padding:18px 24px;background:${accent};">
+              <div style="font-size:16px;font-weight:700;color:#ffffff;">${args.headline}</div>
+              <div style="font-size:12px;color:#ffe7dc;margin-top:2px;">Journey step · Tier ${args.tierNum}</div>
             </td>
           </tr>
-
           <tr>
-            <td style="padding:24px 28px 8px 28px;">
+            <td style="padding:24px 28px;">
               <p style="margin:0 0 10px 0;font-size:14px;color:${dark};">Hi ${safeName(args.name)},</p>
               <p style="margin:0 0 12px 0;font-size:13px;color:${muted};line-height:1.6;">${args.body}</p>
-
-              <table role="presentation" cellpadding="0" cellspacing="0" style="margin:16px 0 0 0;">
-                <tr>
-                  <td>
-                    <a href="${args.ctaUrl}" style="display:inline-block;background:${accent};color:#ffffff;font-size:13px;font-weight:700;text-decoration:none;padding:10px 18px;border-radius:999px;">
-                      ${args.ctaLabel}
-                    </a>
-                  </td>
-                </tr>
-              </table>
-
-              <p style="margin:16px 0 0 0;font-size:12px;color:${muted};line-height:1.6;">
-                Not useful right now?
-                <a href="${args.unsubUrl}" style="color:${accent};text-decoration:none;font-weight:600;">Disable these emails</a>.
+              <a href="${args.ctaUrl}" style="display:inline-block;margin-top:12px;background:${accent};color:#ffffff;font-size:13px;font-weight:700;text-decoration:none;padding:10px 18px;border-radius:999px;">
+                ${args.ctaLabel}
+              </a>
+              <p style="margin-top:16px;font-size:12px;color:${muted};">
+                <a href="${args.unsubUrl}" style="color:${accent};text-decoration:none;font-weight:600;">Disable these emails</a>
               </p>
             </td>
           </tr>
-
           <tr>
-            <td style="padding:14px 28px;border-top:1px solid #fee2d5;background:#fff7f3;">
-              <div style="font-size:11px;color:#9ca3af;">
-                This email was sent to ${args.email}.
-              </div>
+            <td style="padding:12px 28px;background:#fff7f3;font-size:11px;color:#9ca3af;">
+              Sent to ${args.email}
             </td>
           </tr>
         </table>
@@ -116,14 +100,15 @@ function buildJourneyText(args: {
     ctaUrl: string;
     unsubUrl: string;
 }) {
-    const n = safeName(args.name);
-    return `Hi ${n},
+    return `Hi ${safeName(args.name)},
 
 ${args.body}
 
-Continue here: ${args.ctaUrl}
+Continue here:
+${args.ctaUrl}
 
-Disable these emails: ${args.unsubUrl}`;
+Disable these emails:
+${args.unsubUrl}`;
 }
 
 type JourneyState = {
@@ -156,10 +141,10 @@ async function getJourneyState(db: FirebaseFirestore.Firestore, uid: string): Pr
 }
 
 function deriveTier(state: JourneyState): 1 | 2 | 3 | 4 {
-    if (state.hasStripeCustomer) return 1; // paywall reached (primary focus)
+    if (state.hasStripeCustomer) return 1;
     if (state.hasVercelIntegration) return 2;
     if (state.hasRender) return 3;
-    return 4; // no renders (includes url-only or nothing)
+    return 4;
 }
 
 function makeCopy(tierNum: 1 | 2 | 3 | 4) {
@@ -167,7 +152,7 @@ function makeCopy(tierNum: 1 | 2 | 3 | 4) {
         return {
             headline: "Finish setup and ship your first deploy",
             body:
-                "You hit the paywall, which usually means you are close. Start your 7 day trial, pick a template or a URL, and deploy once to lock in the workflow.",
+                "You reached the billing step. Start your trial and deploy once to lock in the workflow.",
             ctaLabel: "Start 7 day trial",
             ctaPath: "/price",
             step: "paywall",
@@ -175,9 +160,9 @@ function makeCopy(tierNum: 1 | 2 | 3 | 4) {
     }
     if (tierNum === 2) {
         return {
-            headline: "Your Vercel is connected. Deploy a preview",
+            headline: "Your Vercel is connected",
             body:
-                "You already connected Vercel. The fastest win is deploying one preview so you have a live link you can iterate on.",
+                "Deploy one preview to get a live link and complete the loop.",
             ctaLabel: "Open deployments",
             ctaPath: "/dashboard",
             step: "vercel",
@@ -185,9 +170,9 @@ function makeCopy(tierNum: 1 | 2 | 3 | 4) {
     }
     if (tierNum === 3) {
         return {
-            headline: "You have a render. Turn it into a project",
+            headline: "You generated a render",
             body:
-                "You generated a render. Next step is small edits, then a first deploy. Pick one section to change and ship a version 1.",
+                "Make one small edit and deploy a version 1.",
             ctaLabel: "Continue editing",
             ctaPath: "/dashboard",
             step: "render",
@@ -196,17 +181,16 @@ function makeCopy(tierNum: 1 | 2 | 3 | 4) {
     return {
         headline: "Start with a URL or a template",
         body:
-            "You are one step away from the first output. Paste a public URL or start from a community template to generate a preview.",
+            "Paste a public URL or start from a community template to generate your first preview.",
         ctaLabel: "Open dashboard",
         ctaPath: "/dashboard",
         step: "start",
     };
 }
 
-function shouldSendToday(lastSentAt: number | null) {
+function isCooldownElapsed(lastSentAt: number | null) {
     if (!lastSentAt) return true;
-    const now = Date.now();
-    return now - lastSentAt >= 23 * 60 * 60 * 1000;
+    return Date.now() - lastSentAt >= JOURNEY_EMAIL_COOLDOWN_MS;
 }
 
 function ensureUnsubToken(existing?: string | null) {
@@ -219,7 +203,7 @@ export async function POST(req: NextRequest) {
     const denied = requireInternal(req);
     if (denied) return denied;
 
-    const ONLY_TEST_EMAIL = true; // hard feature flag per your instruction
+    const ONLY_TEST_EMAIL = true;
     const TEST_TO = "nolan796@live.ca";
 
     try {
@@ -239,7 +223,7 @@ export async function POST(req: NextRequest) {
             const uid = doc.id;
             const data = doc.data() || {};
             const email = typeof data.email === "string" ? data.email : "";
-            const name = (typeof data.name === "string" ? data.name : null) || null;
+            const name = typeof data.name === "string" ? data.name : null;
 
             if (!email) {
                 skipped++;
@@ -247,35 +231,43 @@ export async function POST(req: NextRequest) {
             }
 
             const prefs = data.notificationPrefs || {};
-            const journeyOn = typeof prefs.journeyEmails === "boolean" ? prefs.journeyEmails : true;
+            const journeyOn =
+                typeof prefs.journeyEmails === "boolean" ? prefs.journeyEmails : true;
+
             if (!journeyOn) {
                 skipped++;
                 continue;
             }
 
             const lastSentAt =
-                typeof data.lastJourneyEmailSentAt === "number" ? data.lastJourneyEmailSentAt : null;
+                typeof data.lastJourneyEmailSentAt === "number"
+                    ? data.lastJourneyEmailSentAt
+                    : null;
 
-            if (!shouldSendToday(lastSentAt)) {
+            if (!isCooldownElapsed(lastSentAt)) {
                 skipped++;
                 continue;
             }
 
             const state = await getJourneyState(db, uid);
             const tierNum = deriveTier(state);
-
             const copy = makeCopy(tierNum);
 
             const unsubToken = ensureUnsubToken(
-                typeof data.notificationUnsubToken === "string" ? data.notificationUnsubToken : null,
+                typeof data.notificationUnsubToken === "string"
+                    ? data.notificationUnsubToken
+                    : null,
             );
 
             if (unsubToken !== data.notificationUnsubToken) {
                 await doc.ref.set({ notificationUnsubToken: unsubToken }, { merge: true });
             }
 
-            const baseCta = `https://kloner.app${copy.ctaPath}`;
-            const ctaUrl = buildUtm(baseCta, tierNum, copy.step);
+            const ctaUrl = buildUtm(
+                `https://kloner.app${copy.ctaPath}`,
+                tierNum,
+                copy.step,
+            );
 
             const unsubUrl = buildUtm(
                 `https://kloner.app/s/unsub?uid=${encodeURIComponent(uid)}&t=${encodeURIComponent(unsubToken)}`,
@@ -296,7 +288,12 @@ export async function POST(req: NextRequest) {
                 unsubUrl,
             });
 
-            const text = buildJourneyText({ name, body: copy.body, ctaUrl, unsubUrl });
+            const text = buildJourneyText({
+                name,
+                body: copy.body,
+                ctaUrl,
+                unsubUrl,
+            });
 
             const result = await resend.emails.send({
                 from,
@@ -307,7 +304,7 @@ export async function POST(req: NextRequest) {
             });
 
             if ("error" in result && result.error) {
-                console.error("Resend error (journey):", result.error);
+                console.error("Resend error:", result.error);
                 skipped++;
                 continue;
             }

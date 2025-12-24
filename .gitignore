@@ -7,3 +7,5 @@ public/images/transparent_logo.png
 scripts/setSupportAgent.js
 scripts/setRoleClaims.js
 .js
+kloner_journey_emails.md
+app/(app-shell)/affiliate-maintenance.yml
