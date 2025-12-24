@@ -18,7 +18,7 @@ function getResend() {
 }
 
 function requireInternal(req: NextRequest) {
-    const key = process.env.INTERNAL_CRON_KEY || "";
+    const key = process.env.INTERNAL_API_KEY || "";
     const got = req.headers.get("x-internal-key") || "";
     if (!key || got !== key) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

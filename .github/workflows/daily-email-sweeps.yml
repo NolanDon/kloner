@@ -22,7 +22,7 @@ jobs:
               shell: bash
               env:
                   BASE_URL: ${{ secrets.FRONTEND_BASE_URL }}
-                  INTERNAL_KEY: ${{ secrets.INTERNAL_CRON_KEY }}
+                  INTERNAL_KEY: ${{ secrets.INTERNAL_API_KEY }}
               run: |
                   set -euo pipefail
 
