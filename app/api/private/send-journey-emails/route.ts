@@ -11,6 +11,9 @@ export const runtime = "nodejs";
 
 const JOURNEY_EMAIL_COOLDOWN_MS = 72 * 60 * 60 * 1000; // 72 hours
 
+// Resend limit: 2 req / second
+const RESEND_MIN_INTERVAL_MS = 550;
+
 function getResend() {
     const key = process.env.RESEND_API_KEY;
     if (!key) throw new Error("RESEND_API_KEY env not set");
@@ -208,6 +211,31 @@ function ensureUnsubToken(existing?: string | null) {
     return crypto.randomBytes(18).toString("base64url");
 }
 
+function sleep(ms: number) {
+    return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Serialize Resend sends to respect 2 req/sec.
+ * - Even if you later add parallelism, this keeps outbound sends spaced.
+ * - Includes a small buffer (550ms) to avoid clock skew / retries.
+ */
+let resendNextAllowedAt = 0;
+
+async function sendWithRateLimit(
+    resend: ReturnType<typeof getResend>,
+    payload: Parameters<ReturnType<typeof getResend>["emails"]["send"]>[0],
+) {
+    const now = Date.now();
+    const waitMs = Math.max(0, resendNextAllowedAt - now);
+    if (waitMs > 0) await sleep(waitMs);
+
+    // Reserve the next slot before sending to avoid bursts if this function is reused.
+    resendNextAllowedAt = Date.now() + RESEND_MIN_INTERVAL_MS;
+
+    return resend.emails.send(payload);
+}
+
 export async function POST(req: NextRequest) {
     const denied = requireInternal(req);
     if (denied) return denied;
@@ -265,7 +293,7 @@ export async function POST(req: NextRequest) {
 
             const to = ONLY_TEST_EMAIL ? TEST_TO : email;
 
-            await resend.emails.send({
+            await sendWithRateLimit(resend, {
                 from,
                 to,
                 subject: "Quick note from Nolan",
