@@ -306,6 +306,8 @@ export function MetaSettings({
                         <Image
                             src={draftMeta.faviconUrl as any}
                             alt="Current favicon"
+                            width={20}
+                            height={20}
                             className="h-full w-full object-contain"
                         />
 

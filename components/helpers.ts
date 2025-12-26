@@ -4,6 +4,9 @@ import {
     doc,
     serverTimestamp,
     addDoc,
+    getDoc,
+    limit,
+    orderBy,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { SeoMeta } from "./PreviewEditor";
@@ -303,57 +306,102 @@ export async function fetchRenderForDeployment(opts: {
     const { uid, deployment } = opts;
     const colRef = collection(db, "kloner_users", uid, "kloner_renders");
 
-    const tryQueries: Array<
-        () => Promise<QueryDocumentSnapshot<DocumentData> | null>
-    > = [];
+    const normStr = (v: any) => (typeof v === "string" ? v.trim() : "");
+    const stripSlash = (u: string) => u.replace(/\/+$/, "");
 
-    if (deployment.vercelProjectId) {
-        const projectId = deployment.vercelProjectId;
-        tryQueries.push(async () => {
-            const qy = query(colRef, where("vercelProjectId", "==", projectId));
-            const snap = await getDocs(qy);
-            return pickNewest(snap);
-        });
-    }
+    const safeUrlHost = (u?: string | null): string | null => {
+        const raw = normStr(u);
+        if (!raw) return null;
+        try {
+            return new URL(raw).hostname.toLowerCase();
+        } catch {
+            // allow already-host-ish values
+            return raw.toLowerCase();
+        }
+    };
 
-    if (deployment.vercelProjectName) {
-        const projectName = deployment.vercelProjectName;
-        tryQueries.push(async () => {
-            const qy = query(
-                colRef,
-                where("vercelProjectName", "==", projectName)
-            );
-            const snap = await getDocs(qy);
-            return pickNewest(snap);
-        });
-    }
+    const safeUrlFull = (u?: string | null): string | null => {
+        const raw = normStr(u);
+        if (!raw) return null;
+        return stripSlash(raw);
+    };
 
-    if (deployment.vercelUrl) {
-        const url = deployment.vercelUrl;
-        tryQueries.push(async () => {
-            const qy = query(colRef, where("lastDeployUrl", "==", url));
-            const snap = await getDocs(qy);
-            return pickNewest(snap);
-        });
-    }
+    const getComparableTs = (v: any): number => {
+        // Firestore Timestamp
+        if (v && typeof v === "object" && typeof v.toMillis === "function") {
+            try {
+                return v.toMillis();
+            } catch {
+                return 0;
+            }
+        }
+        // number ms
+        if (typeof v === "number" && Number.isFinite(v)) return v;
+        // ISO string
+        if (typeof v === "string") {
+            const t = Date.parse(v);
+            return Number.isFinite(t) ? t : 0;
+        }
+        return 0;
+    };
 
-    // last resort: match by base URL used in the render
-    tryQueries.push(async () => {
-        const baseUrl = deployment.vercelUrl?.split("?")[0] || null;
-        if (!baseUrl) return null;
-        const qy = query(colRef, where("url", "==", baseUrl));
-        const snap = await getDocs(qy);
-        return pickNewest(snap);
-    });
+    const pickBestDoc = (
+        docs: Array<QueryDocumentSnapshot<DocumentData>>
+    ): QueryDocumentSnapshot<DocumentData> | null => {
+        if (!docs || docs.length === 0) return null;
 
-    for (const fn of tryQueries) {
-        const docSnap = await fn();
-        if (!docSnap) continue;
+        let best: QueryDocumentSnapshot<DocumentData> | null = null;
+        let bestScore = -Infinity;
 
+        for (const d of docs) {
+            const data = d.data() as any;
+
+            // strongly prefer ready / non-archived if present
+            const archived = data?.archived === true;
+            const status = normStr(data?.status).toLowerCase();
+            const isReady = status ? status === "ready" : true;
+
+            const html = normStr(data?.html);
+            const hasHtml = html.length > 0;
+
+            // timestamps (your doc has createdAt number + updatedAt Timestamp + lastExportedAt Timestamp)
+            const tUpdated = getComparableTs(data?.updatedAt);
+            const tExported = getComparableTs(data?.lastExportedAt);
+            const tCreated = getComparableTs(data?.createdAt);
+
+            const t = Math.max(tUpdated, tExported, tCreated);
+
+            // score
+            // - must have html (otherwise worthless)
+            // - prefer ready + not archived
+            // - newest wins
+            const score =
+                (hasHtml ? 1_000_000_000_000 : -1_000_000_000_000) +
+                (isReady ? 10_000_000 : -10_000_000) +
+                (archived ? -10_000_000 : 0) +
+                t;
+
+            if (score > bestScore) {
+                bestScore = score;
+                best = d;
+            }
+        }
+
+        return best;
+    };
+
+    const parseRender = (
+        docSnap: QueryDocumentSnapshot<DocumentData>
+    ): {
+        id: string;
+        html: string;
+        referenceImage?: string;
+        seoMetaByPage?: Record<string, SeoMeta> | null;
+        archivedPageIds: string[];
+    } => {
         const data = docSnap.data() as any;
 
-        const rawHtml =
-            typeof data.html === "string" ? data.html.trim() : "";
+        const rawHtml = normStr(data?.html);
         if (!rawHtml) {
             throw new Error(
                 "Reference render exists but has no HTML. Open this URL in the Preview Builder and re-export."
@@ -361,13 +409,13 @@ export async function fetchRenderForDeployment(opts: {
         }
 
         const refImg =
-            typeof data.referenceImage === "string" &&
+            typeof data?.referenceImage === "string" &&
                 data.referenceImage.trim().length > 0
                 ? data.referenceImage
                 : undefined;
 
         const seoMetaByPage: Record<string, SeoMeta> | null =
-            data.seoMetaByPage && typeof data.seoMetaByPage === "object"
+            data?.seoMetaByPage && typeof data.seoMetaByPage === "object"
                 ? (data.seoMetaByPage as Record<string, SeoMeta>)
                 : null;
 
@@ -380,12 +428,137 @@ export async function fetchRenderForDeployment(opts: {
             seoMetaByPage,
             archivedPageIds,
         };
+    };
+
+    const tryQueries: Array<
+        () => Promise<QueryDocumentSnapshot<DocumentData> | null>
+    > = [];
+
+    // 0) if deployments ever store a direct render id, honor it (supports community templates)
+    // (does nothing unless you add one later)
+    tryQueries.push(async () => {
+        const direct = (deployment as any)?.renderId || (deployment as any)?.sourceRenderId;
+        const rid = normStr(direct);
+        if (!rid) return null;
+        const dref = doc(db, "kloner_users", uid, "kloner_renders", rid);
+        const snap = await getDoc(dref);
+        return snap.exists() ? (snap as any) : null;
+    });
+
+    // 1) existing matches
+    if (deployment.vercelProjectId) {
+        const projectId = deployment.vercelProjectId;
+        tryQueries.push(async () => {
+            const qy = query(colRef, where("vercelProjectId", "==", projectId));
+            const snap = await getDocs(qy);
+            return pickBestDoc(snap.docs);
+        });
+    }
+
+    if (deployment.vercelProjectName) {
+        const projectName = deployment.vercelProjectName;
+        tryQueries.push(async () => {
+            const qy = query(colRef, where("vercelProjectName", "==", projectName));
+            const snap = await getDocs(qy);
+            return pickBestDoc(snap.docs);
+        });
+    }
+
+    // 2) your render stores lastDeployUrl. deployments may have vercelUrl OR publicUrl.
+    const depPublicUrl = safeUrlFull((deployment as any)?.publicUrl ?? null);
+    const depVercelUrl = safeUrlFull(deployment.vercelUrl ?? null);
+
+    if (depVercelUrl) {
+        tryQueries.push(async () => {
+            const qy = query(colRef, where("lastDeployUrl", "==", depVercelUrl));
+            const snap = await getDocs(qy);
+            return pickBestDoc(snap.docs);
+        });
+
+        // tolerate trailing slash mismatch
+        tryQueries.push(async () => {
+            const qy = query(colRef, where("lastDeployUrl", "==", `${depVercelUrl}/`));
+            const snap = await getDocs(qy);
+            return pickBestDoc(snap.docs);
+        });
+    }
+
+    if (depPublicUrl && depPublicUrl !== depVercelUrl) {
+        tryQueries.push(async () => {
+            const qy = query(colRef, where("lastDeployUrl", "==", depPublicUrl));
+            const snap = await getDocs(qy);
+            return pickBestDoc(snap.docs);
+        });
+
+        tryQueries.push(async () => {
+            const qy = query(colRef, where("lastDeployUrl", "==", `${depPublicUrl}/`));
+            const snap = await getDocs(qy);
+            return pickBestDoc(snap.docs);
+        });
+    }
+
+    // 3) last resort: match by base URL used in the render (your render "url" is https://cookies.com/)
+    tryQueries.push(async () => {
+        const baseUrl = safeUrlFull(deployment.vercelUrl?.split("?")[0] || null);
+        if (!baseUrl) return null;
+        const qy = query(colRef, where("url", "==", baseUrl));
+        const snap = await getDocs(qy);
+        return pickBestDoc(snap.docs);
+    });
+
+    // 4) new: host-based fallback (handles cases where deployment doc is missing vercelUrl but has publicDomain/publicUrl)
+    tryQueries.push(async () => {
+        const depHost =
+            safeUrlHost((deployment as any)?.publicUrl ?? null) ||
+            safeUrlHost((deployment as any)?.publicDomain
+                ? `https://${(deployment as any)?.publicDomain}`
+                : null) ||
+            safeUrlHost(deployment.vercelUrl ?? null);
+
+        if (!depHost) return null;
+
+        // pull a small recent window and match in-memory by host
+        const qy = query(colRef, orderBy("updatedAt", "desc"), limit(40));
+        const snap = await getDocs(qy);
+
+        const candidates = snap.docs.filter((d) => {
+            const data = d.data() as any;
+            const h =
+                safeUrlHost(data?.lastDeployUrl ?? null) ||
+                safeUrlHost(data?.url ?? null) ||
+                null;
+            if (!h) return false;
+            return h === depHost;
+        });
+
+        return pickBestDoc(candidates);
+    });
+
+    // 5) final fallback: if this is a community template deployment with no identifiers,
+    // open the newest READY render for the user (still requires html).
+    tryQueries.push(async () => {
+        const qy = query(colRef, orderBy("updatedAt", "desc"), limit(40));
+        const snap = await getDocs(qy);
+        return pickBestDoc(snap.docs);
+    });
+
+    for (const fn of tryQueries) {
+        const docSnap = await fn();
+        if (!docSnap) continue;
+
+        const parsed = parseRender(docSnap);
+
+        // extra guard: some renders might be "ready" but have whitespace html
+        if (!parsed.html || !parsed.html.trim()) continue;
+
+        return parsed;
     }
 
     throw new Error(
         "No reference render found for this deployment. Open this site in the Preview Builder and export at least one render."
     );
 }
+
 
 export const IS_MOBILE =
     typeof window !== "undefined" &&
