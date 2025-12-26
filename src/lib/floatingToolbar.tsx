@@ -14,9 +14,9 @@ import {
     RotateCcw,
     Layers,
     Move,
-    ChevronsUp,
     Check,
     ChevronDown,
+    Type as TypeIcon,
 } from "lucide-react";
 import type { SelectionMeta } from "@/components/PreviewEditor";
 
@@ -25,7 +25,7 @@ type FloatingBlockToolbarProps = {
     wrapperRef: React.RefObject<HTMLDivElement>;
     selectionMeta: SelectionMeta | null;
     uiScale: number;
-    bottomBarRef?: React.RefObject<HTMLElement>; // add
+    bottomBarRef?: React.RefObject<HTMLElement>;
 };
 
 type ToolbarPos = { top: number; left: number } | null;
@@ -83,27 +83,19 @@ const FONTS = [
     { label: "System UI", value: "system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
 ] as const;
 
-function FontFamilyPicker({
-    compact,
+/**
+ * Compact dropdown: closed by default, opens on click, closes on outside/Escape.
+ */
+function FontFamilyDropdown({
     initialFontFamily,
     onApply,
     onPreview,
     onRevertPreview,
-    Btn,
 }: {
-    compact?: boolean;
     initialFontFamily?: string;
     onApply: (family: string) => void;
     onPreview?: (family: string) => void;
     onRevertPreview?: () => void;
-    Btn: React.ComponentType<{
-        title: string;
-        onClick: () => void;
-        className?: string;
-        children: React.ReactNode;
-        danger?: boolean;
-        compact?: boolean;
-    }>;
 }) {
     const fonts = useMemo(() => [...FONTS], []);
     const [open, setOpen] = useState(false);
@@ -132,13 +124,6 @@ function FontFamilyPicker({
             onRevertPreview?.();
         };
 
-        window.addEventListener("mousedown", onDown);
-        return () => window.removeEventListener("mousedown", onDown);
-    }, [open, onRevertPreview]);
-
-    useEffect(() => {
-        if (!open) return;
-
         const onKey = (e: KeyboardEvent) => {
             if (e.key === "Escape") {
                 setOpen(false);
@@ -147,8 +132,12 @@ function FontFamilyPicker({
             }
         };
 
+        window.addEventListener("mousedown", onDown);
         window.addEventListener("keydown", onKey);
-        return () => window.removeEventListener("keydown", onKey);
+        return () => {
+            window.removeEventListener("mousedown", onDown);
+            window.removeEventListener("keydown", onKey);
+        };
     }, [open, onRevertPreview]);
 
     const activeLabel = fonts.find((f) => f.value === applied)?.label || "Font";
@@ -156,10 +145,10 @@ function FontFamilyPicker({
     const stopWheel = (e: React.WheelEvent) => e.stopPropagation();
 
     return (
-        <div ref={rootRef} className="relative inline-flex" onMouseDown={(e) => e.stopPropagation()}>
-            <Btn
+        <div ref={rootRef} className="relative" onMouseDown={(e) => e.stopPropagation()}>
+            <button
+                type="button"
                 title="Font"
-                compact={!!compact}
                 onClick={() => {
                     setOpen((v) => {
                         const next = !v;
@@ -170,20 +159,18 @@ function FontFamilyPicker({
                         return next;
                     });
                 }}
+                className={[
+                    "inline-flex h-7 w-full items-center justify-between rounded-lg border border-neutral-200 bg-white px-2",
+                    "text-[10px] font-semibold text-neutral-800 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition",
+                ].join(" ")}
             >
-                <span className="inline-flex items-center gap-2">
-                    <span className="truncate text-left">{activeLabel}</span>
-                    <ChevronDown className="h-4 w-4 opacity-70" />
-                </span>
-            </Btn>
+                <span className="truncate">{activeLabel}</span>
+                <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+            </button>
 
-            {open && (
+            {open ? (
                 <div
-                    className="
-            absolute left-0 top-full z-50 mt-2
-            w-[280px] rounded-2xl border border-black/10 bg-white
-            shadow-[0_18px_50px_rgba(0,0,0,0.18)]
-          "
+                    className="absolute left-0 top-full z-50 mt-1 w-[210px] rounded-xl border border-black/10 bg-white shadow-[0_18px_50px_rgba(0,0,0,0.18)]"
                     role="menu"
                     onMouseDown={(e) => e.stopPropagation()}
                     onWheel={stopWheel}
@@ -191,7 +178,7 @@ function FontFamilyPicker({
                     <div
                         className="p-1"
                         style={{
-                            maxHeight: 360,
+                            maxHeight: 220,
                             overflowY: "auto",
                             WebkitOverflowScrolling: "touch",
                             overscrollBehavior: "contain",
@@ -214,7 +201,7 @@ function FontFamilyPicker({
                                     type="button"
                                     role="menuitem"
                                     className={[
-                                        "w-full rounded-xl px-3 py-2 text-left text-sm",
+                                        "w-full rounded-lg px-2 py-1.5 text-left text-[10px] leading-tight",
                                         "focus:outline-none",
                                         isPreviewing ? "bg-black/10 ring-1 ring-black/10" : "hover:bg-black/5 focus:bg-black/5",
                                         isApplied && !isPreviewing ? "bg-black/5" : "",
@@ -234,18 +221,19 @@ function FontFamilyPicker({
                                         setApplied(f.value);
                                         setHovered("");
                                         onApply(f.value);
+                                        setOpen(false);
                                     }}
                                 >
-                                    <span className="flex items-center justify-between gap-3">
+                                    <span className="flex items-center justify-between gap-2">
                                         <span className="truncate">{f.label}</span>
-                                        {isApplied ? <Check className="h-4 w-4 opacity-70" /> : null}
+                                        {isApplied ? <Check className="h-3 w-3 opacity-70" /> : null}
                                     </span>
                                 </button>
                             );
                         })}
                     </div>
                 </div>
-            )}
+            ) : null}
         </div>
     );
 }
@@ -261,12 +249,10 @@ function BlockToolbar({
     selectionMeta: SelectionMeta;
     onDragStart: (e: React.MouseEvent<HTMLDivElement>) => void;
 }) {
-    const tagName =
-        selectionMeta.tagName?.toUpperCase?.() || (selectionMeta as any).tagName || "DIV";
+    const tagName = selectionMeta.tagName?.toUpperCase?.() || (selectionMeta as any).tagName || "DIV";
 
     const [hasNavLink, setHasNavLink] = useState(false);
     const [navHref, setNavHref] = useState("");
-    const [expanded, setExpanded] = useState(false);
     const [currentFontFamily, setCurrentFontFamily] = useState<string>("");
 
     useEffect(() => {
@@ -330,44 +316,6 @@ function BlockToolbar({
         }
     };
 
-    const Btn = ({
-        title,
-        onClick,
-        className,
-        children,
-        danger,
-        compact,
-    }: {
-        title: string;
-        onClick: () => void;
-        className?: string;
-        children: React.ReactNode;
-        danger?: boolean;
-        compact?: boolean;
-    }) => (
-        <button
-            type="button"
-            title={title}
-            onClick={onClick}
-            className={[
-                "inline-flex items-center justify-center rounded-xl border text-neutral-700 shadow-sm",
-                compact ? "h-9 w-9" : "h-9 px-3",
-                danger ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100" : "border-neutral-200 bg-white hover:bg-neutral-50",
-                "active:scale-[0.98] transition",
-                className || "",
-            ].join(" ")}
-            onMouseDown={(e) => e.stopPropagation()}
-        >
-            {children}
-        </button>
-    );
-
-    const SectionTitle = ({ children }: { children: React.ReactNode }) => (
-        <div className="mt-3 mb-2 text-[9px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
-            {children}
-        </div>
-    );
-
     const tryCallFontApi = (method: string, family: string) => {
         try {
             const r1 = callApi(method, family);
@@ -402,19 +350,24 @@ function BlockToolbar({
         onClick,
         children,
         danger,
+        className,
     }: {
         title: string;
         onClick: () => void;
         children: React.ReactNode;
         danger?: boolean;
+        className?: string;
     }) => (
         <button
             type="button"
             title={title}
             onClick={onClick}
             className={[
-                "inline-flex items-center justify-center gap-1 rounded-lg border px-2 py-1 text-[10px] shadow-sm transition active:scale-[0.98]",
-                danger ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100" : "border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50",
+                "inline-flex items-center justify-center gap-1 rounded-lg border px-1.5 py-1 text-[9px] leading-none shadow-sm transition active:scale-[0.98]",
+                danger
+                    ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                    : "border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50",
+                className || "",
             ].join(" ")}
             onMouseDown={(e) => e.stopPropagation()}
         >
@@ -422,72 +375,34 @@ function BlockToolbar({
         </button>
     );
 
-    const PadGrid = ({
-        onTop,
-        onBottom,
-        onLeft,
-        onRight,
-        titleTop,
-        titleBottom,
-        titleLeft,
-        titleRight,
+    const IconBtn = ({
+        title,
+        onClick,
+        children,
+        danger,
+        className,
     }: {
-        onTop: () => void;
-        onBottom: () => void;
-        onLeft: () => void;
-        onRight: () => void;
-        titleTop: string;
-        titleBottom: string;
-        titleLeft: string;
-        titleRight: string;
+        title: string;
+        onClick: () => void;
+        children: React.ReactNode;
+        danger?: boolean;
+        className?: string;
     }) => (
-        <div className="grid grid-cols-3 grid-rows-3 gap-1.5 place-items-center">
-            <div aria-hidden />
-            <button
-                type="button"
-                title={titleTop}
-                onClick={onTop}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-700 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
-                onMouseDown={(e) => e.stopPropagation()}
-            >
-                <ArrowUp className="h-4 w-4" />
-            </button>
-            <div aria-hidden className="h-9 w-9" />
-
-            <button
-                type="button"
-                title={titleLeft}
-                onClick={onLeft}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-700 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
-                onMouseDown={(e) => e.stopPropagation()}
-            >
-                <ArrowLeft className="h-4 w-4" />
-            </button>
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 bg-neutral-50 text-neutral-500">
-                <Move className="h-4 w-4" />
-            </div>
-            <button
-                type="button"
-                title={titleRight}
-                onClick={onRight}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-700 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
-                onMouseDown={(e) => e.stopPropagation()}
-            >
-                <ArrowRight className="h-4 w-4" />
-            </button>
-
-            <div aria-hidden className="h-9 w-9" />
-            <button
-                type="button"
-                title={titleBottom}
-                onClick={onBottom}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-700 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
-                onMouseDown={(e) => e.stopPropagation()}
-            >
-                <ArrowDown className="h-4 w-4" />
-            </button>
-            <div aria-hidden className="h-9 w-9" />
-        </div>
+        <button
+            type="button"
+            title={title}
+            onClick={onClick}
+            className={[
+                "inline-flex h-7 w-7 items-center justify-center rounded-lg border shadow-sm active:scale-[0.98] transition",
+                danger
+                    ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                    : "border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50",
+                className || "",
+            ].join(" ")}
+            onMouseDown={(e) => e.stopPropagation()}
+        >
+            {children}
+        </button>
     );
 
     const MobileActionBtn = ({
@@ -508,7 +423,9 @@ function BlockToolbar({
             className={[
                 "inline-flex items-center justify-center rounded-xl border shadow-sm active:scale-[0.98] transition",
                 "h-9 w-9",
-                danger ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100" : "border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50",
+                danger
+                    ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                    : "border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50",
             ].join(" ")}
             onMouseDown={(e) => e.stopPropagation()}
         >
@@ -521,13 +438,14 @@ function BlockToolbar({
             <div
                 style={style}
                 className={[
-                    "cursor-default overflow-hidden border border-neutral-200 bg-white text-neutral-800 shadow-2xl",
-                    "w-[268px] rounded-3xl",
-                    "sm:w-[268px] sm:rounded-3xl",
+                    "cursor-default overflow-visible border border-neutral-200 bg-white text-neutral-800 shadow-2xl",
+                    "text-[10px] leading-tight",
+                    "w-[260px] rounded-2xl",
+                    "sm:w-[260px] sm:rounded-2xl",
                     "max-sm:w-[min(96vw,560px)] max-sm:rounded-2xl",
                 ].join(" ")}
             >
-                {/* MOBILE: fixed-position horizontal bar content */}
+                {/* MOBILE */}
                 <div className="sm:hidden border-b border-neutral-200">
                     <div className="px-2 py-2">
                         <div className="flex items-center gap-2">
@@ -597,60 +515,483 @@ function BlockToolbar({
                     </div>
                 </div>
 
-                {/* DESKTOP: original panel */}
+                {/* DESKTOP */}
                 <div className="hidden sm:block">
                     <div
-                        className="flex items-center justify-between border-b border-neutral-200 px-3 py-2 cursor-move select-none"
+                        className="flex items-center justify-between border-b border-neutral-200 px-2 py-1.5 cursor-move select-none"
                         onMouseDown={onDragStart}
                     >
-                        <div className="flex items-center gap-2">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-200 bg-neutral-50 text-neutral-500">
-                                <Move className="h-4 w-4" />
+                        <div className="flex items-center gap-1.5 min-w-0">
+                            <div className="flex h-7 w-7 items-center justify-center rounded-xl border border-neutral-200 bg-neutral-50 text-neutral-500">
+                                <Move className="h-3.5 w-3.5" />
                             </div>
-                            <div className="flex flex-col leading-tight">
-                                <span className="text-[9px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+
+                            <div className="min-w-0 leading-tight">
+                                <div className="text-[9px] font-semibold tracking-[0.14em] text-neutral-500 uppercase">
                                     Selected
-                                </span>
-                                <span className="text-[13px] font-semibold text-neutral-700">
+                                </div>
+                                <div className="text-[11px] font-semibold text-neutral-800 truncate">
                                     &lt;{tagName.toLowerCase()}&gt;
-                                </span>
+                                </div>
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-1">
-                            <button
-                                type="button"
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-200 bg-white text-neutral-600 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
-                                title={expanded ? "Collapse" : "Expand"}
-                                onClick={() => setExpanded((v) => !v)}
-                                onMouseDown={(e) => e.stopPropagation()}
-                            >
-                                <ChevronsUp
-                                    className={[
-                                        "h-4 w-4 transition-transform",
-                                        expanded ? "rotate-0" : "rotate-180",
-                                    ].join(" ")}
-                                />
-                            </button>
-
-                            <button
-                                type="button"
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-200 bg-white text-neutral-600 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
-                                title="Deselect block"
-                                onClick={() => callApi("clear")}
-                                onMouseDown={(e) => e.stopPropagation()}
-                            >
-                                <span className="text-[18px] leading-none">×</span>
-                            </button>
-                        </div>
+                        <IconBtn title="Deselect block" onClick={() => callApi("clear")}>
+                            <span className="text-[14px] leading-none">×</span>
+                        </IconBtn>
                     </div>
 
-                    <div className="px-3 pt-3">
-                        <div className="grid grid-cols-4 gap-1.5">
-                            <FontFamilyPicker
-                                compact={false}
+                    {/* Link editor (only if link exists) */}
+                    {hasNavLink ? (
+                        <div className="border-b border-neutral-200 px-2 py-1.5">
+                            <div className="flex items-center justify-between gap-1.5">
+                                <div className="flex flex-col flex-1 min-w-0">
+                                    <span className="flex items-center gap-1 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                                        <Link2 className="h-3 w-3" />
+                                        Link
+                                    </span>
+                                    <input
+                                        type="text"
+                                        className="mt-0.5 w-full rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] text-neutral-800 shadow-sm outline-none focus:border-neutral-400 focus:ring-0"
+                                        placeholder="/about"
+                                        value={navHref}
+                                        onChange={handleNavInputChange}
+                                        onBlur={handleNavInputBlur}
+                                        onKeyDown={handleNavInputKeyDown}
+                                        onMouseDown={(e) => e.stopPropagation()}
+                                    />
+                                </div>
+
+                                <button
+                                    type="button"
+                                    className="mt-4 inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50"
+                                    title="Clear link"
+                                    onClick={() => {
+                                        setNavHref("");
+                                        commitNavHref("");
+                                    }}
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <Trash2 className="h-3 w-3" />
+                                </button>
+                            </div>
+                        </div>
+                    ) : null}
+
+                    {/* Body */}
+                    <div className="mt-1 flex-1 space-y-2 overflow-y-auto px-2 py-2 text-[10px]">
+                        {/* Danger */}
+                        <div>
+                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                                Danger
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => callApi("blockDelete")}
+                                className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2 py-1.5 text-[10px] text-rose-700 hover:bg-rose-100"
+                                onMouseDown={(e) => e.stopPropagation()}
+                            >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                <span>Delete</span>
+                            </button>
+                        </div>
+
+                        {/* Layout (block move) */}
+                        <div>
+                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                                Layout
+                            </div>
+                            {/* PATCH: arrows horizontally aligned as a single row of 4 */}
+                            <div className="flex items-center gap-1">
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("blockMoveUp")}
+                                    className="flex h-6 flex-1 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                    title="Move block up"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <ArrowUp className="h-3 w-3" />
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("blockMoveLeft")}
+                                    className="flex h-6 flex-1 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                    title="Move left"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <ArrowLeft className="h-3 w-3" />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("blockMoveRight")}
+                                    className="flex h-6 flex-1 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                    title="Move right"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <ArrowRight className="h-3 w-3" />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("blockMoveDown")}
+                                    className="flex h-6 flex-1 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                    title="Move block down"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <ArrowDown className="h-3 w-3" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Padding */}
+                        <div>
+                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                                Padding
+                            </div>
+                            {/* PATCH: arrows horizontally aligned as a single row of 4 */}
+                            <div className="flex items-center gap-1">
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("blockPad", "top", 8)}
+                                    className="flex h-6 flex-1 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                    title="Pad top"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <ArrowUp className="h-3 w-3" />
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("blockPad", "left", 8)}
+                                    className="flex h-6 flex-1 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                    title="Pad left"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <ArrowLeft className="h-3 w-3" />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("blockPad", "right", 8)}
+                                    className="flex h-6 flex-1 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                    title="Pad right"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <ArrowRight className="h-3 w-3" />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("blockPad", "bottom", 8)}
+                                    className="flex h-6 flex-1 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                    title="Pad bottom"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <ArrowDown className="h-3 w-3" />
+                                </button>
+                            </div>
+
+                            <div className="mt-1 flex items-center gap-1">
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("blockPad", "all", -8)}
+                                    className="flex-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    Less
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("blockPad", "all", 8)}
+                                    className="flex-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    More
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("blockPadReset")}
+                                    className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                    title="Reset padding for this device"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <RotateCcw className="h-3 w-3" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Margin */}
+                        <div>
+                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                                Margin
+                            </div>
+                            {/* PATCH: arrows horizontally aligned as a single row of 4 */}
+                            <div className="flex items-center gap-1">
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("blockMargin", "top", 8)}
+                                    className="flex h-6 flex-1 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                    title="Margin top"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <ArrowUp className="h-3 w-3" />
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("blockMargin", "left", 8)}
+                                    className="flex h-6 flex-1 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                    title="Margin left"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <ArrowLeft className="h-3 w-3" />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("blockMargin", "right", 8)}
+                                    className="flex h-6 flex-1 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                    title="Margin right"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <ArrowRight className="h-3 w-3" />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("blockMargin", "bottom", 8)}
+                                    className="flex h-6 flex-1 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                    title="Margin bottom"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <ArrowDown className="h-3 w-3" />
+                                </button>
+                            </div>
+
+                            <div className="mt-1 flex items-center gap-1">
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("blockMargin", "all", -8)}
+                                    className="flex-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    Less
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("blockMargin", "all", 8)}
+                                    className="flex-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    More
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("blockMarginReset")}
+                                    className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                    title="Reset margin for this device"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <RotateCcw className="h-3 w-3" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Size */}
+                        <div>
+                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                                Size
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("blockShrink")}
+                                    className="flex-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    Shrink
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("blockGrow")}
+                                    className="flex-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    Grow
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Corners */}
+                        <div>
+                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                                Corners
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("blockRadius", -4)}
+                                    className="flex-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    Straight
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("blockRadius", 4)}
+                                    className="flex-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    Round
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("blockRadiusReset")}
+                                    className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                    title="Reset radius for this device"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <RotateCcw className="h-3 w-3" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Layering (block) */}
+                        <div>
+                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                                Layer
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("bringBlockForward")}
+                                    className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <ArrowUp className="h-3 w-3" />
+                                    <span>Front</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("sendBlockBackward")}
+                                    className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <ArrowDown className="h-3 w-3" />
+                                    <span>Back</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Text & links */}
+                        <div>
+                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                                Text & links
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("textboxAdd")}
+                                    className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <TypeIcon className="h-3.5 w-3.5" />
+                                    <span>Text</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("linkEdit")}
+                                    className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <Link2 className="h-3.5 w-3.5" />
+                                    <span>Link</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Images */}
+                        <div>
+                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                                Images
+                            </div>
+
+                            <div className="flex items-center gap-1">
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("imgInsert")}
+                                    className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <ImageIcon className="h-3.5 w-3.5" />
+                                    <span>Add</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("imgBg")}
+                                    className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <Layers className="h-3.5 w-3.5" />
+                                    <span>BG</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("imgDelete")}
+                                    className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-1.5 py-1 text-[10px] text-rose-700 hover:bg-rose-100"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                    <span>Remove</span>
+                                </button>
+                            </div>
+
+                            <div className="mt-1 flex items-center gap-1">
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("imgShrink")}
+                                    className="flex-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    Smaller
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("imgGrow")}
+                                    className="flex-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    Larger
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("bringImageForward")}
+                                    className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                    title="Bring image forward"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <ArrowUp className="h-3 w-3" />
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("sendImageBackward")}
+                                    className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                    title="Send image backward"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <ArrowDown className="h-3 w-3" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Font */}
+                        <div>
+                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                                Font
+                            </div>
+                            <FontFamilyDropdown
                                 initialFontFamily={currentFontFamily || ""}
-                                Btn={Btn}
                                 onPreview={(family) => previewFont(family)}
                                 onRevertPreview={() => revertPreviewFont()}
                                 onApply={(family) => {
@@ -658,118 +999,47 @@ function BlockToolbar({
                                     setCurrentFontFamily(family);
                                 }}
                             />
-
-                            <button
-                                type="button"
-                                title="Edit link"
-                                onClick={() => callApi("linkEdit")}
-                                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-700 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
-                                onMouseDown={(e) => e.stopPropagation()}
-                            >
-                                <Link2 className="h-4 w-4" />
-                            </button>
-                            <button
-                                type="button"
-                                title="Add image"
-                                onClick={() => callApi("imgInsert")}
-                                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-700 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
-                                onMouseDown={(e) => e.stopPropagation()}
-                            >
-                                <ImageIcon className="h-4 w-4" />
-                            </button>
-                            <button
-                                type="button"
-                                title="Background image"
-                                onClick={() => callApi("imgBg")}
-                                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-700 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
-                                onMouseDown={(e) => e.stopPropagation()}
-                            >
-                                <Layers className="h-4 w-4" />
-                            </button>
                         </div>
 
-                        <div className="mt-2 grid grid-cols-2 gap-1.5">
-                            <button
-                                type="button"
-                                title="Undo"
-                                onClick={() => callApi("historyUndo")}
-                                className="inline-flex h-9 items-center justify-center rounded-xl bg-accent px-3 text-white shadow-sm active:scale-[0.98] transition"
-                                onMouseDown={(e) => e.stopPropagation()}
-                            >
-                                <Undo2 className="h-4 w-4 mr-1" />
-                                Undo
-                            </button>
-                            <button
-                                type="button"
-                                title="Redo"
-                                onClick={() => callApi("historyRedo")}
-                                className="inline-flex h-9 items-center justify-center rounded-xl bg-accent px-3 text-white shadow-sm active:scale-[0.98] transition"
-                                onMouseDown={(e) => e.stopPropagation()}
-                            >
-                                <Redo2 className="h-4 w-4 mr-1" />
-                                Redo
-                            </button>
-                        </div>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto p-3">
-                        <SectionTitle>Padding</SectionTitle>
-                        <PadGrid
-                            titleTop="Pad top"
-                            titleBottom="Pad bottom"
-                            titleLeft="Pad left"
-                            titleRight="Pad right"
-                            onTop={() => callApi("blockPad", "top", 8)}
-                            onBottom={() => callApi("blockPad", "bottom", 8)}
-                            onLeft={() => callApi("blockPad", "left", 8)}
-                            onRight={() => callApi("blockPad", "right", 8)}
-                        />
-                        <div className="mt-2 flex items-center justify-between gap-1.5">
-                            <MiniPill title="Less padding" onClick={() => callApi("blockPad", "all", -8)}>
-                                Less
-                            </MiniPill>
-                            <MiniPill title="More padding" onClick={() => callApi("blockPad", "all", 8)}>
-                                More
-                            </MiniPill>
-                            <button
-                                type="button"
-                                title="Reset padding for this device"
-                                onClick={() => callApi("blockPadReset")}
-                                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-700 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
-                                onMouseDown={(e) => e.stopPropagation()}
-                            >
-                                <RotateCcw className="h-4 w-4" />
-                            </button>
+                        {/* History */}
+                        <div>
+                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                                History
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("historyUndo")}
+                                    className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-neutral-200 bg-accent px-1.5 py-1 text-[10px] hover:bg-accent-50 text-white"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <Undo2 className="h-3.5 w-3.5" />
+                                    <span>Undo</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("historyRedo")}
+                                    className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-neutral-200 bg-accent px-1.5 py-1 text-[10px] hover:bg-accent-50 text-white"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <Redo2 className="h-3.5 w-3.5" />
+                                    <span>Redo</span>
+                                </button>
+                            </div>
                         </div>
 
-                        <SectionTitle>Margin</SectionTitle>
-                        <PadGrid
-                            titleTop="Margin top"
-                            titleBottom="Margin bottom"
-                            titleLeft="Margin left"
-                            titleRight="Margin right"
-                            onTop={() => callApi("blockMargin", "top", 8)}
-                            onBottom={() => callApi("blockMargin", "bottom", 8)}
-                            onLeft={() => callApi("blockMargin", "left", 8)}
-                            onRight={() => callApi("blockMargin", "right", 8)}
-                        />
-                        <div className="mt-2 flex items-center justify-between gap-1.5">
-                            <MiniPill title="Less margin" onClick={() => callApi("blockMargin", "all", -8)}>
-                                Less
-                            </MiniPill>
-                            <MiniPill title="More margin" onClick={() => callApi("blockMargin", "all", 8)}>
-                                More
-                            </MiniPill>
-                            <button
-                                type="button"
-                                title="Reset margin for this device"
-                                onClick={() => callApi("blockMarginReset")}
-                                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-700 shadow-sm hover:bg-neutral-50 active:scale-[0.98] transition"
-                                onMouseDown={(e) => e.stopPropagation()}
-                            >
-                                <RotateCcw className="h-4 w-4" />
-                            </button>
-                        </div>
+                        {/* Quick link editor access even if no link exists */}
+                        {!hasNavLink ? (
+                            <div>
+                                <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                                    Link
+                                </div>
+                                <MiniPill title="Edit link" onClick={() => callApi("linkEdit")} className="w-full justify-center">
+                                    <Link2 className="h-3.5 w-3.5" />
+                                    Edit
+                                </MiniPill>
+                            </div>
+                        ) : null}
                     </div>
                 </div>
             </div>
@@ -789,9 +1059,11 @@ export function FloatingBlockToolbar({
     const [isDraggingToolbar, setIsDraggingToolbar] = useState(false);
     const iframePrevPointerEventsRef = useRef<string | null>(null);
 
-    // CRITICAL FIX: on mobile, ignore absolute wrapper math entirely and pin the toolbar to the viewport
     const [isMobile, setIsMobile] = useState(false);
     const [bottomBarH, setBottomBarH] = useState(72);
+
+    const PANEL_W = 260;
+    const PANEL_H = 520;
 
     useEffect(() => {
         if (!isMobile) return;
@@ -815,7 +1087,6 @@ export function FloatingBlockToolbar({
             mq.addEventListener("change", apply);
             return () => mq.removeEventListener("change", apply);
         }
-        // Safari fallback
         mq.addListener(apply);
         return () => mq.removeListener(apply);
     }, []);
@@ -853,27 +1124,19 @@ export function FloatingBlockToolbar({
         const iframeBox = iframe.getBoundingClientRect();
         const wrapperBox = wrapper.getBoundingClientRect();
 
-        const panelWidth = 268;
-        const panelHeight = 520;
-        const padding = 30;
-
+        const padding = 16;
         const rawTop = wrapper.scrollTop + (iframeBox.top - wrapperBox.top) + padding;
 
-        const GUTTER = 32;
+        const GUTTER = 20;
         const rawLeft = wrapper.scrollLeft + (iframeBox.right - wrapperBox.left) + GUTTER;
 
         const minTop = padding;
-        const maxTop = wrapper.scrollHeight - panelHeight - padding;
+        const maxTop = wrapper.scrollHeight - PANEL_H - padding;
         const minLeft = padding;
-        const maxLeft = wrapper.scrollWidth - panelWidth - padding;
+        const maxLeft = wrapper.scrollWidth - PANEL_W - padding;
 
-        const top =
-            maxTop <= minTop ? Math.max(minTop, rawTop) : Math.max(minTop, Math.min(maxTop, rawTop));
-
-        const left =
-            maxLeft <= minLeft
-                ? Math.max(minLeft, rawLeft)
-                : Math.max(minLeft, Math.min(maxLeft, rawLeft));
+        const top = maxTop <= minTop ? Math.max(minTop, rawTop) : Math.max(minTop, Math.min(maxTop, rawTop));
+        const left = maxLeft <= minLeft ? Math.max(minLeft, rawLeft) : Math.max(minLeft, Math.min(maxLeft, rawLeft));
 
         setToolbarPos({ top, left });
     }, [selectionMeta?.has, iframeRef, wrapperRef, isMobile]);
@@ -883,14 +1146,11 @@ export function FloatingBlockToolbar({
     const wrapper = wrapperRef.current;
     if (!wrapper) return null;
 
-    const panelWidth = 268;
-
-    const APPLY_BAR_ESTIMATED_H = 72; // tune: 64–96 depending on your Apply/Close bar height
+    const APPLY_BAR_ESTIMATED_H = Math.max(56, bottomBarH || 0);
 
     const mobileFixedStyle: React.CSSProperties = {
         position: "fixed",
         left: "50%",
-        // was: bottom: "calc(env(safe-area-inset-bottom, 0px) + 12px)",
         bottom: `calc(env(safe-area-inset-bottom, 0px) + ${APPLY_BAR_ESTIMATED_H}px + 10px)`,
         transform: "translateX(-50%)",
         zIndex: 9999,
@@ -900,7 +1160,7 @@ export function FloatingBlockToolbar({
     const desktopStyle: React.CSSProperties =
         toolbarPos != null
             ? { position: "absolute", top: toolbarPos.top, left: toolbarPos.left, zIndex: 120, pointerEvents: "auto" }
-            : { position: "absolute", top: wrapper.scrollTop + 80, left: wrapper.scrollLeft + 14, zIndex: 120, pointerEvents: "auto" };
+            : { position: "absolute", top: wrapper.scrollTop + 72, left: wrapper.scrollLeft + 12, zIndex: 120, pointerEvents: "auto" };
 
     const baseStyle = isMobile ? mobileFixedStyle : desktopStyle;
 
@@ -919,21 +1179,18 @@ export function FloatingBlockToolbar({
         if (isMobile) return;
 
         e.preventDefault();
-        const wrapperEl = wrapperRef.current;
+        const wrapperEl = wrapperRef.current as any;
         if (!wrapperEl) return;
-
-        const wrapper = wrapperEl;
 
         const startX = e.clientX;
         const startY = e.clientY;
 
         const start = toolbarPosRef.current || {
-            top: wrapper.scrollTop + 80,
-            left: wrapper.scrollLeft + 14,
+            top: wrapperEl.scrollTop + 72,
+            left: wrapperEl.scrollLeft + 12,
         };
 
         const padding = 10;
-        const panelHeightClamp = 520;
 
         setIsDraggingToolbar(true);
 
@@ -945,9 +1202,9 @@ export function FloatingBlockToolbar({
             let nextLeft = start.left + dx;
 
             const minTop = padding;
-            const maxTop = wrapper.scrollHeight - panelHeightClamp - padding;
+            const maxTop = wrapperEl.scrollHeight - PANEL_H - padding;
             const minLeft = padding;
-            const maxLeft = wrapper.scrollWidth - panelWidth - padding;
+            const maxLeft = wrapperEl.scrollWidth - PANEL_W - padding;
 
             if (maxTop <= minTop) nextTop = Math.max(minTop, nextTop);
             else nextTop = Math.max(minTop, Math.min(maxTop, nextTop));
@@ -970,12 +1227,7 @@ export function FloatingBlockToolbar({
 
     return (
         <div style={baseStyle}>
-            <BlockToolbar
-                style={{}}
-                callApi={callApi}
-                selectionMeta={selectionMeta}
-                onDragStart={handleDragStart}
-            />
+            <BlockToolbar style={{}} callApi={callApi} selectionMeta={selectionMeta} onDragStart={handleDragStart} />
         </div>
     );
 }
