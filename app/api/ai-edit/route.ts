@@ -1,35 +1,43 @@
 // app/api/ai-edit/route.ts
 //
-// PATCH: abuse alerting + placeholder asset stripping
-// - If a user repeatedly triggers safety systems (moderation flag / safety reject / image-block),
-//   email support@kloner.com with details.
-// - Hard-strip any example.com asset URLs so they can never leak into saved HTML (prevents 404s like example.com/homer-donut.jpg).
+// GEMINI-ONLY VERSION
+// - Removes ALL OpenAI usage (moderation, responses, image generation).
+// - Keeps: credits reserve/refund/commit, history writes, abuse alerting via Resend,
+//          placeholder asset stripping, create_page prompt builder, suggestions fetch.
+// - Safety handling: relies on Gemini safety. If Gemini blocks/overloads, credits are refunded.
+// - Observability: logs Gemini status + message + requestId; 429 is returned as 429 (not masked as 503).
 //
-// Env required:
-// - RESEND_API_KEY
-// - ABUSE_ALERT_FROM (fallback: hello@kloner.app)
+// PATCH (renderId feed issue / remixed renders):
+// - Accept renderId from multiple possible keys (renderId, render_id, renderDocId, id, docId, klonerRenderId).
+// - GET also accepts renderId via renderId/id/renderDocId query params.
+// - Error payload returns which keys were seen to make client-side fixes obvious.
 
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../_lib/route-guard";
-import OpenAI from "openai";
 import { monthlyLimitFor, type UserTier } from "@/src/lib/credits";
-import { getStorage } from "firebase-admin/storage";
-import sharp from "sharp";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
 import { randomUUID, createHash } from "crypto";
 import { Resend } from "resend";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const client = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-    maxRetries: 0,
-});
+/* =========================
+   Gemini init (ONLY)
+   ========================= */
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
 const geminiClient = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
+
+// Choose a stable model you actually have access to.
+// If you were using "gemini-3-pro-preview" and it causes instability, switch to a stable tier.
+// Keep your original string if you need it.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3-pro-preview";
+
+/* =========================
+   Types
+   ========================= */
 
 interface AiEditRequestBody {
     renderId: string;
@@ -42,6 +50,13 @@ interface AiEditRequestBody {
     slug?: string;
     userPrompt?: string;
     requestId?: string;
+
+    // PATCH: tolerate alternate client payload keys
+    render_id?: string;
+    renderDocId?: string;
+    docId?: string;
+    id?: string;
+    klonerRenderId?: string;
 }
 
 interface AiEditModelResult {
@@ -53,14 +68,13 @@ interface AiEditModelResult {
     userError?: string;
 }
 
+/* =========================
+   Limits
+   ========================= */
+
 const MAX_HTML_CHARS = 8_000;
 const MAX_USER_PROMPT_CHARS = 1_000;
 const MAX_MODEL_PROMPT_CHARS = 2_200;
-
-const STORAGE_BUCKET =
-    process.env.FIREBASE_STORAGE_BUCKET ||
-    process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ||
-    undefined;
 
 /* =========================
    Abuse alert configuration
@@ -359,8 +373,8 @@ async function recordAbuseAndMaybeAlert(opts: {
             html,
         });
 
-        if ("error" in result && result.error) {
-            console.error("[ai-edit][abuse] Resend error:", result.error);
+        if ("error" in result && (result as any).error) {
+            console.error("[ai-edit][abuse] Resend error:", (result as any).error);
         }
     } catch (e) {
         console.error("[ai-edit][abuse] failed sending alert email", e);
@@ -378,19 +392,42 @@ function nextPeriodEndUtc(now: Date) {
     return new Date(firstNext.getTime() - 1);
 }
 
-function friendlySafetyMessage(requestId?: string) {
-    const rid = requestId ? ` (Request ID: ${requestId})` : "";
-    return {
-        user:
-            `That request can’t be processed because it was flagged by our safety filters. ` +
-            `Try rephrasing with less explicit detail, or remove anything that could be interpreted as harmful or disallowed.` +
-            `${rid}`,
-        dev: `Rejected by safety system${requestId ? `; requestId=${requestId}` : ""}`,
-    };
-}
-
 function creditEventRef(db: any, uid: string, requestId: string) {
     return db.collection("kloner_users").doc(uid).collection("credit_events").doc(requestId);
+}
+
+/* =========================
+   PATCH: renderId normalization
+   ========================= */
+
+function normalizeRenderIdFromBody(body: Partial<AiEditRequestBody> | any): string {
+    const candidates = [
+        body?.renderId,
+        body?.render_id,
+        body?.renderDocId,
+        body?.docId,
+        body?.id,
+        body?.klonerRenderId,
+    ];
+
+    for (const c of candidates) {
+        const v = typeof c === "string" ? c.trim() : "";
+        if (v) return v;
+    }
+
+    return "";
+}
+
+function renderIdDebugKeys(body: any) {
+    const keys = ["renderId", "render_id", "renderDocId", "docId", "id", "klonerRenderId"];
+    const seen: Record<string, any> = {};
+    for (const k of keys) {
+        if (k in (body || {})) {
+            const v = (body as any)[k];
+            seen[k] = typeof v === "string" ? safeSnippet(v, 80) : v;
+        }
+    }
+    return seen;
 }
 
 async function reserveAiEditCreditsInline(opts: {
@@ -400,34 +437,19 @@ async function reserveAiEditCreditsInline(opts: {
     cost: number;
     now: Date;
     requestId: string;
-
-    // NEW (optional, non-bloat debug)
     debug?: {
         renderId?: string;
         action?: "edit_block" | "create_page";
         mode?: "code" | "imagery";
         pageId?: string;
         slug?: string;
-        userPrompt?: string; // the "question"
+        userPrompt?: string;
         ipHash?: string | null;
         ua?: string | null;
     };
 }): Promise<
-    | {
-        ok: true;
-        remaining: number | null;
-        limit: number | null;
-        periodEnd: Date | null;
-        alreadyReservedOrCommitted?: boolean;
-    }
-    | {
-        ok: false;
-        status: number;
-        message: string;
-        remaining: number;
-        limit: number;
-        periodEnd: Date | null;
-    }
+    | { ok: true; remaining: number | null; limit: number | null; periodEnd: Date | null; alreadyReservedOrCommitted?: boolean }
+    | { ok: false; status: number; message: string; remaining: number; limit: number; periodEnd: Date | null }
 > {
     const { db, uid, tier, cost, now, requestId, debug } = opts;
 
@@ -446,7 +468,6 @@ async function reserveAiEditCreditsInline(opts: {
             mode: debug.mode || null,
             pageId: debug.pageId || null,
             slug: debug.slug || null,
-            // keep this small; you already cap rawUserPrompt earlier
             question: safeSnippet(debug.userPrompt || "", 420) || null,
             ipHash: debug.ipHash || null,
             ua: debug.ua ? safeSnippet(debug.ua, 180) : null,
@@ -469,31 +490,16 @@ async function reserveAiEditCreditsInline(opts: {
                 else if (rawEnd instanceof Date) periodEndDate = rawEnd;
 
                 const active = periodEndDate !== null && now < periodEndDate;
-                const existingRemaining =
-                    typeof bucket.remaining === "number" && bucket.remaining >= 0 ? bucket.remaining : null;
+                const existingRemaining = typeof bucket.remaining === "number" && bucket.remaining >= 0 ? bucket.remaining : null;
 
                 const endDate = active ? (periodEndDate as Date) : nextPeriodEndUtc(now);
                 const startRemaining = active && existingRemaining !== null ? existingRemaining : limit;
 
-                // NEW: merge in debug info if provided (safe, low bloat)
                 if (debugPayload) {
-                    tx.set(
-                        evtRef,
-                        {
-                            debug: debugPayload,
-                            updatedAt: now,
-                        },
-                        { merge: true }
-                    );
+                    tx.set(evtRef, { debug: debugPayload, updatedAt: now }, { merge: true });
                 }
 
-                return {
-                    ok: true,
-                    remaining: startRemaining,
-                    limit,
-                    periodEnd: endDate,
-                    alreadyReservedOrCommitted: true,
-                };
+                return { ok: true, remaining: startRemaining, limit, periodEnd: endDate, alreadyReservedOrCommitted: true };
             }
         }
 
@@ -507,8 +513,7 @@ async function reserveAiEditCreditsInline(opts: {
         else if (rawEnd instanceof Date) periodEndDate = rawEnd;
 
         const active = periodEndDate !== null && now < periodEndDate;
-        const existingRemaining =
-            typeof bucket.remaining === "number" && bucket.remaining >= 0 ? bucket.remaining : null;
+        const existingRemaining = typeof bucket.remaining === "number" && bucket.remaining >= 0 ? bucket.remaining : null;
 
         const endDate = active ? (periodEndDate as Date) : nextPeriodEndUtc(now);
         const startRemaining = active && existingRemaining !== null ? existingRemaining : limit;
@@ -536,8 +541,6 @@ async function reserveAiEditCreditsInline(opts: {
                     tier,
                     createdAt: now,
                     createdAtMs: now.getTime(),
-
-                    // NEW
                     debug: debugPayload,
                 },
                 { merge: true }
@@ -574,8 +577,6 @@ async function reserveAiEditCreditsInline(opts: {
             tier,
             createdAt: now,
             createdAtMs: now.getTime(),
-
-            // NEW
             debug: debugPayload,
         });
 
@@ -591,8 +592,6 @@ async function refundAiEditCreditsInline(opts: {
     now: Date;
     requestId: string;
     reason: string;
-
-    // NEW (optional, non-bloat debug)
     errorCode?: string;
     errorStatus?: number;
 }) {
@@ -624,8 +623,7 @@ async function refundAiEditCreditsInline(opts: {
         const active = periodEndDate !== null && now < periodEndDate;
         const endDate = active ? (periodEndDate as Date) : nextPeriodEndUtc(now);
 
-        const existingRemaining =
-            typeof bucket.remaining === "number" && bucket.remaining >= 0 ? bucket.remaining : null;
+        const existingRemaining = typeof bucket.remaining === "number" && bucket.remaining >= 0 ? bucket.remaining : null;
 
         const startRemaining = active && existingRemaining !== null ? existingRemaining : limit;
         const newRemaining = Math.min(startRemaining + cost, limit);
@@ -649,8 +647,6 @@ async function refundAiEditCreditsInline(opts: {
                 refundedAt: now,
                 refundedAtMs: now.getTime(),
                 refundReason: reason,
-
-                // NEW (minimal)
                 errorCode: errorCode || null,
                 errorStatus: typeof errorStatus === "number" ? errorStatus : null,
             },
@@ -678,8 +674,6 @@ async function commitAiEditCreditsInline(opts: { db: any; uid: string; requestId
                     status: "committed",
                     committedAt: now,
                     committedAtMs: now.getTime(),
-
-                    // NEW: tiny breadcrumb to correlate credit event ↔ outcome
                     summarySnippet: summary ? safeSnippet(summary, 220) : null,
                 },
                 { merge: true }
@@ -689,7 +683,6 @@ async function commitAiEditCreditsInline(opts: { db: any; uid: string; requestId
         console.error("[ai-edit] failed to commit credit event", e);
     }
 }
-
 
 async function ensureAiEditBucketInline(opts: {
     db: any;
@@ -715,8 +708,7 @@ async function ensureAiEditBucketInline(opts: {
         else if (rawEnd instanceof Date) periodEndDate = rawEnd;
 
         const active = periodEndDate !== null && now < periodEndDate;
-        const existingRemaining =
-            typeof bucket.remaining === "number" && bucket.remaining >= 0 ? bucket.remaining : null;
+        const existingRemaining = typeof bucket.remaining === "number" && bucket.remaining >= 0 ? bucket.remaining : null;
 
         const endDate = active ? (periodEndDate as Date) : nextPeriodEndUtc(now);
 
@@ -740,17 +732,12 @@ async function ensureAiEditBucketInline(opts: {
     });
 }
 
+/* =========================
+   Page creation prompt logic (unchanged)
+   ========================= */
+
 function inferPageIntentFromSlug(slug: string): {
-    kind:
-    | "about"
-    | "contact"
-    | "pricing"
-    | "services"
-    | "faq"
-    | "blog"
-    | "features"
-    | "landing"
-    | "generic";
+    kind: "about" | "contact" | "pricing" | "services" | "faq" | "blog" | "features" | "landing" | "generic";
     title: string;
     hints: string[];
 } {
@@ -851,11 +838,8 @@ CONTRAST RULE (NON-NEGOTIABLE):
         `Create the layout INSIDE the provided <main class="page-root" data-route="${pageId}"> block only. ` +
         `Return ONLY the updated HTML for this block.`;
 
-    const globalLayoutLine =
-        `Do NOT add or modify global header or footer elements.`;
-
-    const privacyLine =
-        `Do not print the route path anywhere in visible content.`;
+    const globalLayoutLine = `Do NOT add or modify global header or footer elements.`;
+    const privacyLine = `Do not print the route path anywhere in visible content.`;
 
     const cssRules =
         `If you include <style>, scope selectors under main.page-root[data-route="${pageId}"] only. ` +
@@ -885,6 +869,10 @@ CONTRAST RULE (NON-NEGOTIABLE):
     };
 }
 
+/* =========================
+   HTML helpers
+   ========================= */
+
 function trimHtmlForModel(html: string): string {
     if (html.length <= MAX_HTML_CHARS) return html;
 
@@ -906,214 +894,48 @@ function trimHtmlForModel(html: string): string {
     return head + rest.slice(0, remainingBudget);
 }
 
-function extractTextFromResponse(resp: any): string {
-    if (!resp || !resp.output) return "";
+/**
+ * Hard kill-switch for placeholder assets.
+ * Strategy:
+ * - Replace any example.com src/href with inert values.
+ * - Wipe srcset containing example.com.
+ * - Remove any <link ... href="https://example.com/..."> entirely.
+ * - Kill CSS url(https://example.com/...) to "none".
+ */
+function stripExampleDotComAssets(html: string) {
+    if (!html) return html;
 
-    const outputs = Array.isArray(resp.output) ? resp.output : [resp.output];
-    const chunks: string[] = [];
+    let out = String(html);
 
-    for (const out of outputs) {
-        const content = Array.isArray(out?.content) ? out.content : [];
-        for (const c of content) {
-            const txt = (c as any)?.text?.value ?? (c as any)?.text ?? "";
-            if (typeof txt === "string" && txt.trim().length > 0) {
-                chunks.push(txt);
-            }
-        }
-    }
+    out = out.replace(/<link\b[^>]*\bhref\s*=\s*(?:"|')https?:\/\/example\.com\/[^"']+(?:"|')[^>]*>/gi, "");
+    out = out.replace(/(\ssrc\s*=\s*["'])https?:\/\/example\.com\/[^"']+(["'])/gi, '$1data:,$2');
+    out = out.replace(/(\ssrc\s*=\s*)https?:\/\/example\.com\/[^\s>]+/gi, "$1data:,");
+    out = out.replace(/(\shref\s*=\s*["'])https?:\/\/example\.com\/[^"']+(["'])/gi, '$1#$2');
+    out = out.replace(/(\shref\s*=\s*)https?:\/\/example\.com\/[^\s>]+/gi, "$1#");
+    out = out.replace(/(\ssrcset\s*=\s*["'])[^"']*example\.com[^"']*(["'])/gi, "$1$2");
+    out = out.replace(/(\ssrcset\s*=\s*)[^\s>]*example\.com[^\s>]*/gi, "$1");
+    out = out.replace(/url\(\s*["']?\s*https?:\/\/example\.com\/[^)"']+\s*["']?\s*\)/gi, "none");
+    out = out.replace(/https?:\/\/example\.com\/[^\s"')>]+/gi, "");
 
-    return chunks.join("\n").trim();
+    return out;
 }
 
-async function assertPromptSafe(prompt: string) {
-    const moderation = await client.moderations.create({
-        model: "omni-moderation-latest",
-        input: prompt,
-    });
-
-    const result: any = (moderation as any).results?.[0];
-    if (!result) {
-        const err = new Error("moderation_failed");
-        (err as any).code = "MODERATION_ERROR";
-        throw err;
-    }
-
-    if (result.flagged) {
-        const err = new Error("prompt_unsafe");
-        (err as any).code = "PROMPT_UNSAFE";
-        throw err;
-    }
-}
-
-function extractImageSlots(html: string): { index: number; prompt: string }[] {
-    const slots: { index: number; prompt: string }[] = [];
-    const regex = /<!--\s*KLONER_IMAGE_SLOT_(\d+)\s*:(.*?)-->/gis;
-
-    let m: RegExpExecArray | null;
-    while ((m = regex.exec(html)) !== null) {
-        const idx = parseInt(m[1], 10);
-        if (Number.isNaN(idx)) continue;
-        const prompt = (m[2] || "").trim();
-        if (!prompt) continue;
-        slots.push({ index: idx, prompt });
-    }
-
-    return slots;
-}
-
-async function compressImageBuffer(buf: Buffer): Promise<Buffer> {
-    try {
-        return await sharp(buf).jpeg({ quality: 78, chromaSubsampling: "4:2:0" }).toBuffer();
-    } catch (err) {
-        console.error("[ai-edit] compressImageBuffer failed, returning original", err);
-        return buf;
-    }
-}
-
-type ImageDebug = {
-    imageSlotsFound: number;
-    imageSlotsMaterialized: number;
-    imageUrls: { index: number; url: string; prompt: string }[];
-    imageErrorStatus?: number;
-    imageErrorMessage?: string;
-};
-
-async function materializeAiImages(
-    html: string,
-    opts: { uid: string; renderId: string; originalHtml?: string }
-): Promise<{ html: string; debug: ImageDebug }> {
-    const originalHtml = opts.originalHtml ?? html;
-
-    const debug: ImageDebug = {
-        imageSlotsFound: 0,
-        imageSlotsMaterialized: 0,
-        imageUrls: [],
-    };
-
-    if (!STORAGE_BUCKET) {
-        console.warn("[ai-edit] STORAGE_BUCKET not configured; skipping AI image materialization");
-        return { html, debug };
-    }
-
-    const slots = extractImageSlots(html);
-    debug.imageSlotsFound = slots.length;
-
-    if (!slots.length) return { html, debug };
-
-    const bucket = getStorage().bucket(STORAGE_BUCKET);
-    const slotUrlMap = new Map<number, string>();
-
-    for (const slot of slots) {
-        try {
-            await assertPromptSafe(slot.prompt);
-
-            const imgResp = await client.images.generate({
-                model: "gpt-image-1",
-                prompt: slot.prompt,
-                size: "1024x1024",
-                n: 1,
-            });
-
-            const first = (imgResp as any)?.data?.[0];
-            const b64 = first?.b64_json;
-
-            if (!b64 || typeof b64 !== "string") continue;
-
-            let buf = Buffer.from(b64, "base64");
-            buf = (await compressImageBuffer(buf)) as any;
-
-            const now = Date.now();
-            const filePath = `kloner_ai_images/${opts.renderId}/${now}_slot_${slot.index}.jpg`;
-            const file = bucket.file(filePath);
-
-            await file.save(buf, {
-                contentType: "image/jpeg",
-                resumable: false,
-                metadata: { cacheControl: "public,max-age=31536000" },
-            });
-
-            const [signedUrl] = await file.getSignedUrl({
-                action: "read",
-                expires: "2500-01-01",
-            });
-
-            slotUrlMap.set(slot.index, signedUrl);
-            debug.imageUrls.push({ index: slot.index, url: signedUrl, prompt: slot.prompt });
-        } catch (err: any) {
-            const status: number | undefined = err?.status ?? err?.response?.status;
-            const message: string = err?.error?.message ?? err?.message ?? String(err);
-
-            console.error("[ai-edit] failed generating/uploading AI image for slot", slot, { status, message });
-
-            if (status) {
-                debug.imageErrorStatus = status;
-                debug.imageErrorMessage = message;
-                break;
-            }
-
-            if (err?.code === "PROMPT_UNSAFE" || err?.code === "MODERATION_ERROR") {
-                debug.imageErrorStatus = 400;
-                debug.imageErrorMessage = "Image prompt was blocked or moderation failed; reverting image changes.";
-                break;
-            }
-        }
-    }
-
-    debug.imageSlotsMaterialized = slotUrlMap.size;
-
-    let outHtml = html;
-
-    if (slotUrlMap.size === 0) {
-        outHtml = outHtml.replace(/<!--\s*KLONER_IMAGE_SLOT_\d+\s*:[\s\S]*?-->/g, "");
-        outHtml = outHtml.replace(/__KLONER_IMAGE_SLOT_\d+__/g, "");
-
-        if (debug.imageErrorStatus === 400 || debug.imageErrorStatus === 403 || debug.imageErrorStatus === 401) {
-            return { html: originalHtml, debug };
-        }
-
-        return { html: outHtml, debug };
-    }
-
-    for (const [idx, url] of slotUrlMap.entries()) {
-        const placeholder = new RegExp(`__KLONER_IMAGE_SLOT_${idx}__`, "g");
-        outHtml = outHtml.replace(placeholder, url);
-    }
-
-    outHtml = outHtml.replace(/__KLONER_IMAGE_SLOT_\d+__/g, "");
-    outHtml = outHtml.replace(/<!--\s*KLONER_IMAGE_SLOT_\d+\s*:[\s\S]*?-->/g, "");
-
-    return { html: outHtml, debug };
-}
+/* =========================
+   Gemini prompt + model run
+   ========================= */
 
 const AI_EDIT_SYSTEM_PROMPT = `
 You are an HTML refactoring assistant for the Kloner website editor.
 
-SAFETY AND POLICY (MUST FOLLOW):
-- You must comply with OpenAI safety policies at all times.
-- If the user asks for anything involving:
-  - illegal content,
-  - child sexual content,
-  - explicit sexual content,
-  - graphic violence,
-  - self-harm,
-  - hate or harassment,
-  - or instructions that meaningfully facilitate wrongdoing
-    (for example: hacking, explosives, serious harm),
-  you MUST REFUSE.
+SAFETY AND POLICY:
+- Follow Gemini safety rules. If the user asks for disallowed content, refuse.
 - When refusing:
   - Do NOT change the HTML.
-  - Set SUMMARY to a short refusal message like:
-    "Request refused for safety reasons. No changes applied."
+  - Set SUMMARY to: "Request refused for safety reasons. No changes applied."
   - Under HTML: return the original HTML block unchanged.
 
 - NEVER use example.com or placeholder absolute URLs for images, icons, or backgrounds.
-- If you need a new image, you MUST use the Kloner slot format:
-  - Place __KLONER_IMAGE_SLOT_N__ where the URL goes
-  - Include: <!-- KLONER_IMAGE_SLOT_N: <short safe image description> -->
-- Do not output any external image URLs unless they already exist in the provided HTML.
-
-ROLE:
-- You receive the HTML for a single selected block plus a short user instruction.
+- Do not output new external image URLs unless they already exist in the provided HTML.
 - Apply minimal, targeted changes; preserve existing content and structure.
 
 OUTPUT FORMAT (STRICT):
@@ -1122,177 +944,210 @@ HTML:
 <edited HTML>
 `.trim();
 
-/**
- * Hard kill-switch for placeholder assets.
- * Fixes your exact symptom: model injects https://example.com/homer-donut.jpg which then 404s in the iframe.
- *
- * Strategy:
- * - Replace any example.com src/href with an inert data URL (NOT empty string, to avoid weird fetch behavior).
- * - Wipe srcset containing example.com.
- * - Remove any <link ... href="https://example.com/..."> entirely (icons are common offenders).
- * - Kill CSS url(https://example.com/...) to "none".
- * - Catch both quoted and unquoted attribute forms.
- */
-function stripExampleDotComAssets(html: string) {
-    if (!html) return html;
+function parseModelOutput(raw: string, fallbackHtml: string): AiEditModelResult {
+    const txt = String(raw || "").trim();
+    if (!txt) {
+        return {
+            ok: false,
+            afterHtml: fallbackHtml,
+            summary: "AI edit failed; left the block unchanged.",
+            errorCode: "MODEL_EMPTY",
+            errorStatus: 502,
+            userError: "AI edit failed. No changes were applied.",
+        };
+    }
 
-    let out = String(html);
+    const summaryMatch = txt.match(/^SUMMARY:\s*(.+)$/m);
+    const summary = summaryMatch && summaryMatch[1].trim() ? summaryMatch[1].trim() : "Minimal changes applied.";
 
-    // Remove <link ... href="https://example.com/..."> tags entirely
-    out = out.replace(/<link\b[^>]*\bhref\s*=\s*(?:"|')https?:\/\/example\.com\/[^"']+(?:"|')[^>]*>/gi, "");
+    let htmlSection = txt;
+    const htmlMarkerIdx = txt.toLowerCase().indexOf("html:");
+    if (htmlMarkerIdx !== -1) htmlSection = txt.slice(htmlMarkerIdx + "html:".length).trim();
 
-    // src="https://example.com/..." or src='...'
-    out = out.replace(/(\ssrc\s*=\s*["'])https?:\/\/example\.com\/[^"']+(["'])/gi, '$1data:,$2');
+    const afterHtml = htmlSection.trim();
+    if (!afterHtml) {
+        return {
+            ok: false,
+            afterHtml: fallbackHtml,
+            summary: "AI edit failed; left the block unchanged.",
+            errorCode: "MODEL_HTML_EMPTY",
+            errorStatus: 502,
+            userError: "AI edit failed. No changes were applied.",
+        };
+    }
 
-    // src=https://example.com/... (unquoted)
-    out = out.replace(/(\ssrc\s*=\s*)https?:\/\/example\.com\/[^\s>]+/gi, "$1data:,");
-
-    // href="https://example.com/..."
-    out = out.replace(/(\shref\s*=\s*["'])https?:\/\/example\.com\/[^"']+(["'])/gi, '$1#$2');
-
-    // href=https://example.com/... (unquoted)
-    out = out.replace(/(\shref\s*=\s*)https?:\/\/example\.com\/[^\s>]+/gi, "$1#");
-
-    // srcset containing example.com -> blank it
-    out = out.replace(/(\ssrcset\s*=\s*["'])[^"']*example\.com[^"']*(["'])/gi, "$1$2");
-    out = out.replace(/(\ssrcset\s*=\s*)[^\s>]*example\.com[^\s>]*/gi, "$1");
-
-    // CSS url(...) pointing to example.com
-    out = out.replace(/url\(\s*["']?\s*https?:\/\/example\.com\/[^)"']+\s*["']?\s*\)/gi, "none");
-
-    // Final sweep: any remaining raw example.com urls
-    out = out.replace(/https?:\/\/example\.com\/[^\s"')>]+/gi, "");
-
-    return out;
+    return { ok: true, afterHtml, summary };
 }
 
-async function runAiEditModel(input: {
+function classifyGeminiError(err: any, requestId: string): { status: number; code: string; userMessage: string; isSafety: boolean } {
+    const message = String(err?.message || err?.toString?.() || "unknown_error");
+    const lower = message.toLowerCase();
+
+    // google generative ai errors vary; check common signals
+    const httpStatus =
+        err?.status ||
+        err?.response?.status ||
+        err?.cause?.status ||
+        (lower.includes("429") ? 429 : undefined) ||
+        (lower.includes("rate") && lower.includes("limit") ? 429 : undefined);
+
+    const status = typeof httpStatus === "number" ? httpStatus : 503;
+
+    const isSafety =
+        lower.includes("safety") ||
+        lower.includes("blocked") ||
+        lower.includes("harm") ||
+        lower.includes("policy") ||
+        lower.includes("recitation");
+
+    if (status === 429) {
+        return {
+            status: 429,
+            code: "RATE_LIMITED",
+            userMessage: `AI editing is temporarily overloaded. Try again shortly. (Request ID: ${requestId})`,
+            isSafety: false,
+        };
+    }
+
+    if (isSafety) {
+        return {
+            status: 400,
+            code: "SAFETY_REJECTED",
+            userMessage: `That request can’t be processed because it was flagged by our safety filters. Try rephrasing with less explicit detail. (Request ID: ${requestId})`,
+            isSafety: true,
+        };
+    }
+
+    return {
+        status: status >= 500 ? 503 : 502,
+        code: "GEMINI_ERROR",
+        userMessage: `AI editing is temporarily unavailable. Try again shortly. (Request ID: ${requestId})`,
+        isSafety: false,
+    };
+}
+
+async function runAiEditModelGemini(input: {
     html: string;
     prompt: string;
     uid: string;
     mode?: "code" | "imagery";
     requestId: string;
-}): Promise<AiEditModelResult> {
+}): Promise<AiEditModelResult & { debug?: any }> {
+    if (!geminiClient) {
+        return {
+            ok: false,
+            afterHtml: input.html,
+            summary: "AI edit failed; left the block unchanged.",
+            errorCode: "GEMINI_NOT_CONFIGURED",
+            errorStatus: 503,
+            userError: "AI editing is not configured on this server.",
+            debug: { configured: false },
+        };
+    }
+
     const trimmedHtml = trimHtmlForModel(input.html);
-    const { prompt, uid } = input;
     const mode = input.mode ?? "code";
 
     const user = `
 USER INSTRUCTION:
-${prompt}
+${input.prompt}
 
 CURRENT HTML BLOCK (may be truncated for performance):
 ${trimmedHtml}
 `.trim();
 
-    if (mode === "code" && geminiClient) {
-        try {
-            const model = geminiClient.getGenerativeModel({ model: "gemini-3-pro-preview" });
-            const result = await model.generateContent({
-                contents: [{ role: "user", parts: [{ text: `${AI_EDIT_SYSTEM_PROMPT}\n\n${user}` }] }],
-            });
-
-            const raw = result.response?.text()?.trim() ?? "";
-            if (!raw) {
-                return {
-                    ok: false,
-                    afterHtml: input.html,
-                    summary: "AI edit failed; left the block unchanged.",
-                    errorCode: "MODEL_EMPTY",
-                    errorStatus: 502,
-                    userError: "AI edit failed. No changes were applied.",
-                };
-            }
-
-            const summaryMatch = raw.match(/^SUMMARY:\s*(.+)$/m);
-            const summary = summaryMatch && summaryMatch[1].trim() ? summaryMatch[1].trim() : "Minimal changes applied.";
-
-            let htmlSection = raw;
-            const htmlMarkerIdx = raw.toLowerCase().indexOf("html:");
-            if (htmlMarkerIdx !== -1) htmlSection = raw.slice(htmlMarkerIdx + "html:".length).trim();
-
-            const afterHtml = htmlSection.trim();
-            if (!afterHtml) {
-                return {
-                    ok: false,
-                    afterHtml: input.html,
-                    summary: "AI edit failed; left the block unchanged.",
-                    errorCode: "MODEL_HTML_EMPTY",
-                    errorStatus: 502,
-                    userError: "AI edit failed. No changes were applied.",
-                };
-            }
-
-            return { ok: true, afterHtml, summary };
-        } catch (err: any) {
-            console.error("[ai-edit] Gemini call failed", { name: err?.name, message: err?.message });
-        }
-    }
-
     try {
-        const resp = await client.responses.create({
-            model: "gpt-5-mini",
-            input: [
-                { role: "system", content: [{ type: "input_text", text: AI_EDIT_SYSTEM_PROMPT }] },
-                { role: "user", content: [{ type: "input_text", text: user }] },
+        const model = geminiClient.getGenerativeModel({
+            model: GEMINI_MODEL,
+            systemInstruction: AI_EDIT_SYSTEM_PROMPT,
+            safetySettings: [
+                { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+                { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+                { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+                { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
             ],
-            max_output_tokens: 12_000,
-            metadata: { feature: "kloner_ai_edit", uid, requestId: input.requestId },
+            generationConfig: {
+                maxOutputTokens: 4096,
+                temperature: mode === "imagery" ? 0.6 : 0.3,
+            },
         });
 
-        const raw = extractTextFromResponse(resp);
-        if (!raw) {
+        const result = await model.generateContent({
+            contents: [{ role: "user", parts: [{ text: user }] }],
+        });
+
+        const response = result?.response as any;
+
+        const raw = (response?.text?.()?.trim?.() ?? "") as string;
+
+        const debug = {
+            requestId: input.requestId,
+            model: GEMINI_MODEL,
+            hasResponse: Boolean(response),
+            hasText: Boolean(raw),
+            rawSnippet: safeSnippet(raw, 600),
+            // best-effort metadata (varies by SDK/version)
+            candidates: Array.isArray(response?.candidates)
+                ? response.candidates.map((c: any) => ({
+                    finishReason: c?.finishReason || null,
+                    safetyRatings: c?.safetyRatings || null,
+                    tokenCount: c?.tokenCount || null,
+                }))
+                : null,
+            promptFeedback: response?.promptFeedback || null,
+            usageMetadata: response?.usageMetadata || null,
+        };
+
+        const parsed = parseModelOutput(raw, input.html);
+
+        if (!parsed.ok) {
             return {
-                ok: false,
-                afterHtml: input.html,
-                summary: "AI edit failed; left the block unchanged.",
-                errorCode: "MODEL_EMPTY",
-                errorStatus: 502,
-                userError: "AI edit failed. No changes were applied.",
+                ...parsed,
+                debug,
             };
         }
 
-        const summaryMatch = raw.match(/^SUMMARY:\s*(.+)$/m);
-        const summary = summaryMatch && summaryMatch[1].trim() ? summaryMatch[1].trim() : "Minimal changes applied.";
+        parsed.afterHtml = stripExampleDotComAssets(parsed.afterHtml);
 
-        let htmlSection = raw;
-        const htmlMarkerIdx = raw.toLowerCase().indexOf("html:");
-        if (htmlMarkerIdx !== -1) htmlSection = raw.slice(htmlMarkerIdx + "html:".length).trim();
-
-        const afterHtml = htmlSection.trim();
-        if (!afterHtml) {
-            return {
-                ok: false,
-                afterHtml: input.html,
-                summary: "AI edit failed; left the block unchanged.",
-                errorCode: "MODEL_HTML_EMPTY",
-                errorStatus: 502,
-                userError: "AI edit failed. No changes were applied.",
-            };
-        }
-
-        return { ok: true, afterHtml, summary };
+        return {
+            ...parsed,
+            debug,
+        };
     } catch (err: any) {
-        const status: number | undefined = err?.status ?? err?.response?.status;
-        const message: string = err?.error?.message ?? err?.message ?? String(err);
+        const classified = classifyGeminiError(err, input.requestId);
 
-        const lower = String(message || "").toLowerCase();
-        const looksLikeSafetyReject =
-            lower.includes("rejected by the safety system") ||
-            lower.includes("safety system") ||
-            lower.includes("policy") ||
-            status === 403;
+        console.error("[ai-edit][gemini] call failed", {
+            requestId: input.requestId,
+            uid: input.uid,
+            model: GEMINI_MODEL,
+            status: classified.status,
+            code: classified.code,
+            message: String(err?.message || err),
+            stack: err?.stack || null,
+        });
 
         return {
             ok: false,
             afterHtml: input.html,
             summary: "AI edit failed; left the block unchanged.",
-            errorCode: looksLikeSafetyReject ? "SAFETY_REJECTED" : "OPENAI_ERROR",
-            errorStatus: status || 502,
-            userError: looksLikeSafetyReject ? friendlySafetyMessage(input.requestId).user : "AI edit failed. No changes were applied.",
+            errorCode: classified.code,
+            errorStatus: classified.status,
+            userError: classified.userMessage,
+            debug: {
+                requestId: input.requestId,
+                model: GEMINI_MODEL,
+                status: classified.status,
+                code: classified.code,
+                message: String(err?.message || err),
+            },
         };
     }
 }
+
+
+/* =========================
+   Misc helpers
+   ========================= */
 
 function normalizeCreatedAtToIso(raw: any): string | null {
     try {
@@ -1305,6 +1160,10 @@ function normalizeCreatedAtToIso(raw: any): string | null {
         return null;
     }
 }
+
+/* =========================
+   POST handler
+   ========================= */
 
 async function handlePost(req: NextRequest) {
     return requireSessionAndMaybeCsrf(req, async ({ uid, req }) => {
@@ -1323,7 +1182,9 @@ async function handlePost(req: NextRequest) {
         const body = (await req.json()) as Partial<AiEditRequestBody>;
         const requestId = String(body.requestId || "").trim() || randomUUID();
 
-        const renderId = body.renderId?.trim();
+        // PATCH: normalize renderId from alternate keys
+        const renderId = normalizeRenderIdFromBody(body);
+
         const html = body.html ?? "";
         const mode: "code" | "imagery" = body.mode === "imagery" ? "imagery" : "code";
 
@@ -1342,7 +1203,17 @@ async function handlePost(req: NextRequest) {
         let modelPrompt = "";
 
         if (!renderId || !html) {
-            return NextResponse.json({ error: "renderId and html are required" }, { status: 400 });
+            return NextResponse.json(
+                {
+                    error: "renderId and html are required",
+                    requestId,
+                    debug: {
+                        renderIdKeysSeen: renderIdDebugKeys(body),
+                        hasHtml: Boolean(String(html || "").trim()),
+                    },
+                },
+                { status: 400 }
+            );
         }
 
         if (action === "create_page") {
@@ -1384,37 +1255,9 @@ async function handlePost(req: NextRequest) {
             tier = "free";
         }
 
-        // Safety gate BEFORE credits
-        try {
-            await assertPromptSafe(rawUserPrompt || "create_page");
-        } catch (err: any) {
-            const code = err?.code || "MODERATION_ERROR";
-
-            if (code === "PROMPT_UNSAFE") {
-                await recordAbuseAndMaybeAlert({
-                    db,
-                    uid,
-                    userEmail,
-                    reason: "PROMPT_UNSAFE (moderation flagged)",
-                    requestId,
-                    promptSnippet: rawUserPrompt,
-                    ip,
-                    ua,
-                });
-
-                const friendly = friendlySafetyMessage(requestId);
-                return NextResponse.json({ error: friendly.user, requestId }, { status: 400 });
-            }
-
-            return NextResponse.json(
-                { error: "AI editing is temporarily unavailable due to a safety system error. Try again later." },
-                { status: 503 }
-            );
-        }
-
         const now = new Date();
 
-        // Reserve credits
+        // Reserve credits (Gemini safety may block; we refund on block)
         let creditsRemaining: number | null = null;
         let creditsLimit: number | null = null;
 
@@ -1425,7 +1268,7 @@ async function handlePost(req: NextRequest) {
             mode,
             pageId: action === "create_page" ? String(body.pageId || "").trim() || undefined : undefined,
             slug: action === "create_page" ? String(body.slug || "").trim() || undefined : undefined,
-            userPrompt: rawUserPrompt, // the "question"
+            userPrompt: rawUserPrompt,
             ipHash,
             ua,
         };
@@ -1459,8 +1302,8 @@ async function handlePost(req: NextRequest) {
             return NextResponse.json({ error: "Service temporarily unavailable. Try again shortly.", requestId }, { status: 503 });
         }
 
-        // Run model
-        const modelResult = await runAiEditModel({
+        // Run Gemini model
+        const modelResult = await runAiEditModelGemini({
             html,
             prompt: modelPrompt,
             uid,
@@ -1469,12 +1312,13 @@ async function handlePost(req: NextRequest) {
         });
 
         if (!modelResult.ok) {
+            // Safety rejection: record abuse
             if (modelResult.errorCode === "SAFETY_REJECTED") {
                 await recordAbuseAndMaybeAlert({
                     db,
                     uid,
                     userEmail,
-                    reason: "SAFETY_REJECTED (model response blocked)",
+                    reason: "SAFETY_REJECTED (gemini blocked)",
                     requestId,
                     promptSnippet: rawUserPrompt,
                     ip,
@@ -1482,6 +1326,7 @@ async function handlePost(req: NextRequest) {
                 });
             }
 
+            // Always refund on model failure
             await refundAiEditCreditsInline({
                 db,
                 uid,
@@ -1510,84 +1355,10 @@ async function handlePost(req: NextRequest) {
             );
         }
 
-        // Materialize images + strip placeholder assets (critical)
-        let afterHtml = modelResult.afterHtml;
-        let imageDebug: ImageDebug = {
-            imageSlotsFound: 0,
-            imageSlotsMaterialized: 0,
-            imageUrls: [],
-        };
+        // Strip placeholder assets (critical)
+        let afterHtml = stripExampleDotComAssets(modelResult.afterHtml);
 
-        // Strip immediately, even before image pipeline, because model can inject example.com directly
-        afterHtml = stripExampleDotComAssets(afterHtml);
-
-        try {
-            const result = await materializeAiImages(afterHtml, {
-                uid,
-                renderId: renderId!,
-                originalHtml: html,
-            });
-
-            afterHtml = result.html;
-            imageDebug = result.debug;
-
-            // Strip again after image pipeline (belt + suspenders)
-            afterHtml = stripExampleDotComAssets(afterHtml);
-
-            if (
-                imageDebug.imageSlotsFound > 0 &&
-                imageDebug.imageSlotsMaterialized === 0 &&
-                (imageDebug.imageErrorStatus === 400 ||
-                    imageDebug.imageErrorStatus === 401 ||
-                    imageDebug.imageErrorStatus === 403)
-            ) {
-                await recordAbuseAndMaybeAlert({
-                    db,
-                    uid,
-                    userEmail,
-                    reason: `IMAGE_BLOCKED (${imageDebug.imageErrorStatus})`,
-                    requestId,
-                    promptSnippet: safeSnippet(imageDebug.imageErrorMessage || rawUserPrompt, 220),
-                    ip,
-                    ua,
-                });
-
-                await refundAiEditCreditsInline({
-                    db,
-                    uid,
-                    tier,
-                    cost: 5,
-                    now: new Date(),
-                    requestId,
-                    reason: `image_blocked_${imageDebug.imageErrorStatus || "unknown"}`,
-                    errorCode: "IMAGE_BLOCKED",
-                    errorStatus: imageDebug.imageErrorStatus,
-                });
-
-                try {
-                    const b = await ensureAiEditBucketInline({ db, uid, tier, now: new Date() });
-                    creditsRemaining = b.remaining;
-                    creditsLimit = b.limit;
-                } catch { }
-
-                return NextResponse.json(
-                    {
-                        error:
-                            `We couldn’t generate one of the requested images due to safety filters. ` +
-                            `Try a simpler, more general description and run it again. ` +
-                            `(Request ID: ${requestId})`,
-                        meta: { tier, creditsRemaining, creditsLimit },
-                        debug: imageDebug,
-                        requestId,
-                    },
-                    { status: imageDebug.imageErrorStatus || 400 }
-                );
-            }
-        } catch (err) {
-            console.error("[ai-edit] materializeAiImages failed", err);
-        }
-
-        // Cleanup any remaining slots/comments, then strip placeholder assets one last time
+        // Cleanup any remaining slot placeholders/comments from legacy pipelines (no image generation here)
         afterHtml = afterHtml
             .replace(/__KLONER_IMAGE_SLOT_\d+__/g, "")
             .replace(/<!--\s*KLONER_IMAGE_SLOT_\d+\s*:[\s\S]*?-->/g, "");
@@ -1615,7 +1386,6 @@ async function handlePost(req: NextRequest) {
                 {
                     error: "No changes were applied for this request.",
                     meta: { tier, creditsRemaining, creditsLimit },
-                    debug: imageDebug,
                     requestId,
                 },
                 { status: 422 }
@@ -1650,6 +1420,8 @@ async function handlePost(req: NextRequest) {
                 createdAt: now,
                 uid,
                 requestId,
+                provider: "gemini",
+                model: GEMINI_MODEL,
             });
 
             try {
@@ -1704,13 +1476,16 @@ async function handlePost(req: NextRequest) {
             {
                 suggestions,
                 meta: { tier, creditsRemaining, creditsLimit },
-                debug: imageDebug,
                 requestId,
             },
             { status: 200 }
         );
     });
 }
+
+/* =========================
+   GET handler
+   ========================= */
 
 async function handleGet(req: NextRequest) {
     return requireSessionAndMaybeCsrf(req, async ({ uid, req }) => {
@@ -1723,10 +1498,30 @@ async function handleGet(req: NextRequest) {
         }
 
         const { searchParams } = new URL(req.url);
-        const renderId = searchParams.get("renderId")?.trim();
+
+        // PATCH: accept renderId from multiple query params
+        const renderId =
+            searchParams.get("renderId")?.trim() ||
+            searchParams.get("renderDocId")?.trim() ||
+            searchParams.get("id")?.trim() ||
+            searchParams.get("docId")?.trim() ||
+            "";
 
         if (!renderId) {
-            return NextResponse.json({ error: "renderId is required" }, { status: 400 });
+            return NextResponse.json(
+                {
+                    error: "renderId is required",
+                    debug: {
+                        query: {
+                            renderId: searchParams.get("renderId"),
+                            renderDocId: searchParams.get("renderDocId"),
+                            id: searchParams.get("id"),
+                            docId: searchParams.get("docId"),
+                        },
+                    },
+                },
+                { status: 400 }
+            );
         }
 
         if (!db) {
