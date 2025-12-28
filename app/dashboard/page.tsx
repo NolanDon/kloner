@@ -347,7 +347,7 @@ function UrlForm({ uid, onAdded, disabled }: UrlFormProps) {
             </div>
             {err ? <p className="mt-2 text-sm text-red-600">{err}</p> : null}
             <p className="mt-2 text-xs text-neutral-500">
-                We queue a capture and store a base layout under your account.
+                We screen capture your site for you to generate websites from.
             </p>
         </form>
     );
