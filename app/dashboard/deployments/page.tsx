@@ -38,7 +38,6 @@ import PreviewEditor, {
     ViewMode,
 } from "@/components/PreviewEditor";
 import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
-import { RenderDoc } from "../view/page";
 import {
     extractArchivedPageIdsFromRender,
     fetchRenderForDeployment,
@@ -50,6 +49,7 @@ import {
     secureHtmlForPreviewIframe,
     withArchivedPageIds,
 } from "@/components/helpers";
+import { RenderDoc } from "../view/DashboardView";
 
 const ACCENT = "#f55f2a";
 

@@ -1,98 +1,15 @@
-// app/page.tsx
-"use client";
+import type { Metadata } from "next";
+import HomeClient from "./HomeClient";
 
-import NavBar from "@/components/NavBar";
-import Hero from "@/components/Hero";
-import StatsStrip from "@/components/StatsStrip";
-import HowItWorks from "@/components/HowItWorks";
-import Stories from "@/components/Stories";
-import WhatsIncluded from "@/components/WhatsIncluded";
-import WhatWeTest from "@/components/WhatWeTest";
-import Footer from "@/components/Footer";
-import FAQSection from "@/components/FaqSection";
-import ParallaxTypeHero from "@/components/ParallaxTypeHero";
-import MembershipHero from "@/components/MembershipHero";
-import PreviewDashboard from "@/components/StartsWithLabs";
-import KlonerExamples from "@/components/KlonerExamples";
+export const metadata: Metadata = {
+  title: "Kloner – AI Website Cloner & Builder",
+  description:
+    "Kloner is an AI-powered website cloner and builder that lets you copy existing websites, clone landing pages, and turn them into fully editable, deployable HTML sites. Clone any website layout, rewrite content, customize design, and publish instantly.",
+  alternates: {
+    canonical: "https://kloner.app/",
+  },
+};
 
 export default function Page() {
-  return (
-    <>
-      <NavBar />
-
-      <main className="h-screen snap-y snap-mandatory scroll-smooth">
-        <section
-          id="hero"
-          className="snap-start snap-always min-h-screen flex flex-col"
-        >
-          <Hero />
-        </section>
-
-        <section
-          id="preview"
-          className="snap-start snap-always min-h-screen flex flex-col"
-        >
-          <PreviewDashboard />
-        </section>
-
-        <section
-          id="stats"
-          className="snap-start snap-always flex flex-col"
-        >
-          <StatsStrip />
-        </section>
-
-        <section id="how-it-works" className="snap-none">
-          <HowItWorks />
-        </section>
-
-        <section id="stories" className="snap-start snap-always">
-          <Stories />
-        </section>
-
-        <section id="examples" className="snap-start snap-always">
-          <KlonerExamples />
-        </section>
-
-        <section
-          id="whats-included"
-          className="snap-start snap-always min-h-screen flex flex-col"
-        >
-          <WhatsIncluded />
-        </section>
-
-        {/* <section
-          id="membership"
-          className="snap-start snap-always min-h-screen flex flex-col"
-        >
-          <MembershipHero />
-        </section> */}
-
-        <section
-          id="faq"
-          className="snap-start snap-always min-h-screen flex flex-col"
-        >
-          <FAQSection />
-        </section>
-
-        <section
-          id="what-we-test"
-          className="snap-start snap-always flex flex-col"
-        >
-          <WhatWeTest />
-        </section>
-
-        <section
-          id="parallax"
-          className="snap-start snap-always min-h-screen flex flex-col"
-        >
-          <ParallaxTypeHero />
-        </section>
-
-        <section id="footer" className="snap-start snap-always flex flex-col">
-          <Footer />
-        </section>
-      </main>
-    </>
-  );
+  return <HomeClient />;
 }

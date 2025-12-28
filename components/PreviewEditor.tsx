@@ -645,7 +645,7 @@ export function sanitizeExportHtml(html: string, meta?: SeoMeta): string {
 import { doc, getDocFromServer, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase"; // or wherever your db is
 import type { User as FirebaseUser } from "firebase/auth";
-import { RenderDoc } from "@/app/dashboard/view/page";
+import { RenderDoc } from "@/app/dashboard/view/DashboardView";
 import { useAuth } from "@/src/hooks/useAuth";
 import { Camera, Code2, Eye, EyeOff, FileText, Images, Loader2, Maximize2, MessageSquare, Minimize2, Monitor, Palette, Redo2, Rocket, RotateCcw, RotateCw, Smartphone, Tablet, Trash2Icon, Undo2 } from "lucide-react";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
