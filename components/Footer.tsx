@@ -1,48 +1,97 @@
-'use client';
+// components/Footer.tsx
+// Server-first footer that always outputs crawlable <a href="..."> links in the initial HTML.
+// - Removes '/dashboard/docs#...' for public SEO. Uses real external links for social.
+// - Keeps mobile accordion via <details>/<summary> (no client JS needed, still crawlable).
+// - Always includes a non-collapsible "Quick links" row for crawlers and users.
 
-import { useEffect, useId, useState } from 'react';
+import React from "react";
 
-// Map footer labels → href. Only use /docs when there is no dedicated page.
-const FOOTER_LINKS: Record<string, string> = {
-  // Product
-  'How it Works': '/#how',
-  "What’s Included": '/dashboard/docs#features',
-  'Live Preview': '/dashboard/view',
+type LinkItem = { label: string; href: string; external?: boolean };
 
-  // Company
-  About: '/dashboard/docs#about',
-  Contact: '/dashboard/docs#contact',
-  FAQs: '/#faq',
-
-  // Compare
-  'Cloning vs Rebuild': '/dashboard/docs#cloning-vs-rebuild',
-  'Vercel vs Netlify': '/dashboard/docs#vercel-vs-netlify',
-  'Static vs SSR': '/dashboard/docs#static-vs-ssr',
-  'Export Options': '/dashboard/docs#export-options-card',
-  Pricing: '/price',
-
-  // Library (already present in docs)
-  'Routing Guides': '/dashboard/docs#routing-guides',
-  'SEO Templates': '/dashboard/docs#seo-templates',
-  'Font Subsetting': '/dashboard/docs#font-subsetting',
-  'Image Optimization': '/dashboard/docs#image-optimization',
-  'Deploy Checklists': '/dashboard/docs#deploy-checklists',
-
-  // Partnerships
-  'For Creators': '/dashboard/docs#for-creators',
-  Affiliates: '/dashboard/docs#affiliates',
-  'For Business': '/dashboard/docs#for-business',
-
-  // Connect – stub sections in docs
-  'X/Twitter': '/dashboard/docs#x-twitter',
-  Instagram: '/dashboard/docs#instagram',
-  LinkedIn: '/dashboard/docs#linkedin',
+const EXTERNAL_SOCIAL: Record<string, string> = {
+  "X/Twitter": "https://x.com/klonerapp",
+  Instagram: "https://instagram.com/klonerapp",
+  LinkedIn: "https://linkedin.com/company/klonerapp",
 };
 
-function getFooterHref(label: string): string {
+const FOOTER_SECTIONS: Array<{ title: string; items: LinkItem[]; note?: { atIndex: number; text: string } }> = [
+  {
+    title: "Product",
+    items: [
+      { label: "How it Works", href: "/#how" },
+      { label: "What’s Included", href: "/#features" },
+      { label: "Live Preview", href: "/dashboard/view" }, // keep if public; if gated, swap to /demo
+    ],
+  },
+  {
+    title: "Company",
+    items: [
+      { label: "About", href: "/about" },
+      { label: "Contact", href: "/contact" },
+      { label: "FAQs", href: "/#faq" },
+    ],
+    note: { atIndex: 1, text: "We’re hiring!" },
+  },
+  {
+    title: "Compare",
+    items: [
+      { label: "Cloning vs Rebuild", href: "/docs/cloning-vs-rebuild" },
+      { label: "Vercel vs Netlify", href: "/docs/vercel-vs-netlify" },
+      { label: "Static vs SSR", href: "/docs/static-vs-ssr" },
+      { label: "Export Options", href: "/docs/export-options" },
+      { label: "Pricing", href: "/price" },
+    ],
+  },
+  {
+    title: "Library",
+    items: [
+      { label: "Routing Guides", href: "/docs/routing-guides" },
+      { label: "SEO Templates", href: "/docs/seo-templates" },
+      { label: "Font Subsetting", href: "/docs/font-subsetting" },
+      { label: "Image Optimization", href: "/docs/image-optimization" },
+      { label: "Deploy Checklists", href: "/docs/deploy-checklists" },
+    ],
+  },
+  {
+    title: "Partnerships",
+    items: [
+      { label: "For Creators", href: "/docs/for-creators" },
+      { label: "Affiliates", href: "/docs/affiliates" },
+      { label: "For Business", href: "/docs/for-business" },
+      // Social is external (real outgoing links)
+      { label: "X/Twitter", href: EXTERNAL_SOCIAL["X/Twitter"], external: true },
+      { label: "Instagram", href: EXTERNAL_SOCIAL["Instagram"], external: true },
+      { label: "LinkedIn", href: EXTERNAL_SOCIAL["LinkedIn"], external: true },
+    ],
+  },
+];
+
+function slugify(label: string) {
+  return label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+}
+
+function isExternalHref(href: string) {
+  return /^https?:\/\//i.test(href);
+}
+
+function FooterLink({ item }: { item: LinkItem }) {
+  const external = item.external || isExternalHref(item.href);
+  if (external) {
+    return (
+      <a
+        href={item.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="hover:text-neutral-800 text-neutral-700 text-[15px] md:text-[inherit]"
+      >
+        {item.label}
+      </a>
+    );
+  }
   return (
-    FOOTER_LINKS[label] ??
-    `/dashboard/docs#${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
+    <a href={item.href} className="hover:text-neutral-800 text-neutral-800 text-[15px] md:text-[inherit]">
+      {item.label}
+    </a>
   );
 }
 
@@ -61,9 +110,9 @@ export default function Footer() {
               "
               style={{
                 backgroundImage:
-                  'linear-gradient(90deg, #7a2e18 0%, #d44b1c 30%, #ff6f3d 60%, #ffb36b 100%)',
-                backgroundSize: '100% 100%',
-                backgroundRepeat: 'no-repeat',
+                  "linear-gradient(90deg, #7a2e18 0%, #d44b1c 30%, #ff6f3d 60%, #ffb36b 100%)",
+                backgroundSize: "100% 100%",
+                backgroundRepeat: "no-repeat",
               }}
             >
               kloner
@@ -71,162 +120,112 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="mt-6 md:mt-8 grid gap-4 md:gap-10 md:grid-cols-5 text-sm">
-          <Column
-            title="Product"
-            items={['How it Works', 'What’s Included', 'Live Preview']}
-          />
-          <Column
-            title="Company"
-            items={['About', 'Contact', 'FAQs']}
-            noteIndex={1}
-            note="We’re hiring!"
-          />
-          <Column
-            title="Compare"
-            items={[
-              'Cloning vs Rebuild',
-              'Vercel vs Netlify',
-              'Static vs SSR',
-              'Export Options',
-              'Pricing',
-            ]}
-          />
-          <Column
-            title="Library"
-            items={[
-              'Routing Guides',
-              'SEO Templates',
-              'Font Subsetting',
-              'Image Optimization',
-              'Deploy Checklists',
-            ]}
-          />
-          <Column
-            title="Partnerships"
-            items={['For Creators', 'Affiliates', 'For Business']}
-            extraGroup={{ heading: 'Connect', items: ['X/Twitter', 'Instagram', 'LinkedIn'] }}
-          />
+        {/* Always-visible quick links to guarantee crawler-visible internal outlinks */}
+        <nav aria-label="Footer quick links" className="mt-6 md:mt-8">
+          <ul className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm">
+            <li>
+              <a href="/" className="text-neutral-700 hover:text-neutral-900">
+                Home
+              </a>
+            </li>
+            <li>
+              <a href="/price" className="text-neutral-700 hover:text-neutral-900">
+                Pricing
+              </a>
+            </li>
+            <li>
+              <a href="/docs" className="text-neutral-700 hover:text-neutral-900">
+                Docs
+              </a>
+            </li>
+            <li>
+              <a href="/login" className="text-neutral-700 hover:text-neutral-900">
+                Login
+              </a>
+            </li>
+            <li>
+              <a href="/privacy" className="text-neutral-700 hover:text-neutral-900">
+                Privacy
+              </a>
+            </li>
+            <li>
+              <a href="/terms" className="text-neutral-700 hover:text-neutral-900">
+                Terms
+              </a>
+            </li>
+          </ul>
+        </nav>
+
+        <div className="mt-8 grid gap-4 md:gap-10 md:grid-cols-5 text-sm">
+          {FOOTER_SECTIONS.map((sec) => (
+            <FooterSection key={sec.title} title={sec.title} items={sec.items} note={sec.note} />
+          ))}
         </div>
 
         <div className="mt-8 md:mt-10 text-xs text-neutral-500">
-          © 2025 Kloner, Inc. All rights reserved.
+          © {new Date().getFullYear()} Kloner, Inc. All rights reserved.
         </div>
       </div>
     </footer>
   );
 }
 
-function Column({
+function FooterSection({
   title,
   items,
-  noteIndex,
   note,
-  extraGroup,
 }: {
   title: string;
-  items: string[];
-  noteIndex?: number;
-  note?: string;
-  extraGroup?: { heading: string; items: string[] };
+  items: LinkItem[];
+  note?: { atIndex: number; text: string };
 }) {
-  const sectionId = useId();
-  const [open, setOpen] = useState(false);
-  const [isDesktop, setIsDesktop] = useState(false);
-
-  useEffect(() => {
-    const mq = window.matchMedia?.('(min-width: 768px)');
-    const apply = () => setIsDesktop(!!mq?.matches);
-    apply();
-    mq?.addEventListener?.('change', apply);
-    return () => mq?.removeEventListener?.('change', apply);
-  }, []);
-
-  useEffect(() => {
-    if (isDesktop) setOpen(true);
-  }, [isDesktop]);
+  const id = `footer-${slugify(title)}`;
 
   return (
     <div className="border-b border-neutral-200/70 py-3 last:border-b-0 md:border-none md:py-0">
-      <button
-        type="button"
-        className="
-          w-full md:w-auto flex items-center justify-between gap-3
-          py-3 md:py-0
-          text-neutral-800 md:text-neutral-700
-          md:mb-3
-        "
-        aria-controls={sectionId}
-        aria-expanded={open}
-        onClick={() => !isDesktop && setOpen((v) => !v)}
-      >
-        <span className="text-base md:text-[inherit]">{title}</span>
-        <svg
-          viewBox="0 0 24 24"
-          className={`h-5 w-5 md:hidden transition-transform ${open ? 'rotate-180' : 'rotate-0'
-            }`}
-          stroke="currentColor"
-          fill="none"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
+      {/* <details> is crawlable and works without JS. Keep open on desktop via CSS. */}
+      <details className="group md:open" open>
+        <summary
+          className="
+            list-none cursor-pointer select-none
+            w-full md:w-auto flex items-center justify-between gap-3
+            md:mb-3 py-3 md:py-0
+            text-neutral-800 md:text-neutral-700
+          "
+          aria-controls={id}
         >
-          <path d="M6 9l6 6 6-6" />
-        </svg>
-      </button>
+          <span className="text-base md:text-[inherit]">{title}</span>
 
-      <div
-        id={sectionId}
-        className={`
-          overflow-hidden transition-all
-          md:overflow-visible
-          ${open ? 'max-h-[1000px] opacity-100 pb-2 md:pb-0' : 'max-h-0 opacity-90 md:max-h-none'}
-        `}
-      >
-        <ul className="space-y-3 pb-1 md:pb-0">
-          {items.map((label, i) => (
-            <li key={label} className="flex items-start gap-2">
-              <Chevron />
-              <a
-                href={getFooterHref(label)}
-                className="
-                  hover:text-neutral-800 text-neutral-800
-                  text-[15px] md:text-[inherit]
-                "
-              >
-                {label}
-              </a>
-              {noteIndex === i && note ? (
-                <span className="ml-2 text-[11px] md:text-[11px] text-[#ff6f3d] whitespace-nowrap">
-                  [{note}]
-                </span>
-              ) : null}
-            </li>
-          ))}
-        </ul>
+          <svg
+            viewBox="0 0 24 24"
+            className="h-5 w-5 md:hidden transition-transform group-open:rotate-180"
+            stroke="currentColor"
+            fill="none"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </summary>
 
-        {extraGroup ? (
-          <div className="pt-4 md:pt-5">
-            <div className="mb-3 text-neutral-700 md:text-neutral-700">
-              {extraGroup.heading}
-            </div>
-            <ul className="space-y-3">
-              {extraGroup.items.map((label) => (
-                <li key={label} className="flex items-start gap-2">
-                  <Chevron />
-                  <a
-                    href={getFooterHref(label)}
-                    className="hover:text-neutral-800 text-neutral-700 text-[15px]"
-                  >
-                    {label}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-      </div>
+        <div id={id} className="md:block">
+          <ul className="space-y-3 pb-2 md:pb-0">
+            {items.map((item, i) => (
+              <li key={`${item.label}-${item.href}`} className="flex items-start gap-2">
+                <Chevron />
+                <FooterLink item={item} />
+                {note && note.atIndex === i ? (
+                  <span className="ml-2 text-[11px] md:text-[11px] text-[#ff6f3d] whitespace-nowrap">
+                    [{note.text}]
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </details>
     </div>
   );
 }
