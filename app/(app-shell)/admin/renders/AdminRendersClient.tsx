@@ -885,6 +885,8 @@ export default function AdminRendersClient() {
                                             <div className="h-full w-full rounded-2xl border border-neutral-200 bg-white shadow-sm flex flex-col min-h-0 overflow-hidden">
                                                 <div className="flex-1 min-h-0 overflow-auto">
                                                     <Image
+                                                        width={1024}
+                                                        height={1024}
                                                         src={screenshotUrl}
                                                         alt="Render screenshot"
                                                         className="block h-auto rounded-xl border border-neutral-200"

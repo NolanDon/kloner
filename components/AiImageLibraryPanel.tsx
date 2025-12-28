@@ -247,6 +247,8 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId }: Props) {
                             <div className="relative aspect-[4/3] w-full max-h-24 overflow-hidden bg-neutral-900/5">
                                 <Image
                                     src={item.url}
+                                    width={256}
+                                    height={192}
                                     alt={item.name}
                                     className="h-full w-full object-cover transition group-hover:scale-[1.08]"
                                 />

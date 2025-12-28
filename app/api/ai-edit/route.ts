@@ -952,7 +952,7 @@ function parseModelOutput(raw: string, fallbackHtml: string): AiEditModelResult 
             afterHtml: fallbackHtml,
             summary: "AI edit failed; left the block unchanged.",
             errorCode: "MODEL_EMPTY",
-            errorStatus: 502,
+            errorStatus: 506,
             userError: "AI edit failed. No changes were applied.",
         };
     }
