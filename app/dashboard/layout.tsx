@@ -42,6 +42,7 @@ type NavItemConfig = {
     icon?: React.ComponentType<React.SVGProps<SVGSVGElement>>;
     adminOnly?: boolean;
     supportOnly?: boolean; // supportAgent or admin
+    external?: boolean; // NEW
 };
 
 type NavSectionConfig = {
@@ -49,14 +50,20 @@ type NavSectionConfig = {
     items: NavItemConfig[];
 };
 
+function isExternalHref(href: string): boolean {
+    return /^https?:\/\//i.test(href);
+}
+
 const BASE_NAV_SECTIONS: NavSectionConfig[] = [
     {
         label: "General",
         items: [
             { href: "/", label: "Home", icon: Home },
             { href: "/affiliate", label: "Affiliate Hub", icon: Users },
-            // NEW: community templates link
             { href: "/community-builds", label: "Community templates", icon: Sparkles },
+
+            // external links
+            { href: "https://www.youtube.com/@klonerapp", label: "Youtube", icon: Sparkles, external: true },
         ],
     },
     {
@@ -160,31 +167,62 @@ function NavItem({
     icon: Icon,
     active,
     unreadCount,
+    external,
 }: {
     href: string;
     label: string;
     icon?: React.ComponentType<React.SVGProps<SVGSVGElement>>;
     active: boolean;
     unreadCount?: number;
+    external?: boolean;
 }) {
-    const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    const showBadge = typeof unreadCount === "number" && unreadCount > 0;
+    const isExt = !!external || isExternalHref(href);
+
+    const handleClickLink = (e: React.MouseEvent<HTMLAnchorElement>) => {
         if (active) {
             e.preventDefault();
             e.stopPropagation();
         }
     };
 
-    const showBadge = typeof unreadCount === "number" && unreadCount > 0;
+    const baseClass = `flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${active
+            ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
+            : "text-neutral-700 hover:bg-neutral-50"
+        }`;
+
+    // External: render <a>, not Next <Link>.
+    if (isExt) {
+        return (
+            <a
+                href={href}
+                onClick={handleClickLink}
+                aria-disabled={active}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={baseClass}
+            >
+                {Icon && (
+                    <span className="grid h-7 w-7 place-items-center rounded-md border border-neutral-200 bg-white">
+                        <Icon className="h-3.5 w-3.5" />
+                    </span>
+                )}
+                <span className="truncate">{label}</span>
+                {showBadge && (
+                    <span className="ml-auto inline-flex min-w-[18px] items-center justify-center rounded-full bg-emerald-500 px-2 py-[1.5px] text-[10px] font-semibold text-white">
+                        {unreadCount}
+                    </span>
+                )}
+            </a>
+        );
+    }
 
     return (
         <Link
             href={href}
-            onClick={handleClick}
+            onClick={handleClickLink}
             aria-disabled={active}
-            className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${active
-                ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
-                : "text-neutral-700 hover:bg-neutral-50"
-                }`}
+            className={baseClass}
         >
             {Icon && (
                 <span className="grid h-7 w-7 place-items-center rounded-md border border-neutral-200 bg-white">
@@ -310,8 +348,9 @@ function SidebarShell({
                                     href={item.href}
                                     label={item.label}
                                     icon={item.icon}
-                                    active={navItemIsActive(pathname, item.href)}
+                                    active={!item.external && !isExternalHref(item.href) ? navItemIsActive(pathname, item.href) : false}
                                     unreadCount={item.href === "/support/agent" ? supportUnreadCount : undefined}
+                                    external={item.external}
                                 />
                             ))}
                         </div>
@@ -421,8 +460,9 @@ function MobileHeader({
                             <div className="h-px bg-neutral-200/80" />
 
                             <ul className="px-2 py-2">
-                                {flatItems.map(({ href, label, icon: Icon }) => {
-                                    const active = navItemIsActive(pathname, href);
+                                {flatItems.map(({ href, label, icon: Icon, external }) => {
+                                    const isExt = !!external || isExternalHref(href);
+                                    const active = !isExt ? navItemIsActive(pathname, href) : false;
 
                                     const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
                                         if (active) {
@@ -436,22 +476,43 @@ function MobileHeader({
 
                                     return (
                                         <li key={href}>
-                                            <a
-                                                href={href}
-                                                onClick={handleClick}
-                                                aria-disabled={active}
-                                                className={`flex items-center gap-3 rounded-xl px-3 py-3 text-[15px] ${active
-                                                    ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
-                                                    : "text-neutral-800 hover:bg-neutral-50"
-                                                    }`}
-                                            >
-                                                {Icon && (
-                                                    <span className="grid h-8 w-8 place-items-center rounded-lg border border-neutral-200 bg-white">
-                                                        <Icon className="h-4 w-4" />
-                                                    </span>
-                                                )}
-                                                {label}
-                                            </a>
+                                            {isExt ? (
+                                                <a
+                                                    href={href}
+                                                    onClick={handleClick}
+                                                    aria-disabled={active}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className={`flex items-center gap-3 rounded-xl px-3 py-3 text-[15px] ${active
+                                                            ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
+                                                            : "text-neutral-800 hover:bg-neutral-50"
+                                                        }`}
+                                                >
+                                                    {Icon && (
+                                                        <span className="grid h-8 w-8 place-items-center rounded-lg border border-neutral-200 bg-white">
+                                                            <Icon className="h-4 w-4" />
+                                                        </span>
+                                                    )}
+                                                    {label}
+                                                </a>
+                                            ) : (
+                                                <a
+                                                    href={href}
+                                                    onClick={handleClick}
+                                                    aria-disabled={active}
+                                                    className={`flex items-center gap-3 rounded-xl px-3 py-3 text-[15px] ${active
+                                                            ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
+                                                            : "text-neutral-800 hover:bg-neutral-50"
+                                                        }`}
+                                                >
+                                                    {Icon && (
+                                                        <span className="grid h-8 w-8 place-items-center rounded-lg border border-neutral-200 bg-white">
+                                                            <Icon className="h-4 w-4" />
+                                                        </span>
+                                                    )}
+                                                    {label}
+                                                </a>
+                                            )}
                                         </li>
                                     );
                                 })}

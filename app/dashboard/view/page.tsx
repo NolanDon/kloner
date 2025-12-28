@@ -86,6 +86,7 @@ import { archiveRender, resolveStorageUrl, useResolvedImg } from "@/src/lib/rend
 import { AnimatePresence, motion } from "framer-motion";
 import { extractArchivedPageIdsFromRender, fetchRenderForDeployment, getArchivedRoutesForRender, persistArchivedPageIds, scrubArchivedRoutes, secureHtmlForPreviewIframe, withArchivedPageIds } from "@/components/helpers";
 import { recordDeployAnalytics } from "@/components/analytics";
+import Footer from "@/components/Footer";
 
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
@@ -4829,7 +4830,7 @@ export default function PreviewPage(): JSX.Element {
                         </div>
                     )
                 }
-            </div >
-        </main >
+            </div>
+        </main>
     );
 }

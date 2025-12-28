@@ -3,6 +3,7 @@
 
 import { useMemo, useState } from "react";
 import NavBar from "@/components/NavBar";
+import Footer from "@/components/Footer";
 
 const ACCENT = "#f55f2a";
 
@@ -378,6 +379,7 @@ export default function PricingPage(): JSX.Element {
                     </div>
                 </section>
             </div>
+            <Footer />
         </main>
     );
 }
