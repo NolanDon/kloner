@@ -25,101 +25,85 @@ type SignupPayload = {
   method?: string;
 };
 
-function buildWelcomeHtml(email: string, name: string | undefined) {
-  const accent = "#f55f2a";
-  const dark = "#111827";
-  const muted = "#6b7280";
+function buildWelcomeHtml(email: string, name?: string) {
   const safeName = name?.trim() || "there";
 
   return `
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charSet="utf-8" />
-    <title>Welcome to Kloner</title>
-  </head>
-  <body style="margin:0;padding:0;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
-    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#ffffff;padding:24px 0;">
-      <tr>
-        <td align="center">
-          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:640px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #fee2d5;">
-            <!-- HEADER -->
-            <tr>
-              <td style="padding:18px 24px;border-bottom:1px solid #fee2d5;background:${accent};">
-                <div style="display:flex;align-items:center;gap:12px;">
-                  <div style="height:32px;width:32px;border-radius:999px;background:#ffffff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:${accent};">
-                    K
-                  </div>
-                  <div>
-                    <div style="font-size:16px;font-weight:600;color:#ffffff;">Welcome to Kloner</div>
-                    <div style="font-size:12px;color:#ffe7dc;margin-top:2px;">Clone a site, customize it, and deploy in a few clicks.</div>
-                  </div>
-                </div>
-              </td>
-            </tr>
+<head>
+  <meta charset="utf-8" />
+  <title>Welcome to Kloner</title>
+</head>
+<body style="margin:0;padding:0;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111827;">
+  <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+    <tr>
+      <td align="center" style="padding:40px 16px;">
+        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:560px;">
+          <tr>
+            <td style="font-size:15px;line-height:1.65;">
+              <p style="margin:0 0 16px 0;">
+                Hey ${safeName},
+              </p>
 
-            <!-- BODY -->
-            <tr>
-              <td style="padding:24px 28px 8px 28px;">
-                <p style="margin:0 0 12px 0;font-size:14px;color:${dark};">
-                  Hi ${safeName},
-                </p>
-                <p style="margin:0 0 12px 0;font-size:13px;color:${muted};line-height:1.6;">
-                  Thanks for signing up for <strong>Kloner</strong>, your website cloner with one-click deploy.
-                </p>
-                <p style="margin:0 0 14px 0;font-size:13px;color:${muted};line-height:1.6;">
-                  Paste any public URL, capture a clean snapshot, and turn it into an editable project without touching the original site. Once you like the result, deploy it to your own space and keep iterating visually.
-                </p>
+              <p style="margin:0 0 16px 0;">
+                I’m Nolan — founder of Kloner.
+              </p>
 
-                <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0 4px 0;">
-                  <tr>
-                    <td>
-                      <a href="https://kloner.app/dashboard" style="display:inline-block;background:${accent};color:#ffffff;font-size:13px;font-weight:600;text-decoration:none;padding:10px 18px;border-radius:999px;">
-                        Open your Kloner dashboard
-                      </a>
-                    </td>
-                  </tr>
-                </table>
+              <p style="margin:0 0 16px 0;">
+                I built Kloner because setting up a site before you can even test an idea is usually the slowest, most frustrating part.
+              </p>
 
-                <p style="margin:16px 0 4px 0;font-size:12px;color:${dark};font-weight:600;">
-                  What you can do next:
-                </p>
-                <ul style="margin:4px 0 0 18px;padding:0;font-size:12px;color:${muted};line-height:1.6;">
-                  <li>Paste a URL and generate a base screenshot.</li>
-                  <li>Create editable previews that mirror the original layout.</li>
-                  <li>Swap text and assets to make it yours.</li>
-                  <li>Deploy with one click when you’re happy.</li>
-                </ul>
-              </td>
-            </tr>
+              <p style="margin:0 0 20px 0;">
+                Kloner is meant to remove that friction.
+              </p>
 
-            <!-- SUPPORT -->
-            <tr>
-              <td style="padding:12px 28px 20px 28px;">
-                <p style="margin:12px 0 6px 0;font-size:12px;color:${muted};">
-                  If you have any questions or need help with your first deployment, reply to this email or contact us at
-                  <a href="mailto:support@kloner.app" style="color:${accent};text-decoration:none;">support@kloner.app</a>.
-                </p>
-                <p style="margin:0;font-size:12px;color:${muted};">
-                  – The Kloner team
-                </p>
-              </td>
-            </tr>
+              <p style="margin:0 0 12px 0;">
+                Here are 3 good ways to start:
+              </p>
 
-            <!-- FOOTER -->
-            <tr>
-              <td style="padding:14px 28px;border-top:1px solid #fee2d5;background:#fff7f3;">
-                <div style="font-size:11px;color:#9ca3af;">
-                  This email was sent to ${email}. If you didn’t create a Kloner account, you can ignore this message.
-                </div>
-              </td>
-            </tr>
+              <ol style="margin:8px 0 24px 18px;padding:0;">
+                <li style="margin:6px 0;">
+                  <a href="https://kloner.app/dashboard/view" style="color:#2563eb;text-decoration:underline;">
+                    Clone a site you like
+                  </a>
+                </li>
+                <li style="margin:6px 0;">
+                  <a href="https://kloner.app/dashboard/view" style="color:#2563eb;text-decoration:underline;">
+                    Edit text, layout, and assets visually
+                  </a>
+                </li>
+                <li style="margin:6px 0;">
+                  <a href="https://kloner.app/dashboard/view" style="color:#2563eb;text-decoration:underline;">
+                    Deploy when it feels right
+                  </a>
+                </li>
+              </ol>
 
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
+              <p style="margin:0 0 20px 0;font-weight:600;">
+                P.S.: Why did you sign up? What are you hoping to get out of using Kloner?
+              </p>
+
+              <p style="margin:0 0 20px 0;">
+                Hit "Reply" and let me know, I read and reply to every email.
+              </p>
+
+              <p style="margin:0;">
+                — Nolan
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding-top:24px;font-size:12px;color:#9ca3af;">
+              This email was sent to ${email}.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
 </html>
 `;
 }
