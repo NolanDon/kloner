@@ -2,7 +2,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getAuth, onAuthStateChanged, getIdTokenResult, getIdToken } from "firebase/auth";
+import {
+    getAuth,
+    onAuthStateChanged,
+    getIdTokenResult,
+    getIdToken,
+} from "firebase/auth";
 import {
     ExternalLink,
     RefreshCw,
@@ -17,7 +22,7 @@ import {
     LayoutTemplate,
     Copy,
 } from "lucide-react";
-import Image from 'next/image'
+import Image from "next/image";
 
 type AdminRenderRow = {
     uid: string;
@@ -103,17 +108,32 @@ async function adminFetch(path: string, init?: RequestInit) {
 
     const headers = new Headers(init?.headers || {});
     headers.set("authorization", `Bearer ${token}`);
-    if (init?.body && !headers.get("content-type")) headers.set("content-type", "application/json");
+    if (init?.body && !headers.get("content-type"))
+        headers.set("content-type", "application/json");
 
-    const resp = await fetch(path, { ...init, headers, credentials: "include", cache: "no-store" });
+    const resp = await fetch(path, {
+        ...init,
+        headers,
+        credentials: "include",
+        cache: "no-store",
+    });
     const json = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(json?.error || json?.message || `Request failed (${resp.status})`);
+    if (!resp.ok)
+        throw new Error(json?.error || json?.message || `Request failed (${resp.status})`);
     return json;
 }
 
 /**
- * Injects a tiny router into the HTML so the iframe can switch "pages" without reloading,
- * matching the community-build preview behavior.
+ * Injects a tiny router into the HTML so the iframe can switch "pages" without reloading.
+ *
+ * IMPORTANT: Some exported renders include a hard "active route" style tag (e.g. #kloner-active-route)
+ * and/or inline `style="display: none !important;"` on page roots. That can hide every route,
+ * making the body look empty while header/footer still show.
+ *
+ * This bridge:
+ * - removes the hard active-route style if present
+ * - removes any inline display overrides on `.page-root[data-route]`
+ * - forces visibility by setting `display` with `!important` for target/non-target routes
  */
 function buildAdminPreviewHtml(rawHtml: string, initialRoute: string) {
     const r = normalizeRoute(initialRoute);
@@ -123,33 +143,81 @@ function buildAdminPreviewHtml(rawHtml: string, initialRoute: string) {
 (function(){
   const INIT_ROUTE = ${JSON.stringify(r)};
 
-  function norm(route){
+  function normRoute(route){
     route = String(route || "/").trim() || "/";
     if (!route.startsWith("/")) route = "/" + route;
+    route = route.split("#")[0].split("?")[0];
     return route;
   }
 
-  function allRouteNodes(){
-    const a = Array.from(document.querySelectorAll(".page-root[data-route], [data-route]"));
-    return a;
+  function normAttrRoute(v){
+    v = String(v || "/").trim() || "/";
+    if (!v.startsWith("/")) v = "/" + v.replace(/^\\/+/, "");
+    v = v.split("#")[0].split("?")[0];
+    return v;
+  }
+
+  function pageRoots(){
+    return Array.from(document.querySelectorAll(".page-root[data-route]"));
+  }
+
+  function cleanupRouteLocks(){
+    try {
+      const lock = document.getElementById("kloner-active-route");
+      if (lock && lock.parentNode) lock.parentNode.removeChild(lock);
+    } catch {}
+
+    try {
+      const nodes = pageRoots();
+      for (const el of nodes) {
+        try {
+          el.style.removeProperty("display");
+          el.style.removeProperty("visibility");
+        } catch {}
+      }
+    } catch {}
+  }
+
+  function setDisplay(el, val){
+    try {
+      el.style.setProperty("display", val, "important");
+    } catch {
+      try { el.style.display = val; } catch {}
+    }
   }
 
   function setActive(route){
-    route = norm(route);
-    try {
-      const nodes = allRouteNodes();
-      if (!nodes.length) return;
+    route = normRoute(route);
 
-      for (const el of nodes) el.classList.remove("active");
+    cleanupRouteLocks();
 
-      let target = nodes.find(el => String(el.getAttribute("data-route") || "") === route);
-      if (!target) target = nodes.find(el => ("/" + String(el.getAttribute("data-route") || "").replace(/^\\/+/, "")) === route);
-      if (!target) target = nodes.find(el => String(el.getAttribute("data-route") || "") === "/");
-      if (!target) target = nodes[0];
+    const nodes = pageRoots();
+    if (!nodes.length) return;
 
-      if (target) target.classList.add("active");
-      try { window.history.replaceState({}, "", route); } catch {}
-    } catch {}
+    for (const el of nodes) {
+      try { el.classList.remove("active"); } catch {}
+      setDisplay(el, "none");
+    }
+
+    let target = null;
+    for (const el of nodes) {
+      const ar = normAttrRoute(el.getAttribute("data-route") || "/");
+      if (ar === route) { target = el; break; }
+    }
+    if (!target) {
+      for (const el of nodes) {
+        const ar = normAttrRoute(el.getAttribute("data-route") || "/");
+        if (ar === "/") { target = el; break; }
+      }
+    }
+    if (!target) target = nodes[0];
+
+    if (target) {
+      try { target.classList.add("active"); } catch {}
+      setDisplay(target, "block");
+    }
+
+    try { window.history.replaceState({}, "", route); } catch {}
   }
 
   function isInternal(href){
@@ -164,7 +232,7 @@ function buildAdminPreviewHtml(rawHtml: string, initialRoute: string) {
   function toInternalRoute(href){
     href = String(href || "/").trim() || "/";
     href = href.split("#")[0].split("?")[0];
-    return norm(href);
+    return normRoute(href);
   }
 
   setActive(INIT_ROUTE);
@@ -286,7 +354,7 @@ export default function AdminRendersClient() {
         const j = await adminFetch(url, { method: "GET" });
         const next = Array.isArray(j?.items) ? (j.items as AdminRenderRow[]) : [];
         return next.filter(
-            (x) => x && typeof x.uid === "string" && x.uid && typeof x.renderId === "string" && x.renderId,
+            (x) => x && typeof x.uid === "string" && x.uid && typeof x.renderId === "string" && x.renderId
         );
     }, []);
 
@@ -297,7 +365,7 @@ export default function AdminRendersClient() {
 
         const j = await adminFetch(
             `/api/admin/renders?uid=${encodeURIComponent(u)}&renderId=${encodeURIComponent(r)}`,
-            { method: "GET" },
+            { method: "GET" }
         );
 
         const item = (j?.item || null) as AdminRenderItem | null;
@@ -385,7 +453,7 @@ export default function AdminRendersClient() {
                 setViewerLoading(false);
             }
         },
-        [fetchSingleWithHtml],
+        [fetchSingleWithHtml]
     );
 
     useEffect(() => {
@@ -585,9 +653,7 @@ export default function AdminRendersClient() {
             </div>
 
             {err ? (
-                <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-                    {err}
-                </div>
+                <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{err}</div>
             ) : null}
 
             {loading ? (
@@ -730,6 +796,7 @@ export default function AdminRendersClient() {
                                             <CodeIcon className="h-4 w-4" />
                                             Code
                                         </button>
+
                                         <div className="text-xs text-neutral-500 truncate">
                                             {selected.url ? (
                                                 <>
@@ -738,7 +805,9 @@ export default function AdminRendersClient() {
                                                         target="_blank"
                                                         rel="noreferrer"
                                                         href={selected.url}
-                                                        className="font-semibold hover:underline text-neutral-800">{selected.url}
+                                                        className="font-semibold hover:underline text-neutral-800"
+                                                    >
+                                                        {selected.url}
                                                     </a>
                                                 </>
                                             ) : (
@@ -797,7 +866,7 @@ export default function AdminRendersClient() {
                                                     try {
                                                         const srcDoc = buildAdminPreviewHtml(
                                                             selected.html || "<!doctype html><html><body></body></html>",
-                                                            normalizeRoute(route),
+                                                            normalizeRoute(route)
                                                         );
                                                         const w = window.open("", "_blank");
                                                         if (!w) return;
@@ -871,7 +940,7 @@ export default function AdminRendersClient() {
                                             title="Admin render iframe preview"
                                             srcDoc={buildAdminPreviewHtml(
                                                 selected.html || "<!doctype html><html><body></body></html>",
-                                                normalizeRoute(route),
+                                                normalizeRoute(route)
                                             )}
                                             sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"
                                             allow="fullscreen; clipboard-read; clipboard-write"
@@ -905,9 +974,7 @@ export default function AdminRendersClient() {
                                         <div className="px-4 py-3 border-b border-neutral-200 flex items-center justify-between">
                                             <div className="text-xs text-neutral-500 truncate">
                                                 html field:{" "}
-                                                <span className="font-semibold text-neutral-800">
-                                                    {htmlText ? "present" : "missing"}
-                                                </span>
+                                                <span className="font-semibold text-neutral-800">{htmlText ? "present" : "missing"}</span>
                                                 {selected.htmlStoragePath ? (
                                                     <span className="ml-2">
                                                         · htmlStoragePath:{" "}
