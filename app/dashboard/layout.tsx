@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect, useMemo, useState } from "react";
+import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import {
     onAuthStateChanged,
@@ -60,10 +60,19 @@ const BASE_NAV_SECTIONS: NavSectionConfig[] = [
         items: [
             { href: "/", label: "Home", icon: Home },
             { href: "/affiliate", label: "Affiliate Hub", icon: Users },
-            { href: "/community-builds", label: "Community templates", icon: Sparkles },
+            {
+                href: "/community-builds",
+                label: "Community templates",
+                icon: Sparkles,
+            },
 
             // external links
-            { href: "https://www.youtube.com/@klonerapp", label: "Youtube", icon: Sparkles, external: true },
+            {
+                href: "https://www.youtube.com/@klonerapp",
+                label: "Youtube",
+                icon: Sparkles,
+                external: true,
+            },
         ],
     },
     {
@@ -75,15 +84,29 @@ const BASE_NAV_SECTIONS: NavSectionConfig[] = [
     },
     {
         label: "Archive",
-        items: [{ href: "/dashboard/archived", label: "Archive", icon: Archive }],
+        items: [
+            { href: "/dashboard/archived", label: "Archive", icon: Archive },
+        ],
     },
     {
         label: "Deployments",
-        items: [{ href: "/dashboard/deployments", label: "Deployments", icon: Rocket }],
+        items: [
+            {
+                href: "/dashboard/deployments",
+                label: "Deployments",
+                icon: Rocket,
+            },
+        ],
     },
     {
         label: "Settings",
-        items: [{ href: "/dashboard/settings", label: "Settings", icon: SettingsIcon }],
+        items: [
+            {
+                href: "/dashboard/settings",
+                label: "Settings",
+                icon: SettingsIcon,
+            },
+        ],
     },
     {
         label: "Quick Start",
@@ -148,17 +171,15 @@ function filterNavSections(
     isAdmin: boolean,
     isSupportAgent: boolean,
 ): NavSectionConfig[] {
-    return BASE_NAV_SECTIONS
-        .map((section) => {
-            const visibleItems = section.items.filter((item) => {
-                if (item.adminOnly && !isAdmin) return false;
-                if (item.supportOnly && !(isSupportAgent || isAdmin)) return false;
-                return true;
-            });
+    return BASE_NAV_SECTIONS.map((section) => {
+        const visibleItems = section.items.filter((item) => {
+            if (item.adminOnly && !isAdmin) return false;
+            if (item.supportOnly && !(isSupportAgent || isAdmin)) return false;
+            return true;
+        });
 
-            return { ...section, items: visibleItems };
-        })
-        .filter((section) => section.items.length > 0);
+        return { ...section, items: visibleItems };
+    }).filter((section) => section.items.length > 0);
 }
 
 function NavItem({
@@ -186,10 +207,11 @@ function NavItem({
         }
     };
 
-    const baseClass = `flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${active
+    const baseClass = `flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
+        active
             ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
             : "text-neutral-700 hover:bg-neutral-50"
-        }`;
+    }`;
 
     // External: render <a>, not Next <Link>.
     if (isExt) {
@@ -296,7 +318,9 @@ function AccountBlock() {
                     <div className="text-sm text-neutral-800 truncate">
                         {user?.displayName || user?.email || "Signed in"}
                     </div>
-                    <div className="text-xs text-neutral-500 truncate">Account</div>
+                    <div className="text-xs text-neutral-500 truncate">
+                        Account
+                    </div>
                 </div>
             </div>
             <button
@@ -332,7 +356,13 @@ function SidebarShell({
                     className="flex items-center gap-2 font-black tracking-tight text-xl md:text-2xl shrink-0"
                 >
                     <div className="relative h-[90px] w-[90px]">
-                        <Image src={logo} alt="kloner logo" fill priority className="object-contain" />
+                        <Image
+                            src={logo}
+                            alt="kloner logo"
+                            fill
+                            priority
+                            className="object-contain"
+                        />
                     </div>
                 </Link>
             </div>
@@ -348,8 +378,20 @@ function SidebarShell({
                                     href={item.href}
                                     label={item.label}
                                     icon={item.icon}
-                                    active={!item.external && !isExternalHref(item.href) ? navItemIsActive(pathname, item.href) : false}
-                                    unreadCount={item.href === "/support/agent" ? supportUnreadCount : undefined}
+                                    active={
+                                        !item.external &&
+                                        !isExternalHref(item.href)
+                                            ? navItemIsActive(
+                                                  pathname,
+                                                  item.href,
+                                              )
+                                            : false
+                                    }
+                                    unreadCount={
+                                        item.href === "/support/agent"
+                                            ? supportUnreadCount
+                                            : undefined
+                                    }
                                     external={item.external}
                                 />
                             ))}
@@ -374,19 +416,61 @@ function MobileHeader({
     const pathname = usePathname();
     const [open, setOpen] = useState(false);
 
+    // track scroll position so we can "lock" background without it moving
+    const scrollYRef = useRef(0);
+
     useEffect(() => {
-        const el = document.documentElement;
-        const prev = el.style.overflow;
-        el.style.overflow = open ? "hidden" : prev || "";
+        if (!open) return;
+
+        // Lock background scroll in a mobile-safe way:
+        // - Use body position:fixed so touch scroll won't bleed through to the page behind.
+        // - Keep the current scrollY and restore it on close.
+        const body = document.body;
+        const html = document.documentElement;
+
+        scrollYRef.current = window.scrollY || 0;
+
+        const prevBodyOverflow = body.style.overflow;
+        const prevBodyPosition = body.style.position;
+        const prevBodyTop = body.style.top;
+        const prevBodyLeft = body.style.left;
+        const prevBodyRight = body.style.right;
+        const prevBodyWidth = body.style.width;
+        const prevHtmlOverflow = html.style.overflow;
+        const prevOverscroll = (html.style as any).overscrollBehaviorY;
+
+        html.style.overflow = "hidden";
+        (html.style as any).overscrollBehaviorY = "none";
+
+        body.style.overflow = "hidden";
+        body.style.position = "fixed";
+        body.style.top = `-${scrollYRef.current}px`;
+        body.style.left = "0";
+        body.style.right = "0";
+        body.style.width = "100%";
+
         return () => {
-            el.style.overflow = prev;
+            html.style.overflow = prevHtmlOverflow;
+            (html.style as any).overscrollBehaviorY = prevOverscroll || "";
+
+            body.style.overflow = prevBodyOverflow;
+            body.style.position = prevBodyPosition;
+            body.style.top = prevBodyTop;
+            body.style.left = prevBodyLeft;
+            body.style.right = prevBodyRight;
+            body.style.width = prevBodyWidth;
+
+            window.scrollTo(0, scrollYRef.current);
         };
     }, [open]);
 
     const close = () => setOpen(false);
 
     const flatItems: NavItemConfig[] = useMemo(
-        () => filterNavSections(pathname, isAdmin, isSupportAgent).flatMap((s) => s.items),
+        () =>
+            filterNavSections(pathname, isAdmin, isSupportAgent).flatMap(
+                (s) => s.items,
+            ),
         [pathname, isAdmin, isSupportAgent],
     );
 
@@ -412,7 +496,13 @@ function MobileHeader({
                     className="flex items-center gap-2 font-black tracking-tight text-xl md:text-2xl shrink-0"
                 >
                     <div className="relative h-[70px] w-[70px]">
-                        <Image src={logo} alt="kloner logo" fill priority className="object-contain" />
+                        <Image
+                            src={logo}
+                            alt="kloner logo"
+                            fill
+                            priority
+                            className="object-contain"
+                        />
                     </div>
                 </Link>
 
@@ -434,9 +524,10 @@ function MobileHeader({
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
                             transition={{ duration: 0.18 }}
-                            className="fixed inset-0 z-[80]"
+                            className="fixed inset-0 z-[80] bg-black/20"
                             onClick={close}
                         />
+
                         <motion.div
                             key="mbl-sheet"
                             initial={{ y: -12, opacity: 0 }}
@@ -448,7 +539,9 @@ function MobileHeader({
                             aria-modal="true"
                         >
                             <div className="flex items-center justify-between px-4 pt-3 pb-2">
-                                <div className="text-sm font-semibold text-neutral-800">Quick Menu</div>
+                                <div className="text-sm font-semibold text-neutral-800">
+                                    Quick Menu
+                                </div>
                                 <button
                                     onClick={close}
                                     aria-label="Close"
@@ -459,63 +552,90 @@ function MobileHeader({
                             </div>
                             <div className="h-px bg-neutral-200/80" />
 
-                            <ul className="px-2 py-2">
-                                {flatItems.map(({ href, label, icon: Icon, external }) => {
-                                    const isExt = !!external || isExternalHref(href);
-                                    const active = !isExt ? navItemIsActive(pathname, href) : false;
+                            {/* SCROLL CONTAINER FIX:
+                               - cap height to viewport
+                               - enable inner scrolling with momentum
+                               - stop scroll chaining/bleed to background
+                             */}
+                            <ul
+                                className="px-2 py-2 overflow-y-auto [-webkit-overflow-scrolling:touch] overscroll-contain"
+                                style={{
+                                    maxHeight:
+                                        "calc(100dvh - 220px - env(safe-area-inset-top) - env(safe-area-inset-bottom))",
+                                    touchAction: "pan-y",
+                                }}
+                            >
+                                {flatItems.map(
+                                    ({
+                                        href,
+                                        label,
+                                        icon: Icon,
+                                        external,
+                                    }) => {
+                                        const isExt =
+                                            !!external ||
+                                            isExternalHref(href);
+                                        const active = !isExt
+                                            ? navItemIsActive(pathname, href)
+                                            : false;
 
-                                    const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
-                                        if (active) {
-                                            e.preventDefault();
-                                            e.stopPropagation();
+                                        const handleClick = (
+                                            e: React.MouseEvent<HTMLAnchorElement>,
+                                        ) => {
+                                            if (active) {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                close();
+                                                return;
+                                            }
                                             close();
-                                            return;
-                                        }
-                                        close();
-                                    };
+                                        };
 
-                                    return (
-                                        <li key={href}>
-                                            {isExt ? (
-                                                <a
-                                                    href={href}
-                                                    onClick={handleClick}
-                                                    aria-disabled={active}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className={`flex items-center gap-3 rounded-xl px-3 py-3 text-[15px] ${active
-                                                            ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
-                                                            : "text-neutral-800 hover:bg-neutral-50"
+                                        return (
+                                            <li key={href}>
+                                                {isExt ? (
+                                                    <a
+                                                        href={href}
+                                                        onClick={handleClick}
+                                                        aria-disabled={active}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className={`flex items-center gap-3 rounded-xl px-3 py-3 text-[15px] ${
+                                                            active
+                                                                ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
+                                                                : "text-neutral-800 hover:bg-neutral-50"
                                                         }`}
-                                                >
-                                                    {Icon && (
-                                                        <span className="grid h-8 w-8 place-items-center rounded-lg border border-neutral-200 bg-white">
-                                                            <Icon className="h-4 w-4" />
-                                                        </span>
-                                                    )}
-                                                    {label}
-                                                </a>
-                                            ) : (
-                                                <a
-                                                    href={href}
-                                                    onClick={handleClick}
-                                                    aria-disabled={active}
-                                                    className={`flex items-center gap-3 rounded-xl px-3 py-3 text-[15px] ${active
-                                                            ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
-                                                            : "text-neutral-800 hover:bg-neutral-50"
+                                                    >
+                                                        {Icon && (
+                                                            <span className="grid h-8 w-8 place-items-center rounded-lg border border-neutral-200 bg-white">
+                                                                <Icon className="h-4 w-4" />
+                                                            </span>
+                                                        )}
+                                                        {label}
+                                                    </a>
+                                                ) : (
+                                                    <a
+                                                        href={href}
+                                                        onClick={handleClick}
+                                                        aria-disabled={active}
+                                                        className={`flex items-center gap-3 rounded-xl px-3 py-3 text-[15px] ${
+                                                            active
+                                                                ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
+                                                                : "text-neutral-800 hover:bg-neutral-50"
                                                         }`}
-                                                >
-                                                    {Icon && (
-                                                        <span className="grid h-8 w-8 place-items-center rounded-lg border border-neutral-200 bg-white">
-                                                            <Icon className="h-4 w-4" />
-                                                        </span>
-                                                    )}
-                                                    {label}
-                                                </a>
-                                            )}
-                                        </li>
-                                    );
-                                })}
+                                                    >
+                                                        {Icon && (
+                                                            <span className="grid h-8 w-8 place-items-center rounded-lg border border-neutral-200 bg-white">
+                                                                <Icon className="h-4 w-4" />
+                                                            </span>
+                                                        )}
+                                                        {label}
+                                                    </a>
+                                                )}
+                                            </li>
+                                        );
+                                    },
+                                )}
                             </ul>
 
                             <div className="h-px bg-neutral-200/80" />
@@ -585,14 +705,20 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
                 snap.forEach((doc) => {
                     const data = doc.data() as DocumentData;
                     const status = (data.status as string) || "open";
-                    const unread = typeof data.unreadCount === "number" ? data.unreadCount : 0;
+                    const unread =
+                        typeof data.unreadCount === "number"
+                            ? data.unreadCount
+                            : 0;
 
                     if (status !== "closed") total += unread;
                 });
                 setSupportUnreadCount(total);
             },
             (err) => {
-                console.error("[AppShell] support_inbox onSnapshot failed", err);
+                console.error(
+                    "[AppShell] support_inbox onSnapshot failed",
+                    err,
+                );
             },
         );
 
@@ -615,7 +741,10 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
                 </aside>
 
                 <section className="min-h-screen overflow-y-scroll scrollbar-hide">
-                    <MobileHeader isAdmin={isAdmin} isSupportAgent={isSupportAgent} />
+                    <MobileHeader
+                        isAdmin={isAdmin}
+                        isSupportAgent={isSupportAgent}
+                    />
                     <div className="flex-1">{children}</div>
                 </section>
             </div>
