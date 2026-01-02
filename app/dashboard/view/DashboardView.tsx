@@ -3449,66 +3449,6 @@ export default function PreviewPage(): JSX.Element {
     }, [router]);
 
 
-    const startProCheckout = useCallback(async () => {
-        if (checkoutBusy) return;
-        setCheckoutBusy(true);
-
-        try {
-            // ⬇️ persist project name so Stripe callback can read it from nameHint
-            const slug = deployWizardProjectName.trim();
-            if (slug && deployWizardRenderId) {
-                try {
-                    await saveRenderNameHintNow(deployWizardRenderId, slug);
-                } catch (e) {
-                    console.error("Failed to persist project name before checkout", e);
-                }
-            }
-
-            const csrfRes = await fetch("/api/auth/csrf", {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                credentials: "include",
-                cache: "no-store",
-            });
-
-            const csrfData = csrfRes.ok ? await csrfRes.json().catch(() => null) : null;
-            const csrf = csrfData?.csrf ?? null;
-
-            const res = await fetch("/api/billing/create-checkout-session", {
-                method: "POST",
-                headers: {
-                    "content-type": "application/json",
-                    ...(csrf ? { "x-csrf": csrf } : {}),
-                },
-                credentials: "include",
-                body: JSON.stringify({
-                    plan: "pro",
-                    returnRenderId: deployWizardRenderId,
-                    // ⬇️ come back into the wizard at step 2, not 5
-                    returnStep: 2,
-                }),
-            });
-
-            if (res.status === 401) {
-                const next = encodeURIComponent("/dashboard/view?upgraded=1");
-                window.location.href = `/login?next=${next}`;
-                return;
-            }
-
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok || !data.url) {
-                alert(data?.error || "Unable to start checkout.");
-                return;
-            }
-
-            window.location.href = data.url;
-        } finally {
-            setCheckoutBusy(false);
-        }
-    }, [checkoutBusy, deployWizardRenderId, deployWizardProjectName]);
-
-
-
     // ───────── auto-advance from step 2 → 3 only if we have a render id ─────────
 
     useEffect(() => {
@@ -3555,7 +3495,6 @@ export default function PreviewPage(): JSX.Element {
         },
         [deployWizardProjectName, exportToVercel],
     );
-
 
 
     // ───────── auto-deploy exactly once when we land on step 3 ─────────
@@ -3659,6 +3598,186 @@ export default function PreviewPage(): JSX.Element {
         if (groupIndex > 0) return false;
         return group.items.some((s) => pendingByKey[s.path]);
     });
+
+
+    // exit offer
+    const STEP5_SALE_MS = 15 * 60 * 1000;
+
+    function formatMMSS(totalSeconds: number) {
+        const s = Math.max(0, totalSeconds | 0);
+        const mm = String(Math.floor(s / 60)).padStart(2, "0");
+        const ss = String(s % 60).padStart(2, "0");
+        return { mm, ss };
+    }
+
+    function getRemainingSec(endsAt: number) {
+        return Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+    }
+
+    const STEP5_SALE_KEY = (uid?: string, renderId?: string | null) =>
+        `kloner_step5_sale_endsAt:${uid || "anon"}:${renderId || "unknown"}`;
+
+    // ---- inside component (near other derived state) ----
+    const step5SaleStorageKey = useMemo(() => {
+        const uid = user?.uid;
+        const rid = deployWizardRenderId || activeRenderId || null;
+        return STEP5_SALE_KEY(uid, rid);
+    }, [user?.uid, deployWizardRenderId, activeRenderId]);
+
+    const [step5SaleEndsAt, setStep5SaleEndsAt] = useState<number>(() => {
+        if (typeof window === "undefined") return Date.now() + STEP5_SALE_MS;
+
+        const raw = window.localStorage.getItem(step5SaleStorageKey);
+        const parsed = raw ? Number(raw) : 0;
+
+        if (parsed && Number.isFinite(parsed) && parsed > Date.now()) return parsed;
+
+        const next = Date.now() + STEP5_SALE_MS;
+        window.localStorage.setItem(step5SaleStorageKey, String(next));
+        return next;
+    });
+
+    const [step5SaleRemainingSec, setStep5SaleRemainingSec] = useState<number>(() =>
+        getRemainingSec(step5SaleEndsAt),
+    );
+
+    const [showExitOffer, setShowExitOffer] = useState(false);
+    const [exitOfferReason, setExitOfferReason] = useState<
+        "close" | "back" | "nav" | "outside" | "esc" | null
+    >(null);
+
+    // ✅ rehydrate when key changes (user/render changes)
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        const raw = window.localStorage.getItem(step5SaleStorageKey);
+        const parsed = raw ? Number(raw) : 0;
+
+        if (parsed && Number.isFinite(parsed) && parsed > Date.now()) {
+            setStep5SaleEndsAt(parsed);
+            setStep5SaleRemainingSec(getRemainingSec(parsed));
+            return;
+        }
+
+        const next = Date.now() + STEP5_SALE_MS;
+        window.localStorage.setItem(step5SaleStorageKey, String(next));
+        setStep5SaleEndsAt(next);
+        setStep5SaleRemainingSec(getRemainingSec(next));
+    }, [step5SaleStorageKey]);
+
+    // ✅ keep storage synced (ONLY ONCE)
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        window.localStorage.setItem(step5SaleStorageKey, String(step5SaleEndsAt));
+    }, [step5SaleEndsAt, step5SaleStorageKey]);
+
+    useEffect(() => {
+        if (deployWizardStep !== 5) return;
+
+        let raf = 0;
+        let t: any = null;
+
+        const tick = () => {
+            const rem = getRemainingSec(step5SaleEndsAt);
+            setStep5SaleRemainingSec(rem);
+            if (rem <= 0) return;
+            t = setTimeout(() => {
+                raf = requestAnimationFrame(tick);
+            }, 250);
+        };
+
+        tick();
+
+        return () => {
+            if (t) clearTimeout(t);
+            if (raf) cancelAnimationFrame(raf);
+        };
+    }, [deployWizardStep, step5SaleEndsAt]);
+
+    const step5Time = formatMMSS(step5SaleRemainingSec);
+    const step5SaleActive = step5SaleRemainingSec > 0;
+
+    function openExitOffer(reason: NonNullable<typeof exitOfferReason>) {
+        setExitOfferReason(reason);
+        setShowExitOffer(true);
+    }
+
+    const EXIT_OFFER_PROMO_CODE = "DEPLOY40"; // ✅ Stripe Promotion Code "code" field
+
+    // client: patched startProCheckout to apply exit offer code
+    const startProCheckout = useCallback(
+        async (opts?: { exitOffer?: boolean; exitOfferReason?: "close" | "back" | "nav" | "outside" | "esc" }) => {
+            if (checkoutBusy) return;
+            setCheckoutBusy(true);
+
+            try {
+                const slug = deployWizardProjectName.trim();
+                if (slug && deployWizardRenderId) {
+                    try {
+                        await saveRenderNameHintNow(deployWizardRenderId, slug);
+                    } catch (e) {
+                        console.error("Failed to persist project name before checkout", e);
+                    }
+                }
+
+                const csrfRes = await fetch("/api/auth/csrf", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    credentials: "include",
+                    cache: "no-store",
+                });
+
+                const csrfData = csrfRes.ok ? await csrfRes.json().catch(() => null) : null;
+                const csrf = csrfData?.csrf ?? null;
+
+                let offerPayload: any = {};
+                if (opts?.exitOffer) {
+                    const endsAt = step5SaleEndsAt;
+                    if (typeof endsAt === "number" && Date.now() <= endsAt) {
+                        offerPayload = {
+                            offer: "exit40",
+                            offerEndsAt: endsAt,
+                            offerReason: opts.exitOfferReason || "close",
+                            offerPromoCode: EXIT_OFFER_PROMO_CODE, // ✅ send to server
+                        };
+                    }
+                }
+
+                const res = await fetch("/api/billing/create-checkout-session", {
+                    method: "POST",
+                    headers: {
+                        "content-type": "application/json",
+                        ...(csrf ? { "x-csrf": csrf } : {}),
+                    },
+                    credentials: "include",
+                    body: JSON.stringify({
+                        plan: "pro",
+                        returnRenderId: deployWizardRenderId,
+                        returnStep: 2,
+                        ...offerPayload,
+                    }),
+                });
+
+                if (res.status === 401) {
+                    const next = encodeURIComponent("/dashboard/view?upgraded=1");
+                    window.location.href = `/login?next=${next}`;
+                    return;
+                }
+
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok || !data.url) {
+                    alert(data?.error || "Unable to start checkout.");
+                    return;
+                }
+
+                window.location.href = data.url;
+            } finally {
+                setCheckoutBusy(false);
+            }
+        },
+        [checkoutBusy, deployWizardRenderId, deployWizardProjectName, step5SaleEndsAt],
+    );
+
 
     return (
         <main className="min-h-screen bg-white">
@@ -4082,7 +4201,7 @@ export default function PreviewPage(): JSX.Element {
                                 >
                                     <button
                                         type="button"
-                                        onClick={closeDeployWizard}
+                                        onClick={() => openExitOffer("close")}
                                         className="absolute right-3 top-3 z-10 h-7 w-7 rounded-full border border-neutral-200 bg-white text-sm text-neutral-500 hover:bg-neutral-50"
                                     >
                                         ✕
@@ -4353,7 +4472,6 @@ export default function PreviewPage(): JSX.Element {
                                                     </div>
                                                 </motion.div>
                                             )}
-
                                             {deployWizardStep === 5 && (
                                                 <motion.div
                                                     key="step-5"
@@ -4361,144 +4479,330 @@ export default function PreviewPage(): JSX.Element {
                                                     animate={{ opacity: 1, x: 0 }}
                                                     exit={{ opacity: 0, x: -20 }}
                                                     transition={{ duration: 0.18, ease: "easeOut" }}
-                                                    className="space-y-5"
+                                                    className="w-full"
                                                 >
-                                                    <div className="space-y-1.5">
-                                                        <p className="text-sm font-semibold text-neutral-900">
-                                                            Almost there. Upgrade to deploy your site in one click.
-                                                        </p>
+                                                    {/* paywall-style card */}
+                                                    <div className="mx-auto w-full max-w-[420px] overflow-hidden rounded-[28px] border border-neutral-200 bg-white shadow-[0_24px_80px_rgba(0,0,0,0.20)]">
+                                                        {/* illustration header */}
+                                                        <div className="relative bg-neutral-50 px-6 pb-6 pt-6">
+                                                            <div className="mx-auto flex max-w-[320px] items-center justify-center pt-6">
+                                                                {/* simple inline illustration (no extra copy) */}
+                                                                <svg viewBox="0 0 560 320" className="h-[160px] w-full" role="img" aria-hidden="true">
+                                                                    <defs>
+                                                                        <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+                                                                            <stop offset="0" stopColor="#1D4ED8" stopOpacity="0.22" />
+                                                                            <stop offset="1" stopColor="#60A5FA" stopOpacity="0.14" />
+                                                                        </linearGradient>
+                                                                        <filter id="s1" x="-20%" y="-20%" width="140%" height="140%">
+                                                                            <feDropShadow dx="0" dy="12" stdDeviation="12" floodColor="#000" floodOpacity="0.10" />
+                                                                        </filter>
+                                                                    </defs>
 
-                                                        <p className="text-[11px] text-neutral-600 leading-relaxed">
-                                                            Upgrading unlocks instant
-                                                            publishing, higher limits, and full multi-site workflows.
-                                                        </p>
-                                                    </div>
+                                                                    {/* soft swoosh */}
+                                                                    <path
+                                                                        d="M70,210 C130,90 260,70 330,95 C420,128 470,110 510,70"
+                                                                        fill="none"
+                                                                        stroke="url(#g1)"
+                                                                        strokeWidth="22"
+                                                                        strokeLinecap="round"
+                                                                    />
+                                                                    <path
+                                                                        d="M80,230 C145,150 250,120 330,140 C415,160 470,155 515,130"
+                                                                        fill="none"
+                                                                        stroke="url(#g1)"
+                                                                        strokeWidth="14"
+                                                                        strokeLinecap="round"
+                                                                    />
 
-                                                    <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-700 space-y-3">
-                                                        <div className="flex items-start gap-3">
-                                                            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-neutral-900">
-                                                                <MessageCircleWarning className="text-white h-3.5 w-3.5" />
+                                                                    {/* hand-ish outline */}
+                                                                    <path
+                                                                        d="M285 215
+                 C275 200 278 182 292 174
+                 C305 167 322 173 330 187
+                 L358 242
+                 C365 256 357 272 343 276
+                 C328 280 315 273 309 259
+                 L296 230"
+                                                                        fill="#fff"
+                                                                        stroke="#111827"
+                                                                        strokeWidth="6"
+                                                                        strokeLinejoin="round"
+                                                                        filter="url(#s1)"
+                                                                    />
+
+                                                                    {/* pen */}
+                                                                    <path
+                                                                        d="M360 70
+                 L410 40
+                 C420 34 432 38 436 48
+                 L466 118
+                 C470 128 465 140 455 144
+                 L405 174 Z"
+                                                                        fill="#2563EB"
+                                                                        opacity="0.95"
+                                                                        filter="url(#s1)"
+                                                                    />
+                                                                    <path
+                                                                        d="M406 174 L360 70"
+                                                                        stroke="#93C5FD"
+                                                                        strokeWidth="10"
+                                                                        strokeLinecap="round"
+                                                                        opacity="0.8"
+                                                                    />
+
+                                                                    {/* sparks */}
+                                                                    <path d="M140 92 L152 62" stroke="#F59E0B" strokeWidth="8" strokeLinecap="round" />
+                                                                    <path d="M152 62 L172 78" stroke="#F59E0B" strokeWidth="8" strokeLinecap="round" />
+                                                                    <path d="M140 92 L166 98" stroke="#F59E0B" strokeWidth="8" strokeLinecap="round" />
+
+                                                                    <circle cx="210" cy="88" r="6" fill="#FB7185" opacity="0.9" />
+                                                                    <circle cx="238" cy="68" r="4" fill="#FB7185" opacity="0.85" />
+                                                                    <circle cx="468" cy="88" r="5" fill="#FB7185" opacity="0.85" />
+                                                                    <circle cx="494" cy="112" r="4" fill="#FB7185" opacity="0.8" />
+                                                                </svg>
                                                             </div>
-                                                            <div className="space-y-1">
-                                                                <p className="mb-4 text-md text-neutral-900">
-                                                                    What you get on Pro
+                                                        </div>
+
+                                                        {/* content */}
+                                                        <div className="px-7 pb-6 pt-5">
+                                                            {/* badge */}
+                                                            <div className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1 text-[11px] font-extrabold tracking-[0.18em] text-neutral-800 uppercase">
+                                                                Try Pro for free
+                                                            </div>
+
+                                                            {/* headline */}
+                                                            <h2 className="mt-3 text-[34px] font-bold leading-[1.05] text-neutral-900">
+                                                                Deploy in one click
+                                                            </h2>
+
+                                                            {/* subcopy */}
+                                                            <p className="mt-2 text-[13px] leading-relaxed text-neutral-600">
+                                                                7 day free trial. Cancel anytime.
+                                                            </p>
+
+                                                            {/* feature list */}
+                                                            <div className="mt-5 space-y-3">
+                                                                <div className="flex items-start gap-3 text-[14px] text-neutral-800">
+                                                                    <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
+                                                                        ✓
+                                                                    </span>
+                                                                    <span className="leading-snug">One click Vercel deploy</span>
+                                                                </div>
+
+                                                                <div className="flex items-start gap-3 text-[14px] text-neutral-800">
+                                                                    <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
+                                                                        ✓
+                                                                    </span>
+                                                                    <span className="leading-snug">Multiple Sites & Team Management</span>
+                                                                </div>
+
+                                                                <div className="flex items-start gap-3 text-[14px] text-neutral-800">
+                                                                    <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
+                                                                        ✓
+                                                                    </span>
+                                                                    <span className="leading-snug">300+ Exclusive Design Tools</span>
+                                                                </div>
+
+                                                                <div className="flex items-start gap-3 text-[14px] text-neutral-800">
+                                                                    <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
+                                                                        ✓
+                                                                    </span>
+                                                                    <span className="leading-snug">Premium Templates</span>
+                                                                </div>
+
+
+                                                                <div className="flex items-start gap-3 text-[14px] text-neutral-800">
+                                                                    <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
+                                                                        ✓
+                                                                    </span>
+                                                                    <span className="leading-snug">Higher limits and faster queue</span>
+                                                                </div>
+
+                                                                <div className="flex items-start gap-3 text-[14px] text-neutral-800">
+                                                                    <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
+                                                                        ✓
+                                                                    </span>
+                                                                    <span className="leading-snug">24/7 Chat Support Included</span>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* small secondary action */}
+                                                            <div className="mt-6 text-center">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => openExitOffer("close")}
+                                                                    className="text-[12px] font-semibold text-neutral-500 hover:text-neutral-700"
+                                                                >
+                                                                    Don’t deploy my new site
+                                                                </button>
+                                                            </div>
+
+                                                            {/* primary CTA */}
+                                                            <div className="mt-5">
+                                                                <motion.button
+                                                                    type="button"
+                                                                    onClick={() => void startProCheckout()}
+                                                                    disabled={checkoutBusy}
+                                                                    className="w-full rounded-2xl px-5 py-4 text-[15px] font-extrabold text-white shadow-[0_18px_44px_rgba(0,0,0,0.28)] focus:outline-none focus:ring-2 focus:ring-black/10 disabled:cursor-wait disabled:opacity-70"
+                                                                    style={{ backgroundColor: ACCENT }}
+                                                                    whileHover={{ scale: 1.01 }}
+                                                                    whileTap={{ scale: 0.99 }}
+                                                                    transition={{ duration: 0.16, ease: "easeOut" }}
+                                                                >
+                                                                    {checkoutBusy ? "Redirecting to Stripe…" : "Try Pro free and deploy →"}
+                                                                </motion.button>
+
+                                                                <p className="mt-3 text-center text-[11px] text-neutral-500">
+                                                                    Trial starts today. Cancel anytime before renewal.
                                                                 </p>
-                                                                <ul className="space-y-1.5 text-[14px] text-neutral-600">
-                                                                    <li className="flex items-center gap-1.5">
-                                                                        <span
-                                                                            className="h-1.5 w-1.5 rounded-full"
-                                                                            style={{ backgroundColor: ACCENT }}
-                                                                        />
-                                                                        <span>200+ pro-only design tools</span>
-                                                                    </li>
-                                                                    <li className="flex items-center gap-1.5">
-                                                                        <span
-                                                                            className="h-1.5 w-1.5 rounded-full"
-                                                                            style={{ backgroundColor: ACCENT }}
-                                                                        />
-                                                                        <span>450 preview credits per month (30 websites)</span>
-                                                                    </li>
-                                                                    <li className="flex items-center gap-1.5">
-                                                                        <span
-                                                                            className="h-1.5 w-1.5 rounded-full"
-                                                                            style={{ backgroundColor: ACCENT }}
-                                                                        />
-                                                                        <span>Manage multiple websites + teams</span>
-                                                                    </li>
-                                                                    <li className="flex items-center gap-1.5">
-                                                                        <span
-                                                                            className="h-1.5 w-1.5 rounded-full"
-                                                                            style={{ backgroundColor: ACCENT }}
-                                                                        />
-                                                                        <span>Priority access to new design engines</span>
-                                                                    </li>
-                                                                    <li className="flex items-center gap-1.5">
-                                                                        <span
-                                                                            className="h-1.5 w-1.5 rounded-full"
-                                                                            style={{ backgroundColor: ACCENT }}
-                                                                        />
-                                                                        <span>Priority queue for faster generations</span>
-                                                                    </li>
-                                                                    <li className="flex items-center gap-1.5">
-                                                                        <span
-                                                                            className="h-1.5 w-1.5 rounded-full"
-                                                                            style={{ backgroundColor: ACCENT }}
-                                                                        />
-                                                                        <span>One-click Vercel deployment</span>
-                                                                    </li>
-                                                                </ul>
                                                             </div>
                                                         </div>
                                                     </div>
 
-                                                    <motion.button
-                                                        type="button"
-                                                        onClick={() => void startProCheckout()}
-                                                        disabled={checkoutBusy}
-                                                        className="group flex w-full items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-[0_18px_40px_rgba(0,0,0,0.6)] focus:outline-none focus:ring-2 focus:ring-white/20 disabled:opacity-70 disabled:cursor-wait"
-                                                        style={{ backgroundColor: ACCENT }}
-                                                        whileHover={{ scale: 1.02 }}
-                                                        whileTap={{ scale: 0.99 }}
-                                                        transition={{ duration: 0.16, ease: "easeOut" }}
-                                                    >
-                                                        <span className="flex items-center gap-1.5">
-                                                            <span>
-                                                                {checkoutBusy
-                                                                    ? "Redirecting to Stripe…"
-                                                                    : "Start 7 day free trial and deploy"}
-                                                            </span>
-                                                            {!checkoutBusy && (
-                                                                <span
-                                                                    className="inline-flex items-center justify-center overflow-hidden text-base opacity-0 translate-x-[-4px] transition-all duration-150 opacity-100 translate-x-0"
-                                                                    aria-hidden="true">
-                                                                    →
-                                                                </span>
-                                                            )}
-                                                        </span>
-                                                    </motion.button>
+                                                    {/* Exit offer modal (ONLY place you show the discount) */}
+                                                    <AnimatePresence>
+                                                        {showExitOffer && (
+                                                            <motion.div
+                                                                key="exit-offer"
+                                                                initial={{ opacity: 0 }}
+                                                                animate={{ opacity: 1 }}
+                                                                exit={{ opacity: 0 }}
+                                                                className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/45 p-2"
+                                                                role="dialog"
+                                                                aria-modal="true"
+                                                            >
+                                                                <motion.div
+                                                                    initial={{ opacity: 0, y: 10, scale: 0.99 }}
+                                                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                                    exit={{ opacity: 0, y: 10, scale: 0.99 }}
+                                                                    transition={{ duration: 0.16, ease: "easeOut" }}
+                                                                    className="w-full max-w-md overflow-hidden rounded-[22px] border border-neutral-200 bg-white shadow-[0_30px_90px_rgba(0,0,0,0.38)]"
+                                                                >
+                                                                    {/* ultra-minimal header strip */}
+                                                                    <div className="h-1 w-full" style={{ backgroundColor: ACCENT }} />
 
-                                                    <div className="rounded-xl px-3 py-3 text-sm text-neutral-700 flex items-center gap-3">
-                                                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-900">
-                                                            {deployWizardBusy ? (
-                                                                <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                                                            ) : deployWizardError ? (
-                                                                <span className="text-sm text-red-500">!</span>
-                                                            ) : (
-                                                                <CheckCheck className="h-4 w-4 text-white" />
-                                                            )}
-                                                        </div>
-                                                        <div>
-                                                            <p className="text-neutral-900">
-                                                                {deployWizardBusy
-                                                                    ? "Checking your plan…"
-                                                                    : deployWizardError
-                                                                        ? "Upgrade check failed"
-                                                                        : "Join 5000+ designers and developers using Kloner."}
-                                                            </p>
-                                                            <p className="text-[11px] text-neutral-600">
-                                                                {deployWizardBusy &&
-                                                                    "This can take a moment while we verify your current plan."}
-                                                                {!deployWizardBusy &&
-                                                                    !deployWizardError &&
-                                                                    "After upgrading, we'll return you here to finish deployment."}
-                                                                {deployWizardError && deployWizardError}
-                                                            </p>
-                                                        </div>
-                                                    </div>
+                                                                    {/* tighter padding, more “exclusive” */}
+                                                                    <div className="px-4 pb-4 pt-3">
+                                                                        <div className="flex items-start justify-between gap-3">
+                                                                            <div className="min-w-0">
+                                                                                {/* small whisper label */}
+                                                                                <div className="flex items-center gap-2">
+                                                                                    <span
+                                                                                        className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-[0.16em] uppercase"
+                                                                                        style={{
+                                                                                            borderColor: `${ACCENT}33`,
+                                                                                            backgroundColor: `${ACCENT}10`,
+                                                                                            color: ACCENT,
+                                                                                        }}
+                                                                                    >
+                                                                                        One-time Deal
+                                                                                    </span>
 
-                                                    <div className="mt-4 flex items-center justify-between gap-2">
-                                                        <button
-                                                            type="button"
-                                                            onClick={closeDeployWizard}
-                                                            className="rounded-full border border-neutral-200 px-3 py-1.5 text-xs text-neutral-600 hover:bg-neutral-50"
-                                                        >
-                                                            {!deployWizardBusy &&
-                                                                !deployWizardError ? (
-                                                                "Don't deploy my new site") : 'Close'}
-                                                        </button>
-                                                    </div>
+                                                                                    {/* social proof: minimal */}
+                                                                                    <div className="flex items-center gap-1 text-[11px] text-neutral-600">
+                                                                                        <span className="text-amber-500">★★★★★</span>
+                                                                                        <span className="text-neutral-500">4.9</span>
+                                                                                    </div>
+                                                                                </div>
+
+                                                                                {/* discount line: big number, not heavy font */}
+                                                                                <div className="mt-6 flex justify-center items-baseline gap-2">
+                                                                                    <span className="text-[30px] font-semibold leading-none text-neutral-900">Exclusive Welcome Gift</span>
+                                                                                </div>
+
+                                                                                {/* discount line: big number, not heavy font */}
+                                                                                <div className="mt-6 flex justify-center items-baseline gap-2">
+                                                                                    <span className="text-[28px] font-bold text-accent leading-none text-neutral-900">40% off</span>
+                                                                                    <span className="text-[12px] font-medium text-neutral-600">your first month</span>
+                                                                                </div>
+                                                                                <div className="mt-1 flex text-[12px] justify-center text-neutral-700 gap-1">
+
+                                                                                </div>
+                                                                                {/* price compare: minimal, still explicit */}
+                                                                                <div className="mt-1 flex text-[12px] justify-center text-neutral-700 gap-1">
+                                                                                    <span className="font-medium">only $4.35/week</span>{" "}
+                                                                                    <span className="text-neutral-500 line-through">$29.00</span>{" "}
+                                                                                    <span className="text-neutral-500">for month one</span>
+                                                                                </div>
+
+                                                                                {/* micro testimonial row (image avatar) */}
+                                                                                <div className="my-7 flex items-start gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2">
+                                                                                    <div className="mt-[1px] h-7 w-7 shrink-0 overflow-hidden rounded-full border border-neutral-200 bg-white">
+                                                                                        <img
+                                                                                            src="/images/testimonial-avatar.jpg"
+                                                                                            alt="Customer avatar"
+                                                                                            className="h-full w-full object-cover"
+                                                                                            loading="lazy"
+                                                                                            decoding="async"
+                                                                                        />
+                                                                                    </div>
+
+                                                                                    <div className="min-w-0">
+                                                                                        <p className="text-[12px] leading-snug text-neutral-800">
+                                                                                            “I struggled with a slow wordpress site but didn't have the budget to redo it. This app helped me clone and redeploy it in under 10 minutes, I recommend it to anyone needing a quick landing page”
+                                                                                        </p>
+                                                                                        <p className="mt-1 text-[11px] text-neutral-500">Karissa, freelancer</p>
+                                                                                    </div>
+                                                                                </div>
+
+                                                                            </div>
+
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => setShowExitOffer(false)}
+                                                                                aria-label="Close"
+                                                                                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-neutral-200 bg-white text-[18px] leading-none text-neutral-700 hover:bg-neutral-50"
+                                                                                style={{ aspectRatio: "1 / 1" }}
+                                                                            >
+                                                                                ×
+                                                                            </button>
+
+                                                                        </div>
+
+                                                                        <div className="mt-4 space-y-2">
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => {
+                                                                                    setShowExitOffer(false);
+                                                                                    void startProCheckout({
+                                                                                        exitOffer: true,
+                                                                                        exitOfferReason: exitOfferReason || "close",
+                                                                                    });
+                                                                                }}
+                                                                                disabled={checkoutBusy}
+                                                                                className="w-full rounded-2xl px-5 py-4 text-[15px] font-extrabold text-white shadow-[0_18px_44px_rgba(0,0,0,0.28)] focus:outline-none focus:ring-2 focus:ring-black/10 disabled:cursor-wait disabled:opacity-70"
+                                                                                style={{ backgroundColor: ACCENT }}
+                                                                            >
+                                                                                {checkoutBusy ? "Redirecting to Stripe…" : "Claim 40% off and start trial →"}
+                                                                            </button>
+
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => {
+                                                                                    setShowExitOffer(false);
+                                                                                    closeDeployWizard();
+                                                                                }}
+                                                                                className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-2 text-[12px] font-medium text-neutral-800 hover:bg-neutral-50"
+                                                                            >
+                                                                                Close
+                                                                            </button>
+
+                                                                            <p className="pt-1 text-center text-[10px] text-neutral-500">
+                                                                                Offer applies to month one after trial & includes the 7-day free trial.
+                                                                            </p>
+                                                                            <p className="text-center text-[10px] text-neutral-500">
+                                                                                Cancel anytime. 24/7 Chat support included.
+                                                                            </p>
+                                                                        </div>
+                                                                    </div>
+                                                                </motion.div>
+                                                            </motion.div>
+                                                        )}
+                                                    </AnimatePresence>
                                                 </motion.div>
                                             )}
+
+
                                         </AnimatePresence>
                                     </div>
                                 </motion.div>

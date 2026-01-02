@@ -7,13 +7,87 @@ import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-const stripe = getStripe();
 
+const stripe = getStripe();
 const db = admin.firestore();
+
+const TRIAL_DAYS = 7;
+
+// Exit-offer rules
+const EXIT_OFFER_MS = 15 * 60 * 1000;
+const EXIT_OFFER_SKEW_MS = 30 * 1000; // client clock tolerance
+
+function pickExitPromoId(isProd: boolean) {
+    const promo = isProd
+        ? process.env.STRIPE_EXIT40_PROMO_PROD
+        : process.env.STRIPE_EXIT40_PROMO_TEST;
+
+    const coupon = isProd
+        ? process.env.STRIPE_EXIT40_COUPON_PROD
+        : process.env.STRIPE_EXIT40_COUPON_TEST;
+
+    return { promo, coupon };
+}
+
+function isValidExitOfferPayload(payload: { offer?: unknown; offerEndsAt?: unknown }) {
+    if (payload.offer !== "exit40") return false;
+
+    const endsAt = typeof payload.offerEndsAt === "number" ? payload.offerEndsAt : NaN;
+    if (!Number.isFinite(endsAt) || endsAt <= 0) return false;
+
+    const now = Date.now();
+
+    // Must not be expired
+    if (now > endsAt) return false;
+
+    // Must be a near-future deadline, not some far future cheated value
+    const maxFuture = now + EXIT_OFFER_MS + EXIT_OFFER_SKEW_MS;
+    if (endsAt > maxFuture) return false;
+
+    return true;
+}
+
+async function resolvePromotionCodeIdFromCode(code?: unknown) {
+    const c = typeof code === "string" ? code.trim() : "";
+    if (!c) return null;
+
+    const list = await stripe.promotionCodes.list({
+        code: c,
+        active: true,
+        limit: 1,
+    });
+
+    return list.data?.[0]?.id || null; // promo_...
+}
+
+function assertValidDiscountId(promo?: string | null, coupon?: string | null) {
+    if (promo && !promo.startsWith("promo_")) {
+        throw new Error(
+            `STRIPE_EXIT40_PROMO_* must be a Promotion Code id starting with "promo_". Got: "${promo}"`,
+        );
+    }
+    if (coupon && !coupon.startsWith("coupon_")) {
+        throw new Error(
+            `STRIPE_EXIT40_COUPON_* must be a Coupon id starting with "coupon_". Got: "${coupon}"`,
+        );
+    }
+}
 
 async function handler({ req, uid }: { req: NextRequest; uid: string }) {
     const body = await req.json().catch(() => ({}));
-    const { plan, returnRenderId, returnStep } = body as any;
+
+    const {
+        plan,
+        returnRenderId,
+        returnStep,
+
+        // exit-offer inputs
+        offer, // "exit40"
+        offerEndsAt, // number (ms)
+        offerReason, // optional
+        offerPromoCode, // optional: "DEPLOY40" (human code)
+    } = body as any;
+
     if (!plan) {
         return NextResponse.json({ error: "Missing plan" }, { status: 400 });
     }
@@ -32,7 +106,7 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
     if (!priceId) {
         return NextResponse.json(
             { error: "Stripe price not configured for current environment" },
-            { status: 500 }
+            { status: 500 },
         );
     }
 
@@ -62,13 +136,7 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
 
         customerId = customer.id;
 
-        await userRef.set(
-            {
-                stripeCustomerId: customerId,
-            },
-            { merge: true }
-        );
-
+        await userRef.set({ stripeCustomerId: customerId }, { merge: true });
         await linkCustomerToUid(customerId, uid);
     } else {
         if (affiliateRef || affiliateSource) {
@@ -90,28 +158,68 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         ? process.env.NEXT_PUBLIC_APP_ORIGIN || "https://kloner.app"
         : process.env.NEXT_PUBLIC_APP_ORIGIN || "http://localhost:3000";
 
-    let successUrl: string;
-
-    if (returnRenderId && returnStep) {
-        const step = returnStep || 2;
-        successUrl = `${appOrigin}/dashboard/view?wizard=1&step=${step}&render=${encodeURIComponent(
-            returnRenderId || ""
-        )}&billing=success`;
-    } else {
-        successUrl = `${appOrigin}/dashboard/view?billing=success`;
-    }
+    const successUrl =
+        returnRenderId && returnStep
+            ? `${appOrigin}/dashboard/view?wizard=1&step=${returnStep || 2}&render=${encodeURIComponent(
+                returnRenderId || "",
+            )}&billing=success`
+            : `${appOrigin}/dashboard/view?billing=success`;
 
     const cancelUrl = `${appOrigin}/price?billing=cancelled`;
 
-    const baseMeta = {
+    const baseMeta: Record<string, string> = {
         firebaseUid: uid,
         plan,
         ...(affiliateRef ? { affiliateRef } : {}),
         ...(affiliateSource ? { affiliateSource } : {}),
     };
 
-    const TRIAL_DAYS = 7;
+    // ---- exit-offer discount resolution ----
+    const exitOfferRequested = isValidExitOfferPayload({ offer, offerEndsAt });
 
+    let discounts:
+        | Array<{ promotion_code?: string; coupon?: string }>
+        | undefined = undefined;
+
+    if (exitOfferRequested) {
+        // 1) Prefer env ids (fast, deterministic)
+        const { promo, coupon } = pickExitPromoId(isProd);
+
+        try {
+            assertValidDiscountId(promo || null, coupon || null);
+        } catch (e: any) {
+            return NextResponse.json({ error: e?.message || "Invalid discount env id" }, { status: 500 });
+        }
+
+        if (promo) {
+            discounts = [{ promotion_code: promo }];
+        } else if (coupon) {
+            discounts = [{ coupon }];
+        } else {
+            // 2) Fallback: resolve human code -> promo_...
+            const resolvedPromoId = await resolvePromotionCodeIdFromCode(offerPromoCode);
+            if (!resolvedPromoId) {
+                return NextResponse.json(
+                    {
+                        error:
+                            "Exit offer requested but no STRIPE_EXIT40_PROMO_* / STRIPE_EXIT40_COUPON_* configured and offerPromoCode could not be resolved.",
+                    },
+                    { status: 500 },
+                );
+            }
+            discounts = [{ promotion_code: resolvedPromoId }];
+        }
+
+        baseMeta.exitOffer = "exit40";
+        if (typeof offerReason === "string" && offerReason.trim()) {
+            baseMeta.exitOfferReason = offerReason.trim().slice(0, 32);
+        }
+        if (typeof offerPromoCode === "string" && offerPromoCode.trim()) {
+            baseMeta.exitOfferPromoCode = offerPromoCode.trim().slice(0, 64);
+        }
+    }
+
+    // Stripe constraint: cannot send allow_promotion_codes with discounts.
     const session = await stripe.checkout.sessions.create({
         mode: "subscription",
         customer: customerId,
@@ -120,11 +228,12 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         success_url: successUrl,
         cancel_url: cancelUrl,
         metadata: baseMeta,
+
+        ...(discounts?.length ? { discounts } : { allow_promotion_codes: true }),
+
         subscription_data: {
             trial_period_days: TRIAL_DAYS,
             metadata: baseMeta,
-            // optional but recommended: if you require payment method up-front, keep default behavior.
-            // If you ever set `payment_method_collection: "if_required"` elsewhere, remove that for trials.
         },
     });
 

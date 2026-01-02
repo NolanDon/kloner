@@ -194,7 +194,7 @@ export default function ArchivedPage() {
                         Archives
                     </h1>
                     <p className="mt-1 max-w-2xl text-sm text-neutral-600">
-                        Archived previews are hidden from your dashboard and retained for 30 days before permanent deletion. Unarchive anytime to resume editing or deploy.
+                        Archived previews are hidden from your dashboard. Unarchive anytime to resume editing or deploy.
                     </p>
 
                     {err ? (
