@@ -1,13 +1,15 @@
 // app/api/support-docs/embed/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import OpenAI from "openai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import admin from "firebase-admin";
 import { getAdminDb } from "../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 
 export const runtime = "nodejs";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
+const geminiClient = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
+const GEMINI_EMBEDDING_MODEL = "text-embedding-004";
 const SUPPORT_DOCS_COLLECTION = "support_doc";
 
 export async function POST(req: NextRequest) {
@@ -43,16 +45,22 @@ export async function POST(req: NextRequest) {
                 }
 
                 try {
-                    const embRes = await openai.embeddings.create({
-                        model: "text-embedding-3-small",
-                        input: rawText,
-                    });
+                    if (!geminiClient) {
+                        errors.push({ id: docSnap.id, error: "Gemini client not initialized" });
+                        continue;
+                    }
 
-                    const embedding = embRes.data[0]?.embedding;
-                    if (!embedding || !Array.isArray(embedding)) {
+                    const embModel = geminiClient.getGenerativeModel({ model: GEMINI_EMBEDDING_MODEL });
+                    const embRes = await embModel.embedContent(rawText);
+
+                    const embeddingValues = embRes.embedding?.values;
+                    if (!embeddingValues) {
                         errors.push({ id: docSnap.id, error: "No embedding returned" });
                         continue;
                     }
+
+                    // Convert to plain array for Firestore storage
+                    const embedding = Array.from(embeddingValues);
 
                     await docSnap.ref.set(
                         { embedding, updatedAt: new Date() },

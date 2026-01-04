@@ -1,12 +1,15 @@
 // app/api/support/chat/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import admin from "firebase-admin";
-import OpenAI from "openai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getAdminDb } from "../../_lib/auth";
 
-const client = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-});
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
+const geminiClient = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
+
+// Using flash model for cost efficiency while maintaining good performance
+const GEMINI_CHAT_MODEL = process.env.GEMINI_CHAT_MODEL || "gemini-2.0-flash-exp";
+const GEMINI_EMBEDDING_MODEL = "text-embedding-004";
 
 type Sender = "user" | "ai" | "agent" | "system";
 
@@ -64,28 +67,41 @@ async function loadSupportDocs(db: FirebaseFirestore.Firestore): Promise<Support
 async function buildContextFromDocs(question: string): Promise<string | null> {
     const db = getAdminDb();
     const docs = await loadSupportDocs(db);
-    if (!docs.length) return null;
+    if (!docs.length) {
+        console.warn("[support-chat] No support docs loaded from database");
+        return null;
+    }
 
     let queryEmbedding: number[] | null = null;
     try {
-        const embRes = await client.embeddings.create({
-            model: "text-embedding-3-small",
-            input: question,
-        });
-        queryEmbedding = embRes.data[0]?.embedding ?? null;
+        if (!geminiClient) {
+            console.warn("[support-chat] Gemini client not initialized");
+            return null;
+        }
+        const embModel = geminiClient.getGenerativeModel({ model: GEMINI_EMBEDDING_MODEL });
+        const embRes = await embModel.embedContent(question);
+        queryEmbedding = embRes.embedding?.values ? Array.from(embRes.embedding.values) : null;
     } catch (err) {
         console.warn("[support-chat] embedding failed, falling back to no-docs", err);
         return null;
     }
 
-    if (!queryEmbedding) return null;
+    if (!queryEmbedding || !Array.isArray(queryEmbedding)) {
+        console.warn("[support-chat] Invalid query embedding");
+        return null;
+    }
 
     const ranked = docs
         .map((doc) => ({ ...doc, score: cosineSim(queryEmbedding!, doc.embedding) }))
         .sort((a, b) => b.score - a.score);
 
+    console.log("[support-chat] RAG scores:", ranked.slice(0, 3).map(d => ({ id: d.id, score: d.score })));
+
     const top = ranked.slice(0, 3);
-    if (!top.length || top[0].score < 0.1) return null;
+    if (!top.length || top[0].score < 0.1) {
+        console.warn("[support-chat] No relevant docs found. Best score:", top[0]?.score);
+        return null;
+    }
 
     return top
         .map((d) => `### ${d.id}\n` + d.text.trim().slice(0, 3000))
@@ -279,6 +295,14 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ ok: false, error: "Missing message text" }, { status: 400 });
         }
 
+        if (!geminiClient) {
+            console.error("[support-chat] Gemini API key not configured");
+            return NextResponse.json(
+                { ok: false, error: "AI service not configured. Please contact support." },
+                { status: 503 }
+            );
+        }
+
         const db = getAdminDb();
         const uid = (req as any).user?.uid || null;
 
@@ -379,39 +403,34 @@ export async function POST(req: NextRequest) {
 
             const contextBlob = await buildContextFromDocs(textRaw);
 
-            const messagesForModel: any[] = [];
             const baseSystem =
                 "You are the support assistant for Kloner, a tool for cloning and editing websites. " +
                 "Answer ONLY using the Kloner docs provided. If the answer is not clearly in the docs, " +
                 "say you don't know and suggest the user contact support.";
 
-            messagesForModel.push({
-                role: "system",
-                content: [{ type: "input_text", text: baseSystem }],
-            });
-
+            let systemPrompt = baseSystem;
             if (contextBlob) {
-                messagesForModel.push({
-                    role: "system",
-                    content: [{ type: "input_text", text: `Kloner support docs:\n\n${contextBlob}` }],
-                });
+                systemPrompt += `\n\nKloner support docs:\n\n${contextBlob}`;
             }
 
-            for (const msg of history) {
-                const isAssistant = msg.role === "assistant";
-                const contentType = isAssistant ? "output_text" : "input_text";
-                messagesForModel.push({
-                    role: msg.role,
-                    content: [{ type: contentType, text: msg.text }],
-                });
-            }
+            const chatHistory = history
+                .map((msg) => {
+                    const role = msg.role === "assistant" ? "model" : "user";
+                    return { role, parts: [{ text: msg.text }] };
+                })
+                .filter((msg) => msg.role !== "system");
 
-            const completion: any = await client.responses.create({
-                model: "gpt-4.1-mini",
-                input: messagesForModel as any,
+            const model = geminiClient.getGenerativeModel({ 
+                model: GEMINI_CHAT_MODEL,
+                systemInstruction: systemPrompt,
             });
 
-            const aiText = String(completion.output_text || "").trim();
+            const chat = model.startChat({
+                history: chatHistory,
+            });
+
+            const result = await chat.sendMessage("");
+            const aiText = result.response.text().trim();
             if (aiText) {
                 const aiTs = admin.firestore.Timestamp.now();
                 const aiRef = await chatRef.collection("messages").add({

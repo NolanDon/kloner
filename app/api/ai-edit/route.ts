@@ -938,6 +938,22 @@ SAFETY AND POLICY:
 - Do not output new external image URLs unless they already exist in the provided HTML.
 - Apply minimal, targeted changes; preserve existing content and structure.
 
+RESPONSIVE DESIGN RULES (CRITICAL - SEVERITY 1):
+- NEVER remove or modify hamburger menus, mobile navigation toggles, or any mobile-specific UI elements
+- PRESERVE all media queries (@media) exactly as they appear in the original HTML
+- PRESERVE all responsive utility classes (hidden-mobile, show-desktop, md:, lg:, etc.)
+- PRESERVE all JavaScript event handlers and data attributes that control responsive behavior
+- PRESERVE viewport meta tags and any responsive configuration
+- If editing navigation: keep BOTH desktop AND mobile versions intact
+- If unsure whether an element is responsive-critical, DO NOT modify or remove it
+- When in doubt, preserve the element and its classes/attributes unchanged
+
+INTERACTIVE FUNCTIONALITY (CRITICAL):
+- NEVER remove click handlers, data-toggle, data-target, or similar interactive attributes
+- PRESERVE all <script> tags and JavaScript functionality
+- PRESERVE event listeners and dynamic behavior
+- If an element has JavaScript interactions, keep ALL its attributes
+
 OUTPUT FORMAT (STRICT):
 SUMMARY: <one short sentence>
 HTML:
@@ -1407,13 +1423,13 @@ async function handlePost(req: NextRequest) {
 
             aiEditsRef = renderRef.collection("ai_edits");
 
-            const docRef = aiEditsRef.doc();
-            await docRef.set({
+            const historyDoc = {
                 renderId,
                 action,
                 prompt: rawUserPrompt,
                 displayPrompt: rawDisplayPrompt || modelPrompt,
                 modelPrompt,
+                userQuestion: rawUserPrompt, // Explicit field for debugging
                 summary,
                 beforeHtml: html,
                 afterHtml,
@@ -1422,7 +1438,22 @@ async function handlePost(req: NextRequest) {
                 requestId,
                 provider: "gemini",
                 model: GEMINI_MODEL,
+                mode,
+            };
+
+            console.log("[ai-edit] Storing history doc:", {
+                renderId,
+                requestId,
+                action,
+                hasPrompt: Boolean(rawUserPrompt),
+                promptLength: rawUserPrompt.length,
+                promptSnippet: safeSnippet(rawUserPrompt, 100),
+                hasDisplayPrompt: Boolean(rawDisplayPrompt),
+                hasModelPrompt: Boolean(modelPrompt),
             });
+
+            const docRef = aiEditsRef.doc();
+            await docRef.set(historyDoc);
 
             try {
                 const extraSnap = await aiEditsRef.orderBy("createdAt", "desc").offset(5).get();
@@ -1575,6 +1606,18 @@ async function handleGet(req: NextRequest) {
             const suggestions = snap.docs.map((d: any) => {
                 const data = d.data() as any;
                 return { id: d.id, ...data, createdAt: normalizeCreatedAtToIso(data.createdAt) };
+            });
+
+            console.log("[ai-edit][GET] Retrieved suggestions:", {
+                renderId,
+                count: suggestions.length,
+                samples: suggestions.slice(0, 2).map(s => ({
+                    id: s.id,
+                    hasPrompt: Boolean(s.prompt),
+                    hasUserQuestion: Boolean(s.userQuestion),
+                    promptSnippet: safeSnippet(s.prompt || s.userQuestion || "", 60),
+                    action: s.action,
+                })),
             });
 
             return NextResponse.json({ suggestions, meta: { tier, creditsRemaining, creditsLimit } }, { status: 200 });

@@ -95,7 +95,7 @@ export default function ChatWidgetProvider() {
     }
 
     useEffect(() => {
-        if (!open || !chatId) return;
+        if (!open || !chatId || status === "closed") return;
 
         let cancelled = false;
         let timeoutId: NodeJS.Timeout | null = null;
@@ -152,7 +152,7 @@ export default function ChatWidgetProvider() {
             cancelled = true;
             if (timeoutId) clearTimeout(timeoutId);
         };
-    }, [open, chatId]);
+    }, [open, chatId, status]);
 
     function pushClosedSystemMessage() {
         const sys: ChatMessage = {
