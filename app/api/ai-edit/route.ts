@@ -1611,7 +1611,7 @@ async function handleGet(req: NextRequest) {
             console.log("[ai-edit][GET] Retrieved suggestions:", {
                 renderId,
                 count: suggestions.length,
-                samples: suggestions.slice(0, 2).map(s => ({
+                samples: suggestions.slice(0, 2).map((s: { id: any; prompt: any; userQuestion: any; action: any; }) => ({
                     id: s.id,
                     hasPrompt: Boolean(s.prompt),
                     hasUserQuestion: Boolean(s.userQuestion),
