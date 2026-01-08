@@ -1,0 +1,112 @@
+/* Custom styles for Driver.js tour */
+
+.kloner-tour-popover .driver-popover {
+    background: #fff;
+    border-radius: 14px;
+    box-shadow: 0 4px 32px rgba(0,0,0,0.10);
+    border: 1px solid #ececec;
+    font-family: var(--font-inter), Inter, sans-serif;
+    padding: 28px 28px 20px 24px;
+    min-width: 320px;
+    max-width: 360px;
+}
+
+.driver-popover-title {
+    font-size: 18px;
+    font-weight: 500;
+    color: #171717;
+    margin-bottom: 8px;
+    padding-bottom: 2px;
+    border-bottom: 2px solid #F55F2A;
+    display: inline-block;
+    letter-spacing: -0.01em;
+}
+
+.driver-popover-description {
+    font-size: 15px;
+    color: #444;
+    line-height: 1.7;
+    margin-bottom: 10px;
+    font-weight: 400;
+}
+
+.driver-popover-progress-text {
+    font-size: 12px;
+    color: #bdbdbd;
+    font-weight: 500;
+    font-family: var(--font-inter), Inter, sans-serif;
+}
+
+.driver-popover-navigation-btns button {
+    background-color: #F55F2A;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 7px 18px;
+    font-size: 14px;
+    font-weight: 700;
+    font-family: var(--font-inter), Inter, sans-serif;
+    cursor: pointer;
+    transition: all 0.18s;
+    box-shadow: none;
+}
+
+.driver-popover-navigation-btns button:hover {
+    background-color: #e04d1a;
+    transform: translateY(-1px) scale(1.03);
+}
+
+.driver-popover-prev-btn {
+    background-color: #fff !important;
+    color: #F55F2A !important;
+    border: 1px solid #F55F2A !important;
+}
+
+.driver-popover-prev-btn:hover {
+    background-color: #fff5f0 !important;
+    color: #e04d1a !important;
+}
+
+.driver-popover-close-btn {
+    color: #bdbdbd;
+    font-size: 22px;
+    font-weight: 400;
+    top: 14px !important;
+    right: 16px !important;
+    font-family: var(--font-inter), Inter, sans-serif;
+}
+
+.driver-popover-close-btn:hover {
+    color: #525252;
+}
+
+/* Overlay */
+.driver-overlay {
+    background-color: rgba(0, 0, 0, 0.5);
+}
+
+/* Active element highlighting */
+.driver-active-element {
+    border-radius: 8px;
+}
+
+/* Arrow */
+.driver-popover-arrow {
+    border-color: white;
+}
+
+.driver-popover-arrow-side-top .driver-popover-arrow {
+    border-top-color: white;
+}
+
+.driver-popover-arrow-side-bottom .driver-popover-arrow {
+    border-bottom-color: white;
+}
+
+.driver-popover-arrow-side-left .driver-popover-arrow {
+    border-left-color: white;
+}
+
+.driver-popover-arrow-side-right .driver-popover-arrow {
+    border-right-color: white;
+}

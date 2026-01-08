@@ -2,6 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
+@import './tour.css';
+
 /* Your site is light on white, so don't force dark */
 :root {
     color-scheme: light;

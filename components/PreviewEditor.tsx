@@ -5609,6 +5609,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                         {/* Right-side history menu (top-right overlay) */}
                         {historyOpen ? (
                             <div
+                                id="kloner-history-panel"
                                 className="hidden lg:block absolute top-20 right-3 z-[80] w-72 max-h-[70vh]"
                             >
                                 <div className="flex flex-col rounded-lg border border-neutral-200 bg-white/90/95 shadow-lg">
