@@ -121,6 +121,29 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
 
     let customerId: string | undefined = userData.stripeCustomerId;
 
+    // Check for existing active/trialing subscriptions to prevent duplicates
+    if (customerId) {
+        const existingSubs = await stripe.subscriptions.list({
+            customer: customerId,
+            status: "all",
+            limit: 10,
+        });
+
+        const activeOrTrialing = existingSubs.data.filter(
+            (sub) => sub.status === "active" || sub.status === "trialing"
+        );
+
+        if (activeOrTrialing.length > 0) {
+            return NextResponse.json(
+                {
+                    error: "You already have an active subscription. Please manage your existing subscription instead.",
+                    existingSubscription: true,
+                },
+                { status: 400 }
+            );
+        }
+    }
+
     if (!customerId) {
         const authUser = await admin.auth().getUser(uid);
         const email = authUser.email ?? undefined;

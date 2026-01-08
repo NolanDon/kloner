@@ -612,6 +612,7 @@ export async function POST(req: NextRequest) {
                     priceId,
                     status,
                     currentPeriodEnd: (sub as any).current_period_end ?? undefined,
+                    trialEnd: (sub as any).trial_end ?? undefined,
                     cancelAtPeriodEnd: (sub as any).cancel_at_period_end ?? undefined,
                 });
 

@@ -5585,6 +5585,8 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                         <Image
                                             src={activeSourceImage}
                                             alt="Reference"
+                                            width={1200}
+                                            height={800}
                                             className="w-full h-auto rounded border bg-white/90"
                                         />
                                     ) : (

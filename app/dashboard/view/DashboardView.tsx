@@ -4667,16 +4667,16 @@ export default function PreviewPage(): JSX.Element {
                                                                 initial={{ opacity: 0 }}
                                                                 animate={{ opacity: 1 }}
                                                                 exit={{ opacity: 0 }}
-                                                                className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/45 p-2"
+                                                                className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
                                                                 role="dialog"
                                                                 aria-modal="true"
                                                             >
                                                                 <motion.div
-                                                                    initial={{ opacity: 0, y: 10, scale: 0.99 }}
+                                                                    initial={{ opacity: 0, y: 24, scale: 0.96 }}
                                                                     animate={{ opacity: 1, y: 0, scale: 1 }}
-                                                                    exit={{ opacity: 0, y: 10, scale: 0.99 }}
-                                                                    transition={{ duration: 0.16, ease: "easeOut" }}
-                                                                    className="w-full max-w-md overflow-hidden rounded-[22px] border border-neutral-200 bg-white shadow-[0_30px_90px_rgba(0,0,0,0.38)]"
+                                                                    exit={{ opacity: 0, y: 16, scale: 0.96 }}
+                                                                    transition={{ duration: 0.22, ease: [0.23, 0.82, 0.25, 1] }}
+                                                                    className="relative w-full max-w-md overflow-hidden rounded-[28px] border border-neutral-200 bg-white shadow-[0_24px_80px_rgba(0,0,0,0.20)]"
                                                                 >
                                                                     {/* ultra-minimal header strip */}
                                                                     <div className="h-1 w-full" style={{ backgroundColor: ACCENT }} />
@@ -4759,8 +4759,9 @@ export default function PreviewPage(): JSX.Element {
 
                                                                         </div>
 
-                                                                        <div className="mt-4 space-y-2">
-                                                                            <button
+                                                                        {/* Primary CTA */}
+                                                                        <div className="mt-6">
+                                                                            <motion.button
                                                                                 type="button"
                                                                                 onClick={() => {
                                                                                     setShowExitOffer(false);
@@ -4772,27 +4773,30 @@ export default function PreviewPage(): JSX.Element {
                                                                                 disabled={checkoutBusy}
                                                                                 className="w-full rounded-2xl px-5 py-4 text-[15px] font-extrabold text-white shadow-[0_18px_44px_rgba(0,0,0,0.28)] focus:outline-none focus:ring-2 focus:ring-black/10 disabled:cursor-wait disabled:opacity-70"
                                                                                 style={{ backgroundColor: ACCENT }}
+                                                                                whileHover={{ scale: 1.01 }}
+                                                                                whileTap={{ scale: 0.99 }}
+                                                                                transition={{ duration: 0.16, ease: "easeOut" }}
                                                                             >
-                                                                                {checkoutBusy ? "Redirecting to Stripe…" : "Claim 40% off and start trial →"}
-                                                                            </button>
+                                                                                {checkoutBusy ? "Redirecting to Stripe…" : "Start free trial & claim 40% off →"}
+                                                                            </motion.button>
 
+                                                                            <p className="mt-3 text-center text-[11px] text-neutral-500">
+                                                                                Free for 7 days. Discount applies after trial. Cancel anytime.
+                                                                            </p>
+                                                                        </div>
+
+                                                                        {/* Secondary action */}
+                                                                        <div className="mt-4 text-center">
                                                                             <button
                                                                                 type="button"
                                                                                 onClick={() => {
                                                                                     setShowExitOffer(false);
                                                                                     closeDeployWizard();
                                                                                 }}
-                                                                                className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-2 text-[12px] font-medium text-neutral-800 hover:bg-neutral-50"
+                                                                                className="text-[12px] font-semibold text-neutral-500 hover:text-neutral-700"
                                                                             >
-                                                                                Close
+                                                                                No thanks, close
                                                                             </button>
-
-                                                                            <p className="pt-1 text-center text-[10px] text-neutral-500">
-                                                                                Offer applies to month one after trial & includes the 7-day free trial.
-                                                                            </p>
-                                                                            <p className="text-center text-[10px] text-neutral-500">
-                                                                                Cancel anytime. 24/7 Chat support included.
-                                                                            </p>
                                                                         </div>
                                                                     </div>
                                                                 </motion.div>
