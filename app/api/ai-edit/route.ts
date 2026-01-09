@@ -72,9 +72,10 @@ interface AiEditModelResult {
    Limits
    ========================= */
 
-const MAX_HTML_CHARS = 8_000;
-const MAX_USER_PROMPT_CHARS = 1_000;
-const MAX_MODEL_PROMPT_CHARS = 2_200;
+// Increased caps: we will pass full HTML through to the model (no aggressive truncation).
+const MAX_HTML_CHARS = 1_000_000; // effectively unbounded for practical pages
+const MAX_USER_PROMPT_CHARS = 10_000;
+const MAX_MODEL_PROMPT_CHARS = 60_000;
 
 /* =========================
    Abuse alert configuration
@@ -927,12 +928,17 @@ function stripExampleDotComAssets(html: string) {
 const AI_EDIT_SYSTEM_PROMPT = `
 You are an HTML refactoring assistant for the Kloner website editor.
 
+SAFETY, NON-DESTRUCTIVE RULES (HIGHEST PRIORITY):
+- NEVER DELETE pre-existing pages, files, or top-level sections unless explicitly authorized by an administrator. If a user requests deletion of a page or file, DO NOT perform it — instead return guidance and refuse to delete content.
+- When editing, ALWAYS RETURN the COMPLETE ORIGINAL BLOCK or container that was provided as input (for example the full <main class="page-root" data-route="..."> block for page edits, or the full selected block HTML for block edits). Do not return partial fragments that omit existing sections.
+- If the requested change is destructive (removes entire sections), annotate the suggested removal with a clear marker and include the original content unchanged. Example marker (suggestion only): <!-- KLONER_DELETE_SUGGESTION:start -->...<!-- KLONER_DELETE_SUGGESTION:end -->. Do not actually remove content.
+
 SAFETY AND POLICY:
 - Follow Gemini safety rules. If the user asks for disallowed content, refuse.
 - When refusing:
-  - Do NOT change the HTML.
-  - Set SUMMARY to: "Request refused for safety reasons. No changes applied."
-  - Under HTML: return the original HTML block unchanged.
+    - Do NOT change the HTML.
+    - Set SUMMARY to: "Request refused for safety reasons. No changes applied."
+    - Under HTML: return the original HTML block unchanged.
 
 - NEVER use example.com or placeholder absolute URLs for images, icons, or backgrounds.
 - Do not output new external image URLs unless they already exist in the provided HTML.
@@ -968,8 +974,9 @@ function parseModelOutput(raw: string, fallbackHtml: string): AiEditModelResult 
             afterHtml: fallbackHtml,
             summary: "AI edit failed; left the block unchanged.",
             errorCode: "MODEL_EMPTY",
-            errorStatus: 506,
-            userError: "AI edit failed. No changes were applied.",
+            // The model returned no textual content — treat as a bad gateway
+            errorStatus: 502,
+            userError: "AI edit failed: model returned no content. No changes were applied.",
         };
     }
 
@@ -987,8 +994,9 @@ function parseModelOutput(raw: string, fallbackHtml: string): AiEditModelResult 
             afterHtml: fallbackHtml,
             summary: "AI edit failed; left the block unchanged.",
             errorCode: "MODEL_HTML_EMPTY",
+            // Model returned text but no HTML section could be parsed — treat as bad gateway
             errorStatus: 502,
-            userError: "AI edit failed. No changes were applied.",
+            userError: "AI edit failed: model returned no editable HTML. No changes were applied.",
         };
     }
 
@@ -1061,7 +1069,10 @@ async function runAiEditModelGemini(input: {
         };
     }
 
-    const trimmedHtml = trimHtmlForModel(input.html);
+    // Pass the full HTML through to the model (we rely on the system prompt to be strict about
+    // preserving content and not deleting pages/files). We still keep a very large cap to avoid
+    // accidental OOMs, but do not aggressively truncate.
+    const trimmedHtml = String(input.html || "");
     const mode = input.mode ?? "code";
 
     const user = `
@@ -1368,6 +1379,37 @@ async function handlePost(req: NextRequest) {
                     requestId,
                 },
                 { status: modelResult.errorStatus || 502 }
+            );
+        }
+
+        // Basic safety check: ensure the model did not remove large portions of the original HTML.
+        // If it did, treat as a no-op and refund credits.
+        if (String(modelResult.afterHtml || "").trim().length < Math.max(32, String(html || "").trim().length * 0.5)) {
+            // Too much removed — refund and ask user to retry with a clearer brief.
+            await refundAiEditCreditsInline({
+                db,
+                uid,
+                tier,
+                cost: 5,
+                now: new Date(),
+                requestId,
+                reason: "destructive_change_blocked",
+            });
+
+            try {
+                const b = await ensureAiEditBucketInline({ db, uid, tier, now: new Date() });
+                creditsRemaining = b.remaining;
+                creditsLimit = b.limit;
+            } catch {}
+
+            return NextResponse.json(
+                {
+                    error:
+                        "AI edit appears to remove large portions of the provided HTML. No destructive changes were applied. Please rephrase your request to be explicit about what to remove.",
+                    meta: { tier, creditsRemaining, creditsLimit },
+                    requestId,
+                },
+                { status: 422 }
             );
         }
 

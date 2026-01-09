@@ -2234,12 +2234,12 @@ export default function PreviewEditor({
         }, 450);
     }
 
-    // merge local history with ai suggestions
+    // merge local history only (AI suggestions are shown in the AI panel, not the main history list)
     const mergedHistory: DraftSnapshot[] = useMemo(() => {
-        const merged: DraftSnapshot[] = [...history, ...aiHistory.map(aiSuggestionToSnapshot)];
+        const merged: DraftSnapshot[] = [...history];
         merged.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         return merged;
-    }, [history, aiHistory]);
+    }, [history]);
 
     function HistoryPanel(props: {
         snapshots: DraftSnapshot[];
@@ -2707,7 +2707,15 @@ export default function PreviewEditor({
 
     // Live validation (no loop): only set if value changed
     useEffect(() => {
-        const msg = validatePageSlug(newPageUrl).ok ? null : (validatePageSlug(newPageUrl).msg || "Invalid URL.");
+        const raw = String(newPageUrl || "").trim();
+        if (!raw) {
+            // don't show an error when the field is empty
+            setNewPageUrlErr(null);
+            return;
+        }
+
+        const v = validatePageSlug(raw);
+        const msg = v.ok ? null : v.msg || "Invalid URL.";
         setNewPageUrlErr((prev) => (prev === msg ? prev : msg));
     }, [newPageUrl]);
 
