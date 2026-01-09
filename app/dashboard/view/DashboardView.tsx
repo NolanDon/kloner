@@ -1115,11 +1115,27 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     onStartFromCommunityBuild?: () => void;
     compact?: boolean;
 }) {
-    const effectiveLocked = locked;
+    const [localDisabled, setLocalDisabled] = useState(false);
+
+    // Consider the card disabled if either the parent says so or we've just been clicked.
+    const effectiveLocked = locked || localDisabled;
 
     const handleClick = () => {
         if (effectiveLocked) return;
-        onClick();
+
+        // Immediately prevent further clicks to avoid double-generation.
+        setLocalDisabled(true);
+
+        // Safety: clear the local guard after 10s in case something goes wrong.
+        const t = setTimeout(() => setLocalDisabled(false), 10000);
+
+        try {
+            onClick();
+        } finally {
+            // If parent quickly reflects the pending state it will keep the button disabled;
+            // otherwise we clear the optimistic guard after the timeout above.
+            // We don't clear the timeout here to allow it to expire naturally.
+        }
     };
 
     const title = effectiveLocked ? "Generating preview…" : "Generate preview";

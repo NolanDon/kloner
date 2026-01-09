@@ -2389,6 +2389,66 @@ export default function PreviewEditor({
             // manual snapshot when user hits save
             snapshotDraft("manual");
 
+            // Immediately persist the current draft and a manual-history snapshot
+            // to localStorage so manual saves are durable even if the page unloads.
+            try {
+                const currentKey = CURRENT_DRAFT_KEY(draftId);
+                const hk = HISTORY_KEY(draftId);
+
+                const createdAt = Date.now();
+                const manualId =
+                    typeof crypto !== "undefined" && "randomUUID" in crypto
+                        ? (crypto as any).randomUUID()
+                        : `${createdAt}-${Math.random().toString(36).slice(2, 8)}`;
+
+                const manualSnap = {
+                    id: manualId,
+                    createdAt,
+                    source: "manual",
+                    html: (nextHtml || "").trim(),
+                } as any;
+
+                // Persist current draft
+                const currentPayload: V2CurrentDraft = {
+                    v: 2,
+                    html: (nextHtml || "").trim(),
+                    updatedAt: Date.now(),
+                };
+
+                // Merge into history in localStorage (without waiting for React state)
+                const raw = localStorage.getItem(hk);
+                let existing: V2History | null = null;
+                try {
+                    existing = raw ? JSON.parse(raw) as V2History : null;
+                } catch { existing = null; }
+
+                const nextItems = [manualSnap].concat(Array.isArray(existing?.items) ? existing!.items : history);
+
+                const nextHistory: V2History = {
+                    v: 2,
+                    items: nextItems.slice(0, MAX_HISTORY_SNAPSHOTS),
+                    updatedAt: Date.now(),
+                };
+
+                try {
+                    localStorage.setItem(currentKey, JSON.stringify(currentPayload));
+                } catch (err: any) {
+                    if (err && (err.name === "QuotaExceededError" || err.code === 22)) {
+                        try { window.alert("Unable to persist current draft: localStorage quota exceeded."); } catch {}
+                    }
+                }
+
+                try {
+                    localStorage.setItem(hk, JSON.stringify(nextHistory));
+                } catch (err: any) {
+                    if (err && (err.name === "QuotaExceededError" || err.code === 22)) {
+                        try { window.alert("Unable to persist history snapshot: localStorage quota exceeded."); } catch {}
+                    }
+                }
+            } catch (err) {
+                console.warn("[PreviewEditor] immediate manual persist failed", err);
+            }
+
             if (!saveDraft) {
                 setPreviewHtml(nextHtml);
                 if (options?.applyToPreview) {
@@ -3897,12 +3957,88 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         [closing, doSave, onClose, tryClearIframeSelection]
     );
 
-    // pre-AI save
+    // pre-AI save: add snapshot and immediately persist to localStorage so the
+    // user can always revert even if the app crashes or the tab closes.
     function snapshotBeforeAiEdit(fullHtml: string) {
         addSnapshot({
             html: fullHtml,
             source: "auto",
         });
+
+        // Immediately persist history + current draft to localStorage to avoid
+        // relying on the next render/effect cycle which might be delayed.
+        try {
+            const hk = HISTORY_KEY(draftId);
+            const currentKey = CURRENT_DRAFT_KEY(draftId);
+
+            // Build payloads consistent with v2 envelopes
+            const nextHistory: V2History = {
+                v: 2,
+                items: [
+                    {
+                        id: typeof crypto !== "undefined" && "randomUUID" in crypto
+                            ? (crypto as any).randomUUID()
+                            : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                        createdAt: Date.now(),
+                        source: "before-ai",
+                        html: (fullHtml || "").trim(),
+                    } as any,
+                    ...history,
+                ].slice(0, MAX_HISTORY_SNAPSHOTS),
+                updatedAt: Date.now(),
+            };
+
+            const currentPayload: V2CurrentDraft = {
+                v: 2,
+                html: (fullHtml || "").trim(),
+                updatedAt: Date.now(),
+            };
+
+            const historyStr = JSON.stringify(nextHistory);
+            const currentStr = JSON.stringify(currentPayload);
+
+            // Warn if the payloads are large (approximate in bytes)
+            const totalBytes = historyStr.length + currentStr.length;
+            const WARN_BYTES = 1_500_000; // ~1.5MB heuristic
+            if (totalBytes > WARN_BYTES) {
+                // Inform the user their localStorage may be near quota.
+                try {
+                    if (typeof window !== "undefined") {
+                        window.alert(
+                            "Local save is large and may exceed your browser storage quota. Consider clearing older drafts/history if saves fail."
+                        );
+                    }
+                } catch {
+                    // ignore
+                }
+            }
+
+            try {
+                localStorage.setItem(hk, historyStr);
+            } catch (err: any) {
+                if (err && (err.name === "QuotaExceededError" || err.code === 22)) {
+                    try {
+                        window.alert(
+                            "Unable to save undo snapshot: localStorage quota exceeded. Clear storage or export your drafts to continue."
+                        );
+                    } catch {}
+                }
+            }
+
+            try {
+                localStorage.setItem(currentKey, currentStr);
+            } catch (err: any) {
+                if (err && (err.name === "QuotaExceededError" || err.code === 22)) {
+                    try {
+                        window.alert(
+                            "Unable to persist current draft: localStorage quota exceeded. Clear storage or export your drafts to continue."
+                        );
+                    } catch {}
+                }
+            }
+        } catch (err) {
+            console.warn("[PreviewEditor] snapshotBeforeAiEdit immediate persist failed", err);
+        }
     }
 
     // Put this helper inside the same component, above the JSX return:

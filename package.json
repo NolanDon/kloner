@@ -16,7 +16,7 @@
     "driver.js": "^1.4.0",
     "firebase": "^12.5.0",
     "firebase-admin": "^13.6.0",
-    "framer-motion": "^11.0.0",
+    "framer-motion": "^11.18.2",
     "lottie-react": "^2.4.1",
     "lucide-react": "^0.546.0",
     "next": "14.2.35",
