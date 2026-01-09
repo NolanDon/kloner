@@ -581,6 +581,16 @@ function RenderCardInner({
                             <span>v{controllerVersion}</span>
                         </span>
                     )}
+
+                    {/* version label for all users (minimal) */}
+                    {versionLabel && (
+                        <span
+                            className="absolute right-2 top-2 z-40 inline-flex items-center rounded-full border border-neutral-200 bg-white/85 px-2 py-0.5 text-[10px] font-mono text-neutral-700 shadow-sm"
+                            title={`Version: ${versionLabel}`}
+                        >
+                            {versionLabel}
+                        </span>
+                    )}
                 </>
             )}
 
