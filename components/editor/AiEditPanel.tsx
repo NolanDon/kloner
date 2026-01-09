@@ -451,9 +451,23 @@ export default function AiEditPanel(props: AiEditPanelProps) {
 
     const loadingLabel = "Thinking… this may take a while…";
 
+    // Example quick prompts shown in the welcome card
+    const examplePrompts = [
+        "Change the hero background color to #4f46e5",
+        "Add a subtle patterned background behind the hero",
+        "Increase spacing between hero heading and subheading",
+        "Replace header logo with a compact variant",
+    ];
+
+    useEffect(() => {
+        // If there is no history and AI hasn't loaded anything, ensure the panel
+        // visually shows a helpful welcome message. We keep prompt empty until
+        // the user clicks an example.
+    }, []);
+
     return (
         <>
-            <div className="flex h-full flex-col rounded-xl border border-neutral-200 bg-white/95 shadow-sm">
+            <div className="flex h-full flex-col rounded-xl border border-neutral-200 bg-white/95 shadow-sm ring-1 ring-accent/10 backdrop-blur-sm">
                 <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2">
                     <div className="space-y-0.5">
                         <div className="text-[14px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
@@ -474,7 +488,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                     )}
                 </div>
 
-                <div ref={scrollContainerRef} className="flex-1 space-y-2 overflow-y-auto px-3 py-3 text-[12px]">
+                <div ref={scrollContainerRef} className="flex-1 min-h-0 space-y-4 overflow-y-auto px-3 py-3 text-[12px]">
                     {historyError && (
                         <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
                             {historyError}
@@ -489,11 +503,27 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                             </div>
                         </div>
                     ) : orderedSuggestions.length === 0 && !historyError ? (
-                        <div className="flex h-30 items-center justify-center rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 text-center">
-                            <p className="text-[12px] text-neutral-500">
-                                No AI edits yet for this page. Select a block in the preview, describe a small change below, and your
-                                conversation will show up here.
-                            </p>
+                        <div className="rounded-xl border border-neutral-200 bg-gradient-to-b from-white/80 to-white/70 px-4 py-4">
+                            <div className="flex items-start gap-3">
+                                <div className="flex-shrink-0 h-9 w-9 rounded-full bg-[var(--accent,#f55f2a)]/90 flex items-center justify-center text-white shadow">AI</div>
+                                <div>
+                                    <div className="mb-2 text-[16px] font-semibold text-neutral-900">Hi, I’m your AI editor</div>
+                                    <div className="mb-3 text-[16px] text-neutral-600 max-w-[300px]">Try asking me to tweak colors, add a background image, or adjust spacing. Select a block in the preview and pick an example to populate the prompt.</div>
+
+                                    <div className="flex flex-wrap gap-2">
+                                        {examplePrompts.map((ex) => (
+                                            <button
+                                                key={ex}
+                                                type="button"
+                                                onClick={() => setPrompt(ex)}
+                                                className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[12px] bg-white shadow-sm hover:bg-neutral-50"
+                                            >
+                                                {ex}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     ) : (
                         orderedSuggestions.map((s) => {

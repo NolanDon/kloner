@@ -76,15 +76,6 @@ export default function Hero() {
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  const [isMobile, setIsMobile] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 767px)");
-    const update = () => setIsMobile(mq.matches);
-    update();
-    mq.addEventListener?.("change", update);
-    return () => mq.removeEventListener?.("change", update);
-  }, []);
-
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
@@ -115,7 +106,11 @@ export default function Hero() {
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const cleaned = stripProtocol(e.target.value);
     setUrl(cleaned);
-    setError(cleaned && !validateAndNormalize(cleaned) ? "Please enter a valid public http(s) URL." : null);
+    setError(
+      cleaned && !validateAndNormalize(cleaned)
+        ? "Please enter a valid public http(s) URL."
+        : null
+    );
   }
 
   function handlePaste(e: React.ClipboardEvent<HTMLInputElement>) {
@@ -124,22 +119,25 @@ export default function Hero() {
     e.preventDefault();
     const cleaned = stripProtocol(pasted);
     setUrl(cleaned);
-    setError(!validateAndNormalize(cleaned) ? "Please enter a valid public http(s) URL." : null);
+    setError(
+      !validateAndNormalize(cleaned)
+        ? "Please enter a valid public http(s) URL."
+        : null
+    );
   }
 
   return (
     <section
-      className="relative flex items-center bg-white text-neutral-800"
+      className="relative bg-white"
       style={{
         height: "calc(100dvh - var(--header-h, 0px))",
         minHeight: 560,
       }}
     >
-      <div className="absolute inset-0 p-4">
-        {/* Container */}
-        <div className="relative h-full w-full overflow-hidden rounded-3xl ring-1 ring-black/10 shadow-2xl bg-[#2a1b3e]">
+      <div className="absolute inset-0 p-3 sm:p-4">
+        <div className="relative h-full w-full overflow-hidden rounded-[28px] ring-1 ring-black/10 shadow-2xl bg-[#2a1b3e]">
+          {/* BACKGROUND */}
           <div className="absolute inset-0">
-            {/* Background Image Texture */}
             <div
               className="absolute inset-0 bg-cover bg-center opacity-60"
               style={{
@@ -148,47 +146,18 @@ export default function Hero() {
               }}
             />
 
-            {/* ANIMATED BLOB 1: Pink/Magenta
-               - Added 'initial' to prevent hydration mismatch
-               - Sped up duration to 8s so movement is visible
-               - Added will-change for performance
-            */}
             <motion.div
-              className="absolute -inset-[50%] blur-3xl opacity-60"
+              className="absolute -inset-[60%] blur-3xl opacity-60"
               style={{
-                background: "radial-gradient(circle at center, rgba(236, 72, 153, 0.6) 0%, rgba(192, 38, 211, 0.3) 50%, transparent 80%)",
-                willChange: "transform"
+                background:
+                  "radial-gradient(circle at center, rgba(236,72,153,0.55) 0%, rgba(192,38,211,0.25) 50%, transparent 80%)",
+                willChange: "transform",
               }}
               initial={{ x: "-15%", y: "-10%", scale: 1 }}
               animate={{
                 x: ["-15%", "15%", "-5%", "-15%"],
                 y: ["-10%", "5%", "15%", "-10%"],
-                scale: [1, 1.1, 0.9, 1]
-              }}
-              transition={{
-                duration: 8,
-                repeat: Infinity,
-                repeatType: "mirror",
-                ease: "easeInOut",
-              }}
-            />
-
-            {/* ANIMATED BLOB 2: Purple/Violet
-               - Added 'initial'
-               - Sped up duration to 10s
-               - Added will-change
-            */}
-            <motion.div
-              className="absolute -inset-[50%] blur-3xl opacity-60"
-              style={{
-                background: "radial-gradient(circle at center, rgba(168, 85, 247, 0.6) 0%, rgba(124, 58, 237, 0.3) 50%, transparent 80%)",
-                willChange: "transform"
-              }}
-              initial={{ x: "10%", y: "15%", scale: 0.9 }}
-              animate={{
-                x: ["10%", "-20%", "5%", "10%"],
-                y: ["15%", "-5%", "-20%", "15%"],
-                scale: [0.9, 1.2, 1, 0.9]
+                scale: [1, 1.1, 0.95, 1],
               }}
               transition={{
                 duration: 10,
@@ -197,60 +166,102 @@ export default function Hero() {
                 ease: "easeInOut",
               }}
             />
+
+            <motion.div
+              className="absolute -inset-[60%] blur-3xl opacity-60"
+              style={{
+                background:
+                  "radial-gradient(circle at center, rgba(168,85,247,0.55) 0%, rgba(124,58,237,0.25) 50%, transparent 80%)",
+                willChange: "transform",
+              }}
+              initial={{ x: "10%", y: "15%", scale: 0.9 }}
+              animate={{
+                x: ["10%", "-20%", "5%", "10%"],
+                y: ["15%", "-5%", "-20%", "15%"],
+                scale: [0.9, 1.15, 1, 0.9],
+              }}
+              transition={{
+                duration: 12,
+                repeat: Infinity,
+                repeatType: "mirror",
+                ease: "easeInOut",
+              }}
+            />
+          </div>
+
+          {/* CONTENT */}
+          <div className="relative z-10 flex h-full w-full items-center justify-center px-4 sm:px-6">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8 }}
+              className="w-full max-w-[720px] text-center
+                         pt-16 pb-20
+                         sm:pt-0 sm:pb-0"
+            >
+              <h1
+                className={`${display.className}
+                  leading-[0.95]
+                  font-bold
+                  text-[3rem]
+                  sm:text-[4.25rem]
+                  md:text-[5.5rem]
+                  tracking-tight
+                  text-white`}
+              >
+                Clone, Customize <br /> & Deploy.
+              </h1>
+
+              <p className="mt-5 sm:mt-6 text-white/80 text-base sm:text-lg md:text-xl max-w-xl mx-auto font-medium">
+                The ingenuity of cloning, automated. Paste a URL to generate your
+                next ready-to-ship project.
+              </p>
+
+              <form
+                onSubmit={onSubmit}
+                className="mt-8 sm:mt-10 w-full max-w-2xl mx-auto"
+              >
+                <div className="flex items-center bg-white/95 backdrop-blur-md rounded-full p-2 pl-4 sm:pl-6 h-[64px] sm:h-[72px] shadow-[0_20px_50px_rgba(0,0,0,0.3)] ring-1 ring-white/20">
+                  <span className="hidden sm:inline text-neutral-400 text-lg font-medium mr-1">
+                    https://
+                  </span>
+                  <input
+                    ref={inputRef}
+                    value={url}
+                    onChange={handleChange}
+                    onPaste={handlePaste}
+                    placeholder="example.com"
+                    className="flex-1 bg-transparent outline-none text-neutral-800 text-base sm:text-lg placeholder:text-neutral-400 font-medium"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!url || !!error}
+                    className="h-full px-6 sm:px-10 rounded-full bg-[#f26522] hover:bg-[#ff7a3d] text-white font-bold transition-all active:scale-95 disabled:opacity-50"
+                  >
+                    Preview
+                  </button>
+                </div>
+
+                <div className="mt-3 sm:mt-4 text-xs sm:text-sm text-white/60 font-medium">
+                  {error ??
+                    "Instant site cloning technology • No credit card required"}
+                </div>
+              </form>
+
+              <div className="mt-10 sm:mt-12 flex justify-center">
+                <a
+                  href="/community-builds"
+                  className="group inline-flex items-center gap-2 text-white/80 hover:text-white transition-all"
+                >
+                  <span className="text-sm border-b border-white/20 pb-0.5 group-hover:border-white">
+                    Explore community clones
+                  </span>
+                  <ArrowRightSquare className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                </a>
+              </div>
+            </motion.div>
           </div>
         </div>
-      </div>
-
-      <div className="relative z-10 mx-auto max-w-3xl text-center px-4">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7 }}>
-          <h1
-            className={`${display.className} pt-16 leading-[0.96] font-semibold text-[3.5rem] md:text-[5rem] tracking-[-0.015em] text-white`}
-          >
-            Clone, Customize & Deploy.
-          </h1>
-
-          <p className="mt-6 text-white/80 text-lg">
-            Paste a URL. We generate a ready-to-ship project you can preview,
-            customize, and deploy in minutes.
-          </p>
-
-          <div className="mt-12 flex justify-center">
-            <a href="/community-builds" className="group inline-flex items-center gap-2 text-white/80 text-sm">
-              <span className="relative">
-                <span className="transition-colors group-hover:text-white">
-                  Start from a template
-                </span>
-                <span className="absolute inset-x-0 -bottom-0.5 h-px origin-left scale-x-0 transition-transform group-hover:scale-x-100 bg-white/70" />
-              </span>
-              <ArrowRightSquare className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-            </a>
-          </div>
-
-          <form onSubmit={onSubmit} className="mt-10 mx-2">
-            <div className="mx-auto max-w-3xl rounded-full ring-1 ring-white/30 bg-white/90 backdrop-blur shadow-xl flex items-center gap-2 pl-6 pr-2 h-[72px]">
-              <span className="hidden sm:inline text-neutral-500 text-lg">https://</span>
-              <input
-                ref={inputRef}
-                value={url}
-                onChange={handleChange}
-                onPaste={handlePaste}
-                placeholder="example.com"
-                className="flex-1 bg-transparent outline-none text-neutral-700 text-lg placeholder:text-neutral-500"
-              />
-              <button
-                type="submit"
-                disabled={!url || !!error}
-                className="h-[56px] px-6 rounded-full bg-accent text-white shadow-lg disabled:opacity-50"
-              >
-                Preview
-              </button>
-            </div>
-
-            <div className="mt-2 text-sm text-white/80">
-              {error ?? "Free preview • No card required to generate previews"}
-            </div>
-          </form>
-        </motion.div>
       </div>
     </section>
   );
