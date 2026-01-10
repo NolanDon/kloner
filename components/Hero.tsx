@@ -190,7 +190,7 @@ export default function Hero() {
                   <button
                     type="submit"
                     disabled={!url || !!error}
-                    className="h-full px-6 sm:px-10 rounded-full bg-[#f26522] hover:bg-[#ff7a3d] text-white font-bold transition-all active:scale-95 disabled:opacity-50"
+                    className="h-full px-6 sm:px-10 rounded-full bg-[#f26522] hover:bg-[#ff7a3d] text-white font-bold transition-all active:scale-95"
                   >
                     Preview
                   </button>
