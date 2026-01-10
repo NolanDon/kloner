@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
 import { ArrowRightSquare } from "lucide-react";
+import RetroGridBackground from "./RetroGridBackground";
 
 const display = Outfit({
   subsets: ["latin"],
@@ -137,60 +138,13 @@ export default function Hero() {
       <div className="absolute inset-0 p-3 sm:p-4">
         <div className="relative h-full w-full overflow-hidden rounded-[28px] ring-1 ring-black/10 shadow-2xl bg-[#2a1b3e]">
           {/* BACKGROUND */}
-          <div className="absolute inset-0">
-            <div
-              className="absolute inset-0 bg-cover bg-center opacity-60"
-              style={{
-                backgroundImage:
-                  "url('https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?q=80&w=1974&auto=format&fit=crop')",
-              }}
-            />
-
-            <motion.div
-              className="absolute -inset-[60%] blur-3xl opacity-60"
-              style={{
-                background:
-                  "radial-gradient(circle at center, rgba(236,72,153,0.55) 0%, rgba(192,38,211,0.25) 50%, transparent 80%)",
-                willChange: "transform",
-              }}
-              initial={{ x: "-15%", y: "-10%", scale: 1 }}
-              animate={{
-                x: ["-15%", "15%", "-5%", "-15%"],
-                y: ["-10%", "5%", "15%", "-10%"],
-                scale: [1, 1.1, 0.95, 1],
-              }}
-              transition={{
-                duration: 10,
-                repeat: Infinity,
-                repeatType: "mirror",
-                ease: "easeInOut",
-              }}
-            />
-
-            <motion.div
-              className="absolute -inset-[60%] blur-3xl opacity-60"
-              style={{
-                background:
-                  "radial-gradient(circle at center, rgba(168,85,247,0.55) 0%, rgba(124,58,237,0.25) 50%, transparent 80%)",
-                willChange: "transform",
-              }}
-              initial={{ x: "10%", y: "15%", scale: 0.9 }}
-              animate={{
-                x: ["10%", "-20%", "5%", "10%"],
-                y: ["15%", "-5%", "-20%", "15%"],
-                scale: [0.9, 1.15, 1, 0.9],
-              }}
-              transition={{
-                duration: 12,
-                repeat: Infinity,
-                repeatType: "mirror",
-                ease: "easeInOut",
-              }}
-            />
+          <div className="absolute inset-0 bg-black overflow-hidden">
+            <RetroGridBackground />
+            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/30" />
           </div>
 
           {/* CONTENT */}
-          <div className="relative z-10 flex h-full w-full items-center justify-center px-4 sm:px-6">
+          <div className="relative z-20 flex h-full w-full items-center justify-center px-4 sm:px-6">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
