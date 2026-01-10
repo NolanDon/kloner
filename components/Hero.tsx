@@ -166,7 +166,7 @@ export default function Hero() {
                 Clone, Customize <br /> & Deploy.
               </h1>
 
-              <p className="mt-5 sm:mt-6 text-white/80 text-base sm:text-lg md:text-xl max-w-xl mx-auto font-medium">
+              <p className="mt-5 sm:mt-6 text-white/90 text-base sm:text-lg md:text-xl max-w-xl mx-auto font-medium">
                 The ingenuity of cloning, automated. Paste a URL to generate your
                 next ready-to-ship project.
               </p>
@@ -207,7 +207,7 @@ export default function Hero() {
                   href="/community-builds"
                   className="group inline-flex items-center gap-2 text-white/80 hover:text-white transition-all"
                 >
-                  <span className="text-sm border-b border-white/20 pb-0.5 group-hover:border-white">
+                  <span className="text-sm border-b text-white border-white/90 pb-0.5 group-hover:border-white">
                     Explore community clones
                   </span>
                   <ArrowRightSquare className="h-4 w-4 transition-transform group-hover:translate-x-1" />
