@@ -10,7 +10,7 @@ export default function SectionReveal({ children, delay = 0 }:{ children: React.
 
   useEffect(() => {
     if (inView) controls.start({ opacity: 1, y: 0, transition: { duration: .6, delay } });
-  }, [inView]);
+  }, [inView, controls, delay]);
 
   return (
     <motion.div ref={ref} initial={{ opacity: 0, y: 24 }} animate={controls}>

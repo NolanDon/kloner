@@ -364,29 +364,11 @@ export function SiteRenderer({
 }: Props) {
     const { theme, pages } = config;
 
-    if (!pages || pages.length === 0) {
-        return (
-            <div className="flex min-h-screen items-center justify-center bg-neutral-100 text-sm text-neutral-500">
-                No pages defined for this site.
-            </div>
-        );
-    }
-
-    const currentPageFromId =
-        currentPageId ? pages.find((p) => p.id === currentPageId) : undefined;
-    const currentPageFromSlug =
-        !currentPageFromId && pageSlug
-            ? pages.find((p) => p.slug === pageSlug)
-            : undefined;
-    const currentPage =
-        currentPageFromId ||
-        currentPageFromSlug ||
-        pages.find((p) => p.isHome) ||
-        pages[0];
+    const pagesSafe = pages ?? [];
 
     const pagesById = React.useMemo(
-        () => new Map(pages.map((p) => [p.id, p] as const)),
-        [pages]
+        () => new Map(pagesSafe.map((p) => [p.id, p] as const)),
+        [pagesSafe]
     );
 
     const resolveHref = React.useCallback(
@@ -407,6 +389,26 @@ export function SiteRenderer({
         },
         [pagesById, siteId, disableNavigation]
     );
+
+    if (pagesSafe.length === 0) {
+        return (
+            <div className="flex min-h-screen items-center justify-center bg-neutral-100 text-sm text-neutral-500">
+                No pages defined for this site.
+            </div>
+        );
+    }
+
+    const currentPageFromId =
+        currentPageId ? pagesSafe.find((p) => p.id === currentPageId) : undefined;
+    const currentPageFromSlug =
+        !currentPageFromId && pageSlug
+            ? pagesSafe.find((p) => p.slug === pageSlug)
+            : undefined;
+    const currentPage =
+        currentPageFromId ||
+        currentPageFromSlug ||
+        pagesSafe.find((p) => p.isHome) ||
+        pagesSafe[0];
 
     const baseFontFamily =
         config.theme.fontFamily ||

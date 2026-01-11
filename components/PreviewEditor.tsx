@@ -5181,7 +5181,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                         {/* Screenshot mode hint (still lives under style panel) */}
                                         {isDevCodeMode && mode === "screenshot" && (
                                             <div className="mt-4 text-[12px] text-slate-600">
-                                                Edit in Preview, apply with “Apply changes".
+                                                Edit in Preview, apply with &quot;Apply changes&quot;.
                                             </div>
                                         )}
                                     </>

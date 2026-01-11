@@ -185,7 +185,7 @@ export default function MembershipSticky() {
           <div className="lg:col-span-4">
             <div className="md:sticky top-24">
               <h2 className="text-4xl md:text-6xl md:mb-10 text-black/80 bg-white pt-40 md:py-15 mt-20">
-                What's included
+                What&apos;s included
               </h2>
 
               <div className="mt-20">

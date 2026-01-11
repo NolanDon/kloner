@@ -749,7 +749,7 @@ function RenderCardInner({
 
                         {isFailed && !r.html && (
                             <p className="mt-1 text-[11px] text-amber-500">
-                                This preview hit a timeout. Click "Retry" to try again.
+                                This preview hit a timeout. Click &quot;Retry&quot; to try again.
                             </p>
                         )}
 
@@ -4781,7 +4781,7 @@ export default function PreviewPage(): JSX.Element {
 
                                                                                     <div className="min-w-0">
                                                                                         <p className="text-[12px] leading-snug text-neutral-800">
-                                                                                            “I struggled with a slow wordpress site but didn't have the budget to redo it. This app helped me clone and redeploy it in under 10 minutes, I recommend it to anyone needing a quick landing page”
+                                                                                            “I struggled with a slow wordpress site but didn&apos;t have the budget to redo it. This app helped me clone and redeploy it in under 10 minutes, I recommend it to anyone needing a quick landing page”
                                                                                         </p>
                                                                                         <p className="mt-1 text-[11px] text-neutral-500">Karissa, freelancer</p>
                                                                                     </div>
