@@ -272,8 +272,8 @@ function RenderCardInner({
             : null;
 
     // finished when at 100% and not queued/deploying
-    const isComplete = false
-    normalizedProgressPercent !== null &&
+    const isComplete =
+        normalizedProgressPercent !== null &&
         normalizedProgressPercent >= 100 &&
         !isQueued &&
         !isDeploying;
@@ -289,6 +289,35 @@ function RenderCardInner({
             ? "Deploying…"
             : "Building preview…"
         : null;
+
+    const progressDetail = useMemo(() => {
+        if (normalizedProgressPercent === null) return null;
+        const p = Math.max(0, Math.min(100, normalizedProgressPercent));
+
+        // If backend provides a label, prefer it (it tends to be more accurate than heuristics).
+        const backendLabel =
+            typeof (r as any).progressLabel === "string"
+                ? String((r as any).progressLabel).trim()
+                : "";
+        if (backendLabel) return backendLabel;
+
+        if (isDeploying) {
+            if (p < 15) return "Packaging your site…";
+            if (p < 35) return "Uploading files…";
+            if (p < 65) return "Building on Vercel…";
+            if (p < 85) return "Warming up deployment…";
+            return "Finalizing…";
+        }
+
+        // Preview build
+        if (p < 10) return "Reading your screenshot…";
+        if (p < 25) return "Detecting layout…";
+        if (p < 45) return "Generating editable HTML…";
+        if (p < 65) return "Applying styles…";
+        if (p < 80) return "Linking sections…";
+        if (p < 95) return "Final polish…";
+        return "Wrapping up…";
+    }, [normalizedProgressPercent, isDeploying, r]);
 
     const hasProgressInfo = !isComplete && hasActiveProgress;
     const isBuilding = hasActiveProgress;
@@ -394,12 +423,10 @@ function RenderCardInner({
         if (!r.id || !r.html || !r.key) return;
 
         const raw = (shareProjectName ?? "").trim();
-
         if (!raw) {
             setShareError("Add a name for this build before sharing.");
             return;
         }
-
         if (shareError) return;
 
         const finalName = raw;
@@ -422,19 +449,16 @@ function RenderCardInner({
 
             const data = await res.json().catch(() => ({} as any));
             if (!res.ok || (data as any).error) {
-                throw new Error((data as any).error || "Failed to share");
+                throw new Error((data as any).error || "Failed to share community build");
             }
 
-            if (data.alreadyShared) {
+            if ((data as any).alreadyShared) {
                 setAlreadyShared(true);
-                toast?.("This build is already in the community gallery.");
             } else {
-                setAlreadyShared(true);
-                toast?.success?.("Thanks for sharing this build with the community!") ??
-                    toast?.("Thanks for sharing this build with the community.");
+                setAlreadyShared(false);
             }
 
-            onShareWithCommunity?.(r.id as any);
+            await onShareWithCommunity?.({ renderId: r.id, remixable: shareRemixable });
             setShareOpen(false);
         } catch (err: any) {
             console.error("Failed to share community build", err);
@@ -451,11 +475,7 @@ function RenderCardInner({
         let cancelled = false;
 
         async function checkShared() {
-            if (!r?.id) {
-                setAlreadyShared(false);
-                setCheckingShared(false);
-                return;
-            }
+            if (!r?.id) return;
 
             setCheckingShared(true);
 
@@ -468,31 +488,18 @@ function RenderCardInner({
                     },
                 );
 
-                if (!res.ok) {
-                    console.error("check-shared failed", res.status);
-                    if (!cancelled) {
-                        setAlreadyShared(false);
-                    }
-                    return;
-                }
+                const data = await res.json().catch(() => ({} as any));
+                if (cancelled) return;
 
-                const data = (await res.json()) as { alreadyShared?: boolean };
-                if (!cancelled) {
-                    setAlreadyShared(Boolean(data.alreadyShared));
-                }
-            } catch (err) {
-                console.error("check-shared error", err);
-                if (!cancelled) {
-                    setAlreadyShared(false);
-                }
+                setAlreadyShared(!!(data as any)?.alreadyShared);
+            } catch {
+                // ignore
             } finally {
-                if (!cancelled) {
-                    setCheckingShared(false);
-                }
+                if (!cancelled) setCheckingShared(false);
             }
         }
 
-        checkShared();
+        void checkShared();
 
         return () => {
             cancelled = true;
@@ -749,8 +756,10 @@ function RenderCardInner({
                         {/* progress bar / status – only for the active build/deploy and never at 100% */}
                         {hasProgressInfo && (
                             <div className="mt-2 w-full">
-                                <div className="mb-1.5 flex items-center justify-between text-[10px] text-neutral-600">
-                                    <span className="max-w-[70%] truncate">{normalizedProgressLabel}</span>
+                                <div className="mb-1 flex items-center justify-between text-[10px] text-neutral-600">
+                                    <span className="max-w-[72%] truncate" aria-live="polite">
+                                        {progressDetail ?? normalizedProgressLabel}
+                                    </span>
                                     {normalizedProgressPercent !== null && (
                                         <span className="font-semibold tabular-nums">
                                             {Math.round(normalizedProgressPercent)}%
@@ -760,67 +769,21 @@ function RenderCardInner({
 
                                 {normalizedProgressPercent !== null && (
                                     <div
-                                        className="relative h-3 w-full overflow-hidden rounded-full border border-white/35 bg-white/55 shadow-[inset_0_1px_0_rgba(255,255,255,0.8),inset_0_-8px_16px_rgba(0,0,0,0.06)] backdrop-blur-md"
+                                        className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200/70"
                                         aria-label="Progress"
                                         aria-valuemin={0}
                                         aria-valuemax={100}
                                         aria-valuenow={Math.max(0, Math.min(100, normalizedProgressPercent))}
                                         role="progressbar"
                                     >
-                                        {/* liquid fill */}
                                         <div
-                                            className="absolute inset-y-0 left-0 overflow-hidden rounded-full transition-[width] duration-500 ease-out"
-                                            style={{ width: `${Math.max(0, Math.min(100, normalizedProgressPercent))}%` }}
-                                        >
-                                            <div className="absolute inset-0 bg-accent opacity-95" />
-
-                                            {/* subtle depth gradient */}
-                                            <div className="absolute inset-0 bg-gradient-to-b from-white/25 via-white/0 to-black/15" />
-
-                                            {/* moving shine */}
-                                            <div className="kloner-liquid-shine absolute -inset-y-6 left-0 w-[40%] rotate-12 bg-gradient-to-r from-white/0 via-white/40 to-white/0 opacity-70" />
-
-                                            {/* wave highlight */}
-                                            <div className="kloner-liquid-wave absolute inset-x-0 top-[35%] h-[60%] bg-gradient-to-r from-white/0 via-white/20 to-white/0 opacity-50" />
-                                        </div>
-
-                                        {/* glass highlight */}
-                                        <div className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-black/5" />
-                                        <div className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-gradient-to-b from-white/70 to-white/0 opacity-70" />
-
-                                        {/* tiny bubbles near the fill edge */}
-                                        {/* <div
-                                            className="pointer-events-none absolute top-1/2 -translate-y-1/2"
+                                            className="h-full bg-accent transition-[width] duration-500 ease-out"
                                             style={{
-                                                left: `calc(${Math.max(0, Math.min(100, normalizedProgressPercent))}% - 10px)`,
+                                                width: `${Math.max(0, Math.min(100, normalizedProgressPercent))}%`,
                                             }}
-                                        >
-                                            <span className="kloner-bubble block h-1.5 w-1.5 rounded-full bg-white/70 blur-[0.2px]" />
-                                        </div> */}
+                                        />
                                     </div>
                                 )}
-
-                                <style>{`
-                                    @keyframes kloner-liquid-shine {
-                                        0% { transform: translateX(-40%) rotate(12deg); opacity: 0.55; }
-                                        50% { opacity: 0.85; }
-                                        100% { transform: translateX(240%) rotate(12deg); opacity: 0.55; }
-                                    }
-                                    @keyframes kloner-liquid-wave {
-                                        0% { transform: translateX(-6%); opacity: 0.35; }
-                                        50% { transform: translateX(6%); opacity: 0.55; }
-                                        100% { transform: translateX(-6%); opacity: 0.35; }
-                                    }
-                                    @keyframes kloner-bubble {
-                                        0% { transform: translateY(0) scale(0.9); opacity: 0.35; }
-                                        50% { transform: translateY(-2px) scale(1); opacity: 0.75; }
-                                        100% { transform: translateY(0) scale(0.9); opacity: 0.35; }
-                                    }
-                                    .kloner-liquid-shine { animation: kloner-liquid-shine 1.6s ease-in-out infinite; }
-                                    .kloner-liquid-wave { animation: kloner-liquid-wave 1.2s ease-in-out infinite; }
-                                    .kloner-bubble { animation: kloner-bubble 900ms ease-in-out infinite; }
-                                    `}
-                                </style>
                             </div>
                         )}
 
@@ -1344,6 +1307,26 @@ export default function PreviewPage(): JSX.Element {
                 }
             } catch (e) {
                 console.error("Failed to restore nameHint after Stripe", e);
+            }
+
+            // IMPORTANT: on production the Stripe webhook and/or custom-claims propagation can lag.
+            // Force-refresh tier from backend so `trialing` immediately grants Pro/Agency access.
+            try {
+                const tierRes = await fetch("/api/billing/tier?refresh=1", {
+                    method: "GET",
+                    credentials: "include",
+                });
+                if (tierRes.ok) {
+                    const data = await tierRes.json().catch(() => ({} as any));
+                    const t = data?.tier as string | undefined;
+                    if (t === "pro" || t === "agency" || t === "enterprise") {
+                        setUserTier(t as any);
+                    } else {
+                        setUserTier("free");
+                    }
+                }
+            } catch {
+                // ignore; normal tier detection will run via auth effect
             }
 
             // seed wizard state
@@ -2099,8 +2082,13 @@ export default function PreviewPage(): JSX.Element {
                 for (const [k, opt] of Object.entries(
                     optimisticByKey
                 )) {
+                    // Only treat the optimistic render as "replaced" once we see a *new* server render
+                    // in a non-terminal state. Older completed renders for the same key should not
+                    // evict the optimistic placeholder (this was causing the ghost card to re-enable).
                     const exists = filtered.some(
-                        (r) => r.key === k
+                        (r) =>
+                            r.key === k &&
+                            (r.status === "queued" || r.status === "processing")
                     );
                     if (!exists) {
                         withOptimistic.unshift(opt);
@@ -2150,21 +2138,42 @@ export default function PreviewPage(): JSX.Element {
 
                 setPendingByKey((prev) => {
                     const next = { ...prev };
-                    withOptimistic.forEach((r) => {
+                    const now3 = Date.now();
+
+                    for (const key of Object.keys(next)) {
+                        // Respect hard lock window so we don't flicker enabled/disabled.
                         if (
-                            r.key &&
-                            (r.status === "ready" ||
-                                r.status === "failed")
+                            key &&
+                            lockUntilByKey[key] &&
+                            lockUntilByKey[key] > now3
                         ) {
-                            delete next[r.key];
-                            setOptimisticByKey((m) => {
-                                if (!m[r.key!]) return m;
-                                const n = { ...m };
-                                delete n[r.key!];
-                                return n;
-                            });
+                            continue;
                         }
-                    });
+
+                        const inFlight = withOptimistic.some(
+                            (r) =>
+                                r.key === key &&
+                                (r.status === "queued" || r.status === "processing")
+                        );
+                        if (inFlight) continue;
+
+                        const isTerminal = withOptimistic.some(
+                            (r) =>
+                                r.key === key &&
+                                (r.status === "ready" ||
+                                    r.status === "failed" ||
+                                    r.status === "error")
+                        );
+                        if (!isTerminal) continue;
+
+                        delete next[key];
+                        setOptimisticByKey((m) => {
+                            if (!m[key]) return m;
+                            const n = { ...m };
+                            delete n[key];
+                            return n;
+                        });
+                    }
                     return next;
                 });
             } finally {
@@ -2248,8 +2257,13 @@ export default function PreviewPage(): JSX.Element {
             for (const [k, opt] of Object.entries(
                 optimisticByKey
             )) {
+                // Only treat the optimistic render as "replaced" once we see a *new* server render
+                // in a non-terminal state. Older completed renders for the same key should not
+                // evict the optimistic placeholder (this was causing the ghost card to re-enable).
                 const exists = filtered.some(
-                    (r) => r.key === k
+                    (r) =>
+                        r.key === k &&
+                        (r.status === "queued" || r.status === "processing")
                 );
                 if (!exists) {
                     // Real render hasn't appeared yet, keep optimistic
@@ -2277,21 +2291,42 @@ export default function PreviewPage(): JSX.Element {
 
             setPendingByKey((prev) => {
                 const next = { ...prev };
-                withOptimistic.forEach((r) => {
+                const now3 = Date.now();
+
+                for (const key of Object.keys(next)) {
+                    // Respect hard lock window so we don't flicker enabled/disabled.
                     if (
-                        r.key &&
-                        (r.status === "ready" ||
-                            r.status === "failed")
+                        key &&
+                        lockUntilByKey[key] &&
+                        lockUntilByKey[key] > now3
                     ) {
-                        delete next[r.key];
-                        setOptimisticByKey((m) => {
-                            if (!m[r.key!]) return m;
-                            const n = { ...m };
-                            delete n[r.key!];
-                            return n;
-                        });
+                        continue;
                     }
-                });
+
+                    const inFlight = withOptimistic.some(
+                        (r) =>
+                            r.key === key &&
+                            (r.status === "queued" || r.status === "processing")
+                    );
+                    if (inFlight) continue;
+
+                    const isTerminal = withOptimistic.some(
+                        (r) =>
+                            r.key === key &&
+                            (r.status === "ready" ||
+                                r.status === "failed" ||
+                                r.status === "error")
+                    );
+                    if (!isTerminal) continue;
+
+                    delete next[key];
+                    setOptimisticByKey((m) => {
+                        if (!m[key]) return m;
+                        const n = { ...m };
+                        delete n[key];
+                        return n;
+                    });
+                }
                 return next;
             });
         });
@@ -4018,7 +4053,7 @@ export default function PreviewPage(): JSX.Element {
 
                                     return (
                                         <GhostGeneratePreviewCard
-                                            key={`ghost-${first.path}`}
+                                            key={`ghost-${group.snapshotId || first.path}`}
                                             locked={locked}
                                             onClick={() => buildFromCollection(collectionKeys)}
                                             onStartFromCommunityBuild={() => router.push("/community-builds")}
@@ -4113,7 +4148,7 @@ export default function PreviewPage(): JSX.Element {
 
                                     return (
                                         <GhostGeneratePreviewCard
-                                            key={`ghost-${first.path}`}
+                                            key={`ghost-${group.snapshotId || first.path}`}
                                             locked={locked}
                                             onClick={() => buildFromCollection(collectionKeys)}
                                             onStartFromCommunityBuild={() => router.push("/community-builds")}
@@ -4214,14 +4249,6 @@ export default function PreviewPage(): JSX.Element {
                                     exit={{ opacity: 0, y: 16, scale: 0.96 }}
                                     transition={{ duration: 0.22, ease: [0.23, 0.82, 0.25, 1] }}
                                 >
-                                    <button
-                                        type="button"
-                                        onClick={() => openExitOffer("close")}
-                                        className="absolute right-3 top-3 z-10 h-7 w-7 rounded-full border border-neutral-200 bg-white text-sm text-neutral-500 hover:bg-neutral-50"
-                                    >
-                                        ✕
-                                    </button>
-
                                     <div className="relative p-5 pt-6">
                                         <div className="mb-3 flex items-center justify-between gap-3">
                                             <div className="flex items-center gap-2">

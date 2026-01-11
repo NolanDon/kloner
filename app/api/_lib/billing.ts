@@ -74,7 +74,8 @@ export function mapPriceToTier(priceId: string | null | undefined): UserTier {
 
     const proIds = [
         process.env.STRIPE_PRICE_PRO_TEST,
-        process.env.STRIPE_PRICE_PRO_PRO,
+        // Production (live) env var (used by create-checkout-session)
+        process.env.STRIPE_PRICE_PRO_PROD,
     ].filter(Boolean) as string[];
 
     const agencyIds = [
@@ -312,7 +313,11 @@ export async function refreshTierFromStripeForUid(uid: string): Promise<Tier> {
 
     const status = typeof subAny.status === "string" ? (subAny.status as string) : null;
 
-    await setUserTierFromStripe(uid, tier, {
+    // IMPORTANT: during trial, user has paid access; treat as the tier they selected.
+    // Otherwise (canceled/unpaid/etc) downgrade to free.
+    const effectiveTier: Tier = status === "active" || status === "trialing" ? tier : "free";
+
+    await setUserTierFromStripe(uid, effectiveTier, {
         customerId,
         subscriptionId: typeof subAny.id === "string" ? subAny.id : null,
         priceId,
@@ -322,5 +327,5 @@ export async function refreshTierFromStripeForUid(uid: string): Promise<Tier> {
         cancelAtPeriodEnd,
     });
 
-    return tier;
+    return effectiveTier;
 }

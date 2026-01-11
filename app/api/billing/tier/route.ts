@@ -31,9 +31,22 @@ export async function GET(req: NextRequest) {
 
                 const source: string | undefined = userData.tierSource;
 
+                const stripeStatus = typeof userData.stripeStatus === "string" ? userData.stripeStatus : null;
+                const stripeSubId = typeof userData.stripeSubscriptionId === "string" ? userData.stripeSubscriptionId : "";
+                const storedTier = (userData.tier as UserTier) || "free";
+
+                // Self-heal: if Stripe shows an active/trialing subscription but Firestore tier is still free,
+                // force a refresh from Stripe. This is critical for redirect flows (checkout success → resume wizard)
+                // and for production env misconfig incidents.
+                const looksPaidButTierFree =
+                    storedTier === "free" &&
+                    !!stripeSubId &&
+                    (stripeStatus === "active" || stripeStatus === "trialing");
+
                 // force refresh, or if we don't yet trust that Firestore tier
                 if (
                     refresh ||
+                    looksPaidButTierFree ||
                     !source || // no source set yet
                     source !== "stripe" // make Stripe the source of truth
                 ) {
