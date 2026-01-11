@@ -82,7 +82,7 @@ function ChevronRight({ className = "h-4 w-4" }: { className?: string }) {
 
 export default function DeckImageCarousel({
     items,
-    autoPlayMs = 6500,
+    autoPlayMs = 3250,
 }: DeckImageCarouselProps) {
     const data = items && items.length > 0 ? items : slides;
     const [activeIndex, setActiveIndex] = useState(0);
@@ -277,7 +277,7 @@ export default function DeckImageCarousel({
                                         "absolute inset-0 mx-auto flex h-full max-w-[96%] items-stretch justify-center",
                                         "rounded-[28px] border border-white/6 bg-gradient-to-br from-neutral-900 via-neutral-950 to-black",
                                         "shadow-[0_24px_60px_rgba(0,0,0,0.5)]",
-                                        "transition-[transform,opacity] duration-[1300ms]",
+                                        "transition-[transform,opacity] duration-[650ms]",
                                         "ease-[cubic-bezier(0.25,0.8,0.3,1)] will-change-transform",
                                         "overflow-hidden",
                                     ].join(" ")}
