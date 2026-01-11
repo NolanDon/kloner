@@ -2,6 +2,11 @@
 import { NextResponse } from "next/server";
 import admin from "firebase-admin";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
+
 function getAdminApp() {
     if (admin.apps.length) return admin.app();
 

@@ -39,6 +39,7 @@ type Props = {
     onClose: () => Promise<void> | void;
     onExport: (html: string, name?: string, skipBuildFinalExport?: boolean) => Promise<void>;
     draftId?: string;
+    isAdmin?: boolean;
     saveDraft?: (payload: {
         draftId?: string;
         html: string;
@@ -649,15 +650,15 @@ import { RenderDoc } from "@/app/dashboard/view/DashboardView";
 import { useAuth } from "@/src/hooks/useAuth";
 import { Camera, Code2, Eye, EyeOff, FileText, Images, Loader2, Maximize2, MessageSquare, Minimize2, Monitor, Palette, Redo2, Rocket, RotateCcw, RotateCw, Smartphone, Tablet, Trash2Icon, Undo2 } from "lucide-react";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
-import { EditorSessionCounters, EditorSessionMetrics, EditorSessionUser, ExportAnalyticsUser, recordEditorSessionAnalytics, recordExportAnalytics } from "./analytics";
-import AiEditPanel from "./editor/AiEditPanel";
-import { PreviewEditorTour } from "./PreviewEditorTour";
+import { EditorSessionCounters, EditorSessionMetrics, EditorSessionUser, ExportAnalyticsUser, recordEditorSessionAnalytics, recordExportAnalytics } from "../analytics";
+import AiEditPanel from "./AiEditPanel";
+import { PreviewEditorTour } from "../PreviewEditorTour";
 import { injectEditableOverlay } from "@/src/lib/klonerIframeRuntime";
-import { MetaSettings, UploadedAsset } from "./MetaSettings";
+import { MetaSettings, UploadedAsset } from "../MetaSettings";
 import { FloatingBlockToolbar } from "@/src/lib/floatingToolbar";
-import { AiImageLibraryPanel } from "./AiImageLibraryPanel";
+import { AiImageLibraryPanel } from "../AiImageLibraryPanel";
 import MiniToolbar from "@/src/lib/miniToolbar";
-import { IS_MOBILE, sanitizeImageName } from "./helpers";
+import { IS_MOBILE, sanitizeImageName } from "../helpers";
 
 function formatSnapshotTime(ts: number) {
     try {
@@ -1097,7 +1098,7 @@ type DraftSnapshot = {
 
 const SINGLE_PAGE_KEY = "__single__";
 
-export default function PreviewEditor({
+export default function PreviewEditorV2({
     initialHtml,
     sourceImage,
     onClose,
@@ -1113,6 +1114,7 @@ export default function PreviewEditor({
     onSaveMeta,
     initialSeoMetaByPage,
     onArchivedPageIdsChange,
+    isAdmin = false,
 }: Props) {
     const { user } = useAuth();
     const isDevCodeMode = process.env.NODE_ENV === "development";
@@ -4310,6 +4312,17 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         }
     }
 
+    if (!isAdmin) {
+        return (
+            <div className="fixed inset-0 z-[9999] bg-black/50 flex items-center justify-center">
+                <div className="bg-white rounded-lg p-6 max-w-md text-center">
+                    <p className="text-lg font-semibold text-neutral-900">Access Denied</p>
+                    <p className="text-neutral-600 mt-2">This feature is only available to administrators.</p>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div
             ref={containerRef}
@@ -4353,10 +4366,10 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     </button>
                 )}
 
-                {/* V1 Badge (dev only) */}
-                {!IS_MOBILE && isDevCodeMode && (
-                    <div className="absolute top-5 left-5 z-[100] inline-flex items-center gap-1 rounded-full bg-neutral-600 px-2 py-1 text-[10px] font-semibold text-white shadow-md">
-                        V1
+                {/* V2 Badge */}
+                {!IS_MOBILE && (
+                    <div className="absolute top-5 left-5 z-[100] inline-flex items-center gap-1 rounded-full bg-[#f55f2a] px-2 py-1 text-[10px] font-semibold text-white shadow-md">
+                        V2
                     </div>
                 )}
 

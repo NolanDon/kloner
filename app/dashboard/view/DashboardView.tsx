@@ -48,7 +48,8 @@ import {
     type StorageReference,
 } from "firebase/storage";
 import { auth, db, storage } from "@/lib/firebase";
-import PreviewEditor, { buildFinalExport, buildSeoMetaMapForExport, SeoMeta, SeoMetaMap } from "@/components/PreviewEditor";
+import { buildFinalExport, buildSeoMetaMapForExport, SeoMeta, SeoMetaMap } from "@/components/PreviewEditor";
+import PreviewEditorManager from "@/components/editor/PreviewEditorManager";
 import {
     Rocket,
     ChevronDown,
@@ -1071,10 +1072,14 @@ const CenterSpinner = memo(function CenterSpinner({
 const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     locked,
     onClick,
+    onAppClick,
+    isAdmin,
     onStartFromCommunityBuild,
 }: {
     locked: boolean;
     onClick: () => void;
+    onAppClick?: () => void;
+    isAdmin: boolean;
     onStartFromCommunityBuild?: () => void;
     compact?: boolean;
 }) {
@@ -1101,7 +1106,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
         }
     };
 
-    const title = effectiveLocked ? "Generating preview…" : "Generate preview";
+    const title = effectiveLocked ? "Generating website…" : "Generate website";
     const subtitle = effectiveLocked
         ? "Building an editable website."
         : "Create an editable website.";
@@ -1115,16 +1120,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
 
     return (
         <div className={`flex flex-col ${sizeMinW} ${sizeMaxW}`}>
-            <button
-                type="button"
-                onClick={handleClick}
-                disabled={effectiveLocked}
-                aria-busy={effectiveLocked}
-                className={`group relative flex ${sizeMinH} w-full items-center justify-center rounded-xl border-2 border-dashed bg-white border-neutral-300 text-center transition ${effectiveLocked ? "opacity-70 cursor-wait" : "hover:border-neutral-400"
-                    }`}
-                title={title}
-                aria-disabled={effectiveLocked}
-            >
+            <div className={`group relative flex ${sizeMinH} w-full flex-col items-center justify-center rounded-xl border-2 border-dashed bg-white border-neutral-300 text-center transition ${effectiveLocked ? "opacity-70 cursor-wait" : "hover:border-neutral-400"}`}>
                 <div className="pointer-events-none flex flex-col items-center">
                     <div
                         className={`grid ${iconWrapperSize} place-items-center rounded-full border border-neutral-200 bg-neutral-50 transition group-hover:scale-105`}
@@ -1145,7 +1141,30 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                     </div>
                     <div className={`mt-1 text-neutral-500 ${subtitleSize}`}>{subtitle}</div>
                 </div>
-            </button>
+                <div className="mt-4 flex gap-2">
+                    <button
+                        type="button"
+                        onClick={handleClick}
+                        disabled={effectiveLocked}
+                        aria-busy={effectiveLocked}
+                        className={`rounded-lg px-4 py-2 text-xs font-semibold text-white transition ${effectiveLocked ? "bg-neutral-400 cursor-wait" : "bg-[#f55f2a] hover:bg-[#ff8a4c]"}`}
+                        title={title}
+                        aria-disabled={effectiveLocked}
+                    >
+                        {effectiveLocked ? "Generating…" : "Generate Website"}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onAppClick}
+                        disabled={!isAdmin || effectiveLocked}
+                        className={`relative rounded-lg px-4 py-2 text-xs font-semibold transition ${!isAdmin ? "bg-neutral-300 text-neutral-500 cursor-not-allowed" : effectiveLocked ? "bg-neutral-400 text-white cursor-wait" : "bg-[#f55f2a] text-white hover:bg-[#ff8a4c]"}`}
+                        title={!isAdmin ? "Coming soon" : "Generate App"}
+                    >
+                        {!isAdmin && <span className="absolute -top-1 -right-1 text-xs">🔒</span>}
+                        {effectiveLocked ? "Generating…" : "Generate App"}
+                    </button>
+                </div>
+            </div>
 
             {onStartFromCommunityBuild ? (
                 <button
@@ -1192,6 +1211,7 @@ export default function PreviewPage(): JSX.Element {
     const [showCreditsPaywall, setShowCreditsPaywall] = useState<
         null | "screenshot" | "preview" | "deploy"
     >(null);
+    const [showProPaywall, setShowProPaywall] = useState(false);
     const [showUpgradeAfterCustomize, setShowUpgradeAfterCustomize] =
         useState(false);
 
@@ -1252,8 +1272,10 @@ export default function PreviewPage(): JSX.Element {
     >({});
 
     const [editorOpen, setEditorOpen] = useState(false);
+    const [editorMode, setEditorMode] = useState<"website" | "app">("website");
     const [editorHtml, setEditorHtml] = useState<string>("");
     const [editorRefImg, setEditorRefImg] = useState<string>("");
+    const [isAdmin, setIsAdmin] = useState<boolean>(false);
     const [activeRenderId, setActiveRenderId] = useState<string | undefined>(undefined);
 
     const [activeSeoMetaByPage, setActiveSeoMetaByPage] = useState<
@@ -1853,6 +1875,13 @@ export default function PreviewPage(): JSX.Element {
             }
 
             setUserTier(effectiveTier);
+            // Set isAdmin from claims
+            try {
+                const result = await getIdTokenResult(u, true);
+                setIsAdmin(!!result.claims.admin);
+            } catch {
+                setIsAdmin(false);
+            }
             // Credits are now driven entirely by Firestore (credits bucket),
             // via the separate onSnapshot-based hook you wired up.
         });
@@ -4056,6 +4085,18 @@ export default function PreviewPage(): JSX.Element {
                                             key={`ghost-${group.snapshotId || first.path}`}
                                             locked={locked}
                                             onClick={() => buildFromCollection(collectionKeys)}
+                                            onAppClick={() => {
+                                                if (isAdmin) {
+                                                    setEditorMode("app");
+                                                    setEditorOpen(true);
+                                                    setEditorHtml("");
+                                                    setEditorRefImg("");
+                                                    setActiveRenderId(undefined);
+                                                    setActiveSeoMetaByPage(null);
+                                                    setActiveArchivedPageIds([]);
+                                                }
+                                            }}
+                                            isAdmin={isAdmin}
                                             onStartFromCommunityBuild={() => router.push("/community-builds")}
                                         />
                                     );
@@ -4103,6 +4144,57 @@ export default function PreviewPage(): JSX.Element {
                                 className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
                                 aria-label="Editable previews list"
                             >
+                                {renders.length === 0 && (
+                                    <>
+                                        {(() => {
+                                            const locked = false;
+                                            return (
+                                                <GhostGeneratePreviewCard
+                                                    locked={locked}
+                                                    onClick={() => {
+                                                        if (groupedShots.length > 0) {
+                                                            const firstGroup = groupedShots[0];
+                                                            const collectionKeys = firstGroup.items.map((s) => s.path);
+                                                            buildFromCollection(collectionKeys);
+                                                        } else {
+                                                            // Start with blank website
+                                                            setEditorMode("website");
+                                                            setEditorOpen(true);
+                                                            setEditorHtml(`<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Website</title>
+</head>
+<body>
+    <h1>Welcome to your new website</h1>
+    <p>Start editing to customize it.</p>
+</body>
+</html>`);
+                                                            setEditorRefImg("");
+                                                            setActiveRenderId(undefined);
+                                                            setActiveSeoMetaByPage(null);
+                                                            setActiveArchivedPageIds([]);
+                                                        }
+                                                    }}
+                                                    onAppClick={() => {
+                                                        if (isAdmin) {
+                                                            setEditorMode("app");
+                                                            setEditorOpen(true);
+                                                            setEditorHtml("");
+                                                            setEditorRefImg("");
+                                                            setActiveRenderId(undefined);
+                                                            setActiveSeoMetaByPage(null);
+                                                            setActiveArchivedPageIds([]);
+                                                        }
+                                                    }}
+                                                    isAdmin={isAdmin}
+                                                />
+                                            );
+                                        })()}
+                                    </>
+                                )}
                                 {renders.map((r) => (
                                     <RenderCard
                                         key={r.id}
@@ -4151,6 +4243,18 @@ export default function PreviewPage(): JSX.Element {
                                             key={`ghost-${group.snapshotId || first.path}`}
                                             locked={locked}
                                             onClick={() => buildFromCollection(collectionKeys)}
+                                            onAppClick={() => {
+                                                if (isAdmin) {
+                                                    setEditorMode("app");
+                                                    setEditorOpen(true);
+                                                    setEditorHtml("");
+                                                    setEditorRefImg("");
+                                                    setActiveRenderId(undefined);
+                                                    setActiveSeoMetaByPage(null);
+                                                    setActiveArchivedPageIds([]);
+                                                }
+                                            }}
+                                            isAdmin={isAdmin}
                                             onStartFromCommunityBuild={() => router.push("/community-builds")}
                                         />
                                     );
@@ -4161,7 +4265,11 @@ export default function PreviewPage(): JSX.Element {
                 </section>
 
                 {editorOpen && (
-                    <PreviewEditor
+                    <PreviewEditorManager
+                        firebaseUser={user}
+                        userTier={userTier}
+                        startProCheckout={startProCheckout}
+                        mode={editorMode}
                         initialHtml={editorHtml}
                         sourceImage={editorRefImg}
                         initialSeoMetaByPage={activeSeoMetaByPage || undefined}
@@ -5000,6 +5108,53 @@ export default function PreviewPage(): JSX.Element {
                                             style={{ backgroundColor: ACCENT }}
                                         >
                                             View upgrade options
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )
+                }
+
+                {/* PRO paywall for apps */}
+                {
+                    showProPaywall && (
+                        <div className="fixed inset-0 z-[12000]">
+                            <div className="absolute inset-0 bg-black/60" />
+                            <div className="absolute inset-0 flex items-center justify-center p-4">
+                                <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border border-neutral-200 p-6 text-sm text-neutral-800">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <Crown className="h-4 w-4 text-amber-500" />
+                                        <h3 className="text-base font-semibold">
+                                            Upgrade to PRO to build apps
+                                        </h3>
+                                    </div>
+                                    <p className="text-sm text-neutral-600 mb-3">
+                                        Building dynamic web apps with features like user authentication, search, and CMS requires a PRO subscription.
+                                    </p>
+                                    <ul className="mb-4 list-disc list-inside text-sm text-neutral-700 space-y-1">
+                                        <li>Build apps with login, auth, and databases</li>
+                                        <li>Advanced features like CMS and search</li>
+                                        <li>Deploy complex applications</li>
+                                    </ul>
+                                    <div className="flex items-center justify-end gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowProPaywall(false)}
+                                            className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
+                                        >
+                                            Not now
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setShowProPaywall(false);
+                                                startProCheckout();
+                                            }}
+                                            className="rounded-md px-3 py-1.5 text-sm font-semibold text-white"
+                                            style={{ backgroundColor: ACCENT }}
+                                        >
+                                            Upgrade to PRO
                                         </button>
                                     </div>
                                 </div>
