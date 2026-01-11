@@ -9,12 +9,50 @@ export default function RetroGridBackground() {
     const ctx = canvas.getContext("2d")!;
     if (!ctx) return;
 
-    let animationId: number;
-    let t = 0;
+    const prefersReduced =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
 
-    function draw() {
-      const w = canvas!.width = canvas!.offsetWidth;
-      const h = canvas!.height = canvas!.offsetHeight;
+    let animationId: number | undefined;
+    let t = 0;
+    let width = 0;
+    let height = 0;
+    let active = true;
+    let lastTs = 0;
+
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+
+    const resize = () => {
+      const nextW = canvas.offsetWidth;
+      const nextH = canvas.offsetHeight;
+      if (!nextW || !nextH) return;
+      if (nextW === width && nextH === height) return;
+      width = nextW;
+      height = nextH;
+
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(canvas);
+
+    const stop = () => {
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = undefined;
+    };
+
+    const start = () => {
+      if (animationId || prefersReduced) return;
+      animationId = requestAnimationFrame(loop);
+    };
+
+    function drawFrame() {
+      const w = width;
+      const h = height;
+      if (!w || !h) return;
       ctx.clearRect(0, 0, w, h);
 
       // Responsive parameters based on viewport width
@@ -41,8 +79,8 @@ export default function RetroGridBackground() {
 
       // Set shadow once, not per-line
       ctx!.shadowColor = "#00ff99";
-      ctx!.shadowBlur = 6;
-      ctx!.lineWidth = 2;
+      ctx!.shadowBlur = 4;
+      ctx!.lineWidth = 1.5;
 
       // Draw horizontal lines (true perspective spacing)
       const vX = w / 2;
@@ -79,10 +117,55 @@ export default function RetroGridBackground() {
       }
 
       ctx!.shadowBlur = 0;
-      animationId = requestAnimationFrame(draw);
     }
-    draw();
-    return () => cancelAnimationFrame(animationId);
+
+    function loop(ts: number) {
+      if (!active) return;
+
+      // Throttle a bit (~45fps) for better battery/CPU
+      if (ts - lastTs < 22) {
+        animationId = requestAnimationFrame(loop);
+        return;
+      }
+      lastTs = ts;
+
+      drawFrame();
+      animationId = requestAnimationFrame(loop);
+    }
+
+    // Pause animation when tab is hidden
+    const onVisibility = () => {
+      const hidden = document.visibilityState === "hidden";
+      if (hidden) {
+        stop();
+      } else if (active) {
+        start();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    // Pause when offscreen
+    const io = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        active = !!entry?.isIntersecting;
+        if (!active) stop();
+        else start();
+      },
+      { root: null, threshold: 0.01 }
+    );
+    io.observe(canvas);
+
+    // Initial render
+    drawFrame();
+    start();
+
+    return () => {
+      stop();
+      io.disconnect();
+      ro.disconnect();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, []);
 
   return (

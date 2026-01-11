@@ -6,32 +6,47 @@
 
   <url>
     <loc>https://kloner.app/</loc>
-    <lastmod>2025-11-24T09:00:26+00:00</lastmod>
+    <lastmod>2026-01-11T00:00:00+00:00</lastmod>
     <priority>1.00</priority>
   </url>
   <url>
     <loc>https://kloner.app/dashboard/docs</loc>
-    <lastmod>2025-11-24T09:00:26+00:00</lastmod>
+    <lastmod>2026-01-11T00:00:00+00:00</lastmod>
     <priority>0.80</priority>
   </url>
   <url>
     <loc>https://kloner.app/price</loc>
-    <lastmod>2025-11-24T09:00:26+00:00</lastmod>
-    <priority>0.80</priority>
-  </url>
-  <url>
-    <loc>https://kloner.app/login</loc>
-    <lastmod>2025-11-24T09:00:26+00:00</lastmod>
+    <lastmod>2026-01-11T00:00:00+00:00</lastmod>
     <priority>0.80</priority>
   </url>
    <url>
     <loc>https://kloner.app/community-builds</loc>
-    <lastmod>2025-11-24T09:00:26+00:00</lastmod>
+    <lastmod>2026-01-11T00:00:00+00:00</lastmod>
     <priority>0.80</priority>
   </url>
   <url>
-    <loc>https://kloner.app/dashboard/view</loc>
-    <lastmod>2025-11-24T09:00:26+00:00</lastmod>
+    <loc>https://kloner.app/compare</loc>
+    <lastmod>2026-01-11T00:00:00+00:00</lastmod>
+    <priority>0.60</priority>
+  </url>
+  <url>
+    <loc>https://kloner.app/contact</loc>
+    <lastmod>2026-01-11T00:00:00+00:00</lastmod>
+    <priority>0.60</priority>
+  </url>
+  <url>
+    <loc>https://kloner.app/partners</loc>
+    <lastmod>2026-01-11T00:00:00+00:00</lastmod>
+    <priority>0.50</priority>
+  </url>
+  <url>
+    <loc>https://kloner.app/terms</loc>
+    <lastmod>2026-01-11T00:00:00+00:00</lastmod>
+    <priority>0.50</priority>
+  </url>
+  <url>
+    <loc>https://kloner.app/legal/kloner-vercel-eula</loc>
+    <lastmod>2026-01-11T00:00:00+00:00</lastmod>
     <priority>0.80</priority>
   </url>
 </urlset>

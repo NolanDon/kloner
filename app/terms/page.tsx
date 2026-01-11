@@ -1,6 +1,15 @@
+import type { Metadata } from "next";
 import NavBar from "@/components/NavBar";
 
 const ACCENT = "#f55f2a";
+
+export const metadata: Metadata = {
+    title: "Terms | Kloner",
+    description:
+        "Kloner terms and conditions: account usage, credits, exports, and responsibility for third‑party content.",
+    alternates: { canonical: "https://kloner.app/terms" },
+    openGraph: { url: "https://kloner.app/terms" },
+};
 
 export default function TermsPage(): JSX.Element {
     return (

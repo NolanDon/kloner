@@ -211,7 +211,7 @@ export default function DocsPage() {
                                         "No payment details",
                                     ]}
                                     cta="Get started"
-                                    href="/signup"
+                                    href="/login?mode=signup"
                                 />
                                 <PlanCard
                                     label="Pro"

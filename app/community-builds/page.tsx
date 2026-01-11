@@ -2,6 +2,7 @@
 import type { Metadata } from "next";
 import CommunityBuildsClient from "./CommunityBuildsClient";
 import NavBar from "@/components/NavBar";
+import Footer from "@/components/Footer";
 import Image from "next/image";
 import logo from "@/public/images/orange_logo.png";
 
@@ -9,6 +10,12 @@ export const metadata: Metadata = {
     title: "Community builds | Kloner",
     description:
         "Browse approved Kloner community builds, preview live layouts, and remix approved projects shared by other creators.",
+    alternates: {
+        canonical: "https://kloner.app/community-builds",
+    },
+    openGraph: {
+        url: "https://kloner.app/community-builds",
+    },
 };
 
 export default function CommunityBuildsPage() {
@@ -34,6 +41,9 @@ export default function CommunityBuildsPage() {
 
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center justify-center text-center">
                     <div className="flex flex-col gap-1">
+                        <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-neutral-900">
+                            Community builds
+                        </h1>
                         <p className="text-[11px] uppercase tracking-[0.24em] text-black/45">
                             Featured builds
                         </p>
@@ -47,6 +57,9 @@ export default function CommunityBuildsPage() {
                     <CommunityBuildsClient />
                 </div>
             </section>
+
+            {/* Crawlable internal links + consistent navigation */}
+            <Footer />
         </main>
     );
 }

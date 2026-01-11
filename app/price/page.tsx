@@ -9,6 +9,9 @@ export const metadata: Metadata = {
     alternates: {
         canonical: "https://kloner.app/price",
     },
+    openGraph: {
+        url: "https://kloner.app/price",
+    },
 };
 
 export default function Page() {

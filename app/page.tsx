@@ -4,9 +4,9 @@ import HomeClient from "./HomeClient";
 export const metadata: Metadata = {
   title: "Kloner – AI Website Cloner & Builder",
   description:
-    "Kloner is an AI-powered website cloner and builder that lets you copy existing websites, clone landing pages, and turn them into fully editable, deployable HTML sites. Clone any website layout, rewrite content, customize design, and publish instantly.",
+    "Clone, customize, and deploy high‑fidelity website layouts. Paste a URL to generate an editable preview, export clean HTML, and ship faster.",
   alternates: {
-    canonical: "https://kloner.app/",
+    canonical: "https://kloner.app",
   },
 };
 

@@ -8,60 +8,39 @@ import React from "react";
 
 type LinkItem = { label: string; href: string; external?: boolean };
 
-const EXTERNAL_SOCIAL: Record<string, string> = {
-  "X/Twitter": "https://x.com/klonerapp",
-  Instagram: "https://instagram.com/klonerapp",
-  LinkedIn: "https://linkedin.com/company/klonerapp",
-};
-
 const FOOTER_SECTIONS: Array<{ title: string; items: LinkItem[]; note?: { atIndex: number; text: string } }> = [
   {
     title: "Product",
     items: [
-      { label: "How it Works", href: "/#how" },
-      { label: "What’s Included", href: "/#features" },
-      { label: "Live Preview", href: "/dashboard/view" }, // keep if public; if gated, swap to /demo
+      { label: "How it Works", href: "/#how-it-works" },
+      { label: "Examples", href: "/#examples" },
+      { label: "FAQ", href: "/#faq" },
+      { label: "Pricing", href: "/price" },
+      { label: "Community builds", href: "/community-builds" },
+      { label: "Docs", href: "dashboard/docs" },
     ],
   },
   {
     title: "Company",
     items: [
-      { label: "About", href: "/about" },
       { label: "Contact", href: "/contact" },
-      { label: "FAQs", href: "/#faq" },
+      { label: "Partners", href: "/partners" },
+      { label: "Terms", href: "/terms" },
+      { label: "Kloner Vercel EULA", href: "/legal/kloner-vercel-eula" },
     ],
-    note: { atIndex: 1, text: "We’re hiring!" },
   },
   {
     title: "Compare",
     items: [
-      { label: "Cloning vs Rebuild", href: "/docs/cloning-vs-rebuild" },
-      { label: "Vercel vs Netlify", href: "/docs/vercel-vs-netlify" },
-      { label: "Static vs SSR", href: "/docs/static-vs-ssr" },
-      { label: "Export Options", href: "/docs/export-options" },
-      { label: "Pricing", href: "/price" },
+      { label: "Compare", href: "/compare" },
+      { label: "Docs", href: "/dashboard/docs" },
     ],
   },
   {
-    title: "Library",
+    title: "Resources",
     items: [
-      { label: "Routing Guides", href: "/docs/routing-guides" },
-      { label: "SEO Templates", href: "/docs/seo-templates" },
-      { label: "Font Subsetting", href: "/docs/font-subsetting" },
-      { label: "Image Optimization", href: "/docs/image-optimization" },
-      { label: "Deploy Checklists", href: "/docs/deploy-checklists" },
-    ],
-  },
-  {
-    title: "Partnerships",
-    items: [
-      { label: "For Creators", href: "/docs/for-creators" },
-      { label: "Affiliates", href: "/docs/affiliates" },
-      { label: "For Business", href: "/docs/for-business" },
-      // Social is external (real outgoing links)
-      { label: "X/Twitter", href: EXTERNAL_SOCIAL["X/Twitter"], external: true },
-      { label: "Instagram", href: EXTERNAL_SOCIAL["Instagram"], external: true },
-      { label: "LinkedIn", href: EXTERNAL_SOCIAL["LinkedIn"], external: true },
+      { label: "YouTube", href: "https://www.youtube.com/@klonerapp", external: true },
+      { label: "Vercel", href: "https://vercel.com", external: true },
     ],
   },
 ];
@@ -134,7 +113,7 @@ export default function Footer() {
               </a>
             </li>
             <li>
-              <a href="/docs" className="text-neutral-700 hover:text-neutral-900">
+              <a href="/dashboard/docs" className="text-neutral-700 hover:text-neutral-900">
                 Docs
               </a>
             </li>
@@ -144,8 +123,8 @@ export default function Footer() {
               </a>
             </li>
             <li>
-              <a href="/privacy" className="text-neutral-700 hover:text-neutral-900">
-                Privacy
+              <a href="/community-builds" className="text-neutral-700 hover:text-neutral-900">
+                Community
               </a>
             </li>
             <li>

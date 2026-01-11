@@ -1,9 +1,17 @@
 // app/compare/page.tsx
-"use client";
-
+import type { Metadata } from "next";
 import NavBar from "@/components/NavBar";
+import Footer from "@/components/Footer";
 
 const ACCENT = "#f55f2a";
+
+export const metadata: Metadata = {
+    title: "Compare | Kloner",
+    description:
+        "High-level comparisons: cloning vs rebuild, hosting options, and export tradeoffs.",
+    alternates: { canonical: "https://kloner.app/compare" },
+    openGraph: { url: "https://kloner.app/compare" },
+};
 
 export default function ComparePage(): JSX.Element {
     return (
@@ -66,15 +74,16 @@ export default function ComparePage(): JSX.Element {
                             additional libraries, frameworks, or hosting providers.
                         </p>
                         <a
-                            href="/dashboard/docs#export-options"
+                            href="dashboard/docs"
                             className="inline-flex mt-2 text-sm font-medium"
                             style={{ color: ACCENT }}
                         >
-                            View export guidance in Docs
+                            View workflow docs
                         </a>
                     </section>
                 </div>
             </section>
+            <Footer />
         </main>
     );
 }

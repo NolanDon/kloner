@@ -1,9 +1,17 @@
 // app/partners/page.tsx
-"use client";
-
+import type { Metadata } from "next";
 import NavBar from "@/components/NavBar";
+import Footer from "@/components/Footer";
 
 const ACCENT = "#f55f2a";
+
+export const metadata: Metadata = {
+    title: "Partnerships | Kloner",
+    description:
+        "Partner with Kloner: creator programs, affiliates, and agency-friendly workflows.",
+    alternates: { canonical: "https://kloner.app/partners" },
+    openGraph: { url: "https://kloner.app/partners" },
+};
 
 export default function PartnersPage(): JSX.Element {
     return (
@@ -57,6 +65,7 @@ export default function PartnersPage(): JSX.Element {
                     </section>
                 </div>
             </section>
+            <Footer />
         </main>
     );
 }
