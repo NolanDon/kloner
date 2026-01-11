@@ -1120,7 +1120,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
 
     return (
         <div className={`flex flex-col ${sizeMinW} ${sizeMaxW}`}>
-            <div className={`group relative flex ${sizeMinH} w-full flex-col items-center justify-center rounded-xl border-2 border-dashed bg-white border-neutral-300 text-center transition ${effectiveLocked ? "opacity-70 cursor-wait" : "hover:border-neutral-400"}`}>
+            <div className={`group relative flex ${sizeMinH} w-full flex-col items-center justify-center rounded-xl border-2 border-dashed bg-white border-neutral-300 text-center transition ${effectiveLocked ? "opacity-70 cursor-wait" : isAdmin ? "hover:border-neutral-400" : "hover:border-neutral-400 cursor-pointer"}`} onClick={isAdmin ? undefined : handleClick}>
                 <div className="pointer-events-none flex flex-col items-center">
                     <div
                         className={`grid ${iconWrapperSize} place-items-center rounded-full border border-neutral-200 bg-neutral-50 transition group-hover:scale-105`}
@@ -1141,29 +1141,31 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                     </div>
                     <div className={`mt-1 text-neutral-500 ${subtitleSize}`}>{subtitle}</div>
                 </div>
-                <div className="mt-4 flex gap-2">
-                    <button
-                        type="button"
-                        onClick={handleClick}
-                        disabled={effectiveLocked}
-                        aria-busy={effectiveLocked}
-                        className={`rounded-lg px-4 py-2 text-xs font-semibold text-white transition ${effectiveLocked ? "bg-neutral-400 cursor-wait" : "bg-[#f55f2a] hover:bg-[#ff8a4c]"}`}
-                        title={title}
-                        aria-disabled={effectiveLocked}
-                    >
-                        {effectiveLocked ? "Generating…" : "Generate Website"}
-                    </button>
-                    <button
-                        type="button"
-                        onClick={onAppClick}
-                        disabled={!isAdmin || effectiveLocked}
-                        className={`relative rounded-lg px-4 py-2 text-xs font-semibold transition ${!isAdmin ? "bg-neutral-300 text-neutral-500 cursor-not-allowed" : effectiveLocked ? "bg-neutral-400 text-white cursor-wait" : "bg-[#f55f2a] text-white hover:bg-[#ff8a4c]"}`}
-                        title={!isAdmin ? "Coming soon" : "Generate App"}
-                    >
-                        {!isAdmin && <span className="absolute -top-1 -right-1 text-xs">🔒</span>}
-                        {effectiveLocked ? "Generating…" : "Generate App"}
-                    </button>
-                </div>
+                {isAdmin && (
+                    <div className="mt-4 flex gap-2">
+                        <button
+                            type="button"
+                            onClick={handleClick}
+                            disabled={effectiveLocked}
+                            aria-busy={effectiveLocked}
+                            className={`rounded-lg px-4 py-2 text-xs font-semibold text-white transition ${effectiveLocked ? "bg-neutral-400 cursor-wait" : "bg-[#f55f2a] hover:bg-[#ff8a4c]"}`}
+                            title={title}
+                            aria-disabled={effectiveLocked}
+                        >
+                            {effectiveLocked ? "Generating…" : "Generate Website"}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={onAppClick}
+                            disabled={!isAdmin || effectiveLocked}
+                            className={`relative rounded-lg px-4 py-2 text-xs font-semibold transition ${!isAdmin ? "bg-neutral-300 text-neutral-500 cursor-not-allowed" : effectiveLocked ? "bg-neutral-400 text-white cursor-wait" : "bg-[#f55f2a] text-white hover:bg-[#ff8a4c]"}`}
+                            title={!isAdmin ? "Coming soon" : "Generate App"}
+                        >
+                            {!isAdmin && <span className="absolute -top-1 -right-1 text-xs">🔒</span>}
+                            {effectiveLocked ? "Generating…" : "Generate App"}
+                        </button>
+                    </div>
+                )}
             </div>
 
             {onStartFromCommunityBuild ? (
@@ -2606,6 +2608,7 @@ export default function PreviewPage(): JSX.Element {
                 setEditorRefImg(refSrc);
                 setActiveRenderId(renderId);
                 setActiveSeoMetaByPage(seoMetaByPage);
+                setEditorMode("website");
                 setEditorOpen(true);
             } catch (e) {
                 console.error("continueRender failed", e);

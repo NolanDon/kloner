@@ -653,11 +653,11 @@ import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { EditorSessionCounters, EditorSessionMetrics, EditorSessionUser, ExportAnalyticsUser, recordEditorSessionAnalytics, recordExportAnalytics } from "../analytics";
 import AiEditPanel from "./AiEditPanel";
 import { PreviewEditorTour } from "../PreviewEditorTour";
-import { injectEditableOverlay } from "@/src/lib/klonerIframeRuntime";
+import { injectEditableOverlay } from "@/src/lib/klonerIframeRuntimeV2";
 import { MetaSettings, UploadedAsset } from "../MetaSettings";
-import { FloatingBlockToolbar } from "@/src/lib/floatingToolbar";
+import { FloatingBlockToolbar } from "@/src/lib/floatingToolbarV2";
 import { AiImageLibraryPanel } from "../AiImageLibraryPanel";
-import MiniToolbar from "@/src/lib/miniToolbar";
+import MiniToolbar from "@/src/lib/miniToolbarV2";
 import { IS_MOBILE, sanitizeImageName } from "../helpers";
 
 function formatSnapshotTime(ts: number) {
