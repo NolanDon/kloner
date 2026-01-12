@@ -55,6 +55,7 @@ This document outlines the MVP architecture for the Next.js App Builder feature,
 ### 6. Deployment Flow
 - **Trigger**: User clicks "Deploy" button
 - **Process**:
+- this process should utilize the pre-existing deploy wizaxrd which handles project name, connecting vercel, callbakc and deployment
   1. Validate code
   2. Push files to Vercel via API
   3. Create/update deployment
@@ -70,7 +71,7 @@ This document outlines the MVP architecture for the Next.js App Builder feature,
 ## MVP Implementation Steps
 1. Create basic editor interface
 2. Implement file management API
-3. Add AI agent integration
+3. Add AI agent integration using existing api key / llm model (suggest a differnet model if it's better and ensure it's the correc tname)
 4. Set up preview system
 5. Integrate Vercel deployment
 6. Add MCP backend connections

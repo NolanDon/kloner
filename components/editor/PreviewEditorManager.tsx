@@ -16,6 +16,7 @@ type Props = PreviewEditorProps & {
   startProCheckout?: () => Promise<void>;
   mode?: "website" | "app";
   sourceUrl?: string;
+  onCreateApp?: (mode: "clone" | "prompt", prompt?: string, renderId?: string) => Promise<void>;
 };
 
 const LS_KEY = "kloner.previewEditor.useV2";
@@ -46,6 +47,7 @@ export default function PreviewEditorManager({
   startProCheckout,
   mode = "website",
   sourceUrl,
+  onCreateApp,
   ...editorProps
 }: Props): JSX.Element {
   const [isAdmin, setIsAdmin] = useState<boolean>(!!isAdminOverride);
@@ -85,7 +87,7 @@ export default function PreviewEditorManager({
         sourceImage={editorProps.sourceImage}
         sourceUrl={sourceUrl}
         onClose={editorProps.onClose}
-        onExport={editorProps.onExport}
+        onCreateApp={onCreateApp}
         draftId={editorProps.draftId}
       />
     );
