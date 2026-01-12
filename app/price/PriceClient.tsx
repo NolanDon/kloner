@@ -4,6 +4,7 @@
 import { useMemo, useState } from "react";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
+import { useModal } from "@/components/ui/ModalContext";
 
 const ACCENT = "#f55f2a";
 
@@ -133,6 +134,7 @@ function Bullet({ children }: { children: React.ReactNode }) {
 
 export default function PriceClient(): JSX.Element {
     const [loadingPlan, setLoadingPlan] = useState<null | "pro" | "agency">(null);
+    const { showAlert } = useModal();
 
     const trustPoints = useMemo(
         () => ["7-day free trial on paid plans", "Cancel anytime", "Secure Stripe checkout"],
@@ -169,7 +171,7 @@ export default function PriceClient(): JSX.Element {
 
             if (!res.ok || !data.url) {
                 console.error("Stripe checkout error", data?.error || res.statusText);
-                alert(data?.error || "Unable to start checkout. Please try again.");
+                await showAlert(data?.error || "Unable to start checkout. Please try again.", "Checkout Error");
                 return;
             }
 

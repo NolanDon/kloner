@@ -163,13 +163,25 @@ export default function AdminCommunityBuildsClient() {
             setErr(null);
 
             try {
-                const ref = doc(db, "gallery", id);
-                await updateDoc(ref, {
-                    approved: next,
-                    approvedAt: next ? serverTimestamp() : null,
-                    approvedBy: next ? userUid : null,
-                    updatedAt: serverTimestamp(),
+                const auth = getAuth();
+                const user = auth.currentUser;
+                if (!user) throw new Error("Not signed in");
+
+                const token = await user.getIdToken();
+
+                const res = await fetch("/api/admin/gallery/approve", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({ id, approved: next }),
                 });
+
+                const data = await res.json();
+                if (!res.ok || !data.ok) {
+                    throw new Error(data?.error || "Failed to update approval");
+                }
 
                 setItems((prev) => prev.map((x) => (x.id === id ? { ...x, approved: next } : x)));
             } catch (e: any) {

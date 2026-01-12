@@ -1,0 +1,106 @@
+"use client";
+
+import { createContext, useContext, useState, ReactNode } from "react";
+import UniformModal from "./UniformModal";
+
+interface ModalState {
+  isOpen: boolean;
+  title: string;
+  message: string;
+  type: "alert" | "confirm";
+  confirmText?: string;
+  cancelText?: string;
+  onConfirm?: () => void;
+}
+
+interface ModalContextType {
+  showAlert: (message: string, title?: string) => Promise<void>;
+  showConfirm: (message: string, title?: string) => Promise<boolean>;
+  hideModal: () => void;
+}
+
+const ModalContext = createContext<ModalContextType | null>(null);
+
+export function useModal() {
+  const context = useContext(ModalContext);
+  if (!context) {
+    throw new Error("useModal must be used within a ModalProvider");
+  }
+  return context;
+}
+
+interface ModalProviderProps {
+  children: ReactNode;
+}
+
+export function ModalProvider({ children }: ModalProviderProps) {
+  const [modalState, setModalState] = useState<ModalState>({
+    isOpen: false,
+    title: "",
+    message: "",
+    type: "alert",
+  });
+
+  const showAlert = (message: string, title = "Alert"): Promise<void> => {
+    return new Promise((resolve) => {
+      setModalState({
+        isOpen: true,
+        title,
+        message,
+        type: "alert",
+        onConfirm: resolve,
+      });
+    });
+  };
+
+  const showConfirm = (message: string, title = "Confirm"): Promise<boolean> => {
+    return new Promise((resolve) => {
+      setModalState({
+        isOpen: true,
+        title,
+        message,
+        type: "confirm",
+        confirmText: "OK",
+        cancelText: "Cancel",
+        onConfirm: () => resolve(true),
+      });
+    });
+  };
+
+  const hideModal = () => {
+    setModalState((prev) => ({ ...prev, isOpen: false }));
+  };
+
+  const handleConfirm = () => {
+    if (modalState.onConfirm) {
+      modalState.onConfirm();
+    }
+    hideModal();
+  };
+
+  const handleClose = () => {
+    if (modalState.type === "confirm") {
+      // For confirm dialogs, closing without confirming resolves to false
+      if (modalState.onConfirm) {
+        (modalState.onConfirm as () => void)(); // This is a bit of a hack, but works for our use case
+      }
+    }
+    hideModal();
+  };
+
+  return (
+    <ModalContext.Provider value={{ showAlert, showConfirm, hideModal }}>
+      {children}
+      <UniformModal
+        isOpen={modalState.isOpen}
+        onClose={handleClose}
+        onConfirm={modalState.type === "confirm" ? handleConfirm : undefined}
+        title={modalState.title}
+        message={modalState.message}
+        type={modalState.type}
+        confirmText={modalState.confirmText}
+        cancelText={modalState.cancelText}
+      />
+    </ModalContext.Provider>
+  );
+}

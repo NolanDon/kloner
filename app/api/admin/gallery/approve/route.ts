@@ -57,15 +57,25 @@ export async function POST(req: Request) {
         const actorUid = (gate as any)?.decoded?.uid || null;
         const db = getAdminApp().firestore();
 
-        await db.collection("gallery").doc(id).set(
-            {
-                approved,
-                approvedAt: approved ? admin.firestore.FieldValue.serverTimestamp() : null,
-                approvedBy: approved ? actorUid : null,
-                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            },
-            { merge: true }
-        );
+        const updateData: any = {
+            approved,
+            approvedAt: approved ? admin.firestore.FieldValue.serverTimestamp() : null,
+            approvedBy: approved ? actorUid : null,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        if (approved) {
+            // Generate realistic random counts: likes lowest, views highest, remixes in between
+            const likes = Math.floor(Math.random() * (500 - 100 + 1)) + 100; // 100-500
+            const remixes = Math.floor(Math.random() * (1000 - likes + 1)) + likes; // likes to 1000
+            const views = Math.floor(Math.random() * (1500 - remixes + 1)) + remixes; // remixes to 1500
+
+            updateData.likes = likes;
+            updateData.remixes = remixes;
+            updateData.views = views;
+        }
+
+        await db.collection("gallery").doc(id).set(updateData, { merge: true });
 
         return NextResponse.json({ ok: true, id, approved });
     } catch (e: any) {

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, ChangeEvent } from "react";
 import Image from 'next/image'
+import { useModal } from "@/components/ui/ModalContext";
 
 // meta-settings.ts
 
@@ -31,6 +32,7 @@ export function MetaSettings({
     uploadFileToUserBlob,
     onSaveMeta,
 }: MetaSettingsProps) {
+    const { showAlert, showConfirm } = useModal();
     const [uploading, setUploading] = useState(false);
 
     // save state + hard debounce guard
@@ -106,7 +108,7 @@ export function MetaSettings({
                 try {
                     parsedJsonLd = JSON.parse(trimmed);
                 } catch (err) {
-                    alert("JSON-LD is not valid JSON. Fix it or clear the field.");
+                    await showAlert("JSON-LD is not valid JSON. Fix it or clear the field.", "Invalid JSON-LD");
                     savingRef.current = false;
                     setSaving(false);
                     return;
@@ -187,14 +189,15 @@ export function MetaSettings({
 
     const handleGenerateMetaClick = async () => {
         if (!draftId) {
-            alert("Missing renderId for this draft.");
+            await showAlert("Missing renderId for this draft.", "Error");
             return;
         }
         if (generating) return;
 
         if (!isMetaEmpty) {
-            const ok = window.confirm(
-                "Regenerating meta will replace the current title, description, and JSON-LD for this page. Continue?"
+            const ok = await showConfirm(
+                "Regenerating meta will replace the current title, description, and JSON-LD for this page. Continue?",
+                "Regenerate Meta"
             );
             if (!ok) return;
         }
@@ -219,7 +222,7 @@ export function MetaSettings({
             const data = await res.json();
             const metaBlockRaw = pickMetaFromSeoMetaByPage(data?.seoMetaByPage);
             if (!metaBlockRaw) {
-                alert("SEO meta generation returned no usable data.");
+                await showAlert("SEO meta generation returned no usable data.", "Generation Failed");
                 return;
             }
 
@@ -242,7 +245,7 @@ export function MetaSettings({
                 setTimeout(() => setJustSaved(false), 1500);
             }
         } catch (err: any) {
-            alert(err?.message || "Failed to generate SEO meta.");
+            await showAlert(err?.message || "Failed to generate SEO meta.", "Generation Error");
         } finally {
             setGenerating(false);
         }
@@ -260,7 +263,7 @@ export function MetaSettings({
         if (!file) return;
 
         if (!uploadFileToUserBlob) {
-            alert("Upload handler is not wired up.");
+            await showAlert("Upload handler is not wired up.", "Upload Error");
             e.target.value = "";
             return;
         }
@@ -274,7 +277,7 @@ export function MetaSettings({
             }));
         } catch (err: any) {
             console.error("Favicon upload failed", err);
-            alert("Failed to upload favicon. Try again.");
+            await showAlert("Failed to upload favicon. Try again.", "Upload Failed");
         } finally {
             setUploading(false);
             e.target.value = "";

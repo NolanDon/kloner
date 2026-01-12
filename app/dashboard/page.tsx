@@ -28,6 +28,7 @@ import {
     type ListResult,
 } from "firebase/storage";
 import { auth, db, storage } from "@/lib/firebase";
+import { useModal } from "@/components/ui/ModalContext";
 import { CheckCircle2, Clock3, AlertTriangle, Loader2, CrossIcon, DeleteIcon, ArrowRight, AxeIcon } from "lucide-react";
 
 const ACCENT = "#f55f2a";
@@ -380,6 +381,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
     const [busy, setBusy] = useState<boolean>(false);
     const [err, setErr] = useState<string>("");
     const [deleteBlocked, setDeleteBlocked] = useState<null | { urlHash: string; url: string; count: number }>(null);
+    const { showConfirm } = useModal();
 
     const uiStatus = normalizeUrlStatus(
         r.status as UrlStatusRaw | UrlStatusUi | undefined,
@@ -428,10 +430,11 @@ function UrlRow({ uid, r }: UrlRowProps) {
         if (busy || locked) return;
         const ok =
             typeof window !== "undefined"
-                ? window.confirm(
+                ? await showConfirm(
                     isStale
                         ? "Retry screenshots for this URL? This will queue a fresh capture."
-                        : "Rescan this URL now? This will queue a new capture and may overwrite the latest screenshot."
+                        : "Rescan this URL now? This will queue a new capture and may overwrite the latest screenshot.",
+                    "Rescan URL"
                 )
                 : true;
         if (!ok) return;
@@ -509,8 +512,9 @@ function UrlRow({ uid, r }: UrlRowProps) {
             return;
         }
 
-        const ok = window.confirm(
-            `Delete this tracked URL?\n\n${r.url}\n\nThis removes the URL and its screenshots.`
+        const ok = await showConfirm(
+            `Delete this tracked URL?\n\n${r.url}\n\nThis removes the URL and its screenshots.`,
+            "Delete URL"
         );
         if (!ok) return;
 
@@ -690,6 +694,7 @@ function UrlRow({ uid, r }: UrlRowProps) {
 export default function DashboardPage() {
     const router = useRouter();
     const search = useSearchParams();
+    const { showConfirm } = useModal();
     const [user, setUser] = useState<FirebaseUser | null>(null);
     const [rows, setRows] = useState<Array<UrlDoc & { id: string }>>([]);
     const [rowsLoading, setRowsLoading] = useState<boolean>(true);

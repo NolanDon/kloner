@@ -88,6 +88,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { extractArchivedPageIdsFromRender, fetchRenderForDeployment, getArchivedRoutesForRender, persistArchivedPageIds, scrubArchivedRoutes, secureHtmlForPreviewIframe, withArchivedPageIds } from "@/components/helpers";
 import { recordDeployAnalytics } from "@/components/analytics";
 import Footer from "@/components/Footer";
+import { useModal } from "@/components/ui/ModalContext";
 
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
@@ -331,6 +332,8 @@ function RenderCardInner({
 
     const { src: refImgUrl, onError: refImgErr } = useResolvedImg(r.key || "");
 
+    const { showConfirm, showAlert } = useModal();
+
     const versionLabel = shortVersionFromShotPath(
         r.key ?? "",
         (urlHash as string | undefined) ?? null,
@@ -404,7 +407,7 @@ function RenderCardInner({
         startDeployWizard({ id: r.id, nameHint: r.nameHint ?? undefined });
     };
 
-    const handleArchiveClick = () => {
+    const handleArchiveClick = async () => {
         if (isDeleting || isDeploying) return;
 
         if (isArchivedFlag) {
@@ -412,8 +415,9 @@ function RenderCardInner({
             return;
         }
 
-        const ok = window.confirm(
+        const ok = await showConfirm(
             "Move this preview into your archive? It will be hidden from your main dashboard.",
+            "Archive Preview"
         );
         if (!ok) return;
 
@@ -1075,15 +1079,20 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     onAppClick,
     isAdmin,
     onStartFromCommunityBuild,
+    user,
 }: {
     locked: boolean;
     onClick: () => void;
     onAppClick?: () => void;
     isAdmin: boolean;
     onStartFromCommunityBuild?: () => void;
+    user: FirebaseUser | null;
     compact?: boolean;
 }) {
     const [localDisabled, setLocalDisabled] = useState(false);
+    const [showGenerationModal, setShowGenerationModal] = useState(false);
+    const [isNotifying, setIsNotifying] = useState(false);
+    const [isSubscribed, setIsSubscribed] = useState(false);
 
     // Consider the card disabled if either the parent says so or we've just been clicked.
     const effectiveLocked = locked || localDisabled;
@@ -1091,6 +1100,13 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     const handleClick = () => {
         if (effectiveLocked) return;
 
+        // Show modal for all users to choose between website and web app
+        setShowGenerationModal(true);
+    };
+
+    const handleWebsiteGeneration = () => {
+        setShowGenerationModal(false);
+        
         // Immediately prevent further clicks to avoid double-generation.
         setLocalDisabled(true);
 
@@ -1103,6 +1119,44 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
             // If parent quickly reflects the pending state it will keep the button disabled;
             // otherwise we clear the optimistic guard after the timeout above.
             // We don't clear the timeout here to allow it to expire naturally.
+        }
+    };
+
+    const handleAppGeneration = () => {
+        setShowGenerationModal(false);
+        
+        if (onAppClick) {
+            // Immediately prevent further clicks to avoid double-generation.
+            setLocalDisabled(true);
+
+            // Safety: clear the local guard after 10s in case something goes wrong.
+            const t = setTimeout(() => setLocalDisabled(false), 10000);
+
+            try {
+                onAppClick();
+            } finally {
+                // If parent quickly reflects the pending state it will keep the button disabled;
+                // otherwise we clear the optimistic guard after the timeout above.
+                // We don't clear the timeout here to allow it to expire naturally.
+            }
+        }
+    };
+
+    const handleNotifyMe = async () => {
+        if (!user?.uid) return;
+
+        setIsNotifying(true);
+        try {
+            await updateDoc(doc(db, "kloner_users", user.uid), {
+                webAppNotifyInterest: true,
+                webAppNotifyTimestamp: serverTimestamp(),
+            });
+            setIsSubscribed(true);
+            // Could add a toast notification here if desired
+        } catch (error) {
+            console.error("Failed to save notification preference:", error);
+        } finally {
+            setIsNotifying(false);
         }
     };
 
@@ -1119,8 +1173,9 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     const subtitleSize = "text-sm";
 
     return (
-        <div className={`flex flex-col ${sizeMinW} ${sizeMaxW}`}>
-            <div className={`group relative flex ${sizeMinH} w-full flex-col items-center justify-center rounded-xl border-2 border-dashed bg-white border-neutral-300 text-center transition ${effectiveLocked ? "opacity-70 cursor-wait" : isAdmin ? "hover:border-neutral-400" : "hover:border-neutral-400 cursor-pointer"}`} onClick={isAdmin ? undefined : handleClick}>
+        <>
+            <div className={`flex flex-col ${sizeMinW} ${sizeMaxW}`}>
+            <div className={`group relative flex ${sizeMinH} w-full flex-col items-center justify-center rounded-xl border-2 border-dashed bg-white border-neutral-300 text-center transition ${effectiveLocked ? "opacity-70 cursor-wait" : "hover:border-neutral-400 cursor-pointer"}`} onClick={effectiveLocked ? undefined : handleClick}>
                 <div className="pointer-events-none flex flex-col items-center">
                     <div
                         className={`grid ${iconWrapperSize} place-items-center rounded-full border border-neutral-200 bg-neutral-50 transition group-hover:scale-105`}
@@ -1141,31 +1196,6 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                     </div>
                     <div className={`mt-1 text-neutral-500 ${subtitleSize}`}>{subtitle}</div>
                 </div>
-                {isAdmin && (
-                    <div className="mt-4 flex gap-2">
-                        <button
-                            type="button"
-                            onClick={handleClick}
-                            disabled={effectiveLocked}
-                            aria-busy={effectiveLocked}
-                            className={`rounded-lg px-4 py-2 text-xs font-semibold text-white transition ${effectiveLocked ? "bg-neutral-400 cursor-wait" : "bg-[#f55f2a] hover:bg-[#ff8a4c]"}`}
-                            title={title}
-                            aria-disabled={effectiveLocked}
-                        >
-                            {effectiveLocked ? "Generating…" : "Generate Website"}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={onAppClick}
-                            disabled={!isAdmin || effectiveLocked}
-                            className={`relative rounded-lg px-4 py-2 text-xs font-semibold transition ${!isAdmin ? "bg-neutral-300 text-neutral-500 cursor-not-allowed" : effectiveLocked ? "bg-neutral-400 text-white cursor-wait" : "bg-[#f55f2a] text-white hover:bg-[#ff8a4c]"}`}
-                            title={!isAdmin ? "Coming soon" : "Generate App"}
-                        >
-                            {!isAdmin && <span className="absolute -top-1 -right-1 text-xs">🔒</span>}
-                            {effectiveLocked ? "Generating…" : "Generate App"}
-                        </button>
-                    </div>
-                )}
             </div>
 
             {onStartFromCommunityBuild ? (
@@ -1190,11 +1220,222 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
             ) : null}
 
         </div>
+
+        {/* Generation Type Selection Modal */}
+        <AnimatePresence>
+            {showGenerationModal && (
+                <motion.div
+                    key="generation-modal"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-4"
+                    onMouseDown={(e) => {
+                        if (e.target === e.currentTarget) setShowGenerationModal(false);
+                    }}
+                >
+                    <motion.div
+                        initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 10, scale: 0.98 }}
+                        transition={{ duration: 0.18, ease: "easeOut" }}
+                        className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white shadow-2xl"
+                    >
+                        <div className="flex items-start justify-between gap-4 border-b border-neutral-200 px-5 py-4">
+                            <div className="space-y-1">
+                                <div className="text-sm font-semibold text-neutral-900">
+                                    Choose Generation Type
+                                </div>
+                                <div className="text-xs text-neutral-600">
+                                    Select what you&apos;d like to create.
+                                </div>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={() => setShowGenerationModal(false)}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200"
+                                title="Close"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                    className="h-4 w-4 text-neutral-700"
+                                >
+                                    <path
+                                        fillRule="evenodd"
+                                        d="M4.47 4.47a.75.75 0 011.06 0L10 8.94l4.47-4.47a.75.75 0 111.06 1.06L11.06 10l4.47 4.47a.75.75 0 11-1.06 1.06L10 11.06l-4.47 4.47a.75.75 0 11-1.06-1.06L8.94 10 4.47 5.53a.75.75 0 010-1.06z"
+                                        clipRule="evenodd"
+                                    />
+                                </svg>
+                            </button>
+                        </div>
+
+                        <div className="space-y-3 px-5 py-4">
+                            <div className="relative">
+                                <button
+                                    type="button"
+                                    onClick={handleWebsiteGeneration}
+                                    className="w-full rounded-xl border border-neutral-200 bg-white p-4 text-left transition hover:bg-neutral-50 hover:border-neutral-300"
+                                >
+                                    <div className="flex items-start gap-3">
+                                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#f55f2a]/10">
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                viewBox="0 0 24 24"
+                                                fill="currentColor"
+                                                className="h-5 w-5 text-[#f55f2a]"
+                                            >
+                                                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                                            </svg>
+                                        </div>
+                                        <div className="flex-1 space-y-1">
+                                            <div className="flex items-center gap-2">
+                                                <div className="text-sm font-semibold text-neutral-900">
+                                                    Website (15 credits)
+                                                </div>
+                                                <div className="group relative">
+                                                    <div className="flex h-4 w-4 items-center justify-center rounded-full bg-neutral-200 text-xs font-semibold text-neutral-600 hover:bg-neutral-300 cursor-help">
+                                                        ?
+                                                    </div>
+                                                    {/* Tooltip */}
+                                                    <div className="absolute left-1/2 top-full mt-2 hidden w-64 -translate-x-1/2 rounded-lg border border-neutral-200 bg-white p-3 text-xs text-neutral-700 shadow-lg group-hover:block z-10">
+                                                        <div className="font-semibold text-neutral-900 mb-2">Website Features:</div>
+                                                        <ul className="space-y-1">
+                                                            <li>• Hosting images and media</li>
+                                                            <li>• Performance-focused</li>
+                                                            <li>• SEO-friendly static content</li>
+                                                            <li>• Fast loading pages</li>
+                                                        </ul>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="text-xs text-neutral-600">
+                                                Create an editable website with pages, content, and styling.
+                                            </div>
+                                        </div>
+                                    </div>
+                                </button>
+                            </div>
+
+                            <div className="space-y-3">
+                                <div className="relative">
+                                    <button
+                                        type="button"
+                                        onClick={handleAppGeneration}
+                                        disabled={!isAdmin}
+                                        className={`w-full rounded-xl border p-4 text-left transition ${
+                                            !isAdmin
+                                                ? "border-neutral-200 bg-neutral-50 cursor-not-allowed opacity-60"
+                                                : "border-neutral-200 bg-white hover:bg-neutral-50 hover:border-neutral-300"
+                                        }`}
+                                    >
+                                        <div className="flex items-start gap-3">
+                                            <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${
+                                                !isAdmin ? "bg-neutral-100" : "bg-[#f55f2a]/10"
+                                            }`}>
+                                                <svg
+                                                    xmlns="http://www.w3.org/2000/svg"
+                                                    viewBox="0 0 24 24"
+                                                    fill="currentColor"
+                                                    className={`h-5 w-5 ${
+                                                        !isAdmin ? "text-neutral-400" : "text-[#f55f2a]"
+                                                    }`}
+                                                >
+                                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                                    <polyline points="14,2 14,8 20,8"/>
+                                                    <line x1="16" y1="13" x2="8" y2="13"/>
+                                                    <line x1="16" y1="17" x2="8" y2="17"/>
+                                                    <polyline points="10,9 9,9 8,9"/>
+                                                </svg>
+                                            </div>
+                                            <div className="flex-1 space-y-1">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="text-sm font-semibold text-neutral-900">
+                                                        Web App (15 credits)
+                                                    </div>
+                                                    {!isAdmin && (
+                                                        <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                                                            Coming Soon
+                                                        </span>
+                                                    )}
+                                                    <div className="group relative">
+                                                        <div className="flex h-4 w-4 items-center justify-center rounded-full bg-neutral-200 text-xs font-semibold text-neutral-600 hover:bg-neutral-300 cursor-help">
+                                                            ?
+                                                        </div>
+                                                        {/* Tooltip */}
+                                                        <div className="absolute left-1/2 top-full mt-2 hidden w-64 -translate-x-1/2 rounded-lg border border-neutral-200 bg-white p-3 text-xs text-neutral-700 shadow-lg group-hover:block z-10">
+                                                            <div className="font-semibold text-neutral-900 mb-2">Web App Features:</div>
+                                                            <ul className="space-y-1">
+                                                                <li>• User authentication & login</li>
+                                                                <li>• AI integrations</li>
+                                                                <li>• Database & data storage</li>
+                                                                <li>• Interactive features</li>
+                                                            </ul>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="text-xs text-neutral-600">
+                                                    {!isAdmin
+                                                        ? "Interactive web applications with advanced functionality."
+                                                        : "Create an interactive web application with advanced features."
+                                                    }
+                                                </div>
+                                            </div>
+                                            {!isAdmin && (
+                                                <div className="flex items-center text-xs text-neutral-400">
+                                                    <Crown className="h-3 w-3" />
+                                                </div>
+                                            )}
+                                        </div>
+                                    </button>
+                                </div>
+
+                                {!isAdmin && user && (
+                                    <div className="space-y-2">
+                                        <button
+                                            type="button"
+                                            onClick={handleNotifyMe}
+                                            disabled={isNotifying || isSubscribed}
+                                            className={`w-full rounded-xl px-4 py-2 text-sm font-semibold text-white transition ${
+                                                isSubscribed
+                                                    ? "border border-green-500 bg-green-500 cursor-not-allowed"
+                                                    : "border border-[#f55f2a] bg-[#f55f2a] hover:bg-[#ff8a4c] disabled:opacity-60"
+                                            }`}
+                                        >
+                                            {isNotifying
+                                                ? "Subscribing…"
+                                                : isSubscribed
+                                                    ? "✓ Subscribed"
+                                                    : "Notify me when available"}
+                                        </button>
+                                        {isSubscribed && (
+                                            <p className="text-xs text-neutral-600 text-center">
+                                                We&apos;ll notify you via email as soon as this feature is ready!
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 border-t border-neutral-200 px-5 py-4">
+                            <button
+                                type="button"
+                                onClick={() => setShowGenerationModal(false)}
+                                className="rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-800 hover:bg-neutral-50"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </motion.div>
+                </motion.div>
+            )}
+        </AnimatePresence>
+        </>
     );
 });
-
-
-// ---------------------------------------------------------------------
 // RenderCard (full) – only change is the X button styling/placement
 // ---------------------------------------------------------------------
 
@@ -1205,6 +1446,7 @@ export default function PreviewPage(): JSX.Element {
     const router = useRouter();
     const search = useSearchParams();
     const { toasts, push } = useToasts();
+    const { showConfirm, showAlert } = useModal();
 
     const [user, setUser] = useState<FirebaseUser | null>(null);
     const [userTier, setUserTier] = useState<UserTier>("unknown");
@@ -2410,16 +2652,7 @@ export default function PreviewPage(): JSX.Element {
                 return;
             }
 
-            // from here down, NOTHING should happen unless user confirms
-            const confirmed = window.confirm(
-                "Generate an editable preview for 15 credits?",
-            );
-            if (!confirmed) {
-                // explicit no-op on cancel
-                return;
-            }
-
-            // ── only confirmed path below ──
+            // ── proceed with generation ──
 
             const optimisticId = `local_${hash64(
                 `${user.uid}|${primaryKey}|${Date.now()}`,
@@ -2718,7 +2951,7 @@ export default function PreviewPage(): JSX.Element {
         async (renderId: string) => {
             if (!user) return;
 
-            const ok = window.confirm("Discard this editable preview?");
+            const ok = await showConfirm("Discard this editable preview?", "Discard Preview");
             if (!ok) return;
 
             setDeletingRender((m) => ({ ...m, [renderId]: true }));
@@ -2777,8 +3010,9 @@ export default function PreviewPage(): JSX.Element {
     const discardShot = useCallback(
         async (shot: Shot) => {
             if (!user || !docSnap) return;
-            const ok = window.confirm(
-                "Delete this screenshot and all its previews?"
+            const ok = await showConfirm(
+                "Delete this screenshot and all its previews?",
+                "Delete Screenshot"
             );
             if (!ok) return;
 
@@ -3848,7 +4082,7 @@ export default function PreviewPage(): JSX.Element {
 
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok || !data.url) {
-                    alert(data?.error || "Unable to start checkout.");
+                    await showAlert(data?.error || "Unable to start checkout.", "Checkout Error");
                     return;
                 }
 
@@ -4101,6 +4335,7 @@ export default function PreviewPage(): JSX.Element {
                                             }}
                                             isAdmin={isAdmin}
                                             onStartFromCommunityBuild={() => router.push("/community-builds")}
+                                            user={user}
                                         />
                                     );
                                 })}
@@ -4193,6 +4428,7 @@ export default function PreviewPage(): JSX.Element {
                                                         }
                                                     }}
                                                     isAdmin={isAdmin}
+                                                    user={user}
                                                 />
                                             );
                                         })()}
@@ -4259,6 +4495,7 @@ export default function PreviewPage(): JSX.Element {
                                             }}
                                             isAdmin={isAdmin}
                                             onStartFromCommunityBuild={() => router.push("/community-builds")}
+                                            user={user}
                                         />
                                     );
                                 })}
@@ -4275,6 +4512,7 @@ export default function PreviewPage(): JSX.Element {
                         mode={editorMode}
                         initialHtml={editorHtml}
                         sourceImage={editorRefImg}
+                        sourceUrl={activeRender?.source || activeRender?.url || undefined}
                         initialSeoMetaByPage={activeSeoMetaByPage || undefined}
                         initialArchivedPageIds={activeArchivedPageIds}
                         onArchivedPageIdsChange={

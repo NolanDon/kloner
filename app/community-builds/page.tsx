@@ -45,7 +45,7 @@ export default function CommunityBuildsPage() {
                         <p className="text-[11px] uppercase tracking-[0.24em] text-black/45">
                             Featured builds
                         </p>
-                        <p className="max-w-xl text-sm text-black/65">
+                        <p className="max-w-xl text-sm text-black/65 mt-3 mb-6">
                             Scroll through approved layouts, open an interactive preview, or
                             remix a project into your own Kloner workspace.
                         </p>

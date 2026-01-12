@@ -15,6 +15,7 @@ type Props = PreviewEditorProps & {
   userTier?: UserTier;
   startProCheckout?: () => Promise<void>;
   mode?: "website" | "app";
+  sourceUrl?: string;
 };
 
 const LS_KEY = "kloner.previewEditor.useV2";
@@ -44,6 +45,7 @@ export default function PreviewEditorManager({
   userTier,
   startProCheckout,
   mode = "website",
+  sourceUrl,
   ...editorProps
 }: Props): JSX.Element {
   const [isAdmin, setIsAdmin] = useState<boolean>(!!isAdminOverride);
@@ -81,6 +83,7 @@ export default function PreviewEditorManager({
         startProCheckout={startProCheckout}
         initialHtml={editorProps.initialHtml}
         sourceImage={editorProps.sourceImage}
+        sourceUrl={sourceUrl}
         onClose={editorProps.onClose}
         onExport={editorProps.onExport}
         draftId={editorProps.draftId}

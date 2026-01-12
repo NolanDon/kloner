@@ -528,7 +528,7 @@ export default function CommunityBuildsClient() {
                                     }}
                                     transition={{ type: "spring", stiffness: 160, damping: 18 }}
                                 >
-                                    <div className="relative h-[62%] w-full overflow-hidden bg-neutral-100 group">
+                                    <div className="relative h-[70%] w-full overflow-hidden bg-neutral-100 group">
                                         {firstPageHtml ? (
                                             <div className="absolute inset-0 overflow-hidden opacity-90 transition group-hover:opacity-100">
                                                 <div className="absolute left-0 top-0 origin-top-left scale-[0.32] pointer-events-none">
@@ -571,7 +571,7 @@ export default function CommunityBuildsClient() {
                                         </button>
                                     </div>
 
-                                    <div className="flex flex-1 items-start justify-between gap-3 border-t border-black/5 bg-white px-4 py-3">
+                                    <div className="flex flex-1 items-start justify-between gap-3 border-t border-black/5 bg-white px-4 py-2">
                                         <div className="min-w-0">
                                             <p className="text-[10px] uppercase tracking-[0.26em] text-black/45">
                                                 Community build

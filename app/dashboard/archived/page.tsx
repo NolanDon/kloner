@@ -6,6 +6,7 @@ import { getUserRenders, RenderRecord, unarchiveRender, useResolvedImg } from "@
 import { Trash2 as DeleteIcon } from "lucide-react";
 import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 import Image from 'next/image'
+import { useModal } from "@/components/ui/ModalContext";
 
 type ArchiveCardProps = {
     r: RenderRecord;
@@ -104,6 +105,7 @@ export default function ArchivedPage() {
     const [loading, setLoading] = useState(true);
     const [deletingRender, setDeletingRender] = useState<Record<string, boolean>>({});
     const [err, setErr] = useState<string | null>(null);
+    const { showConfirm } = useModal();
 
     useEffect(() => {
         let cancelled = false;
@@ -121,7 +123,7 @@ export default function ArchivedPage() {
 
     const discardRender = useCallback(
         async (renderId: string) => {
-            const ok = window.confirm("Discard this editable preview?");
+            const ok = await showConfirm("Discard this editable preview?", "Discard Preview");
             if (!ok) return;
 
             setErr(null);

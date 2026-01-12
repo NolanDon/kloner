@@ -18,6 +18,7 @@ import { useSearchParams } from "next/navigation";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 import { ensureSessionAndCsrf } from "../../login/LoginForm";
 import { doc, getDoc, setDoc } from "firebase/firestore";
+import { useModal } from "@/components/ui/ModalContext";
 
 const ACCENT = "#f55f2a";
 const VERCEL_INTEGRATION_SLUG =
@@ -170,6 +171,7 @@ function btnClass({
 
 export default function SettingsPage(): JSX.Element {
     const searchParams = useSearchParams();
+    const { showConfirm } = useModal();
 
     const [user, setUser] = useState<User | null>(null);
     const [disconnectBusy, setDisconnectBusy] = useState(false);
@@ -584,8 +586,9 @@ export default function SettingsPage(): JSX.Element {
         const count = selectedDeploymentIds.length;
         const label = `${count} deployment${count === 1 ? "" : "s"}`;
 
-        const confirmed = window.confirm(
+        const confirmed = await showConfirm(
             `Delete ${label} and any associated screenshots? This cannot be undone.`,
+            "Delete Deployments"
         );
         if (!confirmed) return;
 
@@ -632,8 +635,9 @@ export default function SettingsPage(): JSX.Element {
     }
 
     async function handleCancelSubscription() {
-        const confirmed = window.confirm(
+        const confirmed = await showConfirm(
             "Cancel your subscription at the end of the current period? You’ll keep access until then.",
+            "Cancel Subscription"
         );
         if (!confirmed) return;
 
