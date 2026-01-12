@@ -286,7 +286,7 @@ export function MetaSettings({
     return (
         <div className="flex h-full flex-col bg-white/90">
             <div className="flex-1 overflow-y-auto px-4 pt-6 pb-4">
-                {isMetaEmpty && (
+                {/* {isMetaEmpty && (
                     <div className="mb-5 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-900">
                         <div className="mb-1 font-medium">
                             No SEO metadata found for this page.
@@ -296,7 +296,7 @@ export function MetaSettings({
                             below.
                         </div>
                     </div>
-                )}
+                )} */}
 
                 {/* Favicon block */}
 
@@ -312,13 +312,13 @@ export function MetaSettings({
                         />
 
                     ) : (
-                        <span className="px-2 text-center text-[10px] text-neutral-400">
+                        <span className="px-2 text-center text-xs text-neutral-400">
                             No favicon
                         </span>
                     )}
                 </div>
                 {draftMeta.faviconUrl && (
-                    <span className="max-w-[200px] truncate text-[10px] text-neutral-700">
+                    <span className="max-w-[200px] truncate text-xs text-neutral-700">
                         {draftMeta.faviconUrl?.slice(0, 50) + '...'}
                     </span>
                 )}
@@ -328,7 +328,7 @@ export function MetaSettings({
                         <div className="flex items-center gap-4">
 
                             <div className="flex flex-col gap-1">
-                                <span className="text-[11px] text-neutral-500">
+                                <span className="text-xs text-neutral-500">
                                     Square PNG, SVG, or ICO. At least 64×64
                                     recommended.
                                 </span>
@@ -364,7 +364,7 @@ export function MetaSettings({
                 {/* Main form fields */}
                 <div className="flex flex-col gap-4">
                     <div className="flex flex-col gap-1.5">
-                        <label className="text-[11px] font-medium text-neutral-700">
+                        <label className="text-xs font-medium text-neutral-700">
                             Page title
                         </label>
                         <input
@@ -379,7 +379,7 @@ export function MetaSettings({
                     </div>
 
                     <div className="flex flex-col gap-1.5">
-                        <label className="text-[11px] font-medium text-neutral-700">
+                        <label className="text-xs font-medium text-neutral-700">
                             Meta description
                         </label>
                         <textarea
@@ -394,7 +394,7 @@ export function MetaSettings({
                     </div>
 
                     <div className="flex flex-col gap-1.5">
-                        <label className="text-[11px] font-medium text-neutral-700">
+                        <label className="text-xs font-medium text-neutral-700">
                             JSON-LD (optional)
                         </label>
                         <textarea

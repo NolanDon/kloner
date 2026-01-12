@@ -186,13 +186,10 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId }: Props) {
     }
 
     return (
-        <div className="flex h-full flex-col gap-3 border-l border-neutral-200 bg-white/95 px-4 py-3">
+        <div className="flex h-full flex-col gap-3 px-4 py-3">
             <div className="flex items-center justify-between">
                 <div>
-                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                        AI Image Library
-                    </div>
-                    <div className="mt-1 text-[12px] text-neutral-500">
+                    <div className="mt-1 text-sm text-neutral-500">
                         Select a slot from your preview, then click an image to insert it.
                         Or use the background action to set it as the section background.
                         <br />
@@ -202,7 +199,7 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId }: Props) {
                     </div>
 
                     {error && (
-                        <div className="mt-1 max-w-[220px] text-[10px] text-red-500">
+                        <div className="mt-1 max-w-[220px] text-xs text-red-500">
                             {error}
                         </div>
                     )}

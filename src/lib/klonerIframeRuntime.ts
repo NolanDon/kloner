@@ -365,6 +365,28 @@ export function installKlonerIframeApi(
 
 
        /* =========================================
+       Per-device width
+       ========================================= */
+    :root[data-kl-device="desktop"] [data-kl-width]{
+      width: var(--kl-width-desktop, auto);
+    }
+
+    :root[data-kl-device="tablet"] [data-kl-width]{
+      width: var(
+        --kl-width-tablet,
+        var(--kl-width-desktop, auto)
+      );
+    }
+
+    :root[data-kl-device="mobile"] [data-kl-width]{
+      width: var(
+        --kl-width-mobile,
+        var(--kl-width-tablet, var(--kl-width-desktop, auto))
+      );
+    }
+
+
+       /* =========================================
        Per-device text alignment + font size
        ========================================= */
     [data-kl-align]{
@@ -590,6 +612,32 @@ export function installKlonerIframeApi(
                 cloneEl.style.removeProperty("--kl-pad-tablet");
                 cloneEl.style.removeProperty("--kl-pad-mobile");
                 cloneEl.removeAttribute("data-kl-pad");
+            });
+        } catch {
+            // best-effort only; ignore failures
+        }
+
+        // 1a) Bake per-device width into the clone so export has real width
+        try {
+            const liveWidthNodes = doc.body.querySelectorAll<HTMLElement>("[data-kl-width]");
+            const cloneWidthNodes = bodyClone.querySelectorAll<HTMLElement>("[data-kl-width]");
+
+            liveWidthNodes.forEach((liveEl, idx) => {
+                const cloneEl = cloneWidthNodes[idx];
+                if (!cloneEl) return;
+
+                const cs = doc.defaultView!.getComputedStyle(liveEl);
+                const w = cs.width;
+
+                if (w && w !== "auto") {
+                    cloneEl.style.width = w;
+                }
+
+                // Drop editor-specific vars / flags from export
+                cloneEl.style.removeProperty("--kl-width-desktop");
+                cloneEl.style.removeProperty("--kl-width-tablet");
+                cloneEl.style.removeProperty("--kl-width-mobile");
+                cloneEl.removeAttribute("data-kl-width");
             });
         } catch {
             // best-effort only; ignore failures
@@ -1038,6 +1086,12 @@ export function installKlonerIframeApi(
         return `--kl-pad-${side}-${suffix}`;
     }
 
+    function getWidthVarName(device: Device) {
+        if (device === "tablet") return "--kl-width-tablet";
+        if (device === "mobile") return "--kl-width-mobile";
+        return "--kl-width-desktop";
+    }
+
 
     function getAlignVarName(device: Device) {
         if (device === "tablet") return "--kl-align-tablet";
@@ -1240,6 +1294,21 @@ export function installKlonerIframeApi(
         return 24;
     }
 
+    function getCurrentDeviceWidth(block: HTMLElement, device: Device): number {
+        const varName = getWidthVarName(device);
+        const raw = block.style.getPropertyValue(varName)?.trim();
+
+        if (raw && raw.endsWith("px")) {
+            const n = parseFloat(raw.slice(0, -2));
+            if (!Number.isNaN(n)) return n;
+        }
+
+        const cs = doc.defaultView!.getComputedStyle(block);
+        const fromComputed = parseFloat(cs.width || "0") || 0;
+
+        return fromComputed > 0 ? fromComputed : 300; // default width
+    }
+
 
     function normalizeAllDevicePadding(block: HTMLElement) {
         const cs = doc.defaultView!.getComputedStyle(block);
@@ -1294,6 +1363,24 @@ export function installKlonerIframeApi(
         block.style.setProperty("--kl-pad-bottom-mobile", `${mobileBottom}px`);
         block.style.setProperty("--kl-pad-left-mobile", `${mobileLeft}px`);
         block.style.setProperty("--kl-pad-right-mobile", `${mobileRight}px`);
+    }
+
+    function normalizeAllDeviceWidth(block: HTMLElement) {
+        const cs = doc.defaultView!.getComputedStyle(block);
+        const desktopWidth = parseFloat(cs.width || "0") || 300;
+
+        const scale = (n: number, f: number) => Math.round(n * f);
+
+        const tabletWidth = scale(desktopWidth, 0.9);
+        const mobileWidth = scale(desktopWidth, 0.8);
+
+        block.setAttribute("data-kl-width", "1");
+
+        block.style.removeProperty("width");
+
+        block.style.setProperty("--kl-width-desktop", `${desktopWidth}px`);
+        block.style.setProperty("--kl-width-tablet", `${tabletWidth}px`);
+        block.style.setProperty("--kl-width-mobile", `${mobileWidth}px`);
     }
 
 
@@ -1600,6 +1687,11 @@ export function installKlonerIframeApi(
     api.blockPadReset = () => {
         if (!selected) return;
         resetBlockPaddingForDevice(selected, activeDevice);
+    };
+
+    api.blockWidthReset = () => {
+        if (!selected) return;
+        resetBlockWidthForDevice(selected, activeDevice);
     };
 
     // margin (per-device)
@@ -2345,14 +2437,37 @@ export function installKlonerIframeApi(
         );
     }
 
+    function resetBlockWidthForDevice(block: HTMLElement, device: Device) {
+        const base = 300; // neutral reset value
+
+        const varName = getWidthVarName(device);
+        block.style.setProperty(varName, `${base}px`);
+
+        block.setAttribute("data-kl-width", "1");
+
+        saveHistory();
+        notify();
+
+        showHint(
+            `Width (${device}) reset.`,
+            block,
+        );
+    }
+
 
     function growBlock(block: HTMLElement, factor: number = 1.1) {
-        const rect = block.getBoundingClientRect();
+        // Only normalize once per block; otherwise each edit on tablet/mobile
+        // overwrites all device widths from that device's computed style.
+        if (!block.hasAttribute("data-kl-width")) {
+            normalizeAllDeviceWidth(block);
+        }
+
+        const currentWidth = getCurrentDeviceWidth(block, activeDevice);
+
         const parent = block.parentElement;
         const parentRect = parent?.getBoundingClientRect();
 
-        const baseWidth = rect.width;
-        let nextWidth = baseWidth * factor;
+        let nextWidth = currentWidth * factor;
 
         if (parentRect) {
             const maxWidth = parentRect.width;
@@ -2362,12 +2477,16 @@ export function installKlonerIframeApi(
         const minWidth = 120;
         if (nextWidth < minWidth) nextWidth = minWidth;
 
-        block.style.width = `${Math.round(nextWidth)}px`;
-        block.style.maxWidth = "100%";
+        const rounded = Math.round(nextWidth);
+
+        const varName = getWidthVarName(activeDevice);
+        block.style.setProperty(varName, `${rounded}px`);
+
+        block.setAttribute("data-kl-width", "1");
 
         saveHistory();
         notify();
-        showHint("Block resized.", block);
+        showHint(`Block width (${activeDevice}) set to ${rounded}px.`, block);
     }
 
     function shrinkBlock(block: HTMLElement, factor: number = 0.9) {

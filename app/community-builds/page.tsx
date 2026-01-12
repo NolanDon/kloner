@@ -26,7 +26,7 @@ export default function CommunityBuildsPage() {
                 <header className="mb-12 flex flex-col items-center text-center gap-3">
                     <div className="mt-2 flex items-center justify-center gap-4 pt-10">
                         <span className="text-[13px] uppercase tracking-[0.1em] text-neutral-500">
-                            See what the community has built with
+                            <h1>See what the community has built with</h1>
                         </span>
                         <span className="relative inline-block h-[90px] w-[90px] sm:h-[120px] sm:w-[120px]">
                             <Image
@@ -39,11 +39,9 @@ export default function CommunityBuildsPage() {
                     </div>
                 </header>
 
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center justify-center text-center">
+                <div className="flex flex-col gap-1 text-left">
                     <div className="flex flex-col gap-1">
-                        <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-neutral-900">
-                            Community builds
-                        </h1>
+                   
                         <p className="text-[11px] uppercase tracking-[0.24em] text-black/45">
                             Featured builds
                         </p>
@@ -53,7 +51,7 @@ export default function CommunityBuildsPage() {
                         </p>
                     </div>
                 </div>
-                <div className="container pt-5 pb-20">
+                <div className="container pt-2 pb-20">
                     <CommunityBuildsClient />
                 </div>
             </section>

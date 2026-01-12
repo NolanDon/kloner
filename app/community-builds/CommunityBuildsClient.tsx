@@ -511,7 +511,7 @@ export default function CommunityBuildsClient() {
         <>
             <section className="flex flex-col gap-6">
                 <div className="mx-auto w-full">
-                    <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-3">
+                    <div className="grid w-full grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-2">
                         {items.map((item) => {
                             const firstPageHtml =
                                 derivePagesFromHtml(item.html)?.[0]?.html ?? item.html ?? "";
@@ -521,7 +521,7 @@ export default function CommunityBuildsClient() {
                             return (
                                 <motion.div
                                     key={item.id}
-                                    className="flex h-[18.5rem] w-full flex-col overflow-hidden rounded-2xl border border-black/10 bg-white shadow-[0_14px_32px_rgba(15,23,42,0.10)]"
+                                    className="flex h-[24rem] w-full flex-col overflow-hidden rounded-2xl border border-black/10 bg-white shadow-[0_14px_32px_rgba(15,23,42,0.10)]"
                                     whileHover={{
                                         y: -3,
                                         boxShadow: "0 20px 40px rgba(15,23,42,0.14)",
@@ -530,7 +530,7 @@ export default function CommunityBuildsClient() {
                                 >
                                     <div className="relative h-[62%] w-full overflow-hidden bg-neutral-100 group">
                                         {firstPageHtml ? (
-                                            <div className="absolute inset-0 overflow-hidden opacity-90 transition group-hover:opacity-25">
+                                            <div className="absolute inset-0 overflow-hidden opacity-90 transition group-hover:opacity-100">
                                                 <div className="absolute left-0 top-0 origin-top-left scale-[0.32] pointer-events-none">
                                                     <iframe
                                                         title={item.name}
@@ -545,7 +545,7 @@ export default function CommunityBuildsClient() {
                                             <motion.img
                                                 src={item.screenshotUrl}
                                                 alt={item.name}
-                                                className="absolute inset-0 h-full w-full object-cover object-top opacity-35 blur-[1px] transition group-hover:opacity-25"
+                                                className="absolute inset-0 h-full w-full object-cover object-top opacity-35 transition group-hover:opacity-100"
                                                 initial={{ scale: 1.03, opacity: 0.35 }}
                                                 animate={{ scale: 1, opacity: 0.35 }}
                                                 transition={{ duration: 0.6 }}
@@ -565,13 +565,13 @@ export default function CommunityBuildsClient() {
                                             className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4 text-white font-medium text-sm transition bg-black/40 backdrop-blur-sm opacity-0 group-hover:opacity-100"
                                         >
                                             <div className="flex flex-inline items-end gap-1 rounded-full bg-[rgba(245,95,42,0.95)] px-4 py-1.5 text-white text-sm shadow-sm hover:bg-[rgba(215,75,22,1)] transition">
-                                                <span>See live preview</span>
+                                                <span>See preview</span>
                                                 <Eye className="h-4 w-4" />
                                             </div>
                                         </button>
                                     </div>
 
-                                    <div className="flex flex-1 items-center justify-between gap-3 border-t border-black/5 bg-white px-4 py-3">
+                                    <div className="flex flex-1 items-start justify-between gap-3 border-t border-black/5 bg-white px-4 py-3">
                                         <div className="min-w-0">
                                             <p className="text-[10px] uppercase tracking-[0.26em] text-black/45">
                                                 Community build
@@ -581,9 +581,13 @@ export default function CommunityBuildsClient() {
                                             </p>
 
                                             <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-black/55">
-                                                {item.remixable && (
+                                                {item.remixable ? (
                                                     <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">
                                                         Remixable
+                                                    </span>
+                                                ) : (
+                                                    <span className="rounded-full bg-red-50 px-2 py-0.5 text-red-700">
+                                                        Not remixable
                                                     </span>
                                                 )}
 

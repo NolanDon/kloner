@@ -2,7 +2,7 @@
 
 import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 import { useEffect, useRef, useState } from "react";
-import { Image as ImageIcon, Info, ArrowUpRight, Loader2 } from "lucide-react";
+import { Image as ImageIcon, Info, ArrowUpRight, Loader2, Rocket } from "lucide-react";
 
 export interface AiEditSuggestion {
     id: string;
@@ -396,7 +396,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                 // server should not return 200 without afterHtml, but fail-safe:
                 setError("AI edit returned no changes. No credits should have been consumed.");
             }
-        } catch {
+        } catch (err) {
             setError("Network error while calling AI edit");
             setSuggestions((prev) => prev.filter((s) => s.id !== optimisticId));
             setPendingSuggestionId(null);
@@ -452,12 +452,47 @@ export default function AiEditPanel(props: AiEditPanelProps) {
     const loadingLabel = "Thinking… this may take a while…";
 
     // Example quick prompts shown in the welcome card
-    const examplePrompts = [
-        "Change the hero background color to #4f46e5",
-        "Add a subtle patterned background behind the hero",
-        "Increase spacing between hero heading and subheading",
-        "Replace header logo with a compact variant",
-    ];
+    // Enhanced prompt suggestions based on selection context
+    const getSmartSuggestions = () => {
+        const tagName = selectionMeta?.tagName?.toLowerCase();
+        const baseSuggestions = [
+            "Make this section more visually appealing",
+            "Improve the typography and spacing",
+            "Add a subtle animation or hover effect",
+            "Enhance the color scheme",
+        ];
+
+        if (tagName === 'h1' || tagName === 'h2' || tagName === 'h3') {
+            return [
+                "Make this heading more impactful",
+                "Change the font style and size",
+                "Add a gradient text effect",
+                "Improve the heading hierarchy",
+            ];
+        }
+
+        if (tagName === 'button' || tagName?.includes('button')) {
+            return [
+                "Make this button more prominent",
+                "Add hover and click animations",
+                "Change the button style and colors",
+                "Improve button accessibility",
+            ];
+        }
+
+        if (tagName === 'img' || tagName?.includes('image')) {
+            return [
+                "Add a border or shadow to this image",
+                "Make the image responsive",
+                "Add a hover zoom effect",
+                "Optimize image presentation",
+            ];
+        }
+
+        return baseSuggestions;
+    };
+
+    const smartSuggestions = getSmartSuggestions();
 
     useEffect(() => {
         // If there is no history and AI hasn't loaded anything, ensure the panel
@@ -467,61 +502,49 @@ export default function AiEditPanel(props: AiEditPanelProps) {
 
     return (
         <>
-            <div className="flex h-full flex-col rounded-xl border border-neutral-200 bg-white/95 shadow-sm ring-1 ring-accent/10 backdrop-blur-sm">
-                <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2">
-                    <div className="space-y-0.5">
-                        <div className="text-[14px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
-                            AI Edit Assistant
-                        </div>
-                        <div className="flex items-center gap-1 text-[11px] text-neutral-600">
-                            <span>Ask for small, focused changes to the selected block.</span>
-                            <Info className="h-3 w-3 text-neutral-400" />
-                        </div>
-                    </div>
-                    {creditsText && (
-                        <div
-                            className="rounded-full whitespace-nowrap bg-accent px-2 py-0.5 text-[14px] font-medium text-white shadow-sm"
-                            title="Monthly AI edit credits for this account."
-                        >
-                            {creditsText}
-                        </div>
-                    )}
-                </div>
-
-                <div ref={scrollContainerRef} className="flex-1 min-h-0 space-y-4 overflow-y-auto px-3 py-3 text-[12px]">
+            <div className="flex h-full flex-col">
+                <div ref={scrollContainerRef} className="flex-1 min-h-0 space-y-4 overflow-y-auto px-3 py-3 text-sm">
                     {historyError && (
-                        <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
+                        <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
                             {historyError}
                         </div>
                     )}
 
                     {historyLoading && !historyError && orderedSuggestions.length === 0 ? (
-                        <div className="flex h-30 items-center justify-center rounded-xl border border-neutral-200 bg-neutral-50 px-4 text-center text-[12px] text-neutral-500">
+                        <div className="flex h-30 items-center justify-center rounded-xl border border-neutral-200 bg-neutral-50 px-4 text-center text-sm text-neutral-500">
                             <div className="flex items-center gap-2">
                                 <Loader2 className="h-4 w-4 animate-spin text-neutral-400 py-4" />
                                 <span>Loading AI edit history…</span>
                             </div>
                         </div>
                     ) : orderedSuggestions.length === 0 && !historyError ? (
-                        <div className="rounded-xl border border-neutral-200 bg-gradient-to-b from-white/80 to-white/70 px-4 py-4">
-                            <div className="flex items-start gap-3">
-                                <div className="flex-shrink-0 h-9 w-9 rounded-full bg-[var(--accent,#f55f2a)]/90 flex items-center justify-center text-white shadow">AI</div>
-                                <div>
-                                    <div className="mb-2 text-[16px] font-semibold text-neutral-900">Hi, I’m your AI editor</div>
-                                    <div className="mb-3 text-[16px] text-neutral-600 max-w-[300px]">Try asking me to tweak colors, add a background image, or adjust spacing. Select a block in the preview and pick an example to populate the prompt.</div>
+                        <div className="rounded-xl border border-neutral-200 bg-gradient-to-br from-accent/5 to-accent/10 px-4 py-6">
+                            <div className="flex items-start gap-4">
+                                <div className="flex-shrink-0 h-10 w-10 rounded-full bg-accent flex items-center justify-center text-white shadow-md">
+                                    <Rocket className="h-5 w-5" />
+                                </div>
+                                <div className="flex-1">
+                                    <h3 className="mb-2 text-lg font-semibold text-neutral-900">
+                                        Welcome to Maverick
+                                    </h3>
+                                    <p className="mb-4 text-sm text-neutral-600">
+                                        Select any element in your preview and describe the changes you want to make.
+                                        Here are some suggestions based on your current selection:
+                                    </p>
 
-                                    <div className="flex flex-wrap gap-2">
-                                        {examplePrompts.map((ex) => (
-                                            <button
-                                                key={ex}
-                                                type="button"
-                                                onClick={() => setPrompt(ex)}
-                                                className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[12px] bg-white shadow-sm hover:bg-neutral-50"
-                                            >
-                                                {ex}
-                                            </button>
-                                        ))}
-                                    </div>
+                                <div className="flex flex-wrap gap-2">
+                                    {smartSuggestions.map((suggestion) => (
+                                        <button
+                                            key={suggestion}
+                                            type="button"
+                                            onClick={() => setPrompt(suggestion)}
+                                            className="inline-flex items-center gap-2 rounded-full border border-accent/20 bg-white px-3 py-2 text-xs font-medium text-accent shadow-sm hover:bg-accent/5 hover:border-accent/40 transition-colors"
+                                        >
+                                            <Rocket className="h-3 w-3" />
+                                            {suggestion}
+                                        </button>
+                                    ))}
+                                </div>
                                 </div>
                             </div>
                         </div>
@@ -579,7 +602,7 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                     </div>
                 )}
 
-                <div className="border-t border-neutral-200 bg-white px-3 py-2">
+                <div className="sticky bottom-0 border-t border-neutral-200 bg-white px-3 py-2">
                     <div className="mb-1 flex items-center justify-between gap-2">
                         <span className="text-[11px] text-neutral-400">
                             {prompt.length}/{MAX_PROMPT_CHARS}

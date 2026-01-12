@@ -815,6 +815,15 @@ function BlockToolbar({
                                 >
                                     Grow
                                 </button>
+                                <button
+                                    type="button"
+                                    onClick={() => callApi("blockWidthReset")}
+                                    className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                    title="Reset width for this device"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <RotateCcw className="h-3 w-3" />
+                                </button>
                             </div>
                         </div>
 

@@ -24,7 +24,7 @@ const steps = [
     {
         target: "#kloner-style-sidebar",
         title: "Style & AI Edit",
-        content: "Use AI Edit to rewrite, generate images, or refine copy and layout.",
+        content: "Use the beautifully redesigned style panel to customize typography, colors, and layout. Switch to AI mode for intelligent content editing.",
     },
     {
         target: "#kloner-apply-changes",
@@ -37,24 +37,14 @@ const steps = [
         content: "Switch between desktop, tablet, and mobile views. Ensure your design looks great on all devices.",
     },
     {
-        target: "#kloner-selection-style",
+        target: "#kloner-style-toggle",
         title: "Block styling",
-        content: "Fine-tune typography, spacing, alignment, and colors for selected blocks.",
+        content: "Fine-tune typography, spacing, alignment, and colors for selected blocks. The style panel is now beautifully organized with larger controls.",
     },
     {
-        target: "#kloner-meta-toggle",
-        title: "Page metadata",
-        content: "Control page-level SEO: titles, descriptions, and favicons.",
-    },
-    {
-        target: "#kloner-ai-image-library",
-        title: "AI images",
-        content: "Store and reuse AI-generated images. Drag to insert into blocks.",
-    },
-    {
-        target: "#kloner-actions-row",
-        title: "Deploy",
-        content: "Deploy your edits to a live website when ready.",
+        target: "#kloner-deploy-toggle",
+        title: "Deploy your website",
+        content: "When you're ready, deploy your edits to a live website. This will export your current preview and trigger a deployment.",
     },
 ];
 

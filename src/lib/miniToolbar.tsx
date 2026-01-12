@@ -109,8 +109,8 @@ export function MiniToolbar({
 
         if (top < PADDING) top = PADDING;
         if (top > maxTop) top = maxTop;
+        // Removed clamping for left to allow toolbar to travel further right
         if (left < PADDING) left = PADDING;
-        if (left > maxLeft) left = maxLeft;
 
         setPos({ top, left });
         setVisible(true);

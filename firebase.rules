@@ -1,0 +1,224 @@
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /* ---------- HELPERS ---------- */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return request.auth != null
+        && (
+          request.auth.token.admin == true
+          || request.auth.token.admin == "true"
+          || request.auth.token.admin == 1
+        );
+    }
+
+    function isSupport() {
+      return request.auth != null
+        && (
+          request.auth.token.supportAgent == true
+          || request.auth.token.supportAgent == "true"
+          || request.auth.token.supportAgent == 1
+        );
+    }
+
+    /* ---------- AFFILIATES ---------- */
+    match /affiliates/{affiliateRef} {
+      allow read, write: if isAdmin();
+      match /{sub=**} {
+        allow read, write: if isAdmin();
+      }
+    }
+
+    match /affiliate_codes/{code} {
+      allow read: if isSignedIn()
+                  && resource.data.uid is string
+                  && request.auth.uid == resource.data.uid;
+
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /affiliate_applications/{uid} {
+      allow create, read, update: if isSignedIn() && request.auth.uid == uid;
+      allow read, update, delete: if isAdmin();
+    }
+
+    /* ---------- CONTENT ---------- */
+    match /items/{itemId} {
+      allow read: if true;
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+
+    match /blogs/{blogId} {
+      allow read: if true;
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+
+    match /faq/{faqId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    /* ---------- USERS ---------- */
+    match /users/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /subscribers/{subscriberId}/{document=**} {
+      allow read: if isSignedIn() && request.auth.uid == resource.id;
+      allow create: if request.resource.data.email is string
+                    && request.resource.data.email.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$');
+      allow update, delete: if false;
+    }
+
+    /* ---------- COMMENTS ---------- */
+    match /comments/{commentId} {
+      allow read: if true;
+
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.displayName
+            == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.nickname
+        && request.resource.data.comment is string
+        && request.resource.data.comment.size() <= 1000
+        && request.resource.data.displayName.size() <= 20;
+
+      allow update, delete: if isAdmin();
+    }
+
+    /* ---------- SUPPORT DOC CMS ---------- */
+    match /support_doc/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    /* ---------- KLONER USERS ---------- */
+    match /kloner_users/{userId} {
+
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+      allow read, write: if isAdmin();
+
+      match /kloner_urls/{urlId} {
+        allow read, write: if isSignedIn()
+                            && (request.auth.uid == userId || isAdmin());
+      }
+
+      match /kloner_renders/{renderId} {
+        allow read, write: if isSignedIn()
+                            && (request.auth.uid == userId || isAdmin());
+      }
+
+      match /deployments/{deploymentId} {
+        allow read: if isSignedIn()
+                    && (request.auth.uid == userId || isAdmin());
+        allow write: if isSignedIn() && request.auth.uid == userId;
+      }
+
+      match /meta/{docId} {
+        allow read: if isSignedIn()
+                    && (request.auth.uid == userId || isAdmin());
+        allow write: if isSignedIn() && request.auth.uid == userId;
+
+        match /sessions/{sessionId} {
+          allow read: if isSignedIn()
+                      && (request.auth.uid == userId || isAdmin());
+          allow write: if isSignedIn() && request.auth.uid == userId;
+        }
+      }
+
+      match /integrations/{any=**} {
+        allow read: if isAdmin();
+        allow write: if false;
+      }
+    }
+
+    /* ---------- COMMUNITY BUILDS ---------- */
+    match /kloner_community/{docId} {
+      allow read: if resource.data.approved == true
+                  || (isSignedIn() && request.auth.uid == resource.data.author);
+
+      allow create: if isSignedIn()
+                    && request.resource.data.author == request.auth.uid
+                    && request.resource.data.html is string
+                    && request.resource.data.name is string
+                    && request.resource.data.remixable is bool
+                    && request.resource.data.approved == false;
+
+      allow update, delete: if isAdmin();
+    }
+
+    /* ---------- GALLERY ---------- */
+    match /gallery/{docId} {
+      allow read: if resource.data.approved == true;
+      allow read: if isSignedIn() && request.auth.uid == resource.data.author;
+      allow read, write: if isAdmin();
+      allow create: if isSignedIn()
+                    && request.resource.data.author == request.auth.uid
+                    && request.resource.data.approved == false;
+    }
+
+    /* ---------- SUPPORT ---------- */
+    match /support_inbox/{chatId} {
+      allow read, write: if isSignedIn() && (isSupport() || isAdmin());
+    }
+
+    match /support_chats/{chatId} {
+      allow read, write: if isSignedIn() && (isSupport() || isAdmin());
+
+      match /messages/{msgId} {
+        allow read, write: if isSignedIn() && (isSupport() || isAdmin());
+      }
+    }
+
+    /* ---------- LEDGER ---------- */
+    match /affiliate_ledger/{affiliateRef} {
+      allow read, write: if isAdmin();
+      match /entries/{entryId} {
+        allow read, write: if isAdmin();
+      }
+    }
+  }
+}
+
+/* ================= STORAGE ================= */
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAdmin() {
+      return request.auth != null
+        && (
+          request.auth.token.admin == true
+          || request.auth.token.admin == "true"
+          || request.auth.token.admin == 1
+        );
+    }
+
+    match /screenshots/{uid}/{rest=**} {
+      allow read: if (request.auth != null && request.auth.uid == uid) || isAdmin();
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    match /kloner-screenshots/{uid}/{rest=**} {
+      allow read: if (request.auth != null && request.auth.uid == uid) || isAdmin();
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    match /kloner_ai_home/{uid}/{rest=**} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    match /kloner_images/{uid}/{rest=**} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+    match /kloner_images/{uid}/{rest=**} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+    match /{all=**} {
+      allow read, write: if false;
+    }
+  }
+}
