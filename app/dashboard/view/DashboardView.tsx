@@ -1079,6 +1079,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     onClick,
     onAppClick,
     isAdmin,
+    onStartFromTemplate,
     onStartFromCommunityBuild,
     user,
 }: {
@@ -1086,6 +1087,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     onClick: () => void;
     onAppClick?: () => void;
     isAdmin: boolean;
+    onStartFromTemplate?: () => void;
     onStartFromCommunityBuild?: () => void;
     user: FirebaseUser | null;
     compact?: boolean;
@@ -1199,26 +1201,28 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                 </div>
             </div>
 
-            {onStartFromCommunityBuild ? (
-                <button
-                    type="button"
-                    onClick={() => {
-                        if (effectiveLocked) return;
+            <button
+                type="button"
+                onClick={() => {
+                    if (effectiveLocked) return;
+                    if (onStartFromTemplate) {
+                        onStartFromTemplate();
+                    } else if (onStartFromCommunityBuild) {
                         onStartFromCommunityBuild();
-                    }}
-                    disabled={effectiveLocked}
-                    aria-disabled={effectiveLocked}
-                    className={`group mt-2 inline-flex mx-auto w-[200px] items-center justify-center rounded-full bg-[#f55f2a] px-4 py-1 text-[12px] font-semibold text-white whitespace-nowrap transition-transform duration-200 ease-out
+                    }
+                }}
+                disabled={effectiveLocked}
+                aria-disabled={effectiveLocked}
+                className={`group mt-2 inline-flex mx-auto w-[220px] items-center justify-center rounded-full bg-[#f55f2a] px-4 py-1 text-[12px] font-semibold text-white whitespace-nowrap transition-transform duration-200 ease-out
       ${effectiveLocked ? "pointer-events-none opacity-60" : "hover:translate-y-[2px]"}
     `}
-                >
-                    <span>Start from template</span>
+            >
+                <span>Start from template (free)</span>
 
-                    <span className="ml-1 inline-flex items-center" aria-hidden="true">
-                        <ArrowUpRight className="h-3.5 w-3.5 opacity-90 transition-transform duration-200 ease-out group-hover:translate-x-[1px] group-hover:-translate-y-[1px]" />
-                    </span>
-                </button>
-            ) : null}
+                <span className="ml-1 inline-flex items-center" aria-hidden="true">
+                    <ArrowUpRight className="h-3.5 w-3.5 opacity-90 transition-transform duration-200 ease-out group-hover:translate-x-[1px] group-hover:-translate-y-[1px]" />
+                </span>
+            </button>
 
         </div>
 
@@ -1742,6 +1746,37 @@ export default function PreviewPage(): JSX.Element {
             push("Failed to create app. Please try again.", "err");
         }
     }, [user, router, push, activeRenderId]);
+
+    // New: create an app from the starter template (free)
+    const handleCreateTemplateApp = useCallback(async () => {
+        if (!user) return;
+        try {
+            const res = await fetch("/api/app-builder/create", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: "Starter Template" }),
+            });
+
+            if (!res.ok) {
+                throw new Error("Failed to create app");
+            }
+
+            const { appId } = await res.json();
+
+            // Close any open editor modal
+            setEditorOpen(false);
+            setActiveRenderId(undefined);
+            setActiveSeoMetaByPage(null);
+            setActiveArchivedPageIds([]);
+
+            // Open app builder overlay
+            setCurrentAppId(appId);
+            setAppBuilderOpen(true);
+        } catch (error) {
+            console.error("Failed to create template app:", error);
+            push("Failed to start from template. Please try again.", "err");
+        }
+    }, [user, push]);
 
 
     const [optimisticByKey, setOptimisticByKey] = useState<
@@ -4385,6 +4420,7 @@ export default function PreviewPage(): JSX.Element {
                                                 }
                                             }}
                                             isAdmin={isAdmin}
+                                            onStartFromTemplate={handleCreateTemplateApp}
                                             onStartFromCommunityBuild={() => router.push("/community-builds")}
                                             user={user}
                                         />
@@ -4479,6 +4515,7 @@ export default function PreviewPage(): JSX.Element {
                                                         }
                                                     }}
                                                     isAdmin={isAdmin}
+                                                    onStartFromTemplate={handleCreateTemplateApp}
                                                     user={user}
                                                 />
                                             );
