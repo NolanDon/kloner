@@ -3,7 +3,7 @@ import type { User } from "firebase/auth";
 import { getIdTokenResult } from "firebase/auth";
 
 import PreviewEditor from "@/components/PreviewEditor";
-import AppEditor from "./AppEditor";
+import AppBuilderEditor from "@/components/AppBuilderEditor";
 import PreviewEditorV2 from "./PreviewEditorV2";
 import type { UserTier } from "@/src/lib/credits";
 
@@ -79,16 +79,10 @@ export default function PreviewEditorManager({
 
   if (mode === "app") {
     return (
-      <AppEditor
-        firebaseUser={firebaseUser}
-        userTier={userTier}
-        startProCheckout={startProCheckout}
-        initialHtml={editorProps.initialHtml}
-        sourceImage={editorProps.sourceImage}
-        sourceUrl={sourceUrl}
+      <AppBuilderEditor
+        appId={editorProps.draftId || "new"}
         onClose={editorProps.onClose}
-        onCreateApp={onCreateApp}
-        draftId={editorProps.draftId}
+        onDeploy={onCreateApp ? (app) => onCreateApp("clone", undefined, app.id) : undefined}
       />
     );
   }

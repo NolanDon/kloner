@@ -89,9 +89,8 @@ export async function POST(req: NextRequest) {
         const body = await req.json();
         const { name, renderId, prompt } = body;
 
-        if (!name || typeof name !== "string") {
-            return NextResponse.json({ error: "Name required" }, { status: 400 });
-        }
+        // Default to "Untitled Project" if no name provided
+        const appName = name && typeof name === "string" && name.trim() ? name.trim() : "Untitled Project";
 
         const appId = `app_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -108,7 +107,7 @@ export async function POST(req: NextRequest) {
                         initialFiles = {
                             "package.json": {
                                 content: JSON.stringify({
-                                    name: name.toLowerCase().replace(/\s+/g, '-'),
+                                    name: appName.toLowerCase().replace(/\s+/g, '-'),
                                     version: "0.1.0",
                                     private: true,
                                     scripts: {
@@ -154,7 +153,7 @@ export default function Home() {
                             },
                             "app/layout.js": {
                                 content: `export const metadata = {
-  title: '${name}',
+  title: '${appName}',
 };
 
 export default function RootLayout({ children }) {
@@ -194,7 +193,7 @@ export default function Error({ error, reset }) {
         await db.collection("kloner_users").doc(uid).collection("kloner_apps").doc(appId).set({
             id: appId,
             userId: uid,
-            name,
+            name: appName,
             files,
             renderId: renderId || null, // Store reference to source render
             createdAt: new Date(),

@@ -142,24 +142,31 @@ export default function WebContainerRunner({ appId, files, onFileChange }: WebCo
 
   return (
     <div className="h-full flex flex-col bg-white text-black/90 border border-black/10 rounded-2xl shadow">
-      <div className="p-4 border-b border-black/10">
-        <h2 className="text-xl font-semibold text-accent">App Runner</h2>
-        <p className="text-black/70">App ID: {appId}</p>
-        <p className="text-black/70">Files: {Object.keys(files).length}</p>
-        {isLoading && <p className="text-accent">Loading...</p>}
-        {error && <p className="text-red-600">Error: {error}</p>}
-      </div>
-      <div className="flex-1 p-4">
-        {previewUrl ? (
-          <iframe
-            src={previewUrl}
-            className="w-full h-full border border-black/10 rounded-lg"
-            title="App Preview"
-          />
-        ) : (
-          <p className="text-black/70">Starting app...</p>
-        )}
-      </div>
+      {error && (
+        <div className="p-4 border-b border-black/10">
+          {isLoading && <p className="text-accent">Loading...</p>}
+          {error && <p className="text-red-600">Error: {error}</p>}
+        </div>
+      )}
+      {previewUrl ? (
+        <iframe
+          src={previewUrl}
+          className="w-full h-full border border-black/10 rounded-lg"
+          title="App Preview"
+        />
+      ) : (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="flex items-center justify-center gap-1 mb-4">
+              <div className="w-2 h-2 bg-accent rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+              <div className="w-2 h-2 bg-accent rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+              <div className="w-2 h-2 bg-accent rounded-full animate-bounce"></div>
+            </div>
+            <p className="text-lg font-medium text-gray-700">Building app...</p>
+            <p className="text-sm text-gray-500 mt-1">This may take a few moments</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

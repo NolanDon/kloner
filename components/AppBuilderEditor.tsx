@@ -3,8 +3,9 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import Editor from "@monaco-editor/react";
-import { Folder, File, Play, Upload, X, RefreshCw } from "lucide-react";
+import { Folder, File, Play, Upload, X, RefreshCw, MessageSquare, Code, Edit3, Check, RotateCcw } from "lucide-react";
 import WebContainerRunner from "./WebContainerRunner";
+import AIAgentChat from "./AIAgentChat";
 import KlonerLoader from "./KlonerLoader";
 
 type FileNode = {
@@ -66,6 +67,14 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     const [fileTree, setFileTree] = useState<FileNode[]>([]);
     const [code, setCode] = useState<string>("");
     const [refreshKey, setRefreshKey] = useState(0);
+    const [viewMode, setViewMode] = useState<"ai" | "code">("ai"); // Default to AI chat
+    const [isRenaming, setIsRenaming] = useState(false);
+    const [tempName, setTempName] = useState("");
+    const [isSaving, setIsSaving] = useState(false);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [isDeploying, setIsDeploying] = useState(false);
+    const [leftPanelWidth, setLeftPanelWidth] = useState(500); // Default wider AI chat panel
+    const [isResizing, setIsResizing] = useState(false);
     const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     // Load app data
@@ -87,6 +96,57 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
         };
         loadApp();
     }, [appId, onClose]);
+
+    // Load panel width from localStorage on mount
+    useEffect(() => {
+        const savedWidth = localStorage.getItem('app-builder-left-panel-width');
+        if (savedWidth) {
+            const width = parseInt(savedWidth, 10);
+            if (width >= 300 && width <= 800) { // Reasonable bounds
+                setLeftPanelWidth(width);
+            }
+        }
+    }, []);
+
+    // Save panel width to localStorage when it changes
+    useEffect(() => {
+        localStorage.setItem('app-builder-left-panel-width', leftPanelWidth.toString());
+    }, [leftPanelWidth]);
+
+    // Handle resize mouse events
+    useEffect(() => {
+        const handleMouseMove = (e: MouseEvent) => {
+            if (!isResizing) return;
+            
+            const container = document.querySelector('[data-app-builder-container]');
+            if (!container) return;
+            
+            const containerRect = container.getBoundingClientRect();
+            const newWidth = e.clientX - containerRect.left;
+            
+            // Constrain width between 300px and 800px
+            const constrainedWidth = Math.max(300, Math.min(800, newWidth));
+            setLeftPanelWidth(constrainedWidth);
+        };
+
+        const handleMouseUp = () => {
+            setIsResizing(false);
+        };
+
+        if (isResizing) {
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+        }
+
+        return () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        };
+    }, [isResizing]);
 
     const buildFileTree = (files: AppData["files"]) => {
         const tree: FileNode[] = [];
@@ -152,6 +212,25 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
         saveFileToServer(path, content);
     }, [currentFile]);
 
+    const handleFileEditFromAI = useCallback((path: string, content: string) => {
+        // Update local state
+        setApp((prev) => prev ? {
+            ...prev,
+            files: {
+                ...prev.files,
+                [path]: { content, lastModified: Date.now() },
+            },
+        } : null);
+
+        // If this is the currently open file, update the editor
+        if (path === currentFile) {
+            setCode(content);
+        }
+
+        // Save to server
+        saveFileToServer(path, content);
+    }, [currentFile]);
+
     const saveFileToServer = useCallback(async (path: string, content: string) => {
         try {
             const res = await fetch(`/api/app-builder/${appId}/update-file`, {
@@ -166,8 +245,9 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     }, [appId]);
 
     const handleSave = async () => {
-        if (!currentFile || !app) return;
+        if (!currentFile || !app || isSaving) return;
 
+        setIsSaving(true);
         try {
             const res = await fetch(`/api/app-builder/${appId}/update-file`, {
                 method: "POST",
@@ -185,32 +265,69 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
             } : null);
         } catch (err) {
             console.error("Save failed", err);
+        } finally {
+            setIsSaving(false);
         }
     };
 
     const handleDeploy = async () => {
-        if (!app) return;
+        if (!app || isDeploying) return;
 
-        if (onDeploy) {
-            // Use the deployment wizard
-            onDeploy({ id: app.id, name: app.name });
-        } else {
-            // Fallback to direct API call
-            try {
+        setIsDeploying(true);
+        try {
+            if (onDeploy) {
+                // Use the deployment wizard
+                onDeploy({ id: app.id, name: app.name });
+            } else {
+                // Fallback to direct API call
                 const res = await fetch(`/api/app-builder/${appId}/deploy`, {
                     method: "POST",
                 });
                 if (!res.ok) throw new Error("Failed to deploy");
                 const data = await res.json();
                 setApp((prev) => prev ? { ...prev, previewUrl: data.previewUrl } : null);
-            } catch (err) {
-                console.error("Deploy failed", err);
             }
+        } catch (err) {
+            console.error("Deploy failed", err);
+        } finally {
+            // Keep deploy disabled for longer to prevent spam
+            setTimeout(() => setIsDeploying(false), 5000);
         }
     };
 
     const handleRefresh = () => {
+        if (isRefreshing) return;
+        setIsRefreshing(true);
         setRefreshKey(prev => prev + 1);
+        // Reset loading state after a short delay
+        setTimeout(() => setIsRefreshing(false), 1000);
+    };
+
+    const handleRename = async () => {
+        if (!app || !tempName.trim()) return;
+
+        try {
+            const res = await fetch(`/api/app-builder/${appId}/rename`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: tempName.trim() }),
+            });
+            if (!res.ok) throw new Error("Failed to rename");
+            setApp(prev => prev ? { ...prev, name: tempName.trim() } : null);
+            setIsRenaming(false);
+        } catch (err) {
+            console.error("Rename failed", err);
+        }
+    };
+
+    const startRename = () => {
+        setTempName(app?.name || "");
+        setIsRenaming(true);
+    };
+
+    const cancelRename = () => {
+        setIsRenaming(false);
+        setTempName("");
     };
 
     if (loading) {
@@ -234,32 +351,78 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
             <div className="h-full w-full bg-white flex flex-col">
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b bg-gray-50">
-                    <h1 className="text-xl font-semibold">{app.name}</h1>
+                    <div className="flex items-center gap-3">
+                        {isRenaming ? (
+                            <div className="flex items-center gap-2">
+                                <input
+                                    type="text"
+                                    value={tempName}
+                                    onChange={(e) => setTempName(e.target.value)}
+                                    onKeyPress={(e) => {
+                                        if (e.key === "Enter") handleRename();
+                                        if (e.key === "Escape") cancelRename();
+                                    }}
+                                    className="px-2 py-1 border rounded text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-accent"
+                                    autoFocus
+                                />
+                                <button
+                                    onClick={handleRename}
+                                    className="p-1 hover:bg-gray-200 rounded transition-colors"
+                                    title="Save name"
+                                >
+                                    <Check className="w-4 h-4 text-green-600" />
+                                </button>
+                                <button
+                                    onClick={cancelRename}
+                                    className="p-1 hover:bg-gray-200 rounded transition-colors"
+                                    title="Cancel"
+                                >
+                                    <RotateCcw className="w-4 h-4 text-red-600" />
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="relative group">
+                                <h1
+                                    className="text-xl font-semibold cursor-pointer hover:text-purple-600 transition-colors"
+                                    onClick={startRename}
+                                    title="Click to rename"
+                                >
+                                    {app?.name || "Untitled Project"}
+                                </h1>
+                                <div className="absolute -right-6 top-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <Edit3 className="w-4 h-4 text-gray-400 hover:text-accent" />
+                                </div>
+                            </div>
+                        )}
+                    </div>
                     <div className="flex gap-2 items-center">
                         <button
                             onClick={handleSave}
-                            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                            disabled={isSaving}
+                            className="px-4 py-2 bg-[#F55F2A] text-white rounded hover:bg-[#E04E1B] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all  rounded-full"
                         >
-                            Save
+                            <Upload className="w-4 h-4" />
+                            {isSaving ? "Saving..." : "Save"}
                         </button>
                         <button
                             onClick={handleRefresh}
-                            className="px-4 py-2 bg-orange-500 text-white rounded flex items-center gap-2 hover:bg-orange-600"
+                            className="px-4 py-2 bg-[#F55F2A] text-white rounded flex items-center gap-2 rounded-full hover:bg-[#E04E1B]"
                             title="Rebuild app"
                         >
                             <RefreshCw className="w-4 h-4" />
-                            Refresh
+                            Rebuild
                         </button>
                         <button
                             onClick={handleDeploy}
-                            className="px-4 py-2 bg-green-500 text-white rounded flex items-center gap-2 hover:bg-green-600"
+                            disabled={isDeploying}
+                            className="px-4 py-2 bg-[#F55F2A] text-white rounded hover:bg-[#E04E1B] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all  rounded-full"
                         >
                             <Upload className="w-4 h-4" />
-                            Deploy
+                            {isDeploying ? "Deploying..." : "Deploy"}
                         </button>
                         <button
                             onClick={onClose}
-                            className="p-2 hover:bg-gray-200 rounded"
+                            className="p-2 hover:bg-gray-200 rounded transition-colors"
                             title="Close"
                         >
                             <X className="w-5 h-5" />
@@ -267,39 +430,109 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                     </div>
                 </div>
 
-                <div className="flex h-full">
-                    {/* Left Panel - File Tree and Editor */}
-                    <div className="w-1/2 flex flex-col">
-                        {/* File Tree */}
-                        <div className="h-1/3 border-r p-4 overflow-auto">
-                            <h2 className="font-semibold mb-2">Files</h2>
-                            <FileTree nodes={fileTree} onFileSelect={handleFileSelect} />
+                <div className="flex h-full" data-app-builder-container>
+                    {/* Left Panel - AI Chat and Controls */}
+                    <div 
+                        className="flex flex-col border-r bg-gray-50 flex-shrink-0" 
+                        style={{ width: `${leftPanelWidth}px` }}
+                    >
+                        {/* View Mode Toggle */}
+                        <div className="p-3 border-b">
+                            <div className="flex bg-white rounded-lg p-1 shadow-sm">
+                                <button
+                                    onClick={() => setViewMode("ai")}
+                                    className={`flex-1 px-2 py-1 rounded text-xs flex items-center justify-center gap-1 ${
+                                        viewMode === "ai"
+                                            ? "bg-[#F55F2A] text-white"
+                                            : "text-gray-600 hover:bg-gray-100"
+                                    }`}
+                                >
+                                    <MessageSquare className="w-3 h-3" />
+                                    AI
+                                </button>
+                                <button
+                                    onClick={() => setViewMode("code")}
+                                    className={`flex-1 px-2 py-1 rounded text-xs flex items-center justify-center gap-1 ${
+                                        viewMode === "code"
+                                            ? "bg-[#F55F2A] text-white"
+                                            : "text-gray-600 hover:bg-gray-100"
+                                    }`}
+                                >
+                                    <Code className="w-3 h-3" />
+                                    Code
+                                </button>
+                            </div>
                         </div>
 
-                        {/* Code Editor */}
-                        <div className="h-2/3 border-r">
-                            {currentFile ? (
-                                <Editor
-                                    height="100%"
-                                    language="javascript"
-                                    value={code}
-                                    onChange={handleCodeChange}
-                                    theme="vs-dark"
+                        {/* AI Chat or Code View */}
+                        <div className="flex-1">
+                            {viewMode === "ai" ? (
+                                // AI Chat Interface
+                                <AIAgentChat
+                                    appId={appId}
+                                    files={app.files}
+                                    onFileEdit={handleFileEditFromAI}
+                                    onServerRefresh={handleRefresh}
                                 />
                             ) : (
-                                <div className="flex items-center justify-center h-full text-gray-500">
-                                    Select a file to edit
+                                // Code View - File Tree and Editor
+                                <div className="h-full flex flex-col">
+                                    {/* File Tree */}
+                                    <div className="flex-1 border-b p-3 overflow-auto">
+                                        <h3 className="font-medium mb-2 text-sm">Files</h3>
+                                        <FileTree nodes={fileTree} onFileSelect={handleFileSelect} />
+                                    </div>
+
+                                    {/* Code Editor */}
+                                    <div className="flex-1">
+                                        {currentFile ? (
+                                            <Editor
+                                                height="100%"
+                                                language="javascript"
+                                                value={code}
+                                                onChange={handleCodeChange}
+                                                theme="vs-dark"
+                                                options={{
+                                                    minimap: { enabled: false },
+                                                    fontSize: 12,
+                                                    lineNumbers: "off",
+                                                    scrollBeyondLastLine: false,
+                                                }}
+                                            />
+                                        ) : (
+                                            <div className="flex items-center justify-center h-full text-gray-500 text-sm">
+                                                Select a file to edit
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             )}
                         </div>
                     </div>
 
-                    {/* Right Panel - Live Development */}
-                    <div className="w-1/2 flex flex-col">
-                        <div className="p-4 border-b">
-                            <h2 className="font-semibold">Live Development</h2>
+                    {/* Resize Handle */}
+                    <div
+                        className="w-1 bg-gray-300 hover:bg-gray-400 cursor-col-resize transition-colors flex-shrink-0"
+                        onMouseDown={() => setIsResizing(true)}
+                        title="Drag to resize panels"
+                    />
+
+                    {/* Right Panel - Browser-like App View */}
+                    <div className="flex-1 flex flex-col">
+                        {/* Browser Chrome */}
+                        <div className="bg-gray-100 border-b px-4 py-2 flex items-center gap-2">
+                            <div className="flex gap-1">
+                                <div className="w-3 h-3 bg-red-400 rounded-full"></div>
+                                <div className="w-3 h-3 bg-yellow-400 rounded-full"></div>
+                                <div className="w-3 h-3 bg-green-400 rounded-full"></div>
+                            </div>
+                            {/* <div className="flex-1 bg-white rounded-md px-3 py-1 text-sm text-gray-600 border">
+                                localhost:3000
+                            </div> */}
                         </div>
-                        <div className="flex-1">
+
+                        {/* App Content */}
+                        <div className="flex-1 bg-white">
                             {app ? (
                                 <WebContainerRunner
                                     key={refreshKey}
