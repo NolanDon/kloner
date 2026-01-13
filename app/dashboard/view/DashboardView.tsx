@@ -1305,7 +1305,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                     type="button"
                                     onClick={() => {
                                         setShowGenerationModal(false);
-                                        if (onStartFromTemplate) onStartFromTemplate();
+                                        router.push("/community-builds");
                                     }}
                                     className="w-full rounded-xl border border-neutral-200 bg-white p-4 text-left transition hover:bg-neutral-50 hover:border-neutral-300"
                                 >
@@ -1335,16 +1335,16 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                     <div className="absolute left-1/2 top-full mt-2 hidden w-64 -translate-x-1/2 rounded-lg border border-neutral-200 bg-white p-3 text-xs text-neutral-700 shadow-lg group-hover:block z-10">
                                                         <div className="font-semibold text-neutral-900 mb-2">Template Features:</div>
                                                         <ul className="space-y-1">
-                                                            <li>• Pre-built starter template</li>
-                                                            <li>• Ready-to-customize</li>
+                                                            <li>• Pre-built HTML templates</li>
+                                                            <li>• Ready-to-customize designs</li>
                                                             <li>• No credits required</li>
-                                                            <li>• Perfect for learning</li>
+                                                            <li>• Perfect for quick starts</li>
                                                         </ul>
                                                     </div>
                                                 </div>
                                             </div>
                                             <div className="text-xs text-neutral-600">
-                                                Get started instantly with a basic Next.js template.
+                                                Browse free HTML page templates from the community.
                                             </div>
                                         </div>
                                     </div>
