@@ -1074,6 +1074,102 @@ const CenterSpinner = memo(function CenterSpinner({
     );
 });
 
+// ============================================================================
+// APP CARD COMPONENT
+// ============================================================================
+function AppCard({
+    app,
+    isDeleting,
+    onCustomize,
+    onDelete,
+}: {
+    app: { id: string; name: string; createdAt: any; updatedAt: any };
+    isDeleting: boolean;
+    onCustomize: (appId: string) => void;
+    onDelete: (appId: string) => void;
+}) {
+    const router = useRouter();
+    
+    const formattedDate = app.createdAt?.toDate?.() 
+        ? new Date(app.createdAt.toDate()).toLocaleDateString()
+        : "Recently";
+
+    return (
+        <div className="relative flex flex-col overflow-visible rounded-xl border border-neutral-200 bg-white shadow-sm hover:shadow-md transition-shadow">
+            {/* Delete button */}
+            <button
+                onClick={() => onDelete(app.id)}
+                disabled={isDeleting}
+                aria-label="Delete app"
+                title="Delete this app"
+                className="absolute -right-3 -top-3 z-40 inline-flex h-6 w-6 items-center justify-center rounded-full border shadow-sm transition-all duration-150 bg-white/85 border-neutral-200 text-neutral-400 hover:bg-red-600 hover:border-red-600 hover:text-white hover:shadow-md hover:scale-[1.04] active:scale-[0.98] disabled:opacity-60 disabled:pointer-events-none"
+            >
+                <DeleteIcon className="h-3.5 w-3.5 transition-colors" />
+            </button>
+
+            {/* App badge */}
+            <span
+                className="absolute left-2 top-2 z-40 inline-flex items-center rounded-full border border-neutral-200 bg-[#f55f2a]/10 px-2 py-0.5 text-[10px] font-semibold text-[#f55f2a] shadow-sm"
+                title="This is an app"
+            >
+                App
+            </span>
+
+            {/* App ID badge */}
+            <span
+                className="absolute right-2 top-2 z-40 inline-flex items-center rounded-full border border-neutral-200 bg-white/85 px-2 py-0.5 text-[10px] font-mono text-neutral-700 shadow-sm"
+                title={`App ID: ${app.id.slice(0, 10)}`}
+            >
+                {app.id.slice(0, 10)}
+            </span>
+
+            {/* Main visual area */}
+            <div className="relative aspect-[3/3] w-full overflow-hidden flex flex-col items-center justify-center bg-gradient-to-br from-neutral-50 to-neutral-100">
+                <div className="pointer-events-auto flex flex-col items-center gap-3">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#f55f2a]/10">
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                            className="h-8 w-8 text-[#f55f2a]"
+                        >
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14,2 14,8 20,8"/>
+                            <line x1="12" y1="13" x2="12" y2="13.01"/>
+                            <line x1="12" y1="17" x2="12" y2="17.01"/>
+                        </svg>
+                    </div>
+                    <div className="text-center">
+                        <h3 className="text-sm font-semibold text-neutral-900 max-w-[200px] truncate">
+                            {app.name}
+                        </h3>
+                        <p className="text-xs text-neutral-500 mt-1">
+                            Created {formattedDate}
+                        </p>
+                    </div>
+                </div>
+
+                {/* Action buttons overlay */}
+                <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
+                    <div className="pointer-events-auto flex max-w-xs flex-col items-stretch rounded-xl border border-neutral-200 bg-white/80 p-3 text-xs shadow-lg backdrop-blur-sm">
+                        <button
+                            onClick={() => onCustomize(app.id)}
+                            disabled={isDeleting}
+                            className="group inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-[#f55f2a] text-white shadow-sm hover:bg-[#ff8a4c] px-3 py-2 font-medium disabled:opacity-60"
+                            title="Open app in editor"
+                        >
+                            <span>Customize App</span>
+                            <BrushIcon className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
+                        </button>
+                    </div>
+                </div>
+
+                {isDeleting && <CenterSpinner />}
+            </div>
+        </div>
+    );
+}
+
 const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     locked,
     onClick,
@@ -1514,6 +1610,39 @@ export default function PreviewPage(): JSX.Element {
         // no-op here; real unarchive happens on /dashboard/archived
     }
 
+    async function handleDeleteApp(appId: string) {
+        if (!user) return;
+
+        const ok = await showConfirm(
+            "Delete this app? This action cannot be undone.",
+            "Delete App"
+        );
+        if (!ok) return;
+
+        setDeletingApp((prev) => ({ ...prev, [appId]: true }));
+        try {
+            const res = await fetch("/api/app-builder/delete", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ appId }),
+            });
+            if (!res.ok) throw new Error("Failed to delete app");
+            
+            // Remove from local state
+            setApps((prev) => prev.filter((a) => a.id !== appId));
+            push("App deleted successfully", "ok");
+        } catch (error) {
+            console.error("Failed to delete app:", error);
+            push("Failed to delete app. Please try again.", "err");
+        } finally {
+            setDeletingApp((prev) => {
+                const next = { ...prev };
+                delete next[appId];
+                return next;
+            });
+        }
+    }
+
     const [deployWizardOpen, setDeployWizardOpen] = useState(false);
     const [deployWizardStep, setDeployWizardStep] = useState<1 | 2 | 3 | 5>(1);
     const [deployWizardProjectName, setDeployWizardProjectName] = useState("");
@@ -1565,7 +1694,11 @@ export default function PreviewPage(): JSX.Element {
     const [renders, setRenders] = useState<
         Array<{ id: string } & RenderDoc>
     >([]);
+    const [apps, setApps] = useState<
+        Array<{ id: string; name: string; userId: string; createdAt: any; updatedAt: any }>
+    >([]);
     const [loadingRenders, setLoadingRenders] = useState(false);
+    const [deletingApp, setDeletingApp] = useState<Record<string, boolean>>({});
     const [lockUntilByKey, setLockUntilByKey] = useState<
         Record<string, number>
     >({});
@@ -1576,6 +1709,26 @@ export default function PreviewPage(): JSX.Element {
     const [viewerIdx, setViewerIdx] = useState(0);
     const didStripeRestoreRef = useRef(false);
 
+    // Fetch apps from Firestore
+    useEffect(() => {
+        if (!user) {
+            setApps([]);
+            return;
+        }
+
+        const appsRef = collection(db, "kloner_users", user.uid, "kloner_apps");
+        const appsQuery = query(appsRef, orderBy("createdAt", "desc"), limit(100));
+
+        const unsub = onSnapshot(appsQuery, (snap) => {
+            const appList = snap.docs.map((doc) => ({
+                id: doc.id,
+                ...(doc.data() as any),
+            }));
+            setApps(appList);
+        });
+
+        return () => unsub();
+    }, [user]);
 
     useEffect(() => {
         const billingParam = search.get("billing");
@@ -4573,6 +4726,19 @@ export default function PreviewPage(): JSX.Element {
                                         retryRender={retryRender}
                                     />
 
+                                ))}
+
+                                {apps.map((app) => (
+                                    <AppCard
+                                        key={app.id}
+                                        app={app}
+                                        isDeleting={!!deletingApp[app.id]}
+                                        onCustomize={(appId) => {
+                                            setCurrentAppId(appId);
+                                            setAppBuilderOpen(true);
+                                        }}
+                                        onDelete={handleDeleteApp}
+                                    />
                                 ))}
 
                                 {groupedShots.map((group, groupIndex) => {
