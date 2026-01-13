@@ -1092,6 +1092,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     user: FirebaseUser | null;
     compact?: boolean;
 }) {
+    const router = useRouter();
     const [localDisabled, setLocalDisabled] = useState(false);
     const [showGenerationModal, setShowGenerationModal] = useState(false);
     const [isNotifying, setIsNotifying] = useState(false);
