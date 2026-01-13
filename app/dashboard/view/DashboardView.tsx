@@ -1200,30 +1200,6 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                     <div className={`mt-1 text-neutral-500 ${subtitleSize}`}>{subtitle}</div>
                 </div>
             </div>
-
-            <button
-                type="button"
-                onClick={() => {
-                    if (effectiveLocked) return;
-                    if (onStartFromTemplate) {
-                        onStartFromTemplate();
-                    } else if (onStartFromCommunityBuild) {
-                        onStartFromCommunityBuild();
-                    }
-                }}
-                disabled={effectiveLocked}
-                aria-disabled={effectiveLocked}
-                className={`group mt-2 inline-flex mx-auto w-[220px] items-center justify-center rounded-full bg-[#f55f2a] px-4 py-1 text-[12px] font-semibold text-white whitespace-nowrap transition-transform duration-200 ease-out
-      ${effectiveLocked ? "pointer-events-none opacity-60" : "hover:translate-y-[2px]"}
-    `}
-            >
-                <span>Start from template (free)</span>
-
-                <span className="ml-1 inline-flex items-center" aria-hidden="true">
-                    <ArrowUpRight className="h-3.5 w-3.5 opacity-90 transition-transform duration-200 ease-out group-hover:translate-x-[1px] group-hover:-translate-y-[1px]" />
-                </span>
-            </button>
-
         </div>
 
         {/* Generation Type Selection Modal */}
@@ -1322,24 +1298,57 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                         </div>
                                     </div>
                                 </button>
-                                {/* Start from template (free) */}
-                                <div className="mt-2 flex justify-end">
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            if (effectiveLocked) return;
-                                            if (onStartFromTemplate) onStartFromTemplate();
-                                        }}
-                                        disabled={effectiveLocked}
-                                        aria-disabled={effectiveLocked}
-                                        className={`inline-flex items-center justify-center rounded-full bg-[#f55f2a] px-3 py-1 text-[12px] font-semibold text-white whitespace-nowrap transition-transform duration-200 ease-out ${effectiveLocked ? "pointer-events-none opacity-60" : "hover:translate-y-[1px] hover:bg-[#ff8a4c]"}`}
-                                    >
-                                        <span>Start from template (free)</span>
-                                        <span className="ml-1 inline-flex items-center" aria-hidden="true">
-                                            <ArrowUpRight className="h-3.5 w-3.5 opacity-90" />
-                                        </span>
-                                    </button>
-                                </div>
+                            </div>
+
+                            <div className="relative">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowGenerationModal(false);
+                                        if (onStartFromTemplate) onStartFromTemplate();
+                                    }}
+                                    className="w-full rounded-xl border border-neutral-200 bg-white p-4 text-left transition hover:bg-neutral-50 hover:border-neutral-300"
+                                >
+                                    <div className="flex items-start gap-3">
+                                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10">
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                viewBox="0 0 24 24"
+                                                fill="currentColor"
+                                                className="h-5 w-5 text-emerald-600"
+                                            >
+                                                <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/>
+                                            </svg>
+                                        </div>
+                                        <div className="flex-1 space-y-1">
+                                            <div className="flex items-center gap-2">
+                                                <div className="text-sm font-semibold text-neutral-900">
+                                                    Start from template
+                                                </div>
+                                                <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                                                    Free
+                                                </span>
+                                                <div className="group relative">
+                                                    <div className="flex h-4 w-4 items-center justify-center rounded-full bg-neutral-200 text-xs font-semibold text-neutral-600 hover:bg-neutral-300 cursor-help">
+                                                        ?
+                                                    </div>
+                                                    <div className="absolute left-1/2 top-full mt-2 hidden w-64 -translate-x-1/2 rounded-lg border border-neutral-200 bg-white p-3 text-xs text-neutral-700 shadow-lg group-hover:block z-10">
+                                                        <div className="font-semibold text-neutral-900 mb-2">Template Features:</div>
+                                                        <ul className="space-y-1">
+                                                            <li>• Pre-built starter template</li>
+                                                            <li>• Ready-to-customize</li>
+                                                            <li>• No credits required</li>
+                                                            <li>• Perfect for learning</li>
+                                                        </ul>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="text-xs text-neutral-600">
+                                                Get started instantly with a basic Next.js template.
+                                            </div>
+                                        </div>
+                                    </div>
+                                </button>
                             </div>
 
                             <div className="space-y-3">
