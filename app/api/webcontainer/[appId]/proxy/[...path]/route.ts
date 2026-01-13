@@ -11,11 +11,50 @@ export async function OPTIONS(req: NextRequest) {
     status: 200,
     headers: {
       'Access-Control-Allow-Origin': req.headers.get('origin') || '*',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, HEAD',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       'Access-Control-Max-Age': '86400',
     },
   });
+}
+
+// Handle HEAD requests for health checks
+export async function HEAD(
+  req: NextRequest,
+  { params }: { params: { appId: string; path?: string[] } }
+) {
+  try {
+    const registry = getProcessRegistry();
+    const info = registry.get(params.appId);
+    
+    if (!info) {
+      console.log(`HEAD check: App not running: ${params.appId}`);
+      return new NextResponse(null, { status: 404 });
+    }
+
+    const subPath = (params.path || []).join('/');
+    const targetUrl = `http://localhost:${info.port}/${subPath}`;
+
+    try {
+      const upstream = await fetch(targetUrl, {
+        method: 'HEAD',
+        signal: AbortSignal.timeout(5000),
+      });
+
+      return new NextResponse(null, {
+        status: upstream.status,
+        headers: {
+          'Cross-Origin-Resource-Policy': 'same-site',
+        },
+      });
+    } catch (err) {
+      console.log(`HEAD check: Upstream server not responding yet for ${params.appId}`);
+      return new NextResponse(null, { status: 503 });
+    }
+  } catch (err) {
+    console.error('HEAD check error:', err);
+    return new NextResponse(null, { status: 500 });
+  }
 }
 
 export async function GET(

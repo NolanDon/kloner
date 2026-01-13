@@ -45,11 +45,41 @@ export default function WebContainerRunner({ appId, files, onFileChange }: WebCo
         const data = await response.json();
         console.log('App started successfully:', data);
 
-        // Wait a bit for the server to be fully ready before setting preview URL
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Poll the proxy endpoint to ensure it's ready
+        const proxyUrl = `/api/webcontainer/${appId}/proxy/`;
+        const maxAttempts = 20; // 20 attempts * 500ms = 10 seconds max
+        let attempts = 0;
+        let proxyReady = false;
+
+        while (attempts < maxAttempts && !proxyReady) {
+          try {
+            console.log(`Checking if proxy is ready (attempt ${attempts + 1}/${maxAttempts})...`);
+            const proxyCheck = await fetch(proxyUrl, { 
+              method: 'HEAD',
+              cache: 'no-store',
+            });
+            
+            if (proxyCheck.ok || proxyCheck.status === 200) {
+              proxyReady = true;
+              console.log('Proxy is ready!');
+              break;
+            } else {
+              console.log(`Proxy not ready yet, status: ${proxyCheck.status}`);
+            }
+          } catch (err) {
+            console.log('Proxy check failed:', err);
+          }
+          
+          await new Promise(resolve => setTimeout(resolve, 500));
+          attempts++;
+        }
+
+        if (!proxyReady) {
+          throw new Error('Proxy endpoint did not become ready in time');
+        }
         
         // Use same-origin proxy to satisfy COEP/CORP and cookies on HTTPS
-        setPreviewUrl(`/api/webcontainer/${appId}/proxy/`);
+        setPreviewUrl(proxyUrl);
       } catch (err) {
         console.error('Error starting app:', err);
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
