@@ -13,7 +13,9 @@ export default function WebContainerRunner({ appId, files, onFileChange }: WebCo
   const [isLoading, setIsLoading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [startAttempt, setStartAttempt] = useState(0);
   const hasStartedRef = useRef(false);
+  const maxRetries = 3;
 
   useEffect(() => {
     if (hasStartedRef.current) return;
@@ -24,6 +26,9 @@ export default function WebContainerRunner({ appId, files, onFileChange }: WebCo
         setIsLoading(true);
         setError(null);
 
+        console.log('Starting app with ID:', appId);
+        console.log('Files:', Object.keys(files));
+
         const response = await fetch('/api/webcontainer', {
           method: 'POST',
           headers: {
@@ -33,15 +38,36 @@ export default function WebContainerRunner({ appId, files, onFileChange }: WebCo
         });
 
         if (!response.ok) {
-          throw new Error('Failed to start app');
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || 'Failed to start app');
         }
 
-        await response.json();
+        const data = await response.json();
+        console.log('App started successfully:', data);
+
+        // Wait a bit for the server to be fully ready before setting preview URL
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
         // Use same-origin proxy to satisfy COEP/CORP and cookies on HTTPS
         setPreviewUrl(`/api/webcontainer/${appId}/proxy/`);
       } catch (err) {
         console.error('Error starting app:', err);
-        setError(err instanceof Error ? err.message : 'Unknown error');
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        setError(errorMessage);
+        
+        // Retry logic for transient failures
+        if (startAttempt < maxRetries && errorMessage.includes('Failed to start app')) {
+          console.log(`Retrying... (attempt ${startAttempt + 1}/${maxRetries})`);
+          hasStartedRef.current = false;
+          setStartAttempt(prev => prev + 1);
+          setTimeout(() => {
+            const retry = async () => {
+              hasStartedRef.current = false;
+              await startApp();
+            };
+            retry();
+          }, 2000);
+        }
       } finally {
         setIsLoading(false);
       }
@@ -59,7 +85,7 @@ export default function WebContainerRunner({ appId, files, onFileChange }: WebCo
         body: JSON.stringify({ appId }),
       }).catch(console.error);
     };
-  }, [appId, files]);
+  }, [appId, files, startAttempt]);
 
   return (
     <div className="h-full flex flex-col bg-white text-black/90 border border-black/10 rounded-2xl shadow">
