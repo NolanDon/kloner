@@ -21,15 +21,15 @@ export async function POST(
             return NextResponse.json({ error: "Invalid request" }, { status: 400 });
         }
 
-        const docRef = db.collection("user_apps").doc(appId);
+        const docRef = db.collection("kloner_users").doc(uid).collection("kloner_apps").doc(appId);
         const doc = await docRef.get();
         if (!doc.exists) {
             return NextResponse.json({ error: "App not found" }, { status: 404 });
         }
 
         const data = doc.data();
-        if (data?.userId !== uid) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+        if (!data) {
+            return NextResponse.json({ error: "App data not found" }, { status: 404 });
         }
 
         const files = data?.files || {};

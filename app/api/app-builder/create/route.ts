@@ -134,7 +134,7 @@ export default function RootLayout({ children }) {
             files[path] = { content, lastModified: Date.now() };
         });
 
-        await db.collection("user_apps").doc(appId).set({
+        await db.collection("kloner_users").doc(uid).collection("kloner_apps").doc(appId).set({
             id: appId,
             userId: uid,
             name,

@@ -14,14 +14,14 @@ export async function GET(
         const db = getAdminDb();
         const appId = params.appId;
 
-        const doc = await db.collection("user_apps").doc(appId).get();
+        const doc = await db.collection("kloner_users").doc(uid).collection("kloner_apps").doc(appId).get();
         if (!doc.exists) {
             return NextResponse.json({ error: "App not found" }, { status: 404 });
         }
 
         const data = doc.data();
-        if (data?.userId !== uid) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+        if (!data) {
+            return NextResponse.json({ error: "App data not found" }, { status: 404 });
         }
 
         return NextResponse.json({

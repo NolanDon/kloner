@@ -1,9 +1,10 @@
 // src/components/AppBuilderEditor.tsx
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Editor from "@monaco-editor/react";
 import { Folder, File, Play, Upload, X } from "lucide-react";
+import WebContainerRunner from "./WebContainerRunner";
 
 type FileNode = {
     name: string;
@@ -53,12 +54,17 @@ function FileTree({ nodes, onFileSelect, prefix = "" }: {
     );
 }
 
-export default function AppBuilderEditor({ appId, onClose }: { appId: string; onClose: () => void }) {
+export default function AppBuilderEditor({ appId, onClose, onDeploy }: { 
+    appId: string; 
+    onClose: () => void;
+    onDeploy?: (app: { id: string; name: string }) => void;
+}) {
     const [app, setApp] = useState<AppData | null>(null);
     const [loading, setLoading] = useState(true);
     const [currentFile, setCurrentFile] = useState<string | null>(null);
     const [fileTree, setFileTree] = useState<FileNode[]>([]);
     const [code, setCode] = useState<string>("");
+    const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     // Load app data
     useEffect(() => {
@@ -113,8 +119,49 @@ export default function AppBuilderEditor({ appId, onClose }: { appId: string; on
     };
 
     const handleCodeChange = (value: string | undefined) => {
-        setCode(value || "");
+        const newCode = value || "";
+        setCode(newCode);
+
+        // Auto-save after a delay
+        if (autoSaveTimeoutRef.current) {
+            clearTimeout(autoSaveTimeoutRef.current);
+        }
+        autoSaveTimeoutRef.current = setTimeout(() => {
+            handleSave();
+        }, 1000);
     };
+
+    const handleFileChangeFromContainer = useCallback((path: string, content: string) => {
+        // Update local state
+        setApp((prev) => prev ? {
+            ...prev,
+            files: {
+                ...prev.files,
+                [path]: { content, lastModified: Date.now() },
+            },
+        } : null);
+
+        // If this is the currently open file, update the editor
+        if (path === currentFile) {
+            setCode(content);
+        }
+
+        // Auto-save to server
+        saveFileToServer(path, content);
+    }, [currentFile]);
+
+    const saveFileToServer = useCallback(async (path: string, content: string) => {
+        try {
+            const res = await fetch(`/api/app-builder/${appId}/update-file`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ path, content }),
+            });
+            if (!res.ok) throw new Error("Failed to save");
+        } catch (err) {
+            console.error("Auto-save failed", err);
+        }
+    }, [appId]);
 
     const handleSave = async () => {
         if (!currentFile || !app) return;
@@ -141,15 +188,22 @@ export default function AppBuilderEditor({ appId, onClose }: { appId: string; on
 
     const handleDeploy = async () => {
         if (!app) return;
-        try {
-            const res = await fetch(`/api/app-builder/${appId}/deploy`, {
-                method: "POST",
-            });
-            if (!res.ok) throw new Error("Failed to deploy");
-            const data = await res.json();
-            setApp((prev) => prev ? { ...prev, previewUrl: data.previewUrl } : null);
-        } catch (err) {
-            console.error("Deploy failed", err);
+        
+        if (onDeploy) {
+            // Use the deployment wizard
+            onDeploy({ id: app.id, name: app.name });
+        } else {
+            // Fallback to direct API call
+            try {
+                const res = await fetch(`/api/app-builder/${appId}/deploy`, {
+                    method: "POST",
+                });
+                if (!res.ok) throw new Error("Failed to deploy");
+                const data = await res.json();
+                setApp((prev) => prev ? { ...prev, previewUrl: data.previewUrl } : null);
+            } catch (err) {
+                console.error("Deploy failed", err);
+            }
         }
     };
 
@@ -203,45 +257,48 @@ export default function AppBuilderEditor({ appId, onClose }: { appId: string; on
                     </div>
                 </div>
 
-                <div className="flex flex-1">
-                    {/* File Tree */}
-                    <div className="w-64 border-r p-4">
-                        <h2 className="font-semibold mb-2">Files</h2>
-                        <FileTree nodes={fileTree} onFileSelect={handleFileSelect} />
-                    </div>
-
-                    {/* Code Editor */}
-                    <div className="flex-1">
-                        {currentFile ? (
-                            <Editor
-                                height="50vh"
-                                language="javascript"
-                                value={code}
-                                onChange={handleCodeChange}
-                                theme="vs-dark"
-                            />
-                        ) : (
-                            <div className="flex items-center justify-center h-full text-gray-500">
-                                Select a file to edit
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Preview */}
-                    <div className="w-1/2 border-l">
-                        <div className="p-4 border-b">
-                            <h2 className="font-semibold">Preview</h2>
+                <div className="flex h-full">
+                    {/* Left Panel - File Tree and Editor */}
+                    <div className="w-1/2 flex flex-col">
+                        {/* File Tree */}
+                        <div className="h-1/3 border-r p-4 overflow-auto">
+                            <h2 className="font-semibold mb-2">Files</h2>
+                            <FileTree nodes={fileTree} onFileSelect={handleFileSelect} />
                         </div>
-                        <div className="h-full">
-                            {app.previewUrl ? (
-                                <iframe
-                                    src={app.previewUrl}
-                                    className="w-full h-full"
-                                    title="App Preview"
+
+                        {/* Code Editor */}
+                        <div className="h-2/3 border-r">
+                            {currentFile ? (
+                                <Editor
+                                    height="100%"
+                                    language="javascript"
+                                    value={code}
+                                    onChange={handleCodeChange}
+                                    theme="vs-dark"
                                 />
                             ) : (
                                 <div className="flex items-center justify-center h-full text-gray-500">
-                                    Deploy to see preview
+                                    Select a file to edit
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Right Panel - Live Development */}
+                    <div className="w-1/2 flex flex-col">
+                        <div className="p-4 border-b">
+                            <h2 className="font-semibold">Live Development</h2>
+                        </div>
+                        <div className="flex-1">
+                            {app ? (
+                                <WebContainerRunner
+                                    appId={appId}
+                                    files={app.files}
+                                    onFileChange={handleFileChangeFromContainer}
+                                />
+                            ) : (
+                                <div className="flex items-center justify-center h-full text-gray-500">
+                                    Loading app...
                                 </div>
                             )}
                         </div>

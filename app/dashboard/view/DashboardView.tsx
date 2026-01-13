@@ -229,93 +229,8 @@ function isRenderDeployed(r: { lastExportedAt?: any; lastDeployUrl?: string; ver
 }
 
 // ============================================================================
-// APP CARD COMPONENT
+// RENDER CARD COMPONENT
 // ============================================================================
-function AppCard({ app, onOpen }: { 
-    app: { id: string; name: string; createdAt: Date; updatedAt: Date; previewUrl?: string };
-    onOpen: () => void;
-}) {
-    return (
-        <div
-            className="relative flex flex-col overflow-visible rounded-xl border bg-white shadow-sm border-blue-400 ring-2 ring-blue-200/50 shadow-blue-100"
-        >
-            {/* app badge */}
-            <span
-                className="absolute left-2 top-2 z-40 inline-flex items-center gap-1.5 rounded-full bg-blue-500 px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm"
-                title="Web App"
-            >
-                app
-            </span>
-
-            {/* app id badge */}
-            <span
-                className="absolute left-2 top-7 z-40 inline-flex items-center rounded-full border border-neutral-200 bg-white/85 px-2 py-0.5 text-[10px] font-mono text-neutral-700 shadow-sm"
-                title={`App ID: ${String(app?.id || "").slice(0, 10)}`}
-            >
-                {String(app?.id || "").slice(0, 10)}
-            </span>
-
-            {/* main visual area */}
-            <div className="relative aspect-[3/3] w-full overflow-hidden">
-                {!app.previewUrl ? (
-                    <div className="grid h-full w-full place-items-center text-sm text-neutral-500 bg-gradient-to-br from-blue-50 to-green-50">
-                        <div className="text-center">
-                            <div className="text-2xl mb-2">🚀</div>
-                            <div>Web App</div>
-                        </div>
-                    </div>
-                ) : (
-                    <a className="block h-full w-full" title="Open app preview">
-                        <Image
-                            src={app.previewUrl}
-                            alt={app.name}
-                            fill
-                            sizes="(min-width: 1024px) 420px, 100vw"
-                            loading="lazy"
-                            className="pointer-events-none select-none object-cover"
-                            onError={() => {}}
-                        />
-                    </a>
-                )}
-
-                <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
-                    <div className="pointer-events-auto flex max-w-xs flex-col items-stretch rounded-xl border border-neutral-200 bg-white/90 p-3 text-xs shadow-lg backdrop-blur-sm md:max-w-sm">
-                        <div className="flex w-full flex-col gap-2">
-                            <button
-                                onClick={onOpen}
-                                className="group inline-flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-xs bg-blue-500 text-white shadow-sm hover:bg-blue-600"
-                                title="Open app builder"
-                            >
-                                <span>Open App</span>
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    viewBox="0 0 24 24"
-                                    fill="currentColor"
-                                    className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5"
-                                >
-                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                                    <polyline points="14,2 14,8 20,8"/>
-                                    <line x1="16" y1="13" x2="8" y2="13"/>
-                                    <line x1="16" y1="17" x2="8" y2="17"/>
-                                    <polyline points="10,9 9,9 8,9"/>
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div className="p-4">
-                <h3 className="font-semibold text-sm text-neutral-900 truncate" title={app.name}>
-                    {app.name}
-                </h3>
-                <p className="text-xs text-neutral-500 mt-1">
-                    Created {app.createdAt.toLocaleDateString()}
-                </p>
-            </div>
-        </div>
-    );
-}
 function RenderCardInner({
     r,
     isDeleting,
@@ -1212,9 +1127,19 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
         setShowGenerationModal(false);
         
         if (onAppClick) {
-            // Don't set localDisabled here since the modal prevents interaction
-            // and we want to allow the user to try again immediately if they cancel
-            onAppClick();
+            // Immediately prevent further clicks to avoid double-generation.
+            setLocalDisabled(true);
+
+            // Safety: clear the local guard after 10s in case something goes wrong.
+            const t = setTimeout(() => setLocalDisabled(false), 10000);
+
+            try {
+                onAppClick();
+            } finally {
+                // If parent quickly reflects the pending state it will keep the button disabled;
+                // otherwise we clear the optimistic guard after the timeout above.
+                // We don't clear the timeout here to allow it to expire naturally.
+            }
         }
     };
 
@@ -1606,10 +1531,7 @@ export default function PreviewPage(): JSX.Element {
     >(null);
 
     const [renders, setRenders] = useState<
-        Array<({ id: string } & RenderDoc) | ({ id: string; name: string; createdAt: Date; updatedAt: Date; previewUrl?: string; type: 'app' })>
-    >([]);
-    const [apps, setApps] = useState<
-        Array<{ id: string; name: string; createdAt: Date; updatedAt: Date; previewUrl?: string }>
+        Array<{ id: string } & RenderDoc>
     >([]);
     const [loadingRenders, setLoadingRenders] = useState(false);
     const [lockUntilByKey, setLockUntilByKey] = useState<
@@ -1718,7 +1640,7 @@ export default function PreviewPage(): JSX.Element {
     async function handleShareWithCommunity(opts: { renderId: string; remixable: boolean }) {
         const { renderId, remixable } = opts;
         const render = renders.find((r) => r.id === renderId);
-        if (!render || !('html' in render) || !render.html || !user) return;
+        if (!render || !render.html || !user) return;
 
         try {
             // deterministic ID so a render can't be shared twice by same user
@@ -1811,17 +1733,6 @@ export default function PreviewPage(): JSX.Element {
             setActiveRenderId(undefined);
             setActiveSeoMetaByPage(null);
             setActiveArchivedPageIds([]);
-            
-            // Add app to renders list for display
-            const newApp = {
-                id: appId,
-                name: appName,
-                createdAt: new Date(),
-                updatedAt: new Date(),
-                previewUrl: undefined,
-                type: 'app' as const,
-            };
-            setRenders((prev) => [newApp, ...prev]);
             
             // Open app builder as overlay
             setCurrentAppId(appId);
@@ -2515,7 +2426,7 @@ export default function PreviewPage(): JSX.Element {
                 }
 
                 setRenders((prev) =>
-                    rendersEqual(prev.filter(r => 'status' in r), withOptimistic)
+                    rendersEqual(prev, withOptimistic)
                         ? prev
                         : withOptimistic
                 );
@@ -2697,7 +2608,7 @@ export default function PreviewPage(): JSX.Element {
             }
 
             setRenders((prev) =>
-                rendersEqual(prev.filter(r => 'status' in r), withOptimistic)
+                rendersEqual(prev, withOptimistic)
                     ? prev
                     : withOptimistic
             );
@@ -2753,34 +2664,6 @@ export default function PreviewPage(): JSX.Element {
         lockUntilByKey,
     ]);
 
-    // Load apps
-    useEffect(() => {
-        if (!user) {
-            setApps([]);
-            return;
-        }
-
-        const appsQuery = query(
-            collection(db, "user_apps"),
-            where("userId", "==", user.uid),
-            orderBy("createdAt", "desc"),
-            limit(50)
-        );
-
-        const unsub = onSnapshot(appsQuery, (snap) => {
-            const appsData = snap.docs.map((doc) => ({
-                id: doc.id,
-                ...doc.data(),
-                createdAt: doc.data().createdAt?.toDate() || new Date(),
-                updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-            })) as Array<{ id: string; name: string; createdAt: Date; updatedAt: Date; previewUrl?: string }>;
-            
-            setApps(appsData);
-        });
-
-        return () => unsub();
-    }, [user]);
-
     /* ───────── actions ───────── */
 
     const selectUrl = useCallback(
@@ -2805,7 +2688,6 @@ export default function PreviewPage(): JSX.Element {
             // hard guard: if anything already queued or pending for this key, bail
             const alreadyQueued = renders.some(
                 (r) =>
-                    'key' in r &&
                     r.key === primaryKey &&
                     r.status === "queued" &&
                     !r.archived,
@@ -3053,7 +2935,7 @@ export default function PreviewPage(): JSX.Element {
 
                 // if this render had url metadata, send it along
                 const existing = renders.find((r) => r.id === id);
-                if (existing && 'url' in existing && existing.url) {
+                if (existing?.url) {
                     body.url = existing.url;
                     body.urlHash = existing.urlHash;
                     body.nameHint =
@@ -3224,7 +3106,7 @@ export default function PreviewPage(): JSX.Element {
                     prev.filter((s) => s.path !== shot.path)
                 );
                 setRenders((prev) =>
-                    prev.filter((r) => 'key' in r && r.key !== shot.path)
+                    prev.filter((r) => r.key !== shot.path)
                 );
 
                 setPendingByKey((m) => {
@@ -3362,11 +3244,7 @@ export default function PreviewPage(): JSX.Element {
                 if (resolvedRenderId) {
                     setDeployWizardRenderId(resolvedRenderId);
                     const target = renders.find((r) => r.id === resolvedRenderId);
-                    setDeployWizardProjectName(
-                        (target && 'nameHint' in target && target.nameHint) ||
-                        (target && 'name' in target && target.name) ||
-                        trimmedNameInput
-                    );
+                    setDeployWizardProjectName(target?.nameHint || trimmedNameInput);
                 } else {
                     setDeployWizardRenderId(null);
                     setDeployWizardProjectName(trimmedNameInput);
@@ -3484,8 +3362,8 @@ export default function PreviewPage(): JSX.Element {
                                 ...rr,
                                 lastDeployUrl: url,
                                 lastExportedAt: now,
-                                vercelProjectId: apiProjectId ?? ('vercelProjectId' in rr ? rr.vercelProjectId : null) ?? null,
-                                vercelProjectName: apiProjectName ?? projectName ?? ('vercelProjectName' in rr ? rr.vercelProjectName : null) ?? null,
+                                vercelProjectId: apiProjectId ?? rr.vercelProjectId ?? null,
+                                vercelProjectName: apiProjectName ?? projectName ?? rr.vercelProjectName ?? null,
                                 // ✅ Add explicit deployment flag
                                 isDeployed: true,
                             },
@@ -3997,7 +3875,7 @@ export default function PreviewPage(): JSX.Element {
         if (autoDeployTriggeredRef.current) return;
 
         const target = renders.find((r) => r.id === deployWizardRenderId);
-        if (!target || !('html' in target) || !target.html?.trim()) return;
+        if (!target || !target.html?.trim()) return;
 
         autoDeployTriggeredRef.current = true;
         void submitDeployWizard(target as any);
@@ -4484,7 +4362,6 @@ export default function PreviewPage(): JSX.Element {
                                         if (pendingByKey[s.path]) return true;
                                         return renders.some(
                                             (r) =>
-                                                'key' in r &&
                                                 r.key === s.path &&
                                                 (r.status === "queued" || r.status === "processing") &&
                                                 !r.archived,
@@ -4608,56 +4485,29 @@ export default function PreviewPage(): JSX.Element {
                                         })()}
                                     </>
                                 )}
-                                {renders.map((item) => {
-                                    if ('type' in item && item.type === 'app') {
-                                        // Render AppCard
-                                        return (
-                                            <AppCard
-                                                key={item.id}
-                                                app={item}
-                                                onOpen={() => {
-                                                    setCurrentAppId(item.id);
-                                                    setAppBuilderOpen(true);
-                                                }}
-                                            />
-                                        );
-                                    } else {
-                                        // Render RenderCard
-                                        return (
-                                            <RenderCard
-                                                key={item.id}
-                                                r={item as { id: string } & RenderDoc}
-                                                isDeleting={!!deletingRender[item.id] || !!archivingRender[item.id]}
-                                                isOpening={loading}
-                                                hardLocked={
-                                                    !!lockUntilByRender[item.id] && lockUntilByRender[item.id] > Date.now()
-                                                }
-                                                isDeploying={deployingRenderId === item.id}
-                                                deployLocked={userTier === "free"}
-                                                urlHash={(docData?.urlHash as string | undefined) ?? null}
-                                                continueRender={continueRender}
-                                                discardRender={discardRender}
-                                                startDeployWizard={startDeployWizard}
-                                                setShowCreditsPaywall={setShowCreditsPaywall}
-                                                push={push as any}
-                                                archiveRender={handleArchiveRender}
-                                                unarchiveRender={handleUnarchiveRender}
-                                                onShareWithCommunity={handleShareWithCommunity}
-                                                retryRender={retryRender}
-                                            />
-                                        );
-                                    }
-                                })}
-
-                                {apps.map((app) => (
-                                    <AppCard
-                                        key={app.id}
-                                        app={app}
-                                        onOpen={() => {
-                                            setCurrentAppId(app.id);
-                                            setAppBuilderOpen(true);
-                                        }}
+                                {renders.map((r) => (
+                                    <RenderCard
+                                        key={r.id}
+                                        r={r}
+                                        isDeleting={!!deletingRender[r.id] || !!archivingRender[r.id]}
+                                        isOpening={loading}
+                                        hardLocked={
+                                            !!lockUntilByRender[r.id] && lockUntilByRender[r.id] > Date.now()
+                                        }
+                                        isDeploying={deployingRenderId === r.id}
+                                        deployLocked={userTier === "free"}
+                                        urlHash={(docData?.urlHash as string | undefined) ?? null}
+                                        continueRender={continueRender}
+                                        discardRender={discardRender}
+                                        startDeployWizard={startDeployWizard}
+                                        setShowCreditsPaywall={setShowCreditsPaywall}
+                                        push={push as any}
+                                        archiveRender={handleArchiveRender}
+                                        unarchiveRender={handleUnarchiveRender}
+                                        onShareWithCommunity={handleShareWithCommunity}
+                                        retryRender={retryRender}
                                     />
+
                                 ))}
 
                                 {groupedShots.map((group, groupIndex) => {
@@ -4672,7 +4522,6 @@ export default function PreviewPage(): JSX.Element {
                                         if (pendingByKey[s.path]) return true;
                                         return renders.some(
                                             (r) =>
-                                                'key' in r &&
                                                 r.key === s.path &&
                                                 (r.status === "queued" || r.status === "processing") &&
                                                 !r.archived,
@@ -4688,7 +4537,6 @@ export default function PreviewPage(): JSX.Element {
                                                 if (isAdmin) {
                                                     // Find the most recent render from this group
                                                     const groupRenders = renders.filter(r => 
-                                                        'key' in r &&
                                                         group.items.some(s => s.path === r.key) && !r.archived
                                                     ).sort((a, b) => b.createdAt?.toMillis?.() - a.createdAt?.toMillis?.() || 0);
                                                     const latestRender = groupRenders[0];
@@ -4720,11 +4568,7 @@ export default function PreviewPage(): JSX.Element {
                         mode={editorMode}
                         initialHtml={editorHtml}
                         sourceImage={editorRefImg}
-                        sourceUrl={
-                            (activeRender && 'source' in activeRender && activeRender.source) ||
-                            (activeRender && 'url' in activeRender && activeRender.url) ||
-                            undefined
-                        }
+                        sourceUrl={activeRender?.source || activeRender?.url || undefined}
                         initialSeoMetaByPage={activeSeoMetaByPage || undefined}
                         initialArchivedPageIds={activeArchivedPageIds}
                         onArchivedPageIdsChange={

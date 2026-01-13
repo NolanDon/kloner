@@ -111,6 +111,11 @@ service cloud.firestore {
                             && (request.auth.uid == userId || isAdmin());
       }
 
+      match /kloner_apps/{appId} {
+        allow read, write: if isSignedIn()
+                            && (request.auth.uid == userId || isAdmin());
+      }
+
       match /deployments/{deploymentId} {
         allow read: if isSignedIn()
                     && (request.auth.uid == userId || isAdmin());

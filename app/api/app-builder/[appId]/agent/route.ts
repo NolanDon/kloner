@@ -14,14 +14,14 @@ export async function POST(req: NextRequest, { params }: { params: { appId: stri
         const db = getAdminDb();
         const { appId } = params;
 
-        const appDoc = await db.collection("user_apps").doc(appId).get();
+        const appDoc = await db.collection("kloner_users").doc(uid).collection("kloner_apps").doc(appId).get();
         if (!appDoc.exists) {
             return NextResponse.json({ error: "App not found" }, { status: 404 });
         }
 
         const appData = appDoc.data();
-        if (appData?.userId !== uid) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+        if (!appData) {
+            return NextResponse.json({ error: "App data not found" }, { status: 404 });
         }
 
         const body = await req.json();
