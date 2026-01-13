@@ -1,6 +1,6 @@
 // app/api/webcontainer/[appId]/proxy/[...path]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { getProcessRegistry } from '../../../_lib/processRegistry';
+import { getProcessRegistry } from '../../../../_lib/processRegistry';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -25,13 +25,25 @@ export async function HEAD(
 ) {
   try {
     const registry = getProcessRegistry();
+    
+    // Detailed logging to stderr to ensure it shows
+    console.error('[Proxy HEAD] =========== HEAD REQUEST ===========');
+    console.error('[Proxy HEAD] Checking appId:', params.appId);
+    console.error('[Proxy HEAD] Registry size:', registry.size);
+    console.error('[Proxy HEAD] Registry keys:', Array.from(registry.keys()));
+    console.error('[Proxy HEAD] Full registry:', JSON.stringify(
+      Array.from(registry.entries()).map(([k, v]) => [k, { port: v.port }])
+    ));
+    
     const info = registry.get(params.appId);
+    console.error('[Proxy HEAD] Info found:', !!info);
     
     if (!info) {
-      console.log(`HEAD check: App not running: ${params.appId}`);
+      console.error('[Proxy HEAD] App not found in registry:', params.appId);
       return new NextResponse(null, { status: 404 });
     }
 
+    console.error('[Proxy HEAD] App found, port:', info.port);
     const subPath = (params.path || []).join('/');
     const targetUrl = `http://localhost:${info.port}/${subPath}`;
 
@@ -41,6 +53,7 @@ export async function HEAD(
         signal: AbortSignal.timeout(5000),
       });
 
+      console.error('[Proxy HEAD] Upstream response status:', upstream.status);
       return new NextResponse(null, {
         status: upstream.status,
         headers: {
@@ -48,11 +61,11 @@ export async function HEAD(
         },
       });
     } catch (err) {
-      console.log(`HEAD check: Upstream server not responding yet for ${params.appId}`);
+      console.error('[Proxy HEAD] Upstream server error:', err);
       return new NextResponse(null, { status: 503 });
     }
   } catch (err) {
-    console.error('HEAD check error:', err);
+    console.error('[Proxy HEAD] Outer error:', err);
     return new NextResponse(null, { status: 500 });
   }
 }

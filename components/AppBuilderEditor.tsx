@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import Editor from "@monaco-editor/react";
-import { Folder, File, Play, Upload, X } from "lucide-react";
+import { Folder, File, Play, Upload, X, RefreshCw } from "lucide-react";
 import WebContainerRunner from "./WebContainerRunner";
 
 type FileNode = {
@@ -64,6 +64,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     const [currentFile, setCurrentFile] = useState<string | null>(null);
     const [fileTree, setFileTree] = useState<FileNode[]>([]);
     const [code, setCode] = useState<string>("");
+    const [refreshKey, setRefreshKey] = useState(0);
     const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     // Load app data
@@ -207,6 +208,10 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
         }
     };
 
+    const handleRefresh = () => {
+        setRefreshKey(prev => prev + 1);
+    };
+
     if (loading) {
         return (
             <div className="fixed inset-0 z-[16000] bg-black/70 backdrop-blur-sm flex items-center justify-center">
@@ -239,6 +244,14 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                             className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
                         >
                             Save
+                        </button>
+                        <button
+                            onClick={handleRefresh}
+                            className="px-4 py-2 bg-orange-500 text-white rounded flex items-center gap-2 hover:bg-orange-600"
+                            title="Rebuild app"
+                        >
+                            <RefreshCw className="w-4 h-4" />
+                            Refresh
                         </button>
                         <button
                             onClick={handleDeploy}
@@ -292,6 +305,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                         <div className="flex-1">
                             {app ? (
                                 <WebContainerRunner
+                                    key={refreshKey}
                                     appId={appId}
                                     files={app.files}
                                     onFileChange={handleFileChangeFromContainer}

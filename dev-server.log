@@ -1,0 +1,21 @@
+
+> overdrive-style-landing@0.1.0 dev
+> next dev
+
+ ⚠ Port 3000 is in use, trying 3001 instead.
+ ⚠ Port 3001 is in use, trying 3002 instead.
+  ▲ Next.js 14.2.35
+  - Local:        http://localhost:3002
+  - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 1569ms
+ ○ Compiling / ...
+ ✓ Compiled / in 1836ms (1655 modules)
+ HEAD / 200 in 2490ms
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ ✓ Compiled in 1917ms (742 modules)
+ ✓ Compiled in 500ms (742 modules)
+ ✓ Compiled in 351ms (742 modules)
+ ✓ Compiled in 323ms (742 modules)
+ ✓ Compiled in 364ms (742 modules)
