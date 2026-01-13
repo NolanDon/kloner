@@ -6,7 +6,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-    return requireSessionAndMaybeCsrf(req, async ({ uid }) => {
+    return requireSessionAndMaybeCsrf(
+        req,
+        async ({ uid, req: authedReq }) => {
         const db = getAdminDb();
 
         const body = await req.json();
@@ -25,5 +27,7 @@ export async function POST(req: NextRequest) {
             console.error("Failed to delete app:", error);
             return NextResponse.json({ error: "Failed to delete app" }, { status: 500 });
         }
-    });
+        },
+        { csrf: true, methods: ["POST"] }
+    );
 }

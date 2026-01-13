@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "../../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../../../_lib/route-guard";
+import { issueAppBuilderScopeCookie } from "../../../_lib/appBuilderScope";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,12 +25,17 @@ export async function GET(
             return NextResponse.json({ error: "App data not found" }, { status: 404 });
         }
 
-        return NextResponse.json({
+        const res = NextResponse.json({
             id: appId,
             name: data.name,
             files: data.files || {},
             vercelProjectId: data.vercelProjectId,
             previewUrl: data.previewUrl,
         });
+
+        // Bind the browser session to this specific appId for all follow-up writes.
+        issueAppBuilderScopeCookie(res, uid, appId);
+
+        return res;
     });
 }

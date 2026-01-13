@@ -1139,7 +1139,7 @@ function AppCard({
                             <line x1="12" y1="17" x2="12" y2="17.01"/>
                         </svg>
                     </div>
-                    <div className="text-center">
+                    <div className="text-center mt-5">
                         <h3 className="text-sm font-semibold text-neutral-900 max-w-[200px] truncate">
                             {app.name}
                         </h3>
@@ -1621,9 +1621,13 @@ export default function PreviewPage(): JSX.Element {
 
         setDeletingApp((prev) => ({ ...prev, [appId]: true }));
         try {
+            const csrf = await ensureSessionAndCsrf().catch(() => null);
             const res = await fetch("/api/app-builder/delete", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(csrf ? { "x-csrf": csrf } : {}),
+                },
                 body: JSON.stringify({ appId }),
             });
             if (!res.ok) throw new Error("Failed to delete app");

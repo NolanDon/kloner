@@ -7,6 +7,7 @@ import { Folder, File, Play, Upload, X, RefreshCw, MessageSquare, Code, Edit3, C
 import WebContainerRunner from "./WebContainerRunner";
 import AIAgentChat from "./AIAgentChat";
 import KlonerLoader from "./KlonerLoader";
+import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 
 type FileNode = {
     name: string;
@@ -231,11 +232,28 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
         saveFileToServer(path, content);
     }, [currentFile]);
 
+    const handleFilesReplaceFromServer = useCallback(
+        (nextFiles: { [path: string]: { content: string; lastModified: number } }) => {
+            setApp((prev) => (prev ? { ...prev, files: nextFiles } : null));
+
+            if (currentFile) {
+                const next = nextFiles[currentFile]?.content;
+                if (typeof next === "string") setCode(next);
+                else setCode("");
+            }
+        },
+        [currentFile]
+    );
+
     const saveFileToServer = useCallback(async (path: string, content: string) => {
         try {
+            const csrf = await ensureSessionAndCsrf().catch(() => null);
             const res = await fetch(`/api/app-builder/${appId}/update-file`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(csrf ? { "x-csrf": csrf } : {}),
+                },
                 body: JSON.stringify({ path, content }),
             });
             if (!res.ok) throw new Error("Failed to save");
@@ -249,9 +267,13 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
 
         setIsSaving(true);
         try {
+            const csrf = await ensureSessionAndCsrf().catch(() => null);
             const res = await fetch(`/api/app-builder/${appId}/update-file`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(csrf ? { "x-csrf": csrf } : {}),
+                },
                 body: JSON.stringify({ path: currentFile, content: code }),
             });
             if (!res.ok) throw new Error("Failed to save");
@@ -280,15 +302,27 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                 onDeploy({ id: app.id, name: app.name });
             } else {
                 // Fallback to direct API call
+                const csrf = await ensureSessionAndCsrf().catch(() => null);
                 const res = await fetch(`/api/app-builder/${appId}/deploy`, {
                     method: "POST",
+                    headers: {
+                        ...(csrf ? { "x-csrf": csrf } : {}),
+                    },
                 });
                 if (!res.ok) throw new Error("Failed to deploy");
                 const data = await res.json();
-                setApp((prev) => prev ? { ...prev, previewUrl: data.previewUrl } : null);
+                const nextPreviewUrl = (data?.previewUrl || data?.url || null) as string | null;
+                setApp((prev) => prev ? { ...prev, previewUrl: nextPreviewUrl || prev.previewUrl } : null);
             }
         } catch (err) {
-            console.error("Deploy failed", err);
+            if (err instanceof TypeError && String(err.message || "").toLowerCase().includes("fetch")) {
+                console.error(
+                    "Deploy failed (network). If you see ERR_CONNECTION_REFUSED, your Next dev server likely restarted/crashed or you're calling the wrong origin.",
+                    err
+                );
+            } else {
+                console.error("Deploy failed", err);
+            }
         } finally {
             // Keep deploy disabled for longer to prevent spam
             setTimeout(() => setIsDeploying(false), 5000);
@@ -307,9 +341,13 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
         if (!app || !tempName.trim()) return;
 
         try {
+            const csrf = await ensureSessionAndCsrf().catch(() => null);
             const res = await fetch(`/api/app-builder/${appId}/rename`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(csrf ? { "x-csrf": csrf } : {}),
+                },
                 body: JSON.stringify({ name: tempName.trim() }),
             });
             if (!res.ok) throw new Error("Failed to rename");
@@ -433,7 +471,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                 <div className="flex h-full" data-app-builder-container>
                     {/* Left Panel - AI Chat and Controls */}
                     <div 
-                        className="flex flex-col border-r bg-gray-50 flex-shrink-0" 
+                        className="flex flex-col border-r bg-gray-50 flex-shrink-0 max-h-full overflow-hidden" 
                         style={{ width: `${leftPanelWidth}px` }}
                     >
                         {/* View Mode Toggle */}
@@ -465,7 +503,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                         </div>
 
                         {/* AI Chat or Code View */}
-                        <div className="flex-1">
+                        <div className="flex-1 min-h-0 overflow-hidden">
                             {viewMode === "ai" ? (
                                 // AI Chat Interface
                                 <AIAgentChat
@@ -473,6 +511,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                     files={app.files}
                                     onFileEdit={handleFileEditFromAI}
                                     onServerRefresh={handleRefresh}
+                                    onFilesReplace={handleFilesReplaceFromServer}
                                 />
                             ) : (
                                 // Code View - File Tree and Editor
@@ -535,10 +574,10 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                         <div className="flex-1 bg-white">
                             {app ? (
                                 <WebContainerRunner
-                                    key={refreshKey}
                                     appId={appId}
                                     files={app.files}
                                     onFileChange={handleFileChangeFromContainer}
+                                    reloadToken={refreshKey}
                                 />
                             ) : (
                                 <KlonerLoader />

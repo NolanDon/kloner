@@ -1,21 +1,16 @@
 // app/api/webcontainer/[appId]/proxy/[...path]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getProcessRegistry } from '../../../../_lib/processRegistry';
+import { verifySession } from '../../../../_lib/auth';
+import { assertAppBuilderScope } from '../../../../_lib/appBuilderScope';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 // Handle CORS preflight
 export async function OPTIONS(req: NextRequest) {
-  return new NextResponse(null, {
-    status: 200,
-    headers: {
-      'Access-Control-Allow-Origin': req.headers.get('origin') || '*',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, HEAD',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      'Access-Control-Max-Age': '86400',
-    },
-  });
+  // Same-origin only; do not enable wildcard CORS.
+  return new NextResponse(null, { status: 204 });
 }
 
 // Handle HEAD requests for health checks
@@ -24,6 +19,9 @@ export async function HEAD(
   { params }: { params: { appId: string; path?: string[] } }
 ) {
   try {
+    const session = await verifySession(req);
+    assertAppBuilderScope(req, session.uid, params.appId);
+
     const registry = getProcessRegistry();
     
     // Detailed logging to stderr to ensure it shows
@@ -50,7 +48,7 @@ export async function HEAD(
     try {
       const upstream = await fetch(targetUrl, {
         method: 'HEAD',
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(15000),
       });
 
       console.error('[Proxy HEAD] Upstream response status:', upstream.status);
@@ -75,6 +73,9 @@ export async function GET(
   { params }: { params: { appId: string; path?: string[] } }
 ) {
   try {
+    const session = await verifySession(req);
+    assertAppBuilderScope(req, session.uid, params.appId);
+
     const registry = getProcessRegistry();
     const info = registry.get(params.appId);
     
@@ -111,7 +112,9 @@ export async function GET(
         // More targeted replacement: only in HTML attributes, not in script content
         let rewrittenHtml = text
           .replace(/(<[^>]*\s(?:src|href|action|formaction|data-src|data-href)\s*=\s*["'])(http:\/\/localhost:\d+\/[^"']*)/g, `$1${proxyBase}/$2`.replace(/http:\/\/localhost:\d+\//, ''))
-          .replace(/(<[^>]*\s(?:src|href|action|formaction|data-src|data-href)\s*=\s*["'])(https:\/\/localhost:\d+\/[^"']*)/g, `$1${proxyBase}/$2`.replace(/https:\/\/localhost:\d+\//, ''));
+          .replace(/(<[^>]*\s(?:src|href|action|formaction|data-src|data-href)\s*=\s*["'])(https:\/\/localhost:\d+\/[^"']*)/g, `$1${proxyBase}/$2`.replace(/https:\/\/localhost:\d+\//, ''))
+          // Keep Next.js root-relative asset URLs inside the proxy scope.
+          .replace(/(<[^>]*\s(?:src|href|action|formaction|data-src|data-href)\s*=\s*["'])\/_next\//g, `$1${proxyBase}/_next/`);
         
         // Add a base tag to set the correct base URL for the iframe
         if (rewrittenHtml.includes('<head>')) {
@@ -182,6 +185,9 @@ export async function GET(
           try {
             const nextData = JSON.parse(nextDataMatch[1]);
             console.log('Found __NEXT_DATA__:', nextData);
+
+            // Ensure Next.js loads chunks + CSS through the proxy base path.
+            nextData.assetPrefix = proxyBase;
             
             // Ensure safe router state defaults
             if (nextData.page && nextData.page !== '/') {

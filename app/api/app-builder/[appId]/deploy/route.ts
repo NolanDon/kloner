@@ -2,17 +2,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "../../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../../../_lib/route-guard";
+import { assertAppBuilderScope } from "../../../_lib/appBuilderScope";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+function normalizeDeploymentUrl(v: unknown): string {
+    const raw = typeof v === "string" ? v.trim() : "";
+    if (!raw) return "";
+    if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
+    return `https://${raw}`;
+}
 
 export async function POST(
     req: NextRequest,
     { params }: { params: { appId: string } }
 ) {
-    return requireSessionAndMaybeCsrf(req, async ({ uid }) => {
+    return requireSessionAndMaybeCsrf(
+        req,
+        async ({ uid, req: authedReq }) => {
         const db = getAdminDb();
         const appId = params.appId;
+
+        assertAppBuilderScope(authedReq, uid, appId);
 
         const docRef = db.collection("kloner_users").doc(uid).collection("kloner_apps").doc(appId);
         const doc = await docRef.get();
@@ -106,6 +118,7 @@ export async function POST(
                     outputDirectory: ".next",
                     rootDirectory: null,
                 }),
+                signal: AbortSignal.timeout(30_000),
             });
 
             const projectJson = await projectRes.json().catch(() => ({} as any));
@@ -164,17 +177,8 @@ export async function POST(
             });
         }
 
-        // Add vercel.json for SPA routing
-        deploymentFiles.push({
-            file: "vercel.json",
-            data: Buffer.from(
-                JSON.stringify({
-                    rewrites: [{ source: "/(.*)", destination: "/index.html" }],
-                }),
-                "utf8"
-            ).toString("base64"),
-            encoding: "base64" as const,
-        });
+        // NOTE: Do not inject an SPA-style vercel.json rewrite for Next.js.
+        // If the user has a vercel.json in their files, we'll deploy it as-is.
 
         // Convert app files to deployment format
         for (const [filePath, fileData] of Object.entries(files)) {
@@ -218,6 +222,7 @@ export async function POST(
                 "Content-Type": "application/json",
             },
             body: JSON.stringify(deployBody),
+            signal: AbortSignal.timeout(90_000),
         });
 
         const deployJson = await deployRes.json().catch(() => ({} as any));
@@ -234,7 +239,13 @@ export async function POST(
             );
         }
 
-        const deploymentUrl = deployJson.url as string;
+        const deploymentUrl = normalizeDeploymentUrl((deployJson as any)?.url);
+        if (!deploymentUrl) {
+            return NextResponse.json(
+                { ok: false, error: "Vercel deployment created, but no URL was returned." },
+                { status: 502 }
+            );
+        }
 
         // Update app with deployment info
         await docRef.update({
@@ -248,8 +259,11 @@ export async function POST(
         return NextResponse.json({
             ok: true,
             url: deploymentUrl,
+            previewUrl: deploymentUrl,
             vercelProjectId,
             vercelProjectName
         });
-    });
+        },
+        { csrf: true, methods: ["POST"] }
+    );
 }

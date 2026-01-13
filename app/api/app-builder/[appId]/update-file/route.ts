@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "../../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../../../_lib/route-guard";
+import { assertAppBuilderScope } from "../../../_lib/appBuilderScope";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,9 +11,14 @@ export async function POST(
     req: NextRequest,
     { params }: { params: { appId: string } }
 ) {
-    return requireSessionAndMaybeCsrf(req, async ({ uid }) => {
+    return requireSessionAndMaybeCsrf(
+        req,
+        async ({ uid, req: authedReq }) => {
         const db = getAdminDb();
         const appId = params.appId;
+
+        // Prevent request tampering: must match the active app scope cookie.
+        assertAppBuilderScope(authedReq, uid, appId);
 
         const body = await req.json();
         const { path, content } = body;
@@ -41,5 +47,7 @@ export async function POST(
         });
 
         return NextResponse.json({ success: true });
-    });
+        },
+        { csrf: true, methods: ["POST"] }
+    );
 }

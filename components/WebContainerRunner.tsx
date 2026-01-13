@@ -2,20 +2,24 @@
 "use client";
 
 import { useEffect, useRef, useState } from 'react';
+import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 
 interface WebContainerRunnerProps {
   appId: string;
   files: { [path: string]: { content: string; lastModified: number } };
   onFileChange?: (path: string, content: string) => void;
+  reloadToken?: number;
 }
 
-export default function WebContainerRunner({ appId, files, onFileChange }: WebContainerRunnerProps) {
+export default function WebContainerRunner({ appId, files, onFileChange, reloadToken }: WebContainerRunnerProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [startAttempt, setStartAttempt] = useState(0);
   const hasStartedRef = useRef(false);
   const maxRetries = 3;
+  const proxyBaseRef = useRef<string | null>(null);
+  const lastReloadTokenRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (hasStartedRef.current) return;
@@ -31,6 +35,7 @@ export default function WebContainerRunner({ appId, files, onFileChange }: WebCo
 
         // First check if the app exists and is ready
         const proxyUrl = `/api/webcontainer/${appId}/proxy/`;
+        proxyBaseRef.current = proxyUrl;
         try {
           // Check if the app is registered (not just if proxy responds)
           const statusResponse = await fetch(`/api/webcontainer/${appId}`, { method: 'HEAD' });
@@ -53,10 +58,12 @@ export default function WebContainerRunner({ appId, files, onFileChange }: WebCo
           console.log('App status check failed, assuming app needs to be created:', err);
         }
 
+        const csrf = await ensureSessionAndCsrf().catch(() => null);
         const response = await fetch('/api/webcontainer', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            ...(csrf ? { 'x-csrf': csrf } : {}),
           },
           body: JSON.stringify({ appId, files }),
         });
@@ -69,10 +76,12 @@ export default function WebContainerRunner({ appId, files, onFileChange }: WebCo
         const data = await response.json();
         console.log('App started successfully:', data);
 
-        // Poll the proxy endpoint to ensure it's ready
-        const maxAttempts = 30; // 30 attempts * 500ms = 15 seconds max
+        // Poll the proxy endpoint to ensure it's ready.
+        // This can legitimately take a while (first compile, cold start, etc).
+        const maxAttempts = 120; // ~2-3 minutes total with backoff
         let attempts = 0;
         let proxyReady = false;
+        let delayMs = 500;
 
         while (attempts < maxAttempts && !proxyReady) {
           try {
@@ -81,8 +90,14 @@ export default function WebContainerRunner({ appId, files, onFileChange }: WebCo
               method: 'HEAD',
               cache: 'no-store',
             });
-            
-            if (proxyCheck.ok || proxyCheck.status === 200) {
+
+            // Auth failures won't fix themselves.
+            if (proxyCheck.status === 401 || proxyCheck.status === 403) {
+              throw new Error('Not authorized to access preview (session/scope).');
+            }
+
+            // Consider any 2xx a success.
+            if ((proxyCheck.status >= 200 && proxyCheck.status < 300) || proxyCheck.ok) {
               proxyReady = true;
               console.log('Proxy is ready!');
               break;
@@ -92,8 +107,9 @@ export default function WebContainerRunner({ appId, files, onFileChange }: WebCo
           } catch (err) {
             console.log('Proxy check failed:', err);
           }
-          
-          await new Promise(resolve => setTimeout(resolve, 500));
+
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+          delayMs = Math.min(2000, Math.floor(delayMs * 1.25));
           attempts++;
         }
 
@@ -130,15 +146,34 @@ export default function WebContainerRunner({ appId, files, onFileChange }: WebCo
 
     return () => {
       // Cleanup on unmount
-      fetch('/api/webcontainer', {
+      ensureSessionAndCsrf()
+        .catch(() => null)
+        .then((csrf) =>
+          fetch('/api/webcontainer', {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
+          ...(csrf ? { 'x-csrf': csrf } : {}),
         },
         body: JSON.stringify({ appId }),
-      }).catch(console.error);
+          }).catch(console.error)
+        );
     };
   }, [appId, files, startAttempt]);
+
+  // Reload the iframe without tearing down the underlying server/process.
+  useEffect(() => {
+    if (typeof reloadToken !== 'number') return;
+    if (lastReloadTokenRef.current === reloadToken) return;
+    lastReloadTokenRef.current = reloadToken;
+    if (!proxyBaseRef.current) return;
+    if (!previewUrl) return;
+
+    // Force iframe reload via cache-busting query param.
+    const base = proxyBaseRef.current;
+    const nextUrl = `${base}?t=${Date.now()}`;
+    setPreviewUrl(nextUrl);
+  }, [reloadToken]);
 
   return (
     <div className="h-full flex flex-col bg-white text-black/90 border border-black/10 rounded-2xl shadow">

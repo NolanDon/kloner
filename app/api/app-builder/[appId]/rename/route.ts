@@ -4,14 +4,19 @@ import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import { getAdminDb } from "../../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../../../_lib/route-guard";
+import { assertAppBuilderScope } from "../../../_lib/appBuilderScope";
 
 export async function POST(
     request: NextRequest,
     { params }: { params: { appId: string } }
 ) {
-    return requireSessionAndMaybeCsrf(request, async ({ uid }) => {
+    return requireSessionAndMaybeCsrf(
+        request,
+        async ({ uid, req: authedReq }) => {
         const db = getAdminDb();
         const appId = params.appId;
+
+        assertAppBuilderScope(authedReq, uid, appId);
 
         const { name } = await request.json();
 
@@ -34,5 +39,7 @@ export async function POST(
         });
 
         return NextResponse.json({ success: true });
-    });
+        },
+        { csrf: true, methods: ["POST"] }
+    );
 }

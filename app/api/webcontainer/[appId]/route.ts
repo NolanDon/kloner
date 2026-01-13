@@ -39,7 +39,7 @@ export async function HEAD(
     try {
       const upstream = await fetch(targetUrl, {
         method: 'HEAD',
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(15000),
       });
 
       console.error('[Proxy HEAD at appId level] Upstream status:', upstream.status);
