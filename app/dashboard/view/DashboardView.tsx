@@ -1322,6 +1322,24 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                         </div>
                                     </div>
                                 </button>
+                                {/* Start from template (free) */}
+                                <div className="mt-2 flex justify-end">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            if (effectiveLocked) return;
+                                            if (onStartFromTemplate) onStartFromTemplate();
+                                        }}
+                                        disabled={effectiveLocked}
+                                        aria-disabled={effectiveLocked}
+                                        className={`inline-flex items-center justify-center rounded-full bg-[#f55f2a] px-3 py-1 text-[12px] font-semibold text-white whitespace-nowrap transition-transform duration-200 ease-out ${effectiveLocked ? "pointer-events-none opacity-60" : "hover:translate-y-[1px] hover:bg-[#ff8a4c]"}`}
+                                    >
+                                        <span>Start from template (free)</span>
+                                        <span className="ml-1 inline-flex items-center" aria-hidden="true">
+                                            <ArrowUpRight className="h-3.5 w-3.5 opacity-90" />
+                                        </span>
+                                    </button>
+                                </div>
                             </div>
 
                             <div className="space-y-3">
