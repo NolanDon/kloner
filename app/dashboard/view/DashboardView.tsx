@@ -515,7 +515,7 @@ function RenderCardInner({
     return (
         <div
             className={[
-                "relative flex flex-col overflow-visible rounded-xl border bg-white shadow-sm",
+                "relative flex flex-col overflow-visible rounded-xl border bg-white shadow-sm hover:shadow-md transition-shadow",
                 isArchivedFlag ? "border-amber-300/70 bg-amber-50/50" : "border-neutral-200",
                 // ✅ community rebuild/remix: clearer but still clean
                 isCommunityBuild && !isArchivedFlag
@@ -578,16 +578,16 @@ function RenderCardInner({
             {!shareOpen && (
                 <>
                     <span
-                        className="absolute left-2 top-2 z-40 inline-flex items-center rounded-full border border-neutral-200 bg-white/85 px-2 py-0.5 text-[10px] font-mono text-neutral-700 shadow-sm"
+                        className="absolute left-2 top-2 z-40 inline-flex items-center rounded-full border border-blue-200 bg-blue-50/90 px-2 py-0.5 text-[10px] font-semibold text-blue-700 shadow-sm"
                         title={`Render ID: ${String(r?.id || "").slice(0, 10)}`}
                     >
-                        {String(r?.id || "").slice(0, 10)}
+                        Website
                     </span>
 
                     {/* version label for all users (minimal) — prefer controllerVersion from Firestore */}
                     {(controllerVersion) && (
                         <span
-                            className="absolute right-2 top-1 z-30 inline-flex items-center gap-1 rounded-full bg-neutral-900/85 px-2 py-0.5 text-[10px] text-neutral-50 shadow-sm"
+                            className="absolute right-2 top-2 z-40 inline-flex items-center rounded-full border border-neutral-200 bg-white/85 px-2 py-0.5 text-[10px] font-mono text-neutral-700 shadow-sm"
                             title={`Version: ${controllerVersion}`}
                         >
                             {controllerVersion}
