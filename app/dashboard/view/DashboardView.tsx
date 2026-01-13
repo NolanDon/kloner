@@ -663,7 +663,7 @@ function RenderCardInner({
                     <div className="pointer-events-auto flex max-w-xs flex-col items-stretch rounded-xl border border-neutral-200 bg-white/80 p-3 text-xs shadow-lg backdrop-blur-sm md:max-w-sm">
                         {/* top row: deploy / customize */}
                         {!shareOpen && (
-                            <div className="flex w-full flex-col gap-2 sm:flex-row">
+                            <div className="flex w-full flex-col font-semibold gap-2 sm:flex-row">
                                 <button
                                     onClick={
                                         isDeployedFlag
@@ -723,7 +723,7 @@ function RenderCardInner({
                                             }
                                         }}
                                         disabled={(disableOpen || isDeleting || !r.html) && !isFailed}
-                                        className="group inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-neutral-700 px-3 py-1.5 text-neutral-800 shadow-sm disabled:opacity-60"
+                                        className="group inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-neutral-500 px-3 py-1.5 text-neutral-800 shadow-sm disabled:opacity-60"
                                         title={
                                             isArchivedFlag
                                                 ? "Unarchive to customize this preview"
@@ -1095,19 +1095,19 @@ function AppCard({
         : "Recently";
 
     return (
-        <div className="relative flex flex-col overflow-visible rounded-xl border border-neutral-200 bg-white shadow-sm hover:shadow-md transition-shadow">
-            {/* Delete button */}
+        <div className="relative flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm hover:shadow-md transition-shadow">
+            {/* Delete button - positioned inside the card for better visibility */}
             <button
                 onClick={() => onDelete(app.id)}
                 disabled={isDeleting}
                 aria-label="Delete app"
                 title="Delete this app"
-                className="absolute -right-3 -top-3 z-40 inline-flex h-6 w-6 items-center justify-center rounded-full border shadow-sm transition-all duration-150 bg-white/85 border-neutral-200 text-neutral-400 hover:bg-red-600 hover:border-red-600 hover:text-white hover:shadow-md hover:scale-[1.04] active:scale-[0.98] disabled:opacity-60 disabled:pointer-events-none"
+                className="absolute right-2 top-2 z-50 inline-flex h-6 w-6 items-center justify-center rounded-full border shadow-sm transition-all duration-150 bg-white/85 border-neutral-200 text-neutral-400 hover:bg-red-600 hover:border-red-600 hover:text-white hover:shadow-md hover:scale-[1.04] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 focus-visible:ring-offset-2 disabled:opacity-60 disabled:pointer-events-none"
             >
                 <DeleteIcon className="h-3.5 w-3.5 transition-colors" />
             </button>
 
-            {/* App badge */}
+            {/* App badge - moved to avoid overlap */}
             <span
                 className="absolute left-2 top-2 z-40 inline-flex items-center rounded-full border border-neutral-200 bg-[#f55f2a]/10 px-2 py-0.5 text-[10px] font-semibold text-[#f55f2a] shadow-sm"
                 title="This is an app"
@@ -1115,9 +1115,9 @@ function AppCard({
                 App
             </span>
 
-            {/* App ID badge */}
+            {/* App ID badge - moved to bottom to avoid overlap */}
             <span
-                className="absolute right-2 top-2 z-40 inline-flex items-center rounded-full border border-neutral-200 bg-white/85 px-2 py-0.5 text-[10px] font-mono text-neutral-700 shadow-sm"
+                className="absolute right-2 bottom-2 z-40 inline-flex items-center rounded-full border border-neutral-200 bg-white/85 px-2 py-0.5 text-[10px] font-mono text-neutral-700 shadow-sm"
                 title={`App ID: ${app.id.slice(0, 10)}`}
             >
                 {app.id.slice(0, 10)}

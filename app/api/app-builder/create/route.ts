@@ -19,22 +19,38 @@ const initialTemplate = {
                 lint: "next lint"
             },
             dependencies: {
-                next: "14.0.0",
+                next: "14.2.0",
                 react: "^18",
                 "react-dom": "^18"
             },
             devDependencies: {
                 eslint: "^8",
-                "eslint-config-next": "14.0.0"
+                "eslint-config-next": "14.2.0"
             }
         }, null, 2),
     },
+    "next.config.js": {
+        content: `/** @type {import('next').NextConfig} */
+const nextConfig = {
+  basePath: '',
+  assetPrefix: '',
+  images: {
+    unoptimized: true,
+  },
+  trailingSlash: false,
+}
+
+module.exports = nextConfig`,
+    },
     "app/page.js": {
-        content: `export default function Home() {
+        content: `export const dynamic = 'force-dynamic';
+
+export default function Home() {
   return (
-    <main>
+    <main style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
       <h1>Welcome to My App</h1>
-      <p>This is your new Next.js app!</p>
+      <p>This is your new Next.js app running in an iframe!</p>
+      <p>Current time: {new Date().toLocaleString()}</p>
     </main>
   );
 }`,
@@ -47,8 +63,20 @@ const initialTemplate = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body style={{ margin: 0, padding: 0 }}>{children}</body>
     </html>
+  );
+}`,
+    },
+    "app/error.js": {
+        content: `'use client';
+
+export default function Error({ error, reset }) {
+  return (
+    <div style={{ padding: '20px' }}>
+      <h2>Something went wrong!</h2>
+      <button onClick={() => reset()}>Try again</button>
+    </div>
   );
 }`,
     },
@@ -90,20 +118,37 @@ export async function POST(req: NextRequest) {
                                         lint: "next lint"
                                     },
                                     dependencies: {
-                                        next: "14.0.0",
+                                        next: "14.2.0",
                                         react: "^18",
                                         "react-dom": "^18"
                                     },
                                     devDependencies: {
                                         eslint: "^8",
-                                        "eslint-config-next": "14.0.0"
+                                        "eslint-config-next": "14.2.0"
                                     }
                                 }, null, 2),
                             },
+                            "next.config.js": {
+                                content: `/** @type {import('next').NextConfig} */
+const nextConfig = {
+  basePath: '',
+  assetPrefix: '',
+  images: {
+    unoptimized: true,
+  },
+  trailingSlash: false,
+}
+
+module.exports = nextConfig`,
+                            },
                             "app/page.js": {
-                                content: `export default function Home() {
+                                content: `export const dynamic = 'force-dynamic';
+
+export default function Home() {
   return (
-    <main dangerouslySetInnerHTML={{ __html: \`${renderData.html.replace(/`/g, '\\`')}\` }} />
+    <main style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
+      <div dangerouslySetInnerHTML={{ __html: \`${renderData.html.replace(/`/g, '\\`')}\` }} />
+    </main>
   );
 }`,
                             },
@@ -115,8 +160,20 @@ export async function POST(req: NextRequest) {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body style={{ margin: 0, padding: 0 }}>{children}</body>
     </html>
+  );
+}`,
+                            },
+                            "app/error.js": {
+                                content: `'use client';
+
+export default function Error({ error, reset }) {
+  return (
+    <div style={{ padding: '20px' }}>
+      <h2>Something went wrong!</h2>
+      <button onClick={() => reset()}>Try again</button>
+    </div>
   );
 }`,
                             },

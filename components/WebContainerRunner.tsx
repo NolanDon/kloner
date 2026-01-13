@@ -29,6 +29,30 @@ export default function WebContainerRunner({ appId, files, onFileChange }: WebCo
         console.log('Starting app with ID:', appId);
         console.log('Files:', Object.keys(files));
 
+        // First check if the app exists and is ready
+        const proxyUrl = `/api/webcontainer/${appId}/proxy/`;
+        try {
+          // Check if the app is registered (not just if proxy responds)
+          const statusResponse = await fetch(`/api/webcontainer/${appId}`, { method: 'HEAD' });
+          if (statusResponse.ok) {
+            console.log('App exists, checking if proxy is ready');
+            // App exists, now check if proxy is ready
+            const checkResponse = await fetch(proxyUrl, { method: 'HEAD' });
+            if (checkResponse.ok) {
+              console.log('App is running and proxy is ready, using existing instance');
+              setPreviewUrl(proxyUrl);
+              setIsLoading(false);
+              return;
+            } else {
+              console.log('App exists but proxy not ready yet, will start polling');
+            }
+          } else {
+            console.log('App does not exist, will create new instance');
+          }
+        } catch (err) {
+          console.log('App status check failed, assuming app needs to be created:', err);
+        }
+
         const response = await fetch('/api/webcontainer', {
           method: 'POST',
           headers: {
@@ -46,8 +70,7 @@ export default function WebContainerRunner({ appId, files, onFileChange }: WebCo
         console.log('App started successfully:', data);
 
         // Poll the proxy endpoint to ensure it's ready
-        const proxyUrl = `/api/webcontainer/${appId}/proxy/`;
-        const maxAttempts = 20; // 20 attempts * 500ms = 10 seconds max
+        const maxAttempts = 30; // 30 attempts * 500ms = 15 seconds max
         let attempts = 0;
         let proxyReady = false;
 

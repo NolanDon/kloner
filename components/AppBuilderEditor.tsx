@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import Editor from "@monaco-editor/react";
 import { Folder, File, Play, Upload, X, RefreshCw } from "lucide-react";
 import WebContainerRunner from "./WebContainerRunner";
+import KlonerLoader from "./KlonerLoader";
 
 type FileNode = {
     name: string;
@@ -54,8 +55,8 @@ function FileTree({ nodes, onFileSelect, prefix = "" }: {
     );
 }
 
-export default function AppBuilderEditor({ appId, onClose, onDeploy }: { 
-    appId: string; 
+export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
+    appId: string;
     onClose: () => void;
     onDeploy?: (app: { id: string; name: string }) => void;
 }) {
@@ -189,7 +190,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
 
     const handleDeploy = async () => {
         if (!app) return;
-        
+
         if (onDeploy) {
             // Use the deployment wizard
             onDeploy({ id: app.id, name: app.name });
@@ -214,14 +215,10 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
 
     if (loading) {
         return (
-            <div className="fixed inset-0 z-[16000] bg-black/70 backdrop-blur-sm flex items-center justify-center">
-                <div className="bg-white rounded-lg p-8">
-                    <div className="text-center">Loading app...</div>
-                </div>
-            </div>
+            <KlonerLoader />
         );
     }
-    
+
     if (!app) {
         return (
             <div className="fixed inset-0 z-[16000] bg-black/70 backdrop-blur-sm flex items-center justify-center">
@@ -311,9 +308,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                     onFileChange={handleFileChangeFromContainer}
                                 />
                             ) : (
-                                <div className="flex items-center justify-center h-full text-gray-500">
-                                    Loading app...
-                                </div>
+                                <KlonerLoader />
                             )}
                         </div>
                     </div>

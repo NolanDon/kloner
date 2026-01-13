@@ -98,32 +98,156 @@ export async function GET(
       signal: AbortSignal.timeout(30000),
     });
 
+    const contentType = upstream.headers.get('content-type') || '';
+    const isHtml = contentType.includes('text/html');
+
+    // If this is HTML content, we need to rewrite URLs
+    if (isHtml && upstream.ok) {
+      try {
+        const text = await upstream.text();
+        // Replace absolute localhost URLs with proxy paths, but avoid script content
+        const proxyBase = `/api/webcontainer/${params.appId}/proxy`;
+        
+        // More targeted replacement: only in HTML attributes, not in script content
+        let rewrittenHtml = text
+          .replace(/(<[^>]*\s(?:src|href|action|formaction|data-src|data-href)\s*=\s*["'])(http:\/\/localhost:\d+\/[^"']*)/g, `$1${proxyBase}/$2`.replace(/http:\/\/localhost:\d+\//, ''))
+          .replace(/(<[^>]*\s(?:src|href|action|formaction|data-src|data-href)\s*=\s*["'])(https:\/\/localhost:\d+\/[^"']*)/g, `$1${proxyBase}/$2`.replace(/https:\/\/localhost:\d+\//, ''));
+        
+        // Add a base tag to set the correct base URL for the iframe
+        if (rewrittenHtml.includes('<head>')) {
+          rewrittenHtml = rewrittenHtml.replace('<head>', `<head><script>
+(function() {
+  // Override createInitialRouterState globally before Next.js loads
+  var originalCreateInitialRouterState;
+  
+  Object.defineProperty(window, 'createInitialRouterState', {
+    get: function() {
+      return function(options) {
+        console.log('Intercepted createInitialRouterState call with options:', options);
+        try {
+          // Ensure required properties exist with safe defaults
+          if (!options) options = {};
+          
+          // Set safe defaults for router state
+          options.initialCanonicalUrl = options.initialCanonicalUrl || '/';
+          options.initialTree = options.initialTree || ['', {}, { children: ['page', {}, { children: ['', {}, {}] }] }];
+          options.initialParallelRoutes = options.initialParallelRoutes || {};
+          options.initialSeedData = options.initialSeedData || {};
+          
+          // Normalize canonical URL
+          if (typeof options.initialCanonicalUrl === 'string') {
+            try {
+              const url = new URL(options.initialCanonicalUrl, 'http://localhost:3000');
+              options.initialCanonicalUrl = url.pathname || '/';
+            } catch (e) {
+              options.initialCanonicalUrl = '/';
+            }
+          }
+          
+          console.log('Modified options:', options);
+          
+          // Return a basic router state
+          return {
+            tree: options.initialTree,
+            canonicalUrl: options.initialCanonicalUrl,
+            parallelRoutes: options.initialParallelRoutes,
+            seedData: options.initialSeedData
+          };
+        } catch (error) {
+          console.error('Error in createInitialRouterState override:', error);
+          return {
+            tree: ['', {}, { children: ['page', {}, { children: ['', {}, {}] }] }],
+            canonicalUrl: '/',
+            parallelRoutes: {},
+            seedData: {}
+          };
+        }
+      };
+    },
+    set: function(value) {
+      originalCreateInitialRouterState = value;
+    },
+    configurable: true
+  });
+  
+  console.log('createInitialRouterState global override installed');
+})();
+</script>`);
+        }
+        
+        // Also modify __NEXT_DATA__ script tag if it exists
+        const nextDataRegex = /<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/;
+        const nextDataMatch = rewrittenHtml.match(nextDataRegex);
+        if (nextDataMatch) {
+          try {
+            const nextData = JSON.parse(nextDataMatch[1]);
+            console.log('Found __NEXT_DATA__:', nextData);
+            
+            // Ensure safe router state defaults
+            if (nextData.page && nextData.page !== '/') {
+              nextData.page = '/';
+            }
+            if (nextData.pathname && nextData.pathname !== '/') {
+              nextData.pathname = '/';
+            }
+            
+            const modifiedNextData = JSON.stringify(nextData);
+            rewrittenHtml = rewrittenHtml.replace(nextDataRegex, `<script id="__NEXT_DATA__" type="application/json">${modifiedNextData}</script>`);
+            console.log('Modified __NEXT_DATA__ for safe router state');
+          } catch (e) {
+            console.error('Failed to parse __NEXT_DATA__:', e);
+          }
+        }
+        
+        const res = new NextResponse(rewrittenHtml, {
+          status: upstream.status,
+          statusText: upstream.statusText,
+        });
+
+        // Copy relevant headers from upstream
+        const headersToForward = [
+          'content-type',
+          'cache-control',
+          'etag',
+          'last-modified',
+        ];
+        
+        headersToForward.forEach(header => {
+          const value = upstream.headers.get(header);
+          if (value) {
+            res.headers.set(header, value);
+          }
+        });
+
+        // Set content-length for the rewritten content
+        res.headers.set('content-length', Buffer.byteLength(rewrittenHtml, 'utf8').toString());
+
+        // Set COEP and CORP for HTML documents
+        res.headers.set('Cross-Origin-Embedder-Policy', 'require-corp');
+        res.headers.set('Cross-Origin-Resource-Policy', 'same-origin');
+
+        // Allow credentials for same-origin requests
+        const origin = req.headers.get('origin');
+        if (origin) {
+          res.headers.set('Access-Control-Allow-Origin', origin);
+          res.headers.set('Access-Control-Allow-Credentials', 'true');
+        }
+
+        return res;
+      } catch (err) {
+        console.error('Failed to rewrite HTML:', err);
+        // Fall back to original response
+      }
+    }
+
     // Clone the response so we can read and modify headers
-    const body = upstream.body;
-    const res = new NextResponse(body, {
+    const res = new NextResponse(upstream.body, {
       status: upstream.status,
       statusText: upstream.statusText,
     });
 
-    // Copy relevant headers from upstream
-    const headersToForward = [
-      'content-type',
-      'content-length',
-      'cache-control',
-      'etag',
-      'last-modified',
-    ];
-    
-    headersToForward.forEach(header => {
-      const value = upstream.headers.get(header);
-      if (value) {
-        res.headers.set(header, value);
-      }
-    });
-
-    // Set security headers for COEP/CORP compliance
-    res.headers.set('Cross-Origin-Resource-Policy', 'same-site');
-    res.headers.set('Cross-Origin-Embedder-Policy', 'require-corp');
+    // Set CORP for sub-resources
+    res.headers.set('Cross-Origin-Resource-Policy', 'same-origin');
     
     // Allow credentials for same-origin requests
     const origin = req.headers.get('origin');

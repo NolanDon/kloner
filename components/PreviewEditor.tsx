@@ -88,142 +88,251 @@ export type EditorPage = {
     screenshotUrl?: string;
 };
 
-const GOOGLE_FONTS_DB = {
-    // === MODERN SANS-SERIF (Geometric, Contemporary) ===
-    'Inter': { family: 'Inter', category: 'sans', weights: [100, 200, 300, 400, 500, 600, 700, 800, 900], style: 'geometric', use: ['body', 'heading', 'display'], modern: true },
-    'Outfit': { family: 'Outfit', category: 'sans', weights: [100, 200, 300, 400, 500, 600, 700, 800, 900], style: 'geometric', use: ['body', 'heading', 'display'], modern: true },
-    'Poppins': { family: 'Poppins', category: 'sans', weights: [100, 200, 300, 400, 500, 600, 700, 800, 900], style: 'geometric', use: ['body', 'heading'], modern: true },
-    'Urbanist': { family: 'Urbanist', category: 'sans', weights: [100, 200, 300, 400, 500, 600, 700, 800, 900], style: 'geometric', use: ['body', 'heading', 'display'], modern: true },
-    'Raleway': { family: 'Raleway', category: 'sans', weights: [100, 200, 300, 400, 500, 600, 700, 800, 900], style: 'geometric', use: ['heading', 'display'], modern: true },
-    'Montserrat': { family: 'Montserrat', category: 'sans', weights: [100, 200, 300, 400, 500, 600, 700, 800, 900], style: 'geometric', use: ['heading', 'display'], modern: true },
-    'Plus Jakarta Sans': { family: 'Plus Jakarta Sans', category: 'sans', weights: [200, 300, 400, 500, 600, 700, 800], style: 'geometric', use: ['body', 'heading'], modern: true },
-    'DM Sans': { family: 'DM Sans', category: 'sans', weights: [100, 300, 400, 500, 700], style: 'geometric', use: ['body', 'heading'], modern: true },
-    'Sora': { family: 'Sora', category: 'sans', weights: [100, 200, 300, 400, 500, 600, 700], style: 'geometric', use: ['body', 'heading'], modern: true },
-    'Quicksand': { family: 'Quicksand', category: 'sans', weights: [300, 400, 500, 600, 700], style: 'geometric', use: ['heading', 'display'], modern: true },
-
-    // === HUMANIST SANS-SERIF (Friendly, Organic) ===
-    'Nunito': { family: 'Nunito', category: 'sans', weights: [200, 300, 400, 500, 600, 700, 800, 900], style: 'organic', use: ['body', 'heading'], modern: true },
-    'Lato': { family: 'Lato', category: 'sans', weights: [100, 300, 400, 700, 900], style: 'organic', use: ['body', 'heading'], modern: false },
-    'Roboto': { family: 'Roboto', category: 'sans', weights: [100, 300, 400, 500, 700, 900], style: 'organic', use: ['body', 'heading'], modern: false },
-    'Open Sans': { family: 'Open Sans', category: 'sans', weights: [300, 400, 500, 600, 700, 800], style: 'organic', use: ['body', 'heading'], modern: false },
-    'Source Sans Pro': { family: 'Source Sans Pro', category: 'sans', weights: [200, 300, 400, 600, 700, 900], style: 'organic', use: ['body', 'heading'], modern: false },
-    'Mulish': { family: 'Mulish', category: 'sans', weights: [200, 300, 400, 500, 600, 700, 800, 900], style: 'organic', use: ['body', 'heading'], modern: true },
-    'Manrope': { family: 'Manrope', category: 'sans', weights: [200, 300, 400, 500, 600, 700, 800], style: 'organic', use: ['body', 'heading'], modern: true },
-    'Cabin': { family: 'Cabin', category: 'sans', weights: [400, 500, 600, 700], style: 'organic', use: ['body', 'heading'], modern: false },
-    'Work Sans': { family: 'Work Sans', category: 'sans', weights: [100, 200, 300, 400, 500, 600, 700, 800, 900], style: 'organic', use: ['body', 'heading'], modern: true },
-    'Rubik': { family: 'Rubik', category: 'sans', weights: [300, 400, 500, 600, 700, 800, 900], style: 'organic', use: ['body', 'heading'], modern: true },
-
-    // === MODERN SANS (High Tech/Minimal) ===
-    'IBM Plex Sans': { family: 'IBM Plex Sans', category: 'sans', weights: [100, 200, 300, 400, 500, 600, 700], style: 'geometric', use: ['body', 'heading'], modern: true },
-    'Proxima Nova': { family: 'Proxima Nova', category: 'sans', weights: [400, 600, 700], style: 'geometric', use: ['body', 'heading'], modern: true },
-    'Gotham': { family: 'Gotham', category: 'sans', weights: [400, 600, 700], style: 'geometric', use: ['heading', 'display'], modern: true },
-    'Futura': { family: 'Futura', category: 'sans', weights: [400, 600, 700], style: 'geometric', use: ['heading', 'display'], modern: false },
-
-    // === SERIF (Classic, Elegant) ===
-    'Playfair Display': { family: 'Playfair Display', category: 'serif', weights: [400, 500, 600, 700, 800, 900], style: 'classic', use: ['heading', 'display'], modern: true },
-    'Lora': { family: 'Lora', category: 'serif', weights: [400, 500, 600, 700], style: 'classic', use: ['body', 'heading'], modern: true },
-    'Merriweather': { family: 'Merriweather', category: 'serif', weights: [300, 400, 700, 900], style: 'classic', use: ['body', 'heading'], modern: false },
-    'Crimson Text': { family: 'Crimson Text', category: 'serif', weights: [400, 600, 700], style: 'classic', use: ['body', 'heading'], modern: false },
-    'Cormorant Garamond': { family: 'Cormorant Garamond', category: 'serif', weights: [300, 400, 500, 600, 700], style: 'elegant', use: ['heading', 'display'], modern: true },
-    'Bodoni Moda': { family: 'Bodoni Moda', category: 'serif', weights: [400, 500, 600, 700, 800, 900], style: 'elegant', use: ['heading', 'display'], modern: true },
-    'Fraunces': { family: 'Fraunces', category: 'serif', weights: [100, 200, 300, 400, 500, 600, 700, 800, 900], style: 'elegant', use: ['heading', 'display'], modern: true },
-    'EB Garamond': { family: 'EB Garamond', category: 'serif', weights: [400, 500, 600, 700, 800], style: 'elegant', use: ['body', 'heading'], modern: false },
-    'Abril Fatface': { family: 'Abril Fatface', category: 'serif', weights: [400], style: 'elegant', use: ['display'], modern: true },
-    'Libre Baskerville': { family: 'Libre Baskerville', category: 'serif', weights: [400, 700], style: 'classic', use: ['body', 'heading'], modern: false },
-
-    // === DISPLAY / DECORATIVE ===
-    'Bebas Neue': { family: 'Bebas Neue', category: 'display', weights: [400], style: 'bold', use: ['display'], modern: true },
-    'Righteous': { family: 'Righteous', category: 'display', weights: [400], style: 'bold', use: ['display'], modern: true },
-    'Pacifico': { family: 'Pacifico', category: 'display', weights: [400], style: 'organic', use: ['display'], modern: true },
-    'Dancing Script': { family: 'Dancing Script', category: 'display', weights: [400, 500, 600, 700], style: 'organic', use: ['display'], modern: true },
-    'Great Vibes': { family: 'Great Vibes', category: 'display', weights: [400], style: 'organic', use: ['display'], modern: true },
-    'Playfair Display SC': { family: 'Playfair Display SC', category: 'display', weights: [400, 700, 900], style: 'elegant', use: ['display'], modern: true },
-    'Oswald': { family: 'Oswald', category: 'display', weights: [200, 300, 400, 500, 600, 700], style: 'bold', use: ['display'], modern: true },
-
-    // === MONOSPACE ===
-    'Space Mono': { family: 'Space Mono', category: 'monospace', weights: [400, 700], style: 'geometric', use: ['code', 'display'], modern: true },
-    'IBM Plex Mono': { family: 'IBM Plex Mono', category: 'monospace', weights: [300, 400, 500, 600, 700], style: 'geometric', use: ['code'], modern: true },
-    'JetBrains Mono': { family: 'JetBrains Mono', category: 'monospace', weights: [100, 200, 300, 400, 500, 600, 700, 800], style: 'geometric', use: ['code'], modern: true },
-    'Fira Code': { family: 'Fira Code', category: 'monospace', weights: [300, 400, 500, 600, 700], style: 'geometric', use: ['code'], modern: true },
-    'Source Code Pro': { family: 'Source Code Pro', category: 'monospace', weights: [200, 300, 400, 500, 600, 700, 900], style: 'geometric', use: ['code'], modern: true },
-    'Courier Prime': { family: 'Courier Prime', category: 'monospace', weights: [400, 700], style: 'classic', use: ['code'], modern: false },
-
-    // === ROUNDED / FRIENDLY ===
-    'Comfortaa': { family: 'Comfortaa', category: 'sans', weights: [300, 400, 700], style: 'organic', use: ['heading', 'display'], modern: true },
-    'Fredoka': { family: 'Fredoka', category: 'sans', weights: [300, 400, 500, 600, 700], style: 'organic', use: ['body', 'heading'], modern: true },
-    'Varela Round': { family: 'Varela Round', category: 'sans', weights: [400], style: 'organic', use: ['heading', 'display'], modern: true },
-    'Avenir Next': { family: 'Avenir Next', category: 'sans', weights: [400, 600, 700], style: 'organic', use: ['body', 'heading'], modern: false },
-
-    // === ADDITIONAL MODERN SANS ===
-    'Plex Mono': { family: 'Plex Mono', category: 'monospace', weights: [300, 400, 500, 600, 700], style: 'geometric', use: ['code'], modern: true },
-    'Instrument Sans': { family: 'Instrument Sans', category: 'sans', weights: [400, 500, 600, 700], style: 'geometric', use: ['body', 'heading'], modern: true },
-    'Figtree': { family: 'Figtree', category: 'sans', weights: [300, 400, 500, 600, 700, 800, 900], style: 'geometric', use: ['body', 'heading'], modern: true },
-    'Unbounded': { family: 'Unbounded', category: 'sans', weights: [200, 300, 400, 500, 600, 700, 800, 900], style: 'bold', use: ['heading', 'display'], modern: true },
-    'Spline Sans': { family: 'Spline Sans', category: 'sans', weights: [300, 400, 500, 600, 700], style: 'geometric', use: ['body', 'heading'], modern: true },
-    'Azeret Mono': { family: 'Azeret Mono', category: 'monospace', weights: [100, 200, 300, 400, 500, 600, 700, 800, 900], style: 'geometric', use: ['code'], modern: true },
-    'Inconsolata': { family: 'Inconsolata', category: 'monospace', weights: [400, 700], style: 'geometric', use: ['code'], modern: false },
-    'Overpass': { family: 'Overpass', category: 'sans', weights: [100, 200, 300, 400, 600, 700, 800, 900], style: 'geometric', use: ['body', 'heading'], modern: true },
-    'Titillium Web': { family: 'Titillium Web', category: 'sans', weights: [200, 300, 400, 600, 700, 900], style: 'geometric', use: ['heading', 'display'], modern: true },
-    'Red Hat Display': { family: 'Red Hat Display', category: 'sans', weights: [300, 400, 500, 700, 900], style: 'geometric', use: ['heading', 'display'], modern: true },
-    'Red Hat Text': { family: 'Red Hat Text', category: 'sans', weights: [300, 400, 500, 700], style: 'organic', use: ['body', 'heading'], modern: true },
-
-    // === TRANSITIONAL / SERIF-LIKE ===
-    'Gelasio': { family: 'Gelasio', category: 'serif', weights: [400, 600, 700], style: 'classic', use: ['body', 'heading'], modern: true },
-    'Newsreader': { family: 'Newsreader', category: 'serif', weights: [300, 400, 500, 600, 700, 800], style: 'classic', use: ['body', 'heading'], modern: true },
-    'Cavolini': { family: 'Cavolini', category: 'serif', weights: [400, 700], style: 'elegant', use: ['heading', 'display'], modern: true },
-
-    // === VARIABLE & EXPERIMENTAL ===
-    'Grenze Gotisch': { family: 'Grenze Gotisch', category: 'display', weights: [400, 500, 600, 700], style: 'bold', use: ['display'], modern: true },
-    'Syne': { family: 'Syne', category: 'sans', weights: [400, 500, 600, 700, 800], style: 'geometric', use: ['heading', 'display'], modern: true },
-    'Clash Grotesk': { family: 'Clash Grotesk', category: 'sans', weights: [400, 500, 600, 700], style: 'bold', use: ['heading', 'display'], modern: true },
-    'Eurostile': { family: 'Eurostile', category: 'sans', weights: [400, 700], style: 'geometric', use: ['heading', 'display'], modern: false },
-
-    // === ADDITIONAL BODY-FRIENDLY ===
-    'Noto Sans': { family: 'Noto Sans', category: 'sans', weights: [100, 200, 300, 400, 500, 600, 700, 800, 900], style: 'organic', use: ['body', 'heading'], modern: false },
-    'Segoe UI': { family: 'Segoe UI', category: 'sans', weights: [400, 600, 700, 900], style: 'organic', use: ['body', 'heading'], modern: false },
-    'Oxygen': { family: 'Oxygen', category: 'sans', weights: [300, 400, 700], style: 'organic', use: ['body', 'heading'], modern: false },
-    'PT Sans': { family: 'PT Sans', category: 'sans', weights: [400, 700], style: 'organic', use: ['body', 'heading'], modern: false },
-    'Dosis': { family: 'Dosis', category: 'sans', weights: [200, 300, 400, 500, 600, 700, 800], style: 'organic', use: ['body', 'heading'], modern: true },
-    'Karla': { family: 'Karla', category: 'sans', weights: [200, 300, 400, 500, 600, 700, 800], style: 'organic', use: ['body', 'heading'], modern: true },
-    'Barlow': { family: 'Barlow', category: 'sans', weights: [100, 200, 300, 400, 500, 600, 700, 800, 900], style: 'organic', use: ['body', 'heading'], modern: true },
-
-    // === REMAINING TO HIT 100+ ===
-    'Ubuntu': { family: 'Ubuntu', category: 'sans', weights: [300, 400, 500, 700], style: 'organic', use: ['body', 'heading'], modern: false },
-    'Lexend': { family: 'Lexend', category: 'sans', weights: [400, 500, 600, 700], style: 'geometric', use: ['body', 'heading'], modern: true },
-    'Rasa': { family: 'Rasa', category: 'serif', weights: [300, 400, 500, 600, 700], style: 'classic', use: ['body', 'heading'], modern: true },
-    'Aeonik': { family: 'Aeonik', category: 'sans', weights: [400, 500, 600, 700], style: 'geometric', use: ['body', 'heading'], modern: true },
-    'Moment': { family: 'Moment', category: 'sans', weights: [400, 600, 700], style: 'geometric', use: ['heading', 'display'], modern: true },
-    'Azokh': { family: 'Azokh', category: 'sans', weights: [400, 700], style: 'geometric', use: ['heading', 'display'], modern: true },
-};
-
-// Transform GOOGLE_FONTS_DB into FONT_OPTIONS format for backward compatibility
 const FONT_OPTIONS = [
-    // System fonts first
     {
         id: "system-sans",
         label: "System Sans",
         css: '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
-        sample: "System – The quick brown fox",
+        sample: "Inter – The quick brown fox",
+
     },
     {
         id: "system-serif",
         label: "System Serif",
         css: 'Georgia, "Times New Roman", Times, serif',
-        sample: "System – The quick brown fox",
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "inter",
+        label: "Inter",
+        css: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "roboto",
+        label: "Roboto",
+        css: '"Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "poppins",
+        label: "Poppins",
+        css: '"Poppins", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "space-grotesk",
+        label: "Space Grotesk",
+        css: '"Space Grotesk", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "playfair",
+        label: "Playfair Display",
+        css: '"Playfair Display", Georgia, "Times New Roman", Times, serif',
+        sample: "Inter – The quick brown fox",
+
     },
     {
         id: "mono",
         label: "Monospace",
         css: '"SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-        sample: "Mono – The quick brown fox",
+        sample: "Inter – The quick brown fox",
+
     },
-    // Add all Google Fonts from the database
-    ...Object.entries(GOOGLE_FONTS_DB).map(([key, font]) => ({
-        id: key.toLowerCase().replace(/\s+/g, '-'),
-        label: font.family,
-        css: `"${font.family}", ${font.category === 'serif' ? 'Georgia, "Times New Roman", Times, serif' : '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif'}`,
-        sample: `${font.family} – The quick brown fox`,
-    })),
+
+    // Modern Sans – primary choices
+    {
+        id: "plus-jakarta-sans",
+        label: "Plus Jakarta Sans",
+        css: '"Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "manrope",
+        label: "Manrope",
+        css: '"Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "dm-sans",
+        label: "DM Sans",
+        css: '"DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "nunito-sans",
+        label: "Nunito Sans",
+        css: '"Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "work-sans",
+        label: "Work Sans",
+        css: '"Work Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "urbanist",
+        label: "Urbanist",
+        css: '"Urbanist", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "outfit",
+        label: "Outfit",
+        css: '"Outfit", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "sora",
+        label: "Sora",
+        css: '"Sora", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "lexend",
+        label: "Lexend",
+        css: '"Lexend", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "rubik",
+        label: "Rubik",
+        css: '"Rubik", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "archivo",
+        label: "Archivo",
+        css: '"Archivo", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "mulish",
+        label: "Mulish",
+        css: '"Mulish", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "source-sans-3",
+        label: "Source Sans 3",
+        css: '"Source Sans 3", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "ibm-plex-sans",
+        label: "IBM Plex Sans",
+        css: '"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "open-sans",
+        label: "Open Sans",
+        css: '"Open Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "lato",
+        label: "Lato",
+        css: '"Lato", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "montserrat",
+        label: "Montserrat",
+        css: '"Montserrat", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "raleway",
+        label: "Raleway",
+        css: '"Raleway", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+
+    // Modern Serif / Display
+    {
+        id: "dm-serif-display",
+        label: "DM Serif Display",
+        css: '"DM Serif Display", Georgia, "Times New Roman", Times, serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "lora",
+        label: "Lora",
+        css: '"Lora", Georgia, "Times New Roman", Times, serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "merriweather",
+        label: "Merriweather",
+        css: '"Merriweather", Georgia, "Times New Roman", Times, serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "fraunces",
+        label: "Fraunces",
+        css: '"Fraunces", Georgia, "Times New Roman", Times, serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "cormorant-garamond",
+        label: "Cormorant Garamond",
+        css: '"Cormorant Garamond", Georgia, "Times New Roman", Times, serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+
+    // Extra modern sans options
+    {
+        id: "barlow",
+        label: "Barlow",
+        css: '"Barlow", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "karla",
+        label: "Karla",
+        css: '"Karla", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
+    {
+        id: "cabin",
+        label: "Cabin",
+        css: '"Cabin", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        sample: "Inter – The quick brown fox",
+
+    },
 ];
 
 const TEXT_COLOR_SWATCHES = [
@@ -538,7 +647,7 @@ import { db } from "@/lib/firebase"; // or wherever your db is
 import type { User as FirebaseUser } from "firebase/auth";
 import { RenderDoc } from "@/app/dashboard/view/DashboardView";
 import { useAuth } from "@/src/hooks/useAuth";
-import { Camera, Code2, Eye, EyeOff, FileText, Images, Loader2, Maximize2, MessageSquare, Minimize2, Monitor, Palette, Redo2, Rocket, RotateCcw, RotateCw, Smartphone, Sparkles, Tablet, Trash2Icon, Undo2 } from "lucide-react";
+import { Camera, Code2, Eye, EyeOff, FileText, Images, Loader2, Maximize2, MessageSquare, Minimize2, Monitor, Palette, Redo2, Rocket, RotateCcw, RotateCw, Smartphone, Tablet, Trash2Icon, Undo2 } from "lucide-react";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { EditorSessionCounters, EditorSessionMetrics, EditorSessionUser, ExportAnalyticsUser, recordEditorSessionAnalytics, recordExportAnalytics } from "./analytics";
 import AiEditPanel from "./editor/AiEditPanel";
@@ -879,7 +988,7 @@ type DerivedTheme = {
     fontFamilies: string[];
 };
 
-type SidePanelMode = "style" | "meta" | "ai-library" | "code" | "revision-chat";
+type SidePanelMode = "style" | "meta" | "ai-library" | "code";
 
 
 export type SeoMetaByPage = Record<string, SeoMeta>;
@@ -2325,7 +2434,7 @@ export default function PreviewEditor({
                     localStorage.setItem(currentKey, JSON.stringify(currentPayload));
                 } catch (err: any) {
                     if (err && (err.name === "QuotaExceededError" || err.code === 22)) {
-                        try { window.alert("Unable to persist current draft: localStorage quota exceeded."); } catch { }
+                        try { window.alert("Unable to persist current draft: localStorage quota exceeded."); } catch {}
                     }
                 }
 
@@ -2333,7 +2442,7 @@ export default function PreviewEditor({
                     localStorage.setItem(hk, JSON.stringify(nextHistory));
                 } catch (err: any) {
                     if (err && (err.name === "QuotaExceededError" || err.code === 22)) {
-                        try { window.alert("Unable to persist history snapshot: localStorage quota exceeded."); } catch { }
+                        try { window.alert("Unable to persist history snapshot: localStorage quota exceeded."); } catch {}
                     }
                 }
             } catch (err) {
@@ -3912,7 +4021,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                         window.alert(
                             "Unable to save undo snapshot: localStorage quota exceeded. Clear storage or export your drafts to continue."
                         );
-                    } catch { }
+                    } catch {}
                 }
             }
 
@@ -3924,7 +4033,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                         window.alert(
                             "Unable to persist current draft: localStorage quota exceeded. Clear storage or export your drafts to continue."
                         );
-                    } catch { }
+                    } catch {}
                 }
             }
         } catch (err) {
@@ -4310,103 +4419,252 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     }}
                 >
 
+                    {/* FLOATING LEFT ICON RAIL (META / CODE / DEPLOY / SCREENSHOT / STYLES) */}
+                    <div className="pointer-events-auto fixed left-4 top-1/2 z-40 -translate-y-1/2">
+                        <div className="flex flex-col gap-2 rounded-full border border-neutral-200 bg-white/90/80 p-1 shadow-md backdrop-blur-sm">
+                            {/* Styles */}
+                            <button
+                                id="kloner-selection-style"
+                                type="button"
+                                onClick={() => {
+                                    const isActive = !sidebarHidden && sidePanelMode === "style" && mode === "preview";
+                                    if (isActive) {
+                                        setSidebarHidden(true);
+                                    } else {
+                                        setSidePanelMode("style");
+                                        setSidebarHidden(false);
+                                        if (mode === "screenshot" || mode === "code") {
+                                            handleModeClick("preview");
+                                        }
+                                    }
+                                }}
+                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "style" && mode === "preview"
+                                    ? "bg-accent text-white"
+                                    : "border-neutral-300 bg-white/90 text-neutral-800 hover:bg-accent hover:text-white"
+                                    }`}
+                            >
+                                <Palette className="h-4 w-4" aria-hidden="true" />
+                                <span className="sr-only">Styles</span>
+                                <span className="pointer-events-none absolute left-11 top-1/2 hidden -translate-y-1/2 rounded-md bg-neutral-900 px-2 py-1 text-[10px] font-medium text-white shadow-sm group-hover:inline-block">
+                                    Styles
+                                </span>
+                            </button>
+
+                            {/* Meta */}
+                            <button
+                                type="button"
+                                id="kloner-meta-toggle"
+                                onClick={() => {
+                                    const isActive = !sidebarHidden && sidePanelMode === "meta";
+                                    if (isActive) {
+                                        setSidebarHidden(true);
+                                    } else {
+                                        setSidePanelMode("meta");
+                                        setSidebarHidden(false);
+
+                                        // meta editing should always work against the visual preview, not code/screenshot
+                                        if (mode !== "preview") {
+                                            handleModeClick("preview");
+                                        }
+                                    }
+                                }}
+                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "meta"
+                                    ? "bg-accent text-white"
+                                    : "border-neutral-300 bg-white/90 text-neutral-800 hover:bg-accent hover:text-white"
+                                    }`}
+                            >
+                                <FileText className="h-4 w-4" aria-hidden="true" />
+                                <span className="sr-only">Meta</span>
+                                <span className="pointer-events-none absolute left-11 top-1/2 hidden -translate-y-1/2 rounded-md bg-neutral-900 px-2 py-1 text-[10px] font-medium text-white shadow-sm group-hover:inline-block">
+                                    Meta
+                                </span>
+                            </button>
+
+                            {/* AI edit chatlog */}
+                            <button
+                                type="button"
+                                id="kloner-ai-edit-toggle"
+                                onClick={() => {
+                                    const isActive = !sidebarHidden && sidePanelMode === "revision-chat";
+                                    if (isActive) {
+                                        setSidebarHidden(true);
+                                    } else {
+                                        setSidePanelMode("revision-chat");
+                                        setSidebarHidden(false);
+
+                                        // AI edits always operate on the visual preview
+                                        if (mode !== "preview") {
+                                            handleModeClick("preview");
+                                        }
+                                    }
+                                }}
+                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "revision-chat"
+                                    ? "bg-accent text-white"
+                                    : "border-neutral-300 bg-white/90 text-neutral-800 hover:bg-accent hover:text-white"
+                                    }`}
+                            >
+                                <MessageSquare className="h-4 w-4" aria-hidden="true" />
+                                <span className="sr-only">AI edit chat</span>
+                                <span className="pointer-events-none absolute left-11 top-1/2 hidden -translate-y-1/2 rounded-md bg-neutral-900 px-2 py-1 text-[10px] font-medium text-white shadow-sm group-hover:inline-block">
+                                    AI edit chat
+                                </span>
+                            </button>
+
+                            {/* AI images */}
+                            <button
+                                type="button"
+                                id="kloner-ai-image-library"
+                                onClick={() => {
+                                    const isActive = !sidebarHidden && sidePanelMode === "ai-library";
+                                    if (isActive) {
+                                        setSidebarHidden(true);
+                                    } else {
+                                        setSidePanelMode("ai-library");
+                                        setSidebarHidden(false);
+                                        if (mode === "screenshot") {
+                                            handleModeClick("preview");
+                                        }
+                                    }
+                                }}
+                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "ai-library"
+                                    ? "bg-accent text-white"
+                                    : "border-neutral-300 bg-white/90 text-neutral-800 hover:bg-accent hover:text-white"
+                                    }`}
+                            >
+                                <Images className="h-4 w-4" aria-hidden="true" />
+                                <span className="sr-only">AI images</span>
+                                <span className="pointer-events-none absolute left-11 top-1/2 hidden -translate-y-1/2 rounded-md bg-neutral-900 px-2 py-1 text-[10px] font-medium text-white shadow-sm group-hover:inline-block">
+                                    AI images
+                                </span>
+                            </button>
+
+                            {/* Code */}
+                            {isDevCodeMode && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const isActive = !sidebarHidden && sidePanelMode === "code" && mode === "code";
+
+                                        if (isActive) {
+                                            handleModeClick("preview");
+                                        } else {
+                                            setSidebarHidden(false);
+                                            setSidePanelMode("code");
+                                            handleModeClick("code");
+                                        }
+                                    }}
+                                    className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${mode === "code" && sidePanelMode === "code" && !sidebarHidden
+                                        ? "bg-accent text-white"
+                                        : "border-neutral-300 bg-white/90 text-neutral-800 hover:bg-accent hover:text-white"
+                                        }`}
+                                >
+                                    <Code2 className="h-4 w-4" aria-hidden="true" />
+                                    <span className="sr-only">Code</span>
+                                    <span className="pointer-events-none absolute left-11 top-1/2 hidden -translate-y-1/2 rounded-md bg-neutral-900 px-2 py-1 text-[10px] font-medium text-white shadow-sm group-hover:inline-block">
+                                        Code
+                                    </span>
+                                </button>
+                            )}
+
+                            {/* Deploy */}
+                            <button
+                                id="kloner-actions-row"
+                                type="button"
+                                onClick={() => setExportPrompt(true)}
+                                disabled={exporting}
+                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${exporting
+                                    ? "border-transparent bg-accent/70 text-white cursor-not-allowed"
+                                    : "border-neutral-300 bg-white/90 text-neutral-800 hover:bg-accent hover:text-white"
+                                    }`}
+                            >
+                                <Rocket className="h-4 w-4" aria-hidden="true" />
+                                <span className="sr-only">Deploy</span>
+                                <span className="pointer-events-none absolute left-11 top-1/2 hidden -translate-y-1/2 rounded-md bg-neutral-900 px-2 py-1 text-[10px] font-medium text-white shadow-sm group-hover:inline-block">
+                                    Deploy
+                                </span>
+                            </button>
+
+                            {/* Screenshot */}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSidebarHidden(true);
+                                    setSidePanelMode("style");
+                                    handleModeClick("screenshot");
+                                }}
+                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${mode === "screenshot"
+                                    ? "bg-accent text-white"
+                                    : "border-neutral-300 bg-white/90 text-neutral-800 hover:bg-accent hover:text-white"
+                                    }`}
+                            >
+                                <Camera className="h-4 w-4" aria-hidden="true" />
+                                <span className="sr-only">Screenshot</span>
+                                <span className="pointer-events-none absolute left-11 top-1/2 hidden -translate-y-1/2 rounded-md bg-neutral-900 px-2 py-1 text-[10px] font-medium text-white shadow-sm group-hover:inline-block">
+                                    Screenshot
+                                </span>
+                            </button>
+                        </div>
+                    </div>
+
                     {/* FLOATING EDITOR SIDEBAR? */}
                     {!sidebarHidden && (
                         <motion.aside
                             id="kloner-style-sidebar"
-                            className={`pointer-events-auto flex flex-col overflow-hidden ${sidePanelMode === "style" || sidePanelMode === "meta" || sidePanelMode === "ai-library" || sidePanelMode === "revision-chat"
+                            className={`pointer-events-auto flex flex-col overflow-hidden ${
+                                sidePanelMode === "style" || sidePanelMode === "revision-chat"
                                     ? "fixed left-0 top-0 bottom-0 w-[35vw] z-50 bg-white rounded-l-2xl"
                                     : "fixed left-16 top-20 bottom-20 z-40 bg-white/90 w-[300px] md:w-[450px] rounded-xl border border-neutral-200 bg-white/60 px-3 py-3 pb-5 shadow-lg backdrop-blur-sm"
-                                }`}
+                            }`}
                             initial={{ x: -16, opacity: 0 }}
                             animate={{ x: 0, opacity: 1 }}
                             exit={{ x: -16, opacity: 0 }}
                             transition={{ duration: 0.18, ease: "easeOut" }}
                         >
                             {/* put your panel contents in a scroll area */}
-                            <div className={`min-h-0 flex-1 overflow-y-auto ${sidePanelMode === "revision-chat" ? "" : "pr-1"
-                                }`}>
+                            <div className={`min-h-0 flex-1 overflow-y-auto ${
+                                sidePanelMode === "revision-chat" ? "" : "pr-1"
+                            }`}>
                                 {/* STYLE MODE BODY */}
                                 {!controlsCollapsed && sidePanelMode === "style" && (
                                     <>
-                                        {/* Maverick Header */}
-                                        <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-6 bg-gradient-to-r from-accent/5 to-accent/10">
-                                            <div className="flex items-center gap-4">
-                                                <div className="relative">
-                                                    <div className="h-12 w-12 rounded-full bg-gradient-to-br from-accent to-accent/80 flex items-center justify-center shadow-lg ring-2 ring-white">
-                                                        <Palette className="h-6 w-6 text-white" />
-                                                    </div>
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <div className="text-xl font-bold text-neutral-900">
-                                                        Style Editor
-                                                    </div>
-                                                    <div className="text-sm text-neutral-600">
-                                                        Customize your selected elements
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {mode !== "preview" && (
-                                            <div className="mx-4 mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="flex-shrink-0">
-                                                        <Eye className="h-5 w-5 text-amber-600" />
-                                                    </div>
-                                                    <div>
-                                                        <h4 className="text-sm font-medium text-amber-800">
-                                                            Preview Mode Required
-                                                        </h4>
-                                                        <p className="text-sm text-amber-700">
-                                                            Switch to preview mode to edit styles and see your changes in real-time.
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-
                                         {mode === "preview" && (
                                             <div
-                                                className="mt-1 border-t border-neutral-200 pt-6 text-[14px] px-4"
+                                                className="mt-1 border-t border-neutral-200 pt-3 text-[12px]"
+                                                id="kloner-selection-style"
                                             >
-                                                {/* Header Section */}
-                                                <div className="mb-6">
-                                                    <div className="mb-2 flex items-center justify-between">
-                                                        <h2 className="text-[16px] font-bold text-neutral-800">
-                                                            Style Editor
-                                                        </h2>
-                                                        <div className="text-xs text-neutral-500 bg-neutral-100 px-2 py-1 rounded-full">
-                                                            {selectionMeta.has
-                                                                ? selectionMeta.tagName || "Element"
-                                                                : "Select a block to style"}
-                                                        </div>
+                                                <div className="mb-1 flex items-center justify-between">
+                                                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+                                                        Selection
                                                     </div>
-                                                    <p className="text-[13px] text-neutral-600">
-                                                        Customize your selected element. Styles apply to the current{" "}
-                                                        <span className="font-semibold text-[#f55f2a]">{device}</span> layout.
-                                                    </p>
+                                                    <div className="text-[11px] text-neutral-400">
+                                                        {selectionMeta.has
+                                                            ? selectionMeta.tagName || "Element"
+                                                            : "Click any block to style it"}
+                                                    </div>
+                                                </div>
+                                                <div className="mb-2 text-[11px] text-neutral-400">
+                                                    Styles here are scoped to the current{" "}
+                                                    <span className="font-semibold">{device}</span> layout.
                                                 </div>
 
-                                                <div className="space-y-8 max-h-[calc(100vh-200px)] overflow-y-auto pr-2">
-                                                    {/* Theme Colors Section */}
+                                                <div className="space-y-3 text-[12px] max-h-64 overflow-y-auto pr-1 lg:max-h-none">
                                                     {(mergedThemeColors.length || theme.fontFamilies.length) > 0 && (
-                                                        <div className="space-y-4">
-                                                            <h3 className="text-[14px] font-semibold text-neutral-700 border-b border-neutral-200 pb-2">
-                                                                Theme Colors
-                                                            </h3>
+                                                        <div className="mt-2 space-y-3 border-t border-neutral-200 pt-3">
+                                                            <div className="text-[11px] uppercase tracking-[0.14em] text-neutral-400">
+                                                                Theme (from this page)
+                                                            </div>
 
                                                             {mergedThemeColors.length > 0 && (
-                                                                <div className="space-y-3">
-                                                                    <div className="text-sm font-medium text-neutral-600">
-                                                                        Text Colors
+                                                                <div>
+                                                                    <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
+                                                                        Theme text color
                                                                     </div>
-                                                                    <div className="flex flex-wrap gap-2">
+                                                                    <div className="flex flex-wrap gap-1">
                                                                         {mergedThemeColors.map((c) => (
                                                                             <button
                                                                                 key={`theme-text-${c}`}
                                                                                 type="button"
-                                                                                className="h-8 w-8 rounded-lg border-2 border-white shadow-md transition hover:scale-110 active:scale-95 disabled:opacity-40 ring-2 ring-transparent hover:ring-neutral-300"
+                                                                                className="h-5 w-5 rounded-full border border-black/10 shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-40"
                                                                                 style={{ background: c }}
                                                                                 disabled={closing}
                                                                                 onClick={() =>
@@ -4422,16 +4680,17 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             )}
 
                                                             {mergedThemeColors.length > 0 && (
-                                                                <div className="space-y-3">
-                                                                    <div className="text-[13px] font-medium text-neutral-600">
-                                                                        Background Colors
+                                                                <div>
+                                                                    <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
+                                                                        Theme background
                                                                     </div>
-                                                                    <div className="flex flex-wrap items-center gap-2">
+
+                                                                    <div className="mb-2 flex flex-wrap items-center gap-1">
                                                                         {mergedThemeColors.map((c) => (
                                                                             <button
                                                                                 key={`theme-bg-${c}`}
                                                                                 type="button"
-                                                                                className="h-8 w-8 rounded-lg border-2 border-white shadow-md transition hover:scale-110 active:scale-95 disabled:opacity-40 ring-2 ring-transparent hover:ring-neutral-300"
+                                                                                className="h-5 w-5 rounded-full border border-black/10 shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-40"
                                                                                 style={{ background: c }}
                                                                                 disabled={closing}
                                                                                 onClick={() =>
@@ -4453,401 +4712,453 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                                                     value: "transparent",
                                                                                 })
                                                                             }
-                                                                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border-2 border-dashed border-neutral-400 bg-white text-[12px] font-semibold text-neutral-500 shadow-md transition hover:scale-110 active:scale-95 disabled:opacity-40"
+                                                                            className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-dashed border-neutral-400/80 bg-white/90 text-[9px] font-semibold uppercase tracking-wide text-neutral-500 shadow-sm transition hover:bg-neutral-50 hover:scale-105 active:scale-95 disabled:opacity-40"
                                                                             title="Transparent background"
                                                                         >
                                                                             ⌀
                                                                         </button>
+                                                                    </div>
+
+                                                                    <div className="flex items-center gap-2 text-[11px]">
+                                                                        <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+                                                                            Custom background
+                                                                        </span>
+
+                                                                        <input
+                                                                            type="color"
+                                                                            value={customBgColor}
+                                                                            disabled={closing}
+                                                                            onChange={(e) => {
+                                                                                const value = e.target.value;
+                                                                                setCustomBgColor(value);
+                                                                                sendStyleCommand({
+                                                                                    kind: "bgColor",
+                                                                                    value,
+                                                                                });
+                                                                            }}
+                                                                            className="h-6 w-6 cursor-pointer rounded-full border border-black/10 bg-transparent p-0"
+                                                                        />
+
+                                                                        <input
+                                                                            type="text"
+                                                                            value={customBgColor}
+                                                                            disabled={closing}
+                                                                            onChange={(e) => {
+                                                                                const raw = e.target.value.trim();
+                                                                                setCustomBgColor(raw);
+                                                                            }}
+                                                                            onBlur={() => {
+                                                                                const v = customBgColor.trim();
+                                                                                if (!v) return;
+                                                                                const hex = v.startsWith("#") ? v : `#${v}`;
+                                                                                if (hex.length === 4 || hex.length === 7) {
+                                                                                    setCustomBgColor(hex);
+                                                                                    sendStyleCommand({
+                                                                                        kind: "bgColor",
+                                                                                        value: hex,
+                                                                                    });
+                                                                                }
+                                                                            }}
+                                                                            className="h-7 flex-1 rounded border border-neutral-300 bg-white/90 px-2 text-[11px] text-neutral-700 shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400"
+                                                                            placeholder="#ffffff"
+                                                                        />
                                                                     </div>
                                                                 </div>
                                                             )}
                                                         </div>
                                                     )}
 
-                                                    {/* Typography Section */}
-                                                    <div className="space-y-6">
-                                                        <h3 className="text-[14px] font-semibold text-neutral-700 border-b border-neutral-200 pb-2">
-                                                            Typography
-                                                        </h3>
+                                                    {/* Font */}
+                                                    <div>
+                                                        <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
+                                                            Font
+                                                        </div>
+                                                        <select
+                                                            className="w-full rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[12px] shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400 disabled:opacity-50"
+                                                            disabled={closing}
+                                                            onChange={(e) => {
+                                                                const opt = FONT_OPTIONS.find(
+                                                                    (f) => f.id === e.target.value,
+                                                                );
+                                                                if (!opt) return;
+                                                                sendStyleCommand({
+                                                                    kind: "fontFamily",
+                                                                    value: opt.css,
+                                                                });
+                                                            }}
+                                                            defaultValue=""
+                                                        >
+                                                            <option value="" disabled>
+                                                                Choose font
+                                                            </option>
+                                                            {FONT_OPTIONS.map((f) => (
+                                                                <option
+                                                                    key={f.id}
+                                                                    value={f.id}
+                                                                    style={{ fontFamily: f.css }}
+                                                                >
+                                                                    {f.label}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
 
-                                                        {/* Font Family */}
-                                                        <div className="space-y-3">
-                                                            <label className="text-sm font-medium text-neutral-600">
-                                                                Font Family
-                                                            </label>
-                                                            <select
-                                                                className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-[14px] shadow-sm focus:outline-none focus:ring-2 focus:ring-[#f55f2a]/20 focus:border-[#f55f2a] disabled:opacity-50 transition"
+                                                    {/* Size & headings */}
+                                                    <div>
+                                                        <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
+                                                            Size & headings
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {FONT_SIZE_PRESETS.map((s) => (
+                                                                <button
+                                                                    key={s.id}
+                                                                    type="button"
+                                                                    className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] leading-tight shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                    disabled={closing}
+                                                                    onClick={() =>
+                                                                        sendStyleCommand({
+                                                                            kind: "fontSizePx",
+                                                                            value: s.px,
+                                                                        })
+                                                                    }
+                                                                >
+                                                                    {s.label}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Text align */}
+                                                    <div>
+                                                        <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
+                                                            Text align
+                                                        </div>
+                                                        <div className="flex gap-1">
+                                                            {[
+                                                                { id: "left", label: "Left" },
+                                                                { id: "center", label: "Center" },
+                                                                { id: "right", label: "Right" },
+                                                            ].map((a) => (
+                                                                <button
+                                                                    key={a.id}
+                                                                    type="button"
+                                                                    className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                    disabled={closing}
+                                                                    onClick={() =>
+                                                                        sendStyleCommand({
+                                                                            kind: "align",
+                                                                            value: a.id as "left" | "center" | "right",
+                                                                        })
+                                                                    }
+                                                                >
+                                                                    {a.label}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Weight & transform */}
+                                                    <div>
+                                                        <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
+                                                            Font weight & transform
+                                                        </div>
+
+                                                        <div className="flex flex-wrap gap-1">
+                                                            <button
+                                                                type="button"
+                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-light shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                disabled={closing}
+                                                                onClick={() =>
+                                                                    sendStyleCommand({
+                                                                        kind: "weight",
+                                                                        value: "300",
+                                                                    })
+                                                                }
+                                                            >
+                                                                Light
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-normal shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                disabled={closing}
+                                                                onClick={() =>
+                                                                    sendStyleCommand({
+                                                                        kind: "weight",
+                                                                        value: "400",
+                                                                    })
+                                                                }
+                                                            >
+                                                                Regular
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-semibold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                disabled={closing}
+                                                                onClick={() =>
+                                                                    sendStyleCommand({
+                                                                        kind: "weight",
+                                                                        value: "500",
+                                                                    })
+                                                                }
+                                                            >
+                                                                Medium
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-semibold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                disabled={closing}
+                                                                onClick={() =>
+                                                                    sendStyleCommand({
+                                                                        kind: "weight",
+                                                                        value: "600",
+                                                                    })
+                                                                }
+                                                            >
+                                                                Semi-bold
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-bold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                disabled={closing}
+                                                                onClick={() =>
+                                                                    sendStyleCommand({
+                                                                        kind: "weight",
+                                                                        value: "700",
+                                                                    })
+                                                                }
+                                                            >
+                                                                Bold
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-extrabold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                disabled={closing}
+                                                                onClick={() =>
+                                                                    sendStyleCommand({
+                                                                        kind: "weight",
+                                                                        value: "800",
+                                                                    })
+                                                                }
+                                                            >
+                                                                Extra-bold
+                                                            </button>
+
+                                                            <button
+                                                                type="button"
+                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] uppercase tracking-[0.14em] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                disabled={closing}
+                                                                onClick={() =>
+                                                                    sendStyleCommand({
+                                                                        kind: "transform",
+                                                                        value: "uppercase",
+                                                                    })
+                                                                }
+                                                            >
+                                                                UPPERCASE
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] normal-case shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                disabled={closing}
+                                                                onClick={() =>
+                                                                    sendStyleCommand({
+                                                                        kind: "transform",
+                                                                        value: "none",
+                                                                    })
+                                                                }
+                                                            >
+                                                                Aa
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Text color */}
+                                                    <div>
+                                                        <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
+                                                            Text color
+                                                        </div>
+
+                                                        <div className="mb-2 flex flex-wrap gap-1">
+                                                            {TEXT_COLOR_SWATCHES.map((c) => (
+                                                                <button
+                                                                    key={c}
+                                                                    type="button"
+                                                                    className="h-5 w-5 rounded-full border border-black/10 shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-40"
+                                                                    style={{ background: c }}
+                                                                    disabled={closing}
+                                                                    onClick={() =>
+                                                                        sendStyleCommand({
+                                                                            kind: "textColor",
+                                                                            value: c,
+                                                                        })
+                                                                    }
+                                                                />
+                                                            ))}
+                                                        </div>
+
+                                                        <div className="flex items-center gap-2 text-[11px]">
+                                                            <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+                                                                Custom text
+                                                            </span>
+
+                                                            <input
+                                                                type="color"
+                                                                value={customTextColor}
                                                                 disabled={closing}
                                                                 onChange={(e) => {
-                                                                    const opt = FONT_OPTIONS.find(
-                                                                        (f) => f.id === e.target.value,
-                                                                    );
-                                                                    if (!opt) return;
+                                                                    const value = e.target.value;
+                                                                    setCustomTextColor(value);
                                                                     sendStyleCommand({
-                                                                        kind: "fontFamily",
-                                                                        value: opt.css,
+                                                                        kind: "textColor",
+                                                                        value,
                                                                     });
                                                                 }}
-                                                                defaultValue=""
+                                                                className="h-6 w-6 cursor-pointer rounded-full border border-black/10 bg-transparent p-0"
+                                                            />
+
+                                                            <input
+                                                                type="text"
+                                                                value={customTextColor}
+                                                                disabled={closing}
+                                                                onChange={(e) => {
+                                                                    const raw = e.target.value.trim();
+                                                                    setCustomTextColor(raw);
+                                                                }}
+                                                                onBlur={() => {
+                                                                    const v = customTextColor.trim();
+                                                                    if (!v) return;
+                                                                    const hex = v.startsWith("#") ? v : `#${v}`;
+                                                                    if (hex.length === 4 || hex.length === 7) {
+                                                                        setCustomTextColor(hex);
+                                                                        sendStyleCommand({
+                                                                            kind: "textColor",
+                                                                            value: hex,
+                                                                        });
+                                                                    }
+                                                                }}
+                                                                className="h-7 flex-1 rounded border border-neutral-300 bg-white/90 px-2 text-[11px] text-neutral-700 shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400"
+                                                                placeholder="#111827"
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Background */}
+                                                    <div>
+                                                        <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
+                                                            Background
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {BG_COLOR_SWATCHES.map((c) => (
+                                                                <button
+                                                                    key={c}
+                                                                    type="button"
+                                                                    className="h-5 w-5 rounded-full border border-black/10 shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-40"
+                                                                    style={{ background: c }}
+                                                                    disabled={closing}
+                                                                    onClick={() =>
+                                                                        sendStyleCommand({
+                                                                            kind: "bgColor",
+                                                                            value: c,
+                                                                        })
+                                                                    }
+                                                                />
+                                                            ))}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Letter spacing */}
+                                                    <div>
+                                                        <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
+                                                            Letter spacing
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-1">
+                                                            <button
+                                                                type="button"
+                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                disabled={closing}
+                                                                onClick={() =>
+                                                                    sendStyleCommand({
+                                                                        kind: "letterSpacing",
+                                                                        value: "-0.02em",
+                                                                    })
+                                                                }
                                                             >
-                                                                <option value="" disabled>
-                                                                    Choose font
-                                                                </option>
-                                                                {FONT_OPTIONS.map((f) => (
-                                                                    <option
-                                                                        key={f.id}
-                                                                        value={f.id}
-                                                                        style={{ fontFamily: f.css }}
-                                                                    >
-                                                                        {f.label}
-                                                                    </option>
-                                                                ))}
-                                                            </select>
-                                                        </div>
-
-                                                        {/* Font Size */}
-                                                        <div className="space-y-3">
-                                                            <label className="text-sm font-medium text-neutral-600">
-                                                                Font Size
-                                                            </label>
-                                                            <div className="flex flex-wrap gap-2">
-                                                                {FONT_SIZE_PRESETS.map((s) => (
-                                                                    <button
-                                                                        key={s.id}
-                                                                        type="button"
-                                                                        className="rounded-lg border border-neutral-300 bg-white px-4 py-2 text-[13px] font-medium shadow-sm transition hover:bg-neutral-50 hover:border-[#f55f2a] active:scale-95 disabled:opacity-40"
-                                                                        disabled={closing}
-                                                                        onClick={() =>
-                                                                            sendStyleCommand({
-                                                                                kind: "fontSizePx",
-                                                                                value: s.px,
-                                                                            })
-                                                                        }
-                                                                    >
-                                                                        {s.label}
-                                                                    </button>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Font Weight */}
-                                                        <div className="space-y-3">
-                                                            <label className="text-sm font-medium text-neutral-600">
-                                                                Font Weight
-                                                            </label>
-                                                            <div className="grid grid-cols-3 gap-2">
-                                                                {[
-                                                                    { label: "Light", value: "300", class: "font-light" },
-                                                                    { label: "Regular", value: "400", class: "font-normal" },
-                                                                    { label: "Medium", value: "500", class: "font-medium" },
-                                                                    { label: "Semi-bold", value: "600", class: "font-semibold" },
-                                                                    { label: "Bold", value: "700", class: "font-bold" },
-                                                                    { label: "Extra-bold", value: "800", class: "font-extrabold" },
-                                                                ].map((w) => (
-                                                                    <button
-                                                                        key={w.value}
-                                                                        type="button"
-                                                                        className={`rounded-lg border border-neutral-300 bg-white px-3 py-2 text-[13px] shadow-sm transition hover:bg-neutral-50 hover:border-[#f55f2a] active:scale-95 disabled:opacity-40 ${w.class}`}
-                                                                        disabled={closing}
-                                                                        onClick={() =>
-                                                                            sendStyleCommand({
-                                                                                kind: "weight",
-                                                                                value: w.value,
-                                                                            })
-                                                                        }
-                                                                    >
-                                                                        {w.label}
-                                                                    </button>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Text Transform */}
-                                                        <div className="space-y-3">
-                                                            <label className="text-sm font-medium text-neutral-600">
-                                                                Text Transform
-                                                            </label>
-                                                            <div className="flex gap-2">
-                                                                <button
-                                                                    type="button"
-                                                                    className="rounded-lg border border-neutral-300 bg-white px-4 py-2 text-[13px] font-medium shadow-sm transition hover:bg-neutral-50 hover:border-[#f55f2a] active:scale-95 disabled:opacity-40"
-                                                                    disabled={closing}
-                                                                    onClick={() =>
-                                                                        sendStyleCommand({
-                                                                            kind: "transform",
-                                                                            value: "uppercase",
-                                                                        })
-                                                                    }
-                                                                >
-                                                                    UPPERCASE
-                                                                </button>
-                                                                <button
-                                                                    type="button"
-                                                                    className="rounded-lg border border-neutral-300 bg-white px-4 py-2 text-[13px] font-medium shadow-sm transition hover:bg-neutral-50 hover:border-[#f55f2a] active:scale-95 disabled:opacity-40"
-                                                                    disabled={closing}
-                                                                    onClick={() =>
-                                                                        sendStyleCommand({
-                                                                            kind: "transform",
-                                                                            value: "none",
-                                                                        })
-                                                                    }
-                                                                >
-                                                                    Normal
-                                                                </button>
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Letter Spacing */}
-                                                        <div className="space-y-3">
-                                                            <label className="text-sm font-medium text-neutral-600">
-                                                                Letter Spacing
-                                                            </label>
-                                                            <div className="flex gap-2">
-                                                                <button
-                                                                    type="button"
-                                                                    className="rounded-lg border border-neutral-300 bg-white px-4 py-2 text-[13px] font-medium shadow-sm transition hover:bg-neutral-50 hover:border-[#f55f2a] active:scale-95 disabled:opacity-40"
-                                                                    disabled={closing}
-                                                                    onClick={() =>
-                                                                        sendStyleCommand({
-                                                                            kind: "letterSpacing",
-                                                                            value: "-0.02em",
-                                                                        })
-                                                                    }
-                                                                >
-                                                                    Tight
-                                                                </button>
-                                                                <button
-                                                                    type="button"
-                                                                    className="rounded-lg border border-neutral-300 bg-white px-4 py-2 text-[13px] font-medium shadow-sm transition hover:bg-neutral-50 hover:border-[#f55f2a] active:scale-95 disabled:opacity-40"
-                                                                    disabled={closing}
-                                                                    onClick={() =>
-                                                                        sendStyleCommand({
-                                                                            kind: "letterSpacing",
-                                                                            value: "0",
-                                                                        })
-                                                                    }
-                                                                >
-                                                                    Normal
-                                                                </button>
-                                                                <button
-                                                                    type="button"
-                                                                    className="rounded-lg border border-neutral-300 bg-white px-4 py-2 text-[13px] font-medium shadow-sm transition hover:bg-neutral-50 hover:border-[#f55f2a] active:scale-95 disabled:opacity-40"
-                                                                    disabled={closing}
-                                                                    onClick={() =>
-                                                                        sendStyleCommand({
-                                                                            kind: "letterSpacing",
-                                                                            value: "0.08em",
-                                                                        })
-                                                                    }
-                                                                >
-                                                                    Wide
-                                                                </button>
-                                                            </div>
+                                                                Tight
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                disabled={closing}
+                                                                onClick={() =>
+                                                                    sendStyleCommand({
+                                                                        kind: "letterSpacing",
+                                                                        value: "0",
+                                                                    })
+                                                                }
+                                                            >
+                                                                Normal
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                disabled={closing}
+                                                                onClick={() =>
+                                                                    sendStyleCommand({
+                                                                        kind: "letterSpacing",
+                                                                        value: "0.08em",
+                                                                    })
+                                                                }
+                                                            >
+                                                                Wide
+                                                            </button>
                                                         </div>
                                                     </div>
 
-                                                    {/* Layout & Alignment Section */}
-                                                    <div className="space-y-6">
-                                                        <h3 className="text-[14px] font-semibold text-neutral-700 border-b border-neutral-200 pb-2">
-                                                            Layout & Alignment
-                                                        </h3>
-
-                                                        {/* Text Align */}
-                                                        <div className="space-y-3">
-                                                            <label className="text-sm font-medium text-neutral-600">
-                                                                Text Alignment
-                                                            </label>
-                                                            <div className="flex gap-2">
-                                                                {[
-                                                                    { id: "left", label: "Left", icon: "⬅️" },
-                                                                    { id: "center", label: "Center", icon: "⬌" },
-                                                                    { id: "right", label: "Right", icon: "➡️" },
-                                                                ].map((a) => (
-                                                                    <button
-                                                                        key={a.id}
-                                                                        type="button"
-                                                                        className="flex-1 rounded-lg border border-neutral-300 bg-white px-4 py-3 text-[13px] font-medium shadow-sm transition hover:bg-neutral-50 hover:border-[#f55f2a] active:scale-95 disabled:opacity-40"
-                                                                        disabled={closing}
-                                                                        onClick={() =>
-                                                                            sendStyleCommand({
-                                                                                kind: "align",
-                                                                                value: a.id as "left" | "center" | "right",
-                                                                            })
-                                                                        }
-                                                                    >
-                                                                        <span className="mr-2">{a.icon}</span>
-                                                                        {a.label}
-                                                                    </button>
-                                                                ))}
-                                                            </div>
+                                                    {/* Block align */}
+                                                    <div>
+                                                        <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
+                                                            Block align
                                                         </div>
-
-                                                        {/* Block Align */}
-                                                        <div className="space-y-3">
-                                                            <label className="text-sm font-medium text-neutral-600">
-                                                                Block Alignment
-                                                            </label>
-                                                            <div className="flex gap-2">
-                                                                {[
-                                                                    { id: "left", label: "Left" },
-                                                                    { id: "center", label: "Center" },
-                                                                    { id: "right", label: "Right" },
-                                                                ].map((a) => (
-                                                                    <button
-                                                                        key={a.id}
-                                                                        type="button"
-                                                                        className="flex-1 rounded-lg border border-neutral-300 bg-white px-4 py-3 text-[13px] font-medium shadow-sm transition hover:bg-neutral-50 hover:border-[#f55f2a] active:scale-95 disabled:opacity-40"
-                                                                        disabled={closing}
-                                                                        onClick={() =>
-                                                                            sendStyleCommand({
-                                                                                kind: "blockAlign",
-                                                                                value: a.id as "left" | "center" | "right",
-                                                                            })
-                                                                        }
-                                                                    >
-                                                                        {a.label}
-                                                                    </button>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Colors Section */}
-                                                    <div className="space-y-6">
-                                                        <h3 className="text-[14px] font-semibold text-neutral-700 border-b border-neutral-200 pb-2">
-                                                            Colors
-                                                        </h3>
-
-                                                        {/* Text Color */}
-                                                        <div className="space-y-3">
-                                                            <label className="text-sm font-medium text-neutral-600">
-                                                                Text Color
-                                                            </label>
-                                                            <div className="space-y-3">
-                                                                <div className="flex flex-wrap gap-2">
-                                                                    {TEXT_COLOR_SWATCHES.map((c) => (
-                                                                        <button
-                                                                            key={c}
-                                                                            type="button"
-                                                                            className="h-10 w-10 rounded-lg border-2 border-white shadow-md transition hover:scale-110 active:scale-95 disabled:opacity-40 ring-2 ring-transparent hover:ring-neutral-300"
-                                                                            style={{ background: c }}
-                                                                            disabled={closing}
-                                                                            onClick={() =>
-                                                                                sendStyleCommand({
-                                                                                    kind: "textColor",
-                                                                                    value: c,
-                                                                                })
-                                                                            }
-                                                                        />
-                                                                    ))}
-                                                                </div>
-
-                                                                <div className="flex items-center gap-3">
-                                                                    <input
-                                                                        type="color"
-                                                                        value={customTextColor}
-                                                                        disabled={closing}
-                                                                        onChange={(e) => {
-                                                                            const value = e.target.value;
-                                                                            setCustomTextColor(value);
-                                                                            sendStyleCommand({
-                                                                                kind: "textColor",
-                                                                                value,
-                                                                            });
-                                                                        }}
-                                                                        className="h-10 w-10 cursor-pointer rounded-lg border-2 border-white shadow-md"
-                                                                    />
-                                                                    <input
-                                                                        type="text"
-                                                                        value={customTextColor}
-                                                                        disabled={closing}
-                                                                        onChange={(e) => {
-                                                                            const raw = e.target.value.trim();
-                                                                            setCustomTextColor(raw);
-                                                                        }}
-                                                                        onBlur={() => {
-                                                                            const v = customTextColor.trim();
-                                                                            if (!v) return;
-                                                                            const hex = v.startsWith("#") ? v : `#${v}`;
-                                                                            if (hex.length === 4 || hex.length === 7) {
-                                                                                setCustomTextColor(hex);
-                                                                                sendStyleCommand({
-                                                                                    kind: "textColor",
-                                                                                    value: hex,
-                                                                                });
-                                                                            }
-                                                                        }}
-                                                                        className="flex-1 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-[13px] shadow-sm focus:outline-none focus:ring-2 focus:ring-[#f55f2a]/20 focus:border-[#f55f2a] transition"
-                                                                        placeholder="#111827"
-                                                                    />
-                                                                </div>
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Background Color */}
-                                                        <div className="space-y-3">
-                                                            <label className="text-sm font-medium text-neutral-600">
-                                                                Background Color
-                                                            </label>
-                                                            <div className="space-y-3">
-                                                                <div className="flex flex-wrap gap-2">
-                                                                    {BG_COLOR_SWATCHES.map((c) => (
-                                                                        <button
-                                                                            key={c}
-                                                                            type="button"
-                                                                            className="h-10 w-10 rounded-lg border-2 border-white shadow-md transition hover:scale-110 active:scale-95 disabled:opacity-40 ring-2 ring-transparent hover:ring-neutral-300"
-                                                                            style={{ background: c }}
-                                                                            disabled={closing}
-                                                                            onClick={() =>
-                                                                                sendStyleCommand({
-                                                                                    kind: "bgColor",
-                                                                                    value: c,
-                                                                                })
-                                                                            }
-                                                                        />
-                                                                    ))}
-                                                                </div>
-
-                                                                <div className="flex items-center gap-3">
-                                                                    <input
-                                                                        type="color"
-                                                                        value={customBgColor}
-                                                                        disabled={closing}
-                                                                        onChange={(e) => {
-                                                                            const value = e.target.value;
-                                                                            setCustomBgColor(value);
-                                                                            sendStyleCommand({
-                                                                                kind: "bgColor",
-                                                                                value,
-                                                                            });
-                                                                        }}
-                                                                        className="h-10 w-10 cursor-pointer rounded-lg border-2 border-white shadow-md"
-                                                                    />
-                                                                    <input
-                                                                        type="text"
-                                                                        value={customBgColor}
-                                                                        disabled={closing}
-                                                                        onChange={(e) => {
-                                                                            const raw = e.target.value.trim();
-                                                                            setCustomBgColor(raw);
-                                                                        }}
-                                                                        onBlur={() => {
-                                                                            const v = customBgColor.trim();
-                                                                            if (!v) return;
-                                                                            const hex = v.startsWith("#") ? v : `#${v}`;
-                                                                            if (hex.length === 4 || hex.length === 7) {
-                                                                                setCustomBgColor(hex);
-                                                                                sendStyleCommand({
-                                                                                    kind: "bgColor",
-                                                                                    value: hex,
-                                                                                });
-                                                                            }
-                                                                        }}
-                                                                        className="flex-1 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-[13px] shadow-sm focus:outline-none focus:ring-2 focus:ring-[#f55f2a]/20 focus:border-[#f55f2a] transition"
-                                                                        placeholder="#ffffff"
-                                                                    />
-                                                                </div>
-                                                            </div>
+                                                        <div className="flex flex-wrap gap-1">
+                                                            <button
+                                                                type="button"
+                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                disabled={closing}
+                                                                onClick={() =>
+                                                                    sendStyleCommand({
+                                                                        kind: "blockAlign",
+                                                                        value: "left",
+                                                                    })
+                                                                }
+                                                            >
+                                                                Left
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                disabled={closing}
+                                                                onClick={() =>
+                                                                    sendStyleCommand({
+                                                                        kind: "blockAlign",
+                                                                        value: "center",
+                                                                    })
+                                                                }
+                                                            >
+                                                                Center
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                disabled={closing}
+                                                                onClick={() =>
+                                                                    sendStyleCommand({
+                                                                        kind: "blockAlign",
+                                                                        value: "right",
+                                                                    })
+                                                                }
+                                                            >
+                                                                Right
+                                                            </button>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -4881,221 +5192,52 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 )}
 
                                 {sidePanelMode === "ai-library" && (
-                                    <>
-                                        {/* Maverick Header */}
-                                        <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-6 bg-gradient-to-r from-accent/5 to-accent/10">
-                                            <div className="flex items-center gap-4">
-                                                <div className="relative">
-                                                    <div className="h-12 w-12 rounded-full bg-gradient-to-br from-accent to-accent/80 flex items-center justify-center shadow-lg ring-2 ring-white">
-                                                        <Images className="h-6 w-6 text-white" />
-                                                    </div>
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <div className="text-xl font-bold text-neutral-900">
-                                                        AI Image Library
-                                                    </div>
-                                                    <div className="text-sm text-neutral-600">
-                                                        Insert images into your preview
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {mode !== "preview" && (
-                                            <div className="mx-4 mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="flex-shrink-0">
-                                                        <Eye className="h-5 w-5 text-amber-600" />
-                                                    </div>
-                                                    <div>
-                                                        <h4 className="text-sm font-medium text-amber-800">
-                                                            Preview Mode Required
-                                                        </h4>
-                                                        <p className="text-sm text-amber-700">
-                                                            Switch to preview mode to insert images and see your changes in real-time.
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        <AiImageLibraryPanel
-                                            iframeRef={iframeRef}
-                                            user={user}
-                                            renderId={draftId ?? null}
-                                        />
-                                    </>
+                                    <AiImageLibraryPanel
+                                        iframeRef={iframeRef}
+                                        user={user}
+                                        renderId={draftId ?? null}
+                                    />
                                 )}
 
                                 {sidePanelMode === "meta" && (
-                                    <>
-                                        {/* Maverick Header */}
-                                        <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-6 bg-gradient-to-r from-accent/5 to-accent/10">
-                                            <div className="flex items-center gap-4">
-                                                <div className="relative">
-                                                    <div className="h-12 w-12 rounded-full bg-gradient-to-br from-accent to-accent/80 flex items-center justify-center shadow-lg ring-2 ring-white">
-                                                        <FileText className="h-6 w-6 text-white" />
-                                                    </div>
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <div className="text-xl font-bold text-neutral-900">
-                                                        SEO & Meta
-                                                    </div>
-                                                    <div className="text-sm text-neutral-600">
-                                                        Optimize your page for search engines
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {mode !== "preview" && (
-                                            <div className="mx-4 mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="flex-shrink-0">
-                                                        <Eye className="h-5 w-5 text-amber-600" />
-                                                    </div>
-                                                    <div>
-                                                        <h4 className="text-sm font-medium text-amber-800">
-                                                            Preview Mode Required
-                                                        </h4>
-                                                        <p className="text-sm text-amber-700">
-                                                            Switch to preview mode to edit SEO metadata and see your changes.
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        <MetaSettings
-                                            key={currentPageKey}
-                                            draftId={draftId}
-                                            meta={currentSeoMeta}
-                                            uploadFileToUserBlob={uploadFileToUserBlob as any}
-                                            onSaveMeta={handleSaveMetaForCurrentPage}
-                                        />
-                                    </>
+                                    <MetaSettings
+                                        key={currentPageKey}
+                                        draftId={draftId}
+                                        meta={currentSeoMeta}
+                                        uploadFileToUserBlob={uploadFileToUserBlob as any}
+                                        onSaveMeta={handleSaveMetaForCurrentPage}
+                                    />
                                 )}
 
                                 {sidePanelMode === "revision-chat" && (
-                                    <>
-                                        {/* Maverick Header */}
-                                        <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-6 bg-gradient-to-r from-accent/5 to-accent/10">
-                                            <div className="flex items-center gap-4">
-                                                <div className="relative">
-                                                    <div className="h-12 w-12 rounded-full bg-gradient-to-br from-accent to-accent/80 flex items-center justify-center shadow-lg ring-2 ring-white">
-                                                        <Sparkles className="h-6 w-6 text-white" />
-                                                    </div>
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <div className="text-xl font-bold text-neutral-900">
-                                                        AI Assistant
-                                                    </div>
-                                                    <div className="text-sm text-neutral-600">
-                                                        Get AI-powered design suggestions
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {mode !== "preview" && (
-                                            <div className="mx-4 mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="flex-shrink-0">
-                                                        <Eye className="h-5 w-5 text-amber-600" />
-                                                    </div>
-                                                    <div>
-                                                        <h4 className="text-sm font-medium text-amber-800">
-                                                            Preview Mode Required
-                                                        </h4>
-                                                        <p className="text-sm text-amber-700">
-                                                            Switch to preview mode to use AI editing features and see your changes in real-time.
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        <AiEditPanel
-                                            renderId={draftId}
-                                            refreshNonce={aiHistoryRefreshNonce}
-                                            getSelectedBlockHtml={getSelectedBlockHtml}
-                                            selectionMeta={selectionMeta}
-                                            onAiHistoryChange={setAiHistory}
-                                            onApplyBlockHtml={applyAiEditedBlockHtml}
-                                            onAiEditingStateChange={(isEditing) => {
-                                                setAiEditing(isEditing);
-                                            }}
-                                        />
-                                    </>
+                                    <AiEditPanel
+                                        renderId={draftId}
+                                        refreshNonce={aiHistoryRefreshNonce}
+                                        getSelectedBlockHtml={getSelectedBlockHtml}
+                                        selectionMeta={selectionMeta}
+                                        onAiHistoryChange={setAiHistory}
+                                        onApplyBlockHtml={applyAiEditedBlockHtml}
+                                        onAiEditingStateChange={(isEditing) => {
+                                            setAiEditing(isEditing);
+                                        }}
+                                    />
                                 )}
                             </div>
                         </motion.aside>
                     )}
 
                     {/* MODE TOGGLE - Top outside edit panel */}
-                    {(sidePanelMode === "style" || sidePanelMode === "meta" || sidePanelMode === "ai-library" || sidePanelMode === "revision-chat") && !sidebarHidden && (
-                        <div className="fixed left-[35vw] top-4 z-50 flex items-center gap-4">
-                            {/* Panel Buttons */}
-                            <div className="flex items-center gap-1 rounded-full border border-neutral-200 bg-white/90 px-2 py-1 shadow-md backdrop-blur-sm">
-                                <button
-                                    type="button"
-                                    onClick={() => setSidePanelMode("style")}
-                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full transition ${sidePanelMode === "style"
-                                            ? "bg-[#f55f2a] text-white"
-                                            : "text-neutral-600 hover:bg-neutral-100"
-                                        }`}
-                                    title="Style Panel"
-                                    id="kloner-style-toggle"
-                                >
-                                    <Palette className="h-4 w-4" />
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setSidePanelMode("meta")}
-                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full transition ${sidePanelMode === "meta"
-                                            ? "bg-[#f55f2a] text-white"
-                                            : "text-neutral-600 hover:bg-neutral-100"
-                                        }`}
-                                    title="SEO & Meta Panel"
-                                    id="kloner-meta-toggle"
-                                >
-                                    <FileText className="h-4 w-4" />
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setSidePanelMode("ai-library")}
-                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full transition ${sidePanelMode === "ai-library"
-                                            ? "bg-[#f55f2a] text-white"
-                                            : "text-neutral-600 hover:bg-neutral-100"
-                                        }`}
-                                    title="AI Images Panel"
-                                    id="kloner-ai-image-toggle"
-                                >
-                                    <Images className="h-4 w-4" />
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setSidePanelMode("revision-chat")}
-                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full transition ${sidePanelMode === "revision-chat"
-                                            ? "bg-[#f55f2a] text-white"
-                                            : "text-neutral-600 hover:bg-neutral-100"
-                                        }`}
-                                    title="AI Panel"
-                                    id="kloner-ai-toggle"
-                                >
-                                    <Sparkles className="h-4 w-4" />
-                                </button>
-                            </div>
-
-                            {/* Mode Buttons - Separated */}
+                    {(sidePanelMode === "style" || sidePanelMode === "revision-chat") && !sidebarHidden && (
+                        <div className="fixed left-[35vw] top-4 z-50 flex items-center gap-2">
                             <div className="flex items-center gap-1 rounded-full border border-neutral-200 bg-white/90 px-2 py-1 shadow-md backdrop-blur-sm">
                                 <button
                                     type="button"
                                     onClick={() => setMode("preview")}
-                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full transition ${mode === "preview"
+                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full transition ${
+                                        mode === "preview"
                                             ? "bg-[#f55f2a] text-white"
                                             : "text-neutral-600 hover:bg-neutral-100"
-                                        }`}
+                                    }`}
                                     title="Preview Mode"
                                 >
                                     <Eye className="h-4 w-4" />
@@ -5103,10 +5245,11 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 <button
                                     type="button"
                                     onClick={() => setMode("screenshot")}
-                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full transition ${mode === "screenshot"
+                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full transition ${
+                                        mode === "screenshot"
                                             ? "bg-[#f55f2a] text-white"
                                             : "text-neutral-600 hover:bg-neutral-100"
-                                        }`}
+                                    }`}
                                     title="Screenshot Mode"
                                 >
                                     <Camera className="h-4 w-4" />
@@ -5115,42 +5258,24 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     <button
                                         type="button"
                                         onClick={() => setMode("code")}
-                                        className={`inline-flex h-8 w-8 items-center justify-center rounded-full transition ${mode === "code"
+                                        className={`inline-flex h-8 w-8 items-center justify-center rounded-full transition ${
+                                            mode === "code"
                                                 ? "bg-[#f55f2a] text-white"
                                                 : "text-neutral-600 hover:bg-neutral-100"
-                                            }`}
+                                        }`}
                                         title="Code Mode"
                                     >
                                         <Code2 className="h-4 w-4" />
                                     </button>
                                 )}
                             </div>
-
-                            {/* Deploy Button - Separate but visible */}
-                            <div className="ml-2 pl-2 border-l border-neutral-300">
-                                <button
-                                    type="button"
-                                    onClick={() => setExportPrompt(true)}
-                                    disabled={exporting}
-                                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-full font-semibold text-sm transition shadow-md ${exporting
-                                            ? "bg-accent/70 text-white cursor-not-allowed"
-                                            : "bg-[#f55f2a] text-white hover:bg-[#e54d1f] hover:shadow-lg"
-                                        }`}
-                                    title="Deploy Website"
-                                    id="kloner-deploy-toggle"
-                                >
-                                    <Rocket className="h-4 w-4" />
-                                    <span>Deploy</span>
-                                </button>
-                            </div>
                         </div>
                     )}
 
                     {/* Right / canvas */}
-                    <section className={`relative bg-slate-50 rounded-lg border flex flex-col max-lg:order-1 
-                    ${sidePanelMode === "style" || sidePanelMode === "meta" || sidePanelMode === "ai-library" || sidePanelMode === "revision-chat" ? "ml-[35vw] mt-16" : "overflow-hidden"}
-                    `
-                    }>
+                    <section className={`relative bg-slate-50 rounded-lg border flex flex-col max-lg:order-1 ${
+                        sidePanelMode === "style" || sidePanelMode === "revision-chat" ? "ml-[35vw] mt-16" : "overflow-hidden"
+                    }`}>
                         {mode === "preview" && draftId && (
                             <div
                                 className="border-t max-h-72 overflow-auto"
@@ -5162,7 +5287,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
 
                         {showSaveNudge && (
-                            <div className="mt-4 flex justify-center pointer-events-none rounded-full bg-emerald-600 text-white hover:brightness-95 shadow-lg px-4 py-2 text-sm">
+                            <div className="mt-4 flex justify-center mt-3 pointer-events-none z-[96] rounded-full bg-emerald-600 text-white hover:brightness-95 shadow-lg px-4 py-2 text-sm">
                                 This is a one-time friendly reminder to save or apply your changes as you edit, so you don’t lose them.
                             </div>
                         )}
@@ -5465,7 +5590,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                         )}
 
 
-                        {mode === "preview" && (
+                        {(mode === "preview" || (isDevCodeMode && mode === "code")) && (
                             <div
                                 ref={iframeWrapperRef}
                                 className={
@@ -5482,7 +5607,12 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                         dragListener={false}
                                         dragMomentum={false}
                                         dragElastic={0}
-                                        dragConstraints={false}
+                                        dragConstraints={{
+                                            left: -200,
+                                            right: 200,
+                                            top: -100,
+                                            bottom: 100
+                                        }}
                                         className={
                                             isPreviewFullscreen
                                                 ? "flex-1 min-h-0 flex items-stretch justify-end"
@@ -5630,11 +5760,6 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                             aiEditing={aiEditing}
                             onAiEditRequest={runAiEditFromMiniToolbar}
                         />
-                        {isDevCodeMode && mode === "code" && (
-                            <div className="flex-1 overflow-auto p-6">
-                                <pre className="whitespace-pre-wrap font-mono text-sm bg-slate-100 p-4 rounded border">{initialHtml}</pre>
-                            </div>
-                        )}
                         {mode === "screenshot" && (
                             <div className="flex-1 overflow-auto p-6">
                                 <div
@@ -5785,6 +5910,34 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                             </div>
                         </div>
 
+                        <div className="hidden lg:block mb-3" id="kloner-apply-changes">
+                            <button
+                                onClick={() => {
+                                    bumpSessionCounter("save")
+                                    doSave()
+                                }}
+                                disabled={closing || savingDraft || !dirty}
+                                aria-busy={applyingPreview}
+                                className={`rounded px-4 py-4 w-full text-xl transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${dirty
+                                    ? "bg-emerald-600 text-white hover:brightness-95 shadow-lg"
+                                    : "bg-emerald-50 text-emerald-700 pointer-events-none"
+                                    }`}
+                                title="Apply current draft to the live preview"
+                            >
+                                {applyingPreview || savingDraft ? (
+                                    <a className="flex items-center justify-center flex-inline gap-2">
+                                        <Loader2 className="h-10 w-10 animate-spin" />
+                                        Updating preview…
+                                    </a>
+                                ) : dirty ? (
+                                    "Apply changes"
+                                ) : (
+                                    "Preview is up to date"
+                                )}
+                            </button>
+
+                        </div>
+
                         {exporting && !closing && (
                             <div className="absolute inset-0 z-[95] bg-white/90/80 backdrop-blur-[2px] grid place-items-center pointer-events-auto">
                                 <div className="flex items-center gap-3 rounded border px-3 py-2 bg-white/90 text-md text-neutral-800 shadow-md">
@@ -5865,33 +6018,6 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 </div>
                             </div>
                         )}
-
-                        <div className="hidden lg:block mb-3 mx-4" id="kloner-apply-changes">
-                            <button
-                                onClick={() => {
-                                    bumpSessionCounter("save")
-                                    doSave()
-                                }}
-                                disabled={closing || savingDraft || !dirty}
-                                aria-busy={applyingPreview}
-                                className={`rounded px-4 py-4 w-full text-xl transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${dirty
-                                    ? "bg-emerald-600 text-white hover:brightness-95 shadow-lg"
-                                    : "bg-emerald-50 text-emerald-700 pointer-events-none"
-                                    }`}
-                                title="Apply current draft to the live preview"
-                            >
-                                {applyingPreview || savingDraft ? (
-                                    <a className="flex items-center justify-center flex-inline gap-2">
-                                        <Loader2 className="h-10 w-10 animate-spin" />
-                                        Updating preview…
-                                    </a>
-                                ) : dirty ? (
-                                    "Apply changes"
-                                ) : (
-                                    "Preview is up to date"
-                                )}
-                            </button>
-                        </div>
                     </section>
                 </div>
 
@@ -6012,11 +6138,11 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                         await doExport();
                                     }}
                                     disabled={exporting}
-                                    className="inline-flex items-center gap-2 rounded-full bg-accent px-4 py-2 text-white font-semibold shadow-sm hover:border-neutral-400 disabled:opacity-60 hover:shadow-md"
-                                    title="Deploy your website to Vercel"
+                                    className="inline-flex items-center gap-1.5 rounded-full bg-accent px-2.5 py-1 text-white shadow-sm hover:border-neutral-400 disabled:opacity-60"
+                                    title="Open generated layout site"
                                 >
-                                    <Rocket className="h-4 w-4" />
-                                    <span>Deploy Now</span>
+                                    <span>Deploy now</span>
+                                    <Rocket className="h-3.5 w-3.5" />
                                 </button>
                             </div>
                         </div>
