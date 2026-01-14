@@ -169,7 +169,7 @@ async function handleWebcontainerPost(body: any) {
 
       // Install dependencies
       console.error('[WebContainer POST] Installing dependencies...');
-      await runCommandCancelable('npm', ['install', '--no-optional', '--prefer-offline'], dir, appId, dir);
+      await runCommandCancelable('npm', ['install', '--omit=optional', '--prefer-offline'], dir, appId, dir);
       console.error('[WebContainer POST] Dependencies installed');
     };
 
@@ -223,6 +223,9 @@ async function handleWebcontainerPost(body: any) {
           npm_config_cache: path.join(dir, '.npm'),
           npm_config_tmp: path.join(dir, 'tmp'),
           npm_config_userconfig: path.join(dir, '.npmrc'),
+          // Prevent Next.js from downloading native SWC binaries to save space
+          NEXT_IGNORE_NATIVE_SWC: '1',
+          SWC_BINARY_PATH: '/dev/null',
         },
       });
 
@@ -410,6 +413,9 @@ async function runCommandCaptureCancelable(
         npm_config_cache: path.join(tempDir, '.npm'),
         npm_config_tmp: path.join(tempDir, 'tmp'),
         npm_config_userconfig: path.join(tempDir, '.npmrc'),
+        // Prevent Next.js from downloading native SWC binaries to save space
+        NEXT_IGNORE_NATIVE_SWC: '1',
+        SWC_BINARY_PATH: '/dev/null',
       },
     });
     let stdout = '';
