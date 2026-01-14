@@ -24,7 +24,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
   const [canRetry, setCanRetry] = useState(false);
   const [startAttempt, setStartAttempt] = useState(0);
   const [loadingStatus, setLoadingStatus] = useState('');
-  const maxRetries = 3;
+  const maxRetries = 2; // Reduced from 3 to be less aggressive
   const retryApp = () => {
     setStartAttempt(0);
     setError(null);
@@ -120,12 +120,12 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
 
         // Poll the proxy endpoint to ensure it's ready.
         // This can legitimately take a while (first compile, cold start, etc).
-        const maxAttempts = 120; // ~2-3 minutes total with backoff
+        const maxAttempts = 60; // Reduced from 120 to be less aggressive (~1-2 minutes total)
         let attempts = 0;
         let proxyReady = false;
-        let delayMs = 1000; // Start with 1s delay
+        let delayMs = 2000; // Start with 2s delay instead of 1s
         let consecutiveErrors = 0;
-        const maxConsecutiveErrors = 10;
+        const maxConsecutiveErrors = 5; // Reduced from 10 to fail faster
 
         while (attempts < maxAttempts && !proxyReady && consecutiveErrors < maxConsecutiveErrors) {
           if (startRunIdRef.current !== runId) return;
@@ -197,21 +197,21 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
               
               // If we're getting 4xx/5xx but the server is responding, reduce delay for faster retries
               if (bestStatus >= 400 && bestStatus < 600) {
-                delayMs = Math.max(500, delayMs * 0.8); // Reduce delay for server errors
+                delayMs = Math.max(1000, delayMs * 0.9); // More conservative delay reduction
                 
-                // Special handling for 500 errors - they might be transient
+                // Special handling for 500 errors - they might be transient but don't rush
                 if (bestStatus === 500) {
-                  console.log('Got 500 error - this might be a temporary server issue, retrying more aggressively');
-                  delayMs = Math.max(200, delayMs * 0.5); // Even faster for 500s
+                  console.log('Got 500 error - this might be a temporary server issue, continuing with normal pacing');
+                  // Don't reduce delay further for 500s
                 }
               }
             } else {
               consecutiveErrors++;
               console.log(`No response from proxy (consecutive errors: ${consecutiveErrors})`);
               
-              // Increase delay on consecutive connection failures
-              if (consecutiveErrors >= 3) {
-                delayMs = Math.min(3000, delayMs * 1.5);
+              // Increase delay on consecutive connection failures (more gradual)
+              if (consecutiveErrors >= 2) {
+                delayMs = Math.min(4000, delayMs * 1.2);
               }
             }
 
@@ -219,14 +219,14 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
             consecutiveErrors++;
             console.log(`Proxy check failed (consecutive errors: ${consecutiveErrors}):`, err);
             
-            // Exponential backoff on errors
-            if (consecutiveErrors >= 5) {
-              delayMs = Math.min(5000, delayMs * 2);
+            // Gradual backoff on errors (less aggressive)
+            if (consecutiveErrors >= 3) {
+              delayMs = Math.min(5000, delayMs * 1.5);
             }
           }
 
-          // Dynamic delay based on progress and errors
-          const progressDelay = Math.min(delayMs, 500 + (attempts * 50)); // Increase delay over time
+          // Simpler, more graceful delay: gradually increase from 2s to max 5s
+          const progressDelay = Math.min(5000, delayMs + (attempts * 100));
           await new Promise(resolve => setTimeout(resolve, progressDelay));
           attempts++;
         }
@@ -281,7 +281,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
         
         // Retry logic for transient failures
         if (startAttempt < maxRetries && isRetryable) {
-          const retryDelay = Math.min(5000, 1000 * Math.pow(2, startAttempt)); // Exponential backoff
+          // More graceful retry with longer delays: 3s, 8s (instead of 1s, 2s, 4s)
+          const retryDelay = startAttempt === 0 ? 3000 : 8000;
           console.log(`Retrying in ${retryDelay}ms... (attempt ${startAttempt + 1}/${maxRetries})`);
           console.log(`Error type: ${isNetworkError ? 'Network' : isServerError ? 'Server' : isTimeout ? 'Timeout' : 'Unknown'}`);
           
