@@ -50,12 +50,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     if (idToken && idToken !== lastTokenRef.current) {
                         lastTokenRef.current = idToken;
                         if (!syncingRef.current) {
-                            syncingRef.current = fetch("/api/auth/session", {
-                                method: "POST",
-                                credentials: "include",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ idToken }),
-                            }).finally(() => setTimeout(() => (syncingRef.current = null), 0));
+                            syncingRef.current = (async () => {
+                                // Establish session
+                                await fetch("/api/auth/session", {
+                                    method: "POST",
+                                    credentials: "include",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ idToken }),
+                                });
+
+                                // Also fetch CSRF token to ensure it's available
+                                try {
+                                    await fetch("/api/auth/csrf", {
+                                        method: "POST",
+                                        credentials: "include",
+                                        headers: { "Content-Type": "application/json" },
+                                    });
+                                } catch (error) {
+                                    console.warn("Failed to fetch CSRF token:", error);
+                                }
+                            })().finally(() => setTimeout(() => (syncingRef.current = null), 0));
                         }
                     }
                 } else {

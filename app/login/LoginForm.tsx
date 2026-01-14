@@ -200,18 +200,25 @@ async function fetchCsrf(): Promise<string | null> {
             credentials: "include",
             cache: "no-store",
         });
-        if (!res.ok) return null;
+        if (!res.ok) {
+            console.warn("CSRF fetch failed:", res.status, res.statusText);
+            return null;
+        }
         const data = await res.json().catch(() => null);
-        return (data && data.csrf) || null;
-    } catch {
+        if (!data || !data.csrf) {
+            console.warn("CSRF response missing token:", data);
+            return null;
+        }
+        return data.csrf;
+    } catch (error) {
+        console.warn("CSRF fetch error:", error);
         return null;
     }
 }
 
 export async function ensureSessionAndCsrf(): Promise<string | null> {
-    if (!csrfPromise) {
-        csrfPromise = fetchCsrf();
-    }
+    // Always try to fetch fresh CSRF token to avoid stale tokens
+    csrfPromise = fetchCsrf();
     return csrfPromise;
 }
 

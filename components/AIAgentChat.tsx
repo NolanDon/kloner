@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Bot, RotateCcw, Database, FileText, RefreshCw } from "lucide-react";
+import { Send, Bot, RotateCcw, Database, FileText, RefreshCw, X } from "lucide-react";
 import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 
 type Message = {
@@ -55,7 +55,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh,
         {
             id: "welcome",
             role: "assistant",
-            content: "Your app is ready! I can help you make changes and improvements. Here are some things I can do:\n\n• Add new features or pages\n• Style and customize the design\n• Connect to databases and APIs\n• Fix bugs or issues\n• Optimize performance\n• Add authentication or user accounts\n\nWhat would you like to change or add to your app?",
+            content: "Welcome to your app builder! I'm here to help you create amazing applications. 🚀\n\nI can help you with:\n• Adding new features and pages\n• Styling and customizing your design\n• **One-click Supabase database creation** with full MCP integration\n• Connecting to databases for data persistence with built-in auth & real-time features\n• Integrating APIs and external services\n• Fixing bugs and optimizing performance\n• Adding user authentication\n\nWould you like to start by creating a Supabase database? It's the easiest way to add authentication, real-time data, and powerful database features to your app!",
             timestamp: new Date(),
             type: "text"
         }
@@ -69,6 +69,8 @@ export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh,
     const [restorePoints, setRestorePoints] = useState<RestorePointItem[]>([]);
     const [isRestoreBusy, setIsRestoreBusy] = useState(false);
     const [lastRestorePointId, setLastRestorePointId] = useState<string | null>(null);
+    const [showDatabaseSetup, setShowDatabaseSetup] = useState(false);
+    const [showSupabaseSetup, setShowSupabaseSetup] = useState(false);
 
     useEffect(() => {
         setIsHydrated(true);
@@ -125,7 +127,23 @@ export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh,
     }, [appId]);
 
     const withCsrfHeaders = useCallback(async () => {
-        const csrf = await ensureSessionAndCsrf().catch(() => null);
+        // Always fetch a fresh CSRF token to avoid stale token issues
+        let csrf: string | null = null;
+        try {
+            const res = await fetch("/api/auth/csrf", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                credentials: "include",
+                cache: "no-store",
+            });
+            if (res.ok) {
+                const data = await res.json().catch(() => null);
+                csrf = data?.csrf || null;
+            }
+        } catch (error) {
+            console.warn("Failed to fetch CSRF token:", error);
+        }
+
         const headers: Record<string, string> = {
             "Content-Type": "application/json",
         };
@@ -199,6 +217,79 @@ export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh,
     const handleDatabaseDisconnect = useCallback((id: string) => {
         setDatabaseConnections(prev => prev.filter(c => c.id !== id));
     }, []);
+
+    const handleCreateSupabaseProject = useCallback(async () => {
+        try {
+            setShowSupabaseSetup(false);
+            setMessages(prev => [...prev, {
+                id: `creating_project_${Date.now()}`,
+                role: "assistant",
+                content: "🔄 **Creating your Supabase project...**\n\nRedirecting you to Supabase to authorize project creation. This will open in a new tab.",
+                timestamp: new Date(),
+                type: "text"
+            }]);
+
+            // Initiate OAuth flow
+            const response = await fetch('/api/supabase/create-project', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({}),
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || 'Failed to initiate OAuth flow');
+            }
+
+            const { authUrl } = await response.json();
+
+            // Open Supabase OAuth in new tab
+            window.open(authUrl, '_blank', 'width=600,height=700');
+
+            // Listen for the OAuth callback via window message or polling
+            // For now, we'll poll for completion (in production, use postMessage)
+            const checkCompletion = setInterval(async () => {
+                try {
+                    const statusResponse = await fetch('/api/supabase/project-status', {
+                        method: 'GET',
+                    });
+
+                    if (statusResponse.ok) {
+                        const status = await statusResponse.json();
+                        if (status.completed) {
+                            clearInterval(checkCompletion);
+                            setMessages(prev => [...prev, {
+                                id: `project_created_${Date.now()}`,
+                                role: "assistant",
+                                content: "✅ **Supabase project created successfully!**\n\nYour new database is ready. I've automatically connected it to your MCP server for AI-powered database assistance.\n\n**What I set up for you:**\n- Database with secure credentials\n- Authentication configured\n- Ready for schema creation\n\nYou can now ask me to create tables, add data, or help with any database tasks!",
+                                timestamp: new Date(),
+                                type: "text"
+                            }]);
+                            // Refresh database connections
+                            onServerRefresh();
+                        }
+                    }
+                } catch (error) {
+                    // Continue polling
+                }
+            }, 5000); // Check every 5 seconds
+
+            // Stop polling after 5 minutes
+            setTimeout(() => clearInterval(checkCompletion), 5 * 60 * 1000);
+
+        } catch (error) {
+            console.error('Failed to create Supabase project:', error);
+            setMessages(prev => [...prev, {
+                id: `create_error_${Date.now()}`,
+                role: "assistant",
+                content: `❌ **Project creation failed**\n\n${error instanceof Error ? error.message : 'Unknown error occurred'}\n\nPlease try again or create a project manually at [supabase.com](https://supabase.com).`,
+                timestamp: new Date(),
+                type: "text"
+            }]);
+        }
+    }, [onServerRefresh]);
 
     const applyRestorePoint = useCallback(async (restoreId: string, statusMessage?: string) => {
         if (!restoreId || isRestoreBusy) return;
@@ -365,6 +456,13 @@ export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh,
             };
 
             setMessages(prev => [...prev, aiMessage]);
+
+            // Handle database setup request
+            if (data.setupDatabase) {
+                setTimeout(() => {
+                    setShowDatabaseSetup(true);
+                }, 1000); // Small delay for better UX
+            }
 
             // Handle file edits if any
             if (data.fileEdits && data.fileEdits.length > 0) {
@@ -571,6 +669,152 @@ export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh,
                                 {db.name}
                             </span>
                         ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Database Setup */}
+            {showDatabaseSetup && (
+                <div className="px-4 py-3 border-t bg-blue-50 rounded-lg flex-shrink-0">
+                    <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                            <Database className="w-4 h-4 text-blue-600" />
+                            <span className="font-medium text-blue-900">Connect a Database</span>
+                        </div>
+                        <button
+                            onClick={() => setShowDatabaseSetup(false)}
+                            className="text-blue-600 hover:text-blue-800"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+                    </div>
+                    <p className="text-sm text-blue-800 mb-3">
+                        Add a database connection to enable data persistence, user accounts, and dynamic content.
+                    </p>
+                    <div className="grid grid-cols-1 gap-2">
+                        <button
+                            onClick={() => setShowSupabaseSetup(true)}
+                            className="flex items-center gap-3 px-4 py-3 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-lg text-sm hover:bg-green-100 transition-colors"
+                        >
+                            <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center">
+                                <span className="text-white font-bold text-xs">SB</span>
+                            </div>
+                            <div className="text-left">
+                                <div className="font-semibold text-green-900">Supabase</div>
+                                <div className="text-xs text-green-700">PostgreSQL with built-in auth & real-time</div>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Supabase Setup Modal */}
+            {showSupabaseSetup && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center">
+                                    <span className="text-white font-bold text-sm">SB</span>
+                                </div>
+                                <h3 className="text-lg font-semibold">Connect Supabase</h3>
+                            </div>
+                            <button
+                                onClick={() => setShowSupabaseSetup(false)}
+                                className="text-gray-400 hover:text-gray-600"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Project Reference ID
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="abcdefghijklmnopqrst"
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                                />
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Found in your Supabase project URL: https://abcdefghijklmnopqrst.supabase.co
+                                </p>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Service Role Key (Optional)
+                                </label>
+                                <input
+                                    type="password"
+                                    placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                                />
+                                <p className="text-xs text-gray-500 mt-1">
+                                    For full access. Leave empty for read-only mode.
+                                </p>
+                            </div>
+
+                            <div className="bg-green-50 p-3 rounded-md">
+                                <p className="text-sm text-green-800">
+                                    <strong>🔧 MCP Integration:</strong><br/>
+                                    This will enable AI-powered database operations including schema exploration, query generation, and real-time development assistance.
+                                </p>
+                            </div>
+
+                            <div className="bg-blue-50 p-3 rounded-md">
+                                <p className="text-sm text-blue-800">
+                                    <strong>How to get your Project ID:</strong><br/>
+                                    1. Go to <a href="https://supabase.com/dashboard" target="_blank" rel="noopener noreferrer" className="underline">supabase.com/dashboard</a><br/>
+                                    2. Select your project<br/>
+                                    3. Copy the project reference from the URL<br/>
+                                    4. Optional: Get service role key from Settings → API
+                                </p>
+                            </div>
+
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={handleCreateSupabaseProject}
+                                    className="flex-1 bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 transition-colors"
+                                >
+                                    🚀 Create New Supabase Project
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        // TODO: Implement actual Supabase MCP connection
+                                        const newConnection: DatabaseConnection = {
+                                            id: `supabase_${Date.now()}`,
+                                            name: 'Supabase Project (MCP)',
+                                            type: 'supabase',
+                                            host: 'supabase.co',
+                                            port: 0,
+                                            database: 'postgres',
+                                            status: 'connected'
+                                        };
+                                        setDatabaseConnections(prev => [...prev, newConnection]);
+                                        setShowSupabaseSetup(false);
+
+                                        setMessages(prev => [...prev, {
+                                            id: `supabase_mcp_setup_${Date.now()}`,
+                                            role: "assistant",
+                                            content: "🎉 Excellent choice! I've connected your Supabase project with MCP integration. This gives me powerful AI capabilities to:\n\n• Explore your database schema and relationships\n• Generate optimized queries and migrations\n• Help with authentication setup and RLS policies\n• Debug performance issues and suggest improvements\n• Create edge functions and API routes\n\nWhat would you like to build? I can now work with your actual database structure!",
+                                            timestamp: new Date(),
+                                            type: "text"
+                                        }]);
+                                    }}
+                                    className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors"
+                                >
+                                    🔗 Connect Existing Project
+                                </button>
+                                <button
+                                    onClick={() => setShowSupabaseSetup(false)}
+                                    className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}

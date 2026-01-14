@@ -781,6 +781,34 @@ export default function DashboardPage() {
     }, [search, router]);
 
     useEffect(() => {
+        const supabaseConnected = search.get("supabase_connected");
+        const supabaseError = search.get("supabase_error");
+        const projectCreated = search.get("project_created");
+
+        if (supabaseConnected === "true" && projectCreated === "true") {
+            setBillingMsg({
+                type: "success",
+                text: "Supabase project created successfully! Your database is ready for AI-powered development.",
+            });
+        } else if (supabaseError) {
+            setBillingMsg({
+                type: "cancelled",
+                text: `Supabase setup failed: ${decodeURIComponent(supabaseError)}`,
+            });
+        }
+
+        if (supabaseConnected || supabaseError) {
+            if (typeof window !== "undefined") {
+                const url = new URL(window.location.href);
+                url.searchParams.delete("supabase_connected");
+                url.searchParams.delete("supabase_error");
+                url.searchParams.delete("project_created");
+                router.replace(url.pathname + url.search);
+            }
+        }
+    }, [search, router]);
+
+    useEffect(() => {
         const u = user;
         if (!u) return;
         if (addOnceRef.current) return;

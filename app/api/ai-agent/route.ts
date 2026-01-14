@@ -115,6 +115,9 @@ export async function POST(req: NextRequest) {
             const conversationHistory = Array.isArray(body?.conversationHistory)
                 ? (body.conversationHistory as any[])
                 : [];
+            const databaseConnections = Array.isArray(body?.databaseConnections)
+                ? (body.databaseConnections as any[])
+                : [];
             const autoFix = body?.autoFix !== false;
             const maxIterations = typeof body?.maxIterations === "number" ? Math.min(3, Math.max(1, body.maxIterations)) : 2;
 
@@ -156,6 +159,7 @@ export async function POST(req: NextRequest) {
             let aggregatedEdits: FileEdit[] = [];
             let assistantSummary = "";
             let refreshServer = false;
+            let setupDatabase = false;
             let lastRestorePointId: string | null = null;
 
             for (let attempt = 1; attempt <= maxIterations; attempt++) {
@@ -164,14 +168,19 @@ export async function POST(req: NextRequest) {
                     ? `\n\nLast build failed. Here are the build logs (most recent):\n${lastBuild.logs}`
                     : "";
 
-                const systemPrompt = `You are an expert Next.js developer working inside an app builder.
+                const dbContext = databaseConnections.length > 0
+                    ? `\n\nConnected databases with MCP integration:\n${databaseConnections.map(db => `- ${db.name} (${db.type}): Full MCP access to database operations, schema exploration, query generation, and real-time development tools`).join('\n')}`
+                    : "\n\nNo databases connected yet. Strongly recommend Supabase with MCP integration for the best AI-assisted development experience.";
+
+                const systemPrompt = `You are an expert Next.js developer working inside an app builder. Be conversational and helpful!
 
 CRITICAL OUTPUT FORMAT:
 Return ONLY valid JSON (no markdown, no backticks) matching this TypeScript shape:
 {
   "response": string,
   "refreshServer": boolean,
-  "fileEdits": Array<{ "path": string, "content": string }>
+  "fileEdits": Array<{ "path": string, "content": string }>,
+  "setupDatabase": boolean
 }
 
 Rules:
@@ -180,9 +189,13 @@ Rules:
 - Each fileEdits entry MUST include the full, final content of the file.
 - Keep changes minimal and ensure npm run build passes.
 - If you need no file changes, return an empty fileEdits array.
+- Be conversational! If the user might benefit from database connectivity, strongly recommend Supabase with MCP integration for AI-powered database operations.
+- If no databases are connected and the user is building something that would benefit from data persistence (like a blog, e-commerce, user management, etc.), suggest connecting Supabase specifically.
+- With MCP integration, you have access to: database schema exploration, query generation, migration assistance, authentication setup, RLS policy creation, edge function development, and real-time feature implementation.
+- Set setupDatabase: true if you want to offer Supabase MCP connection setup to the user.
 
 Current app files:
-${fileContext}
+${fileContext}${dbContext}
 
 Recent conversation:
 ${recentConversation}
@@ -194,10 +207,11 @@ ${buildContext}`;
                 const result = await model.generateContent(systemPrompt);
                 const raw = result.response.text().trim();
 
-                let parsed: { response?: string; refreshServer?: boolean; fileEdits?: FileEdit[] } = {
+                let parsed: { response?: string; refreshServer?: boolean; fileEdits?: FileEdit[]; setupDatabase?: boolean } = {
                     response: "",
                     refreshServer: false,
                     fileEdits: [],
+                    setupDatabase: false,
                 };
                 try {
                     parsed = JSON.parse(raw);
@@ -226,6 +240,7 @@ ${buildContext}`;
                 }
                 
                 assistantSummary = response;
+                setupDatabase = Boolean(parsed.setupDatabase);
                 refreshServer = Boolean(parsed.refreshServer);
 
                 const appliedEdits: FileEdit[] = [];
@@ -336,6 +351,7 @@ ${buildContext}`;
                 response: assistantSummary,
                 fileEdits: aggregatedEdits,
                 refreshServer,
+                setupDatabase,
                 build: lastBuild,
                 restorePointId: lastRestorePointId,
             });
