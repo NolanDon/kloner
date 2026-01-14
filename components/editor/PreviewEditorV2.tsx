@@ -1191,6 +1191,22 @@ export default function PreviewEditorV2({
         sessionUserRef.current = user;
     }, [user]);
 
+    // Tour message listener
+    useEffect(() => {
+        const handleTourMessage = (event: MessageEvent) => {
+            if (event.data?.type === "kloner:tour-show-style-panel") {
+                setSidePanelMode("style");
+                setSidebarHidden(false);
+            } else if (event.data?.type === "kloner:tour-show-ai-panel") {
+                setSidePanelMode("revision-chat");
+                setSidebarHidden(false);
+            }
+        };
+        
+        window.addEventListener("message", handleTourMessage);
+        return () => window.removeEventListener("message", handleTourMessage);
+    }, []);
+
     // 3) Timing + flush guards
     const sessionStartRef = useRef<number | null>(null);
     const sessionFlushedRef = useRef(false);
@@ -4379,6 +4395,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                             type="button"
                             onClick={() => setExportPrompt(true)}
                             disabled={exporting}
+                            data-tour-deploy
                             className={`inline-flex h-8 items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-3 py-1 text-[13px] font-semibold text-neutral-700 shadow-md transition ${
                                 exporting
                                     ? "cursor-not-allowed opacity-60"
@@ -5860,7 +5877,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                         ) : (
                             <button
                                 type="button"
-                                id="kloner-history"
+                                id="kloner-history-button"
                                 onClick={() => setHistoryOpen(true)}
                                 className="hidden lg:flex absolute top-20 right-3 z-[70] h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white/90/95 text-neutral-600 shadow-md hover:bg-neutral-100 hover:text-neutral-800"
                                 title="Show edit history"
@@ -6049,7 +6066,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                 </div>
 
                 {!aiEditing && (
-                    <div id="kloner-quick-undo">
+                    <div id="kloner-floating-toolbar">
                         <FloatingBlockToolbar
                             iframeRef={iframeRef}
                             wrapperRef={iframeWrapperRef}

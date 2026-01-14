@@ -10,41 +10,49 @@ const steps = [
         target: "#kloner-home",
         title: "Live preview",
         content: "This is your live editable preview. Feel free to drag it around.",
+        action: "none"
     },
     {
         target: "#kloner-page-switcher",
         title: "Page switcher",
         content: "Jump between pages like Home, Pricing, and About. Generate a new page using the plus button, simply describe your page and let AI do the work.",
+        action: "none"
     },
     {
-        target: "#kloner-history",
+        target: "#kloner-history, #kloner-history-button",
         title: "History",
         content: "Made a mistake? Revert back by clicking previous versions in this history section.",
+        action: "none"
     },
     {
         target: "#kloner-style-sidebar",
-        title: "Style & AI Edit",
-        content: "Use the beautifully redesigned style panel to customize typography, colors, and layout. Switch to AI mode for intelligent content editing.",
+        title: "AI Editor",
+        content: "Use the powerful AI editor to intelligently edit content, generate new sections, and make smart content modifications with natural language prompts.",
+        action: "showAiPanel"
+    },
+    {
+        target: "#kloner-style-sidebar",
+        title: "Style Panel",
+        content: "Use the beautifully redesigned style panel to customize typography, colors, and layout. Fine-tune the visual appearance of your website.",
+        action: "showStylePanel"
     },
     {
         target: "#kloner-apply-changes",
         title: "Apply",
         content: "Apply your changes to update the live preview.",
+        action: "none"
     },
     {
         target: "#kloner-device-toggle",
         title: "Device views",
-        content: "Switch between desktop, tablet, and mobile views. Ensure your design looks great on all devices.",
+        content: "Use these tools to switch between modes, refine responsive desktop, tablet, and mobile views.",
+        action: "none"
     },
     {
-        target: "#kloner-style-toggle",
-        title: "Block styling",
-        content: "Fine-tune typography, spacing, alignment, and colors for selected blocks. The style panel is now beautifully organized with larger controls.",
-    },
-    {
-        target: "#kloner-deploy-toggle",
+        target: "[data-tour-deploy]",
         title: "Deploy your website",
         content: "When you're ready, deploy your edits to a live website. This will export your current preview and trigger a deployment.",
+        action: "none"
     },
 ];
 
@@ -55,13 +63,30 @@ const isLocalhost =
     (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
 export function PreviewEditorTour() {
-    const SKIP_LOCK = 2; // number of initial steps that cannot be skipped
     const [running, setRunning] = useState(false);
     const [index, setIndex] = useState(0);
     const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
     const { user } = useAuth();
     const db = getFirestore();
     const containerRef = useRef<HTMLDivElement | null>(null);
+
+    // Function to trigger panel actions
+    const triggerStepAction = (action: string) => {
+        if (typeof window === "undefined") return;
+        
+        switch (action) {
+            case "showStylePanel":
+                // Trigger style panel to show
+                window.postMessage({ type: "kloner:tour-show-style-panel" }, "*");
+                break;
+            case "showAiPanel":
+                // Trigger AI panel to show  
+                window.postMessage({ type: "kloner:tour-show-ai-panel" }, "*");
+                break;
+            default:
+                break;
+        }
+    };
 
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -83,6 +108,13 @@ export function PreviewEditorTour() {
 
     useEffect(() => {
         if (!running) return;
+        
+        // Trigger action for current step
+        const currentStep = steps[index];
+        if (currentStep && currentStep.action && currentStep.action !== "none") {
+            triggerStepAction(currentStep.action);
+        }
+        
         updatePosition();
 
         const onScroll = () => updatePosition();
@@ -106,7 +138,15 @@ export function PreviewEditorTour() {
         // Try to find the target in the main document first
         let foundRect: DOMRect | null = null;
 
-        const el = document.querySelector(step.target) as HTMLElement | null;
+        // Handle multiple selectors separated by comma
+        const selectors = step.target.split(',').map(s => s.trim());
+        let el: HTMLElement | null = null;
+        
+        for (const selector of selectors) {
+            el = document.querySelector(selector) as HTMLElement | null;
+            if (el) break;
+        }
+
         if (el) {
             foundRect = el.getBoundingClientRect();
         } else {
@@ -116,18 +156,21 @@ export function PreviewEditorTour() {
                 try {
                     const doc = iframe.contentDocument;
                     if (!doc) continue;
-                    const inner = doc.querySelector(step.target) as HTMLElement | null;
-                    if (!inner) continue;
-                    const innerRect = inner.getBoundingClientRect();
-                    const frameRect = iframe.getBoundingClientRect();
-                    // convert to viewport coordinates
-                    foundRect = new DOMRect(
-                        frameRect.left + innerRect.left,
-                        frameRect.top + innerRect.top,
-                        innerRect.width,
-                        innerRect.height
-                    );
-                    break;
+                    for (const selector of selectors) {
+                        const inner = doc.querySelector(selector) as HTMLElement | null;
+                        if (!inner) continue;
+                        const innerRect = inner.getBoundingClientRect();
+                        const frameRect = iframe.getBoundingClientRect();
+                        // convert to viewport coordinates
+                        foundRect = new DOMRect(
+                            frameRect.left + innerRect.left,
+                            frameRect.top + innerRect.top,
+                            innerRect.width,
+                            innerRect.height
+                        );
+                        break;
+                    }
+                    if (foundRect) break;
                 } catch (e) {
                     // cross-origin iframe — ignore
                 }
@@ -235,7 +278,12 @@ export function PreviewEditorTour() {
 
     const next = () => {
         if (index >= steps.length - 1) return finish();
-        setIndex((i) => i + 1);
+        const nextIndex = index + 1;
+        const nextStep = steps[nextIndex];
+        if (nextStep && nextStep.action && nextStep.action !== "none") {
+            triggerStepAction(nextStep.action);
+        }
+        setIndex(nextIndex);
     };
 
     const prev = () => setIndex((i) => Math.max(0, i - 1));
@@ -311,13 +359,8 @@ export function PreviewEditorTour() {
                             Back
                         </button>
                         <button
-                            onClick={() => {
-                                if (index < SKIP_LOCK) return;
-                                finish(true);
-                            }}
-                            disabled={index < SKIP_LOCK}
-                            aria-disabled={index < SKIP_LOCK}
-                            className="px-3 py-1.5 rounded-md text-sm font-semibold bg-white border border-black/10 text-black/70 pointer-events-auto disabled:opacity-40"
+                            onClick={() => finish(true)}
+                            className="px-3 py-1.5 rounded-md text-sm font-semibold bg-white border border-black/10 text-black/70 pointer-events-auto"
                         >
                             Skip
                         </button>
