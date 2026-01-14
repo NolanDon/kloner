@@ -121,6 +121,10 @@ async function handleWebcontainerPost(body: any) {
     };
 
     const writeFilesAndInstall = async (dir: string) => {
+      // Create necessary directories for npm
+      await fs.mkdir(path.join(dir, '.npm'), { recursive: true });
+      await fs.mkdir(path.join(dir, 'tmp'), { recursive: true });
+
       // Write files
       for (const [filePath, fileData] of Object.entries(files)) {
         if (cancelledApps.has(appId)) throw new Error('Cancelled');
@@ -181,7 +185,14 @@ async function handleWebcontainerPost(body: any) {
       console.error('[WebContainer POST] Starting dev server...');
       const devProcess = spawn('npm', ['run', 'dev', '--', '--port', port.toString()], {
         cwd: dir,
-        stdio: ['pipe', 'pipe', 'pipe']
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          HOME: dir,
+          npm_config_cache: path.join(dir, '.npm'),
+          npm_config_tmp: path.join(dir, 'tmp'),
+          npm_config_userconfig: path.join(dir, '.npmrc'),
+        },
       });
 
       devProcess.stdout.on('data', (data) => console.error('[Dev stdout]:', data.toString()));
@@ -318,6 +329,13 @@ async function runCommandCancelable(
       cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: true,
+      env: {
+        ...process.env,
+        HOME: tempDir,
+        npm_config_cache: path.join(tempDir, '.npm'),
+        npm_config_tmp: path.join(tempDir, 'tmp'),
+        npm_config_userconfig: path.join(tempDir, '.npmrc'),
+      },
     });
 
     setupProcesses.set(appId, { process: proc, tempDir });
@@ -351,7 +369,18 @@ async function runCommandCaptureCancelable(
   tempDir: string
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
-    const proc = spawn(command, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+    const proc = spawn(command, args, { 
+      cwd, 
+      stdio: ['ignore', 'pipe', 'pipe'], 
+      detached: true,
+      env: {
+        ...process.env,
+        HOME: tempDir,
+        npm_config_cache: path.join(tempDir, '.npm'),
+        npm_config_tmp: path.join(tempDir, 'tmp'),
+        npm_config_userconfig: path.join(tempDir, '.npmrc'),
+      },
+    });
     let stdout = '';
     let stderr = '';
 
