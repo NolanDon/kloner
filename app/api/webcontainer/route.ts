@@ -25,6 +25,17 @@ const cancelledApps = new Set<string>();
 const startLocks = new Map<string, Promise<{ url: string }>>();
 
 export async function POST(request: NextRequest) {
+  // Clean up old temp directories on startup (serverless containers can be reused)
+  try {
+    const { execSync } = require('child_process');
+    const tmpDir = os.tmpdir();
+    // Find and remove kloner-app-* directories older than 1 hour
+    execSync(`find ${tmpDir} -name 'kloner-app-*' -type d -mmin +60 -exec rm -rf {} + 2>/dev/null || true`);
+    console.error('[WebContainer POST] Cleaned up old temp directories');
+  } catch (error) {
+    // Ignore cleanup errors
+  }
+
   const internal = request.headers.get('x-kloner-internal') || '';
   const internalSecret = process.env.INTERNAL_API_SECRET || '';
   const isInternal = Boolean(internalSecret) && internal === internalSecret;
@@ -115,6 +126,26 @@ async function handleWebcontainerPost(body: any) {
     const ensureTempDir = async (): Promise<string> => {
       if (tempDir) return tempDir;
       createdTempDir = true;
+
+      // Check available disk space in /tmp before creating
+      try {
+        const { execSync } = require('child_process');
+        const dfOutput = execSync('df -k /tmp').toString();
+        const lines = dfOutput.trim().split('\n');
+        const tmpLine = lines[lines.length - 1];
+        const availableKB = parseInt(tmpLine.split(/\s+/)[3]);
+        const availableMB = availableKB / 1024;
+
+        console.error(`[WebContainer POST] Available disk space in /tmp: ${availableMB.toFixed(1)}MB`);
+
+        if (availableMB < 200) { // Require at least 200MB free
+          throw new Error(`Insufficient disk space: ${availableMB.toFixed(1)}MB available, need at least 200MB`);
+        }
+      } catch (error) {
+        console.error('[WebContainer POST] Could not check disk space:', error);
+        // Continue anyway, but log the issue
+      }
+
       tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kloner-app-'));
       console.error('[WebContainer POST] Created temp directory:', tempDir);
       return tempDir;
@@ -138,7 +169,7 @@ async function handleWebcontainerPost(body: any) {
 
       // Install dependencies
       console.error('[WebContainer POST] Installing dependencies...');
-      await runCommandCancelable('npm', ['install'], dir, appId, dir);
+      await runCommandCancelable('npm', ['install', '--no-optional', '--prefer-offline'], dir, appId, dir);
       console.error('[WebContainer POST] Dependencies installed');
     };
 
