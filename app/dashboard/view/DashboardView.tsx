@@ -6046,12 +6046,13 @@ export default function PreviewPage(): JSX.Element {
                                                                                 {/* micro testimonial row (image avatar) */}
                                                                                 <div className="my-7 flex items-start gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2">
                                                                                     <div className="mt-[1px] h-7 w-7 shrink-0 overflow-hidden rounded-full border border-neutral-200 bg-white">
-                                                                                        <img
+                                                                                        <Image
                                                                                             src="/images/testimonial-avatar.jpg"
                                                                                             alt="Customer avatar"
+                                                                                            width={28}
+                                                                                            height={28}
                                                                                             className="h-full w-full object-cover"
                                                                                             loading="lazy"
-                                                                                            decoding="async"
                                                                                         />
                                                                                     </div>
 

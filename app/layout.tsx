@@ -7,6 +7,7 @@ import ChatWidgetProvider from "@/components/support/ChatWidgetProvider";
 import AffiliateRefCapture from "@/components/AffiliateRefCapture";
 import { Suspense } from "react";
 import StyledJsxRegistry from "./registry";
+import Script from "next/script";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -74,23 +75,20 @@ export default function RootLayout({
         </StyledJsxRegistry>
 
         {/* Google Analytics */}
-        <script
-          async
+        <Script
           src="https://www.googletagmanager.com/gtag/js?id=G-FVKJJK0379"
+          strategy="afterInteractive"
         />
-
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              window.dataLayer = window.dataLayer || [];
-              function gtag(){dataLayer.push(arguments);}
-              gtag('js', new Date());
-              gtag('config', 'G-FVKJJK0379', {
-                page_path: window.location.pathname,
-              });
-            `,
-          }}
-        />
+        <Script id="google-analytics" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', 'G-FVKJJK0379', {
+              page_path: window.location.pathname,
+            });
+          `}
+        </Script>
       </body>
     </html>
   );

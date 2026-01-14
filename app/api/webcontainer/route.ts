@@ -127,6 +127,18 @@ async function handleWebcontainerPost(body: any) {
       if (tempDir) return tempDir;
       createdTempDir = true;
 
+      // Additional cleanup: remove old npm cache and temp files
+      try {
+        const { execSync } = require('child_process');
+        // Clean npm cache in temp directory if it exists
+        execSync(`find ${os.tmpdir()} -name '.npm' -type d -exec rm -rf {} + 2>/dev/null || true`);
+        // Clean any leftover kloner temp files
+        execSync(`find ${os.tmpdir()} -name 'kloner-*' -type f -mmin +30 -delete 2>/dev/null || true`);
+        console.error('[WebContainer POST] Cleaned up additional temp files');
+      } catch (error) {
+        // Ignore cleanup errors
+      }
+
       // Check available disk space in /tmp before creating
       try {
         const { execSync } = require('child_process');
@@ -138,8 +150,8 @@ async function handleWebcontainerPost(body: any) {
 
         console.error(`[WebContainer POST] Available disk space in /tmp: ${availableMB.toFixed(1)}MB`);
 
-        if (availableMB < 200) { // Require at least 200MB free
-          throw new Error(`Insufficient disk space: ${availableMB.toFixed(1)}MB available, need at least 200MB`);
+        if (availableMB < 800) { // Require at least 800MB free for npm install
+          throw new Error(`Insufficient disk space: ${availableMB.toFixed(1)}MB available, need at least 800MB`);
         }
       } catch (error) {
         console.error('[WebContainer POST] Could not check disk space:', error);
@@ -169,7 +181,7 @@ async function handleWebcontainerPost(body: any) {
 
       // Install dependencies
       console.error('[WebContainer POST] Installing dependencies...');
-      await runCommandCancelable('npm', ['install', '--omit=optional', '--prefer-offline'], dir, appId, dir);
+      await runCommandCancelable('npm', ['install', '--omit=optional', '--prefer-offline', '--no-audit', '--no-fund'], dir, appId, dir);
       console.error('[WebContainer POST] Dependencies installed');
     };
 
