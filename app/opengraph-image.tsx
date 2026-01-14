@@ -47,17 +47,17 @@ export default function Image() {
                 background: "#F55F2A",
               }}
             />
-            <div style={{ fontSize: 26, letterSpacing: -0.5, opacity: 0.9 }}>
+            <div style={{ fontSize: 26, letterSpacing: -0.5, opacity: 0.9, display: "flex" }}>
               kloner.app
             </div>
           </div>
 
-          <div style={{ fontSize: 86, fontWeight: 800, lineHeight: 1.02 }}>
+          <div style={{ fontSize: 86, fontWeight: 800, lineHeight: 1.02, display: "flex", flexDirection: "column" }}>
             Clone.
             <span style={{ color: "#F55F2A" }}> Customize.</span> Deploy.
           </div>
 
-          <div style={{ fontSize: 30, opacity: 0.9, maxWidth: 820, lineHeight: 1.35 }}>
+          <div style={{ fontSize: 30, opacity: 0.9, maxWidth: 820, lineHeight: 1.35, display: "flex" }}>
             Paste a URL to generate an editable preview, export clean HTML, and ship faster.
           </div>
 

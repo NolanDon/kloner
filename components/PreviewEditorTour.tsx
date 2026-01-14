@@ -25,7 +25,7 @@ const steps = [
         action: "none"
     },
     {
-        target: "#kloner-style-sidebar",
+        target: "#kloner-ai-sidebar",
         title: "AI Editor",
         content: "Use the powerful AI editor to intelligently edit content, generate new sections, and make smart content modifications with natural language prompts.",
         action: "showAiPanel"
@@ -38,14 +38,14 @@ const steps = [
     },
     {
         target: "#kloner-apply-changes",
-        title: "Apply",
-        content: "Apply your changes to update the live preview.",
+        title: "Save & Apply",
+        content: "Your changes auto-save as you work. Click Apply to update the live preview.",
         action: "none"
     },
     {
         target: "#kloner-device-toggle",
         title: "Device views",
-        content: "Use these tools to switch between modes, refine responsive desktop, tablet, and mobile views.",
+        content: "Use these tools to switch between modes, refine desktop, tablet, and mobile designs by swithing through various resolutions.",
         action: "none"
     },
     {
