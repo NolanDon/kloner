@@ -4396,11 +4396,16 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                             onClick={() => setExportPrompt(true)}
                             disabled={exporting}
                             data-tour-deploy
-                            className={`inline-flex h-8 items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-3 py-1 text-[13px] font-semibold text-neutral-700 shadow-md transition ${
+                            className={`inline-flex h-8 items-center gap-1.5 rounded-full border border-[#f55f2a] bg-[#f55f2a] px-3 py-1 text-[13px] font-semibold text-white shadow-md transition ${
                                 exporting
                                     ? "cursor-not-allowed opacity-60"
-                                    : "hover:bg-neutral-50 hover:text-neutral-900"
+                                    : "hover:bg-[#e54f1a] hover:shadow-lg"
                             }`}
+                            style={{
+                                boxShadow: exporting 
+                                    ? "0 4px 6px -1px rgba(0, 0, 0, 0.1)" 
+                                    : "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 0 8px rgba(245, 95, 42, 0.3)"
+                            }}
                             title="Deploy"
                             aria-label="Deploy"
                         >
@@ -4451,7 +4456,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                 >
                     <div className="flex items-center gap-2">
                         {/* Tools strip (left of device) */}
-                        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                        <div className="p-1 flex min-w-0 flex-1 items-center gap-2 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                         {/* Mode switcher */}
                         <div className="shrink-0 inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-1 shadow-md">
                             <button
@@ -5343,7 +5348,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
 
                         {showSaveNudge && (
-                            <div className="mt-4 flex justify-center mt-3 pointer-events-none z-[96] rounded-full bg-emerald-600 text-white hover:brightness-95 shadow-lg px-4 py-2 text-sm">
+                            <div className="mt-4 flex justify-center mt-3 pointer-events-none z-[96] rounded-full bg-green-600 text-white hover:bg-green-700 text-white hover:brightness-95 shadow-lg px-4 py-2 text-sm">
                                 This is a one-time friendly reminder to save or apply your changes as you edit, so you don’t lose them.
                             </div>
                         )}
@@ -5450,7 +5455,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             <button
                                                                 type="button"
                                                                 onClick={() => restorePage(p.id)}
-                                                                className="mt-1 text-[13px] font-medium text-emerald-600 hover:text-emerald-700"
+                                                                className="mt-1 text-[13px] font-medium text-green-600 hover:text-green-700"
                                                             >
                                                                 Restore
                                                             </button>
@@ -5694,7 +5699,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     <div className="flex gap-1.5">
                                                         <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
                                                         <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
-                                                        <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                                                        <span className="h-2.5 w-2.5 rounded-full bg-green-500" />
                                                     </div>
 
                                                     <div className="mx-auto h-6 max-w-xs flex-1 rounded-full bg-neutral-800/90 text-[12px] text-neutral-400 px-3 flex items-center">
@@ -5898,8 +5903,8 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     disabled={closing || savingDraft || !dirty}
                                     aria-busy={applyingPreview}
                                     className={`w-full rounded-md px-3 py-3 text-lg font-semibold transition focus:outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-60 ${dirty
-                                        ? "bg-emerald-600 text-white hover:brightness-95"
-                                        : "bg-emerald-50 text-emerald-700"
+                                        ? "bg-green-600 text-white hover:bg-green-700"
+                                        : "bg-green-50 text-green-700"
                                         }`}
                                     title="Apply current draft to the live preview"
                                     type="button"
