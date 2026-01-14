@@ -72,10 +72,10 @@ export function PreviewEditorTour() {
             return;
         }
 
-        // if (isLocalhost) {
-        //     setRunning(true);
-        //     return;
-        // }
+        if (isLocalhost) {
+            setRunning(true);
+            return;
+        }
 
         const seenLocal = window.localStorage.getItem(LOCAL_KEY) === "1";
         if (!seenLocal) setRunning(true);

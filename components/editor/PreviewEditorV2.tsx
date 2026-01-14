@@ -4373,7 +4373,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                 {/* Top right controls */}
                 {!IS_MOBILE && (
-                    <div className="absolute top-5 right-5 z-[100] flex items-center gap-2">
+                    <div className="absolute top-5 right-5 z-[102] flex items-center gap-2">
                         {/* Deploy button */}
                         <button
                             type="button"
