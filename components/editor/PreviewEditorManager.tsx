@@ -2,10 +2,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
 import { getIdTokenResult } from "firebase/auth";
 
-import PreviewEditor from "@/components/PreviewEditor";
-import AppBuilderEditor from "@/components/AppBuilderEditor";
-import PreviewEditorV2 from "./PreviewEditorV2";
+import PreviewEditor from "@/components/editor/PreviewEditor";
 import type { UserTier } from "@/src/lib/credits";
+import PreviewEditorV2 from "./PreviewEditorV2";
 
 type PreviewEditorProps = React.ComponentProps<typeof PreviewEditor>;
 
@@ -77,16 +76,7 @@ export default function PreviewEditorManager({
     };
   }, [firebaseUser, isAdminOverride]);
 
-  if (mode === "app") {
-    return (
-      <AppBuilderEditor
-        appId={editorProps.draftId || "new"}
-        onClose={editorProps.onClose}
-        onDeploy={onCreateApp ? (app) => onCreateApp("clone", undefined, app.id) : undefined}
-      />
-    );
-  }
-
+  // uncomment for testing
   if (mode === "website" && isAdmin) {
     return (
       <PreviewEditorV2
@@ -96,5 +86,5 @@ export default function PreviewEditorManager({
     );
   }
 
-  return <PreviewEditor {...editorProps} />;
+  return <PreviewEditorV2 {...editorProps} />;
 }

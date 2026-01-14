@@ -1,12 +1,41 @@
 // src/lib/installKlonerIframeApi.ts
 
-import { Device } from "@/components/PreviewEditor";
+import { Device } from "@/components/editor/PreviewEditor";
 
 export function installKlonerIframeApi(
     doc: Document,
     onChange: (updatedHtml: string) => void,
     initialDevice: Device = "desktop"
 ) {
+    function applyCoepSafeImageAttrs() {
+        // Dashboard routes run with COEP=require-corp for WebContainer.
+        // Cross-origin <img> requests (e.g. Firebase Storage) must be CORS-enabled,
+        // otherwise the browser blocks them with:
+        // ERR_BLOCKED_BY_RESPONSE.NotSameOriginAfterDefaultedToSameOriginByCoep
+        const imgs = Array.from(doc.querySelectorAll<HTMLImageElement>("img[src]"));
+        for (const img of imgs) {
+            const src = img.getAttribute("src") || "";
+            const isFirebaseStorage =
+                /^https?:\/\/firebasestorage\.googleapis\.com\//i.test(src) ||
+                /^https?:\/\/storage\.googleapis\.com\//i.test(src);
+            if (!isFirebaseStorage) continue;
+
+            const prev = img.getAttribute("crossorigin");
+            if (prev !== "anonymous") {
+                img.setAttribute("crossorigin", "anonymous");
+                img.setAttribute("referrerpolicy", "no-referrer");
+
+                // Force a refetch using CORS mode.
+                try {
+                    const cur = img.src;
+                    img.src = cur;
+                } catch {
+                    // ignore
+                }
+            }
+        }
+    }
+
     // Remove old editor artifacts
     doc.querySelectorAll("[data-kloner-style]").forEach((n) => n.remove());
     doc.querySelectorAll("[data-kloner-sel]").forEach((n) =>
@@ -15,6 +44,8 @@ export function installKlonerIframeApi(
     doc.querySelectorAll("[contenteditable]").forEach((n) =>
         (n as HTMLElement).removeAttribute("contenteditable")
     );
+
+    applyCoepSafeImageAttrs();
 
     const style = doc.createElement("style");
     style.setAttribute("data-kloner-style", "1");
@@ -785,6 +816,15 @@ export function installKlonerIframeApi(
         const img = doc.createElement("img");
         img.src = src;
         img.alt = "";
+
+        // CORS-enable Firebase Storage images for COEP contexts.
+        if (
+            /^https?:\/\/firebasestorage\.googleapis\.com\//i.test(src) ||
+            /^https?:\/\/storage\.googleapis\.com\//i.test(src)
+        ) {
+            img.crossOrigin = "anonymous";
+            img.referrerPolicy = "no-referrer";
+        }
 
         // Tag it with the storage path so delete-assets works
         if (storagePath) {

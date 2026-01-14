@@ -4,58 +4,83 @@
 import { useEffect, useRef, useState } from 'react';
 import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 
+// React 18 StrictMode in dev intentionally mounts/unmounts twice.
+// If we eagerly stop the local runner on unmount, we create a start/stop/start loop.
+// This small scheduler avoids killing the process when a remount happens immediately.
+const pendingCleanupTimers = new Map<string, number>();
+
 interface WebContainerRunnerProps {
   appId: string;
   files: { [path: string]: { content: string; lastModified: number } };
   onFileChange?: (path: string, content: string) => void;
   reloadToken?: number;
+  restartToken?: number;
 }
 
-export default function WebContainerRunner({ appId, files, onFileChange, reloadToken }: WebContainerRunnerProps) {
+export default function WebContainerRunner({ appId, files, onFileChange, reloadToken, restartToken }: WebContainerRunnerProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [startAttempt, setStartAttempt] = useState(0);
-  const hasStartedRef = useRef(false);
   const maxRetries = 3;
   const proxyBaseRef = useRef<string | null>(null);
   const lastReloadTokenRef = useRef<number | null>(null);
+  const lastRestartTokenRef = useRef<number | null>(null);
+  const filesRef = useRef(files);
+  const startRunIdRef = useRef(0);
+  const effectStartedAtRef = useRef<number>(0);
 
   useEffect(() => {
-    if (hasStartedRef.current) return;
-    hasStartedRef.current = true;
+    filesRef.current = files;
+  }, [files]);
+
+  useEffect(() => {
+    // Cancel any pending cleanup for this appId (e.g. StrictMode remount).
+    const pending = pendingCleanupTimers.get(appId);
+    if (typeof pending === 'number') {
+      clearTimeout(pending);
+      pendingCleanupTimers.delete(appId);
+    }
+
+    const runId = ++startRunIdRef.current;
+    effectStartedAtRef.current = Date.now();
 
     const startApp = async () => {
       try {
         setIsLoading(true);
         setError(null);
+        setPreviewUrl(null);
 
         console.log('Starting app with ID:', appId);
-        console.log('Files:', Object.keys(files));
+        console.log('Files:', Object.keys(filesRef.current));
 
-        // First check if the app exists and is ready
         const proxyUrl = `/api/webcontainer/${appId}/proxy/`;
         proxyBaseRef.current = proxyUrl;
-        try {
-          // Check if the app is registered (not just if proxy responds)
-          const statusResponse = await fetch(`/api/webcontainer/${appId}`, { method: 'HEAD' });
-          if (statusResponse.ok) {
-            console.log('App exists, checking if proxy is ready');
-            // App exists, now check if proxy is ready
-            const checkResponse = await fetch(proxyUrl, { method: 'HEAD' });
-            if (checkResponse.ok) {
-              console.log('App is running and proxy is ready, using existing instance');
-              setPreviewUrl(proxyUrl);
-              setIsLoading(false);
-              return;
-            } else {
-              console.log('App exists but proxy not ready yet, will start polling');
-            }
-          } else {
-            console.log('App does not exist, will create new instance');
+
+        // If restartToken changed, force a hard restart (stop server + start again).
+        const shouldRestart =
+          typeof restartToken === 'number' &&
+          lastRestartTokenRef.current !== null &&
+          lastRestartTokenRef.current !== restartToken;
+
+        if (shouldRestart) {
+          try {
+            const csrf = await ensureSessionAndCsrf().catch(() => null);
+            await fetch('/api/webcontainer', {
+              method: 'DELETE',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(csrf ? { 'x-csrf': csrf } : {}),
+              },
+              body: JSON.stringify({ appId }),
+            });
+          } catch (e) {
+            console.log('Restart cleanup failed (continuing):', e);
           }
-        } catch (err) {
-          console.log('App status check failed, assuming app needs to be created:', err);
+        }
+
+        if (typeof restartToken === 'number') {
+          lastRestartTokenRef.current = restartToken;
         }
 
         const csrf = await ensureSessionAndCsrf().catch(() => null);
@@ -65,7 +90,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
             'Content-Type': 'application/json',
             ...(csrf ? { 'x-csrf': csrf } : {}),
           },
-          body: JSON.stringify({ appId, files }),
+          body: JSON.stringify({ appId, files: filesRef.current }),
         });
 
         if (!response.ok) {
@@ -84,6 +109,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
         let delayMs = 500;
 
         while (attempts < maxAttempts && !proxyReady) {
+          if (startRunIdRef.current !== runId) return;
           try {
             console.log(`Checking if proxy is ready (attempt ${attempts + 1}/${maxAttempts})...`);
             const proxyCheck = await fetch(proxyUrl, { 
@@ -127,11 +153,9 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
         // Retry logic for transient failures
         if (startAttempt < maxRetries && errorMessage.includes('Failed to start app')) {
           console.log(`Retrying... (attempt ${startAttempt + 1}/${maxRetries})`);
-          hasStartedRef.current = false;
           setStartAttempt(prev => prev + 1);
           setTimeout(() => {
             const retry = async () => {
-              hasStartedRef.current = false;
               await startApp();
             };
             retry();
@@ -142,24 +166,46 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
       }
     };
 
-    startApp();
+    // Defer the start slightly so React 18 StrictMode's mount->unmount->mount
+    // cycle in development doesn't trigger two overlapping starts.
+    const startTimer = window.setTimeout(() => {
+      if (startRunIdRef.current !== runId) return;
+      startApp();
+    }, 0);
 
     return () => {
-      // Cleanup on unmount
-      ensureSessionAndCsrf()
-        .catch(() => null)
-        .then((csrf) =>
-          fetch('/api/webcontainer', {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(csrf ? { 'x-csrf': csrf } : {}),
-        },
-        body: JSON.stringify({ appId }),
-          }).catch(console.error)
-        );
+      clearTimeout(startTimer);
+
+      // Abort any in-flight start/poll loop.
+      startRunIdRef.current = runId + 1;
+
+      // Cleanup on unmount.
+      // If unmounted almost immediately, this is likely React StrictMode; defer cleanup.
+      // Otherwise, stop immediately so installs/builds don't keep running after navigation.
+      const elapsedMs = Math.max(0, Date.now() - (effectStartedAtRef.current || 0));
+      const delayMs = elapsedMs < 600 ? 1500 : 0;
+
+      const cleanup = () => {
+        pendingCleanupTimers.delete(appId);
+        ensureSessionAndCsrf()
+          .catch(() => null)
+          .then((csrf) =>
+            fetch('/api/webcontainer', {
+              method: 'DELETE',
+              keepalive: true,
+              headers: {
+                'Content-Type': 'application/json',
+                ...(typeof csrf === 'string' && csrf ? { 'x-csrf': csrf } : {}),
+              },
+              body: JSON.stringify({ appId }),
+            }).catch(console.error)
+          );
+      };
+
+      const timer = window.setTimeout(cleanup, delayMs);
+      pendingCleanupTimers.set(appId, timer);
     };
-  }, [appId, files, startAttempt]);
+  }, [appId, startAttempt, restartToken]);
 
   // Reload the iframe without tearing down the underlying server/process.
   useEffect(() => {

@@ -1,13 +1,17 @@
 // src/components/AppBuilderEditor.tsx
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import Editor from "@monaco-editor/react";
 import { Folder, File, Play, Upload, X, RefreshCw, MessageSquare, Code, Edit3, Check, RotateCcw } from "lucide-react";
-import WebContainerRunner from "./WebContainerRunner";
 import AIAgentChat from "./AIAgentChat";
 import KlonerLoader from "./KlonerLoader";
+import WebContainerRunner from "./WebContainerRunner";
 import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
+import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
+
+const VERCEL_INTEGRATION_SLUG =
+    process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
 
 type FileNode = {
     name: string;
@@ -22,7 +26,53 @@ type AppData = {
     files: { [path: string]: { content: string; lastModified: number } };
     vercelProjectId?: string;
     previewUrl?: string;
+    vercelProtectionBypassSecret?: string | null;
 };
+
+type AutoPreviewPhase =
+    | "idle"
+    | "checking"
+    | "connecting"
+    | "building"
+    | "enabling-bypass"
+    | "loading"
+    | "ready"
+    | "error";
+
+type CodedError = Error & { code?: string };
+
+type PreviewMode = "vercel" | "webcontainer";
+
+function csrfHeaders(csrf: unknown): HeadersInit | undefined {
+    if (typeof csrf === "string" && csrf.trim()) {
+        return { "x-csrf": csrf };
+    }
+    return undefined;
+}
+
+function addCacheBust(url: string, token: string | number): string {
+    try {
+        const u = new URL(url);
+        u.searchParams.set("t", String(token));
+        return u.toString();
+    } catch {
+        const suffix = url.includes("?") ? "&" : "?";
+        return `${url}${suffix}t=${encodeURIComponent(String(token))}`;
+    }
+}
+
+function addVercelProtectionBypass(url: string, secret: string | null | undefined): string {
+    const s = (secret || "").trim();
+    if (!s) return url;
+    try {
+        const u = new URL(url);
+        u.searchParams.set("x-vercel-protection-bypass", s);
+        return u.toString();
+    } catch {
+        const suffix = url.includes("?") ? "&" : "?";
+        return `${url}${suffix}x-vercel-protection-bypass=${encodeURIComponent(s)}`;
+    }
+}
 
 function FileTree({ nodes, onFileSelect, prefix = "" }: {
     nodes: FileNode[];
@@ -68,15 +118,292 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     const [fileTree, setFileTree] = useState<FileNode[]>([]);
     const [code, setCode] = useState<string>("");
     const [refreshKey, setRefreshKey] = useState(0);
+    const [localRestartKey, setLocalRestartKey] = useState(0);
     const [viewMode, setViewMode] = useState<"ai" | "code">("ai"); // Default to AI chat
     const [isRenaming, setIsRenaming] = useState(false);
     const [tempName, setTempName] = useState("");
     const [isSaving, setIsSaving] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isDeploying, setIsDeploying] = useState(false);
+    const [isPreviewBuilding, setIsPreviewBuilding] = useState(false);
+    const [previewError, setPreviewError] = useState<string | null>(null);
+    const [protectedPreviewUrl, setProtectedPreviewUrl] = useState<string | null>(null);
+    const [vercelSecuritySettingsUrl, setVercelSecuritySettingsUrl] = useState<string | null>(null);
+    const [vercelDeploymentProtectionSettingsUrl, setVercelDeploymentProtectionSettingsUrl] = useState<string | null>(null);
+    const [vercelProtectionBypassDraft, setVercelProtectionBypassDraft] = useState<string>("");
+    const [savingVercelProtectionBypass, setSavingVercelProtectionBypass] = useState(false);
+    const [enablingVercelProtectionBypass, setEnablingVercelProtectionBypass] = useState(false);
+    const [autoPreviewPhase, setAutoPreviewPhase] = useState<AutoPreviewPhase>("idle");
+    const [autoPreviewError, setAutoPreviewError] = useState<string | null>(null);
+    const [autoPreviewAttempt, setAutoPreviewAttempt] = useState<number>(0);
+    const [autoPreviewBypassUnsupported, setAutoPreviewBypassUnsupported] = useState(false);
+    const [previewMode, setPreviewMode] = useState<PreviewMode>("webcontainer");
+    const [vercelConnectOpen, setVercelConnectOpen] = useState(false);
+    const [vercelConnectOpening, setVercelConnectOpening] = useState(false);
+    const [deployChoiceOpen, setDeployChoiceOpen] = useState(false);
+    const [deployChoiceBusy, setDeployChoiceBusy] = useState<"preview" | "live" | null>(null);
+    const [deployChoiceError, setDeployChoiceError] = useState<string | null>(null);
+    const [lastDeployPreviewUrl, setLastDeployPreviewUrl] = useState<string | null>(null);
+    const [lastDeployLiveUrl, setLastDeployLiveUrl] = useState<string | null>(null);
     const [leftPanelWidth, setLeftPanelWidth] = useState(500); // Default wider AI chat panel
     const [isResizing, setIsResizing] = useState(false);
     const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+    const { status: vercelStatus, checking: vercelChecking, refresh: refreshVercelStatus } =
+        useVercelIntegration();
+
+    const isVercelConnected = vercelStatus === "connected";
+    const isVercelChecking = vercelStatus === "loading" || vercelChecking;
+
+    const appRef = useRef<AppData | null>(null);
+    useEffect(() => {
+        appRef.current = app;
+    }, [app]);
+
+    const autoPreviewRunIdRef = useRef(0);
+    const didAutoPreviewStartRef = useRef(false);
+
+    const previewSrc = useMemo(() => {
+        const base = (app?.previewUrl || "").trim();
+        if (!base) return "";
+        const withBypass = addVercelProtectionBypass(base, app?.vercelProtectionBypassSecret || null);
+        return addCacheBust(withBypass, refreshKey);
+    }, [app?.previewUrl, app?.vercelProtectionBypassSecret, refreshKey]);
+
+    function isLikelyNetworkError(err: unknown): boolean {
+        if (!err || typeof err !== "object") return false;
+        const message = String((err as any).message || "").toLowerCase();
+        // Fetch throws TypeError on network/CORS issues.
+        return (
+            err instanceof TypeError ||
+            message.includes("network") ||
+            message.includes("failed to fetch") ||
+            message.includes("load failed") ||
+            message.includes("fetch")
+        );
+    }
+
+    function sleep(ms: number): Promise<void> {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    useEffect(() => {
+        // Keep the draft in sync when app data loads.
+        const next = (app?.vercelProtectionBypassSecret || "").toString();
+        setVercelProtectionBypassDraft(next);
+    }, [app?.vercelProtectionBypassSecret]);
+
+    const saveVercelProtectionBypass = useCallback(async () => {
+        if (!appId) return;
+        if (savingVercelProtectionBypass) return;
+
+        setSavingVercelProtectionBypass(true);
+        try {
+            const csrf = await ensureSessionAndCsrf().catch(() => null);
+            const res = await fetch(`/api/app-builder/${appId}/settings`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
+                },
+                credentials: "include",
+                body: JSON.stringify({
+                    vercelProtectionBypassSecret: vercelProtectionBypassDraft.trim() || null,
+                }),
+            });
+
+            const data = await res.json().catch(() => ({} as any));
+            if (!res.ok || !data?.ok) {
+                throw new Error((data as any)?.error || `Failed to save (HTTP ${res.status})`);
+            }
+
+            const saved = (data?.vercelProtectionBypassSecret || "").toString();
+            setApp((prev) => (prev ? { ...prev, vercelProtectionBypassSecret: saved || null } : prev));
+
+            // Immediately retry embedding if we have a URL.
+            const url = (protectedPreviewUrl || "").trim();
+            if (url) {
+                setPreviewError(null);
+                setApp((prev) => (prev ? { ...prev, previewUrl: url } : prev));
+                setRefreshKey((k) => k + 1);
+            }
+        } catch (err: any) {
+            console.error("Failed to save Vercel protection bypass", err);
+            setPreviewError(err?.message || "Failed to save protection bypass secret.");
+        } finally {
+            setSavingVercelProtectionBypass(false);
+        }
+    }, [appId, savingVercelProtectionBypass, vercelProtectionBypassDraft, protectedPreviewUrl]);
+
+    const enableVercelProtectionBypassAutomatically = useCallback(async (): Promise<string> => {
+        if (!appId) throw new Error("Missing appId");
+        if (enablingVercelProtectionBypass) throw new Error("Bypass is already being enabled");
+
+        setEnablingVercelProtectionBypass(true);
+        try {
+            const csrf = await ensureSessionAndCsrf().catch(() => null);
+            const res = await fetch(`/api/app-builder/${appId}/vercel/protection-bypass`, {
+                method: "POST",
+                headers: csrfHeaders(csrf),
+                credentials: "include",
+            });
+
+            const data = await res.json().catch(() => ({} as any));
+            if (!res.ok || !data?.ok) {
+                const code = (data as any)?.code;
+                const message = (data as any)?.error || `Failed to enable bypass (HTTP ${res.status})`;
+                if (code === "vercel_bypass_not_supported") {
+                    setAutoPreviewBypassUnsupported(true);
+                }
+                const err = new Error(message) as CodedError;
+                err.code = code;
+                throw err;
+            }
+
+            const secret = (data?.vercelProtectionBypassSecret || "").toString().trim();
+            if (!secret) {
+                throw new Error("Bypass enabled but no secret was returned.");
+            }
+
+            setVercelProtectionBypassDraft(secret);
+            setApp((prev) => (prev ? { ...prev, vercelProtectionBypassSecret: secret } : prev));
+            return secret;
+        } finally {
+            setEnablingVercelProtectionBypass(false);
+        }
+    }, [appId, enablingVercelProtectionBypass]);
+
+    const runAutoPreviewSequence = useCallback(
+        async (opts?: { force?: boolean }) => {
+            if (!appId) return;
+
+            const runId = ++autoPreviewRunIdRef.current;
+            const maxAttempts = 4;
+
+            setAutoPreviewError(null);
+            setAutoPreviewAttempt(0);
+            setAutoPreviewBypassUnsupported(false);
+            setPreviewMode("webcontainer");
+
+            // If a preview URL exists already and we're not forcing a rebuild, just try to load it.
+            if (!opts?.force) {
+                const existing = (appRef.current?.previewUrl || "").trim();
+                if (existing) {
+                    setAutoPreviewPhase("loading");
+                    setRefreshKey((k) => k + 1);
+                    setAutoPreviewPhase("ready");
+                    return;
+                }
+            }
+
+            setAutoPreviewPhase("checking");
+
+            // NOTE: embedded preview now always uses the local runner. Vercel preview deploys are handled via Deploy.
+            setAutoPreviewPhase("ready");
+            return;
+
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                if (autoPreviewRunIdRef.current !== runId) return;
+                setAutoPreviewAttempt(attempt);
+                setAutoPreviewPhase("building");
+                setPreviewError(null);
+                setProtectedPreviewUrl(null);
+                setVercelSecuritySettingsUrl(null);
+                setVercelDeploymentProtectionSettingsUrl(null);
+
+                try {
+                    const csrf = await ensureSessionAndCsrf().catch(() => null);
+                    const res = await fetch(`/api/app-builder/${appId}/preview`, {
+                        method: "POST",
+                        headers: csrfHeaders(csrf),
+                        credentials: "include",
+                    });
+
+                    const data = await res.json().catch(() => ({} as any));
+
+                    if (!res.ok || !data?.ok) {
+                        const code = (data as any)?.code;
+
+                        if (code === "vercel_not_connected") {
+                            setAutoPreviewPhase("connecting");
+                            setVercelConnectOpen(true);
+                            return;
+                        }
+
+                        if (code === "vercel_deployment_protected") {
+                            const url = (data?.url || data?.previewUrl || data?.deploymentUrl || "").toString();
+                            if (url) setProtectedPreviewUrl(url);
+
+                            const deploymentProtectionUrl = (data?.vercelDeploymentProtectionSettingsUrl || "").toString();
+                            if (deploymentProtectionUrl) setVercelDeploymentProtectionSettingsUrl(deploymentProtectionUrl);
+                            const securityUrl = (data?.vercelSecuritySettingsUrl || "").toString();
+                            if (securityUrl) setVercelSecuritySettingsUrl(securityUrl);
+
+                            // Seamless path: if we don't have a bypass secret yet, create/store one and retry embedding.
+                            const existingSecret = (appRef.current?.vercelProtectionBypassSecret || "").toString().trim();
+                            if (!existingSecret) {
+                                setAutoPreviewPhase("enabling-bypass");
+                                try {
+                                    await enableVercelProtectionBypassAutomatically();
+                                } catch (e: any) {
+                                    const coded = e as CodedError;
+                                    if (coded?.code === "vercel_bypass_not_supported") {
+                                        setAutoPreviewError(
+                                            "Vercel is blocking iframe embedding for this protected preview. Showing an embedded local preview instead.",
+                                        );
+                                        setPreviewMode("webcontainer");
+                                        setAutoPreviewPhase("error");
+                                        return;
+                                    }
+                                    throw e;
+                                }
+                            }
+
+                            // Try embedding immediately using the returned deployment URL.
+                            if (url) {
+                                setAutoPreviewPhase("loading");
+                                setPreviewError(null);
+                                setApp((prev) => (prev ? { ...prev, previewUrl: url } : prev));
+                                setRefreshKey((k) => k + 1);
+                                setAutoPreviewPhase("ready");
+                                return;
+                            }
+
+                            throw new Error((data as any)?.error || "Preview deployment is protected.");
+                        }
+
+                        throw new Error((data as any)?.error || `Preview failed (HTTP ${res.status})`);
+                    }
+
+                    const nextPreviewUrl = (data?.previewUrl || data?.url || "").toString();
+                    if (!nextPreviewUrl) {
+                        throw new Error("Preview succeeded but no URL was returned.");
+                    }
+
+                    setAutoPreviewPhase("loading");
+                    setApp((prev) => (prev ? { ...prev, previewUrl: nextPreviewUrl } : prev));
+                    setRefreshKey((k) => k + 1);
+                    setAutoPreviewPhase("ready");
+                    return;
+                } catch (err: any) {
+                    if (autoPreviewRunIdRef.current !== runId) return;
+
+                    const msg = err?.message || "Failed to build preview.";
+                    setAutoPreviewError(msg);
+                    setAutoPreviewPhase("error");
+
+                    // Retry automatically on likely transient network failures.
+                    if (isLikelyNetworkError(err) && attempt < maxAttempts) {
+                        const backoff = 800 * Math.min(6, attempt);
+                        await sleep(backoff);
+                        continue;
+                    }
+                    return;
+                }
+            }
+        },
+        [appId, isVercelConnected, enableVercelProtectionBypassAutomatically],
+    );
 
     // Load app data
     useEffect(() => {
@@ -252,7 +579,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    ...(csrf ? { "x-csrf": csrf } : {}),
+                    ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
                 },
                 body: JSON.stringify({ path, content }),
             });
@@ -272,7 +599,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    ...(csrf ? { "x-csrf": csrf } : {}),
+                    ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
                 },
                 body: JSON.stringify({ path: currentFile, content: code }),
             });
@@ -292,49 +619,181 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
         }
     };
 
-    const handleDeploy = async () => {
+    const handleDeploy = () => {
         if (!app || isDeploying) return;
 
+        // Preserve existing behavior when a parent provides an alternate deploy flow.
+        if (onDeploy) {
+            onDeploy({ id: app.id, name: app.name });
+            return;
+        }
+
+        setDeployChoiceError(null);
+        setDeployChoiceOpen(true);
+    };
+
+    const runVercelDeploy = useCallback(async (target: "preview" | "live") => {
+        if (!appId) return;
+        if (deployChoiceBusy) return;
+
         setIsDeploying(true);
+        setDeployChoiceBusy(target);
+        setDeployChoiceError(null);
+
         try {
-            if (onDeploy) {
-                // Use the deployment wizard
-                onDeploy({ id: app.id, name: app.name });
-            } else {
-                // Fallback to direct API call
-                const csrf = await ensureSessionAndCsrf().catch(() => null);
-                const res = await fetch(`/api/app-builder/${appId}/deploy`, {
-                    method: "POST",
-                    headers: {
-                        ...(csrf ? { "x-csrf": csrf } : {}),
-                    },
-                });
-                if (!res.ok) throw new Error("Failed to deploy");
-                const data = await res.json();
-                const nextPreviewUrl = (data?.previewUrl || data?.url || null) as string | null;
-                setApp((prev) => prev ? { ...prev, previewUrl: nextPreviewUrl || prev.previewUrl } : null);
+            // Ensure Vercel is connected before attempting either deploy.
+            if (!isVercelConnected) {
+                setVercelConnectOpen(true);
+                throw new Error("Vercel is not connected yet.");
             }
-        } catch (err) {
-            if (err instanceof TypeError && String(err.message || "").toLowerCase().includes("fetch")) {
-                console.error(
-                    "Deploy failed (network). If you see ERR_CONNECTION_REFUSED, your Next dev server likely restarted/crashed or you're calling the wrong origin.",
-                    err
-                );
-            } else {
-                console.error("Deploy failed", err);
+
+            const csrf = await ensureSessionAndCsrf().catch(() => null);
+            const endpoint = target === "live" ? "deploy" : "preview";
+            const res = await fetch(`/api/app-builder/${appId}/${endpoint}`, {
+                method: "POST",
+                headers: csrfHeaders(csrf),
+                credentials: "include",
+            });
+
+            const data = await res.json().catch(() => ({} as any));
+            if (!res.ok || !data?.ok) {
+                const msg = (data as any)?.error || `Deploy failed (HTTP ${res.status})`;
+                throw new Error(msg);
             }
+
+            const url = (data?.url || data?.previewUrl || "").toString().trim();
+            if (!url) throw new Error("Deploy completed but no URL was returned.");
+
+            if (target === "live") setLastDeployLiveUrl(url);
+            else setLastDeployPreviewUrl(url);
+
+            // Keep a copy in app state for convenience (even though embedded preview is local now).
+            if (target === "preview") {
+                setApp((prev) => (prev ? { ...prev, previewUrl: url } : prev));
+            }
+
+            return;
+        } catch (err: any) {
+            setDeployChoiceError(err?.message || "Deploy failed.");
         } finally {
+            setDeployChoiceBusy(null);
             // Keep deploy disabled for longer to prevent spam
             setTimeout(() => setIsDeploying(false), 5000);
         }
-    };
+    }, [appId, deployChoiceBusy, isVercelConnected]);
+
+    const startVercelOAuthForPreview = useCallback(() => {
+        if (!VERCEL_INTEGRATION_SLUG) {
+            console.error("Missing NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG");
+            setPreviewError("Vercel integration is not configured.");
+            return;
+        }
+
+        try {
+            setVercelConnectOpening(true);
+            const bytes = new Uint8Array(16);
+            crypto.getRandomValues(bytes);
+            const state = Array.from(bytes)
+                .map((b) => b.toString(16).padStart(2, "0"))
+                .join("");
+
+            // Persist what we were trying to do so the dashboard can restore state after redirect.
+            localStorage.setItem(
+                "kloner_vercel_pending_app_preview",
+                JSON.stringify({ appId }),
+            );
+
+            localStorage.setItem("kloner_vercel_latest_csrf", state);
+
+            document.cookie = [
+                `vercel_oauth_state=${state}`,
+                "Path=/",
+                "Max-Age=600",
+                "SameSite=Lax",
+            ].join("; ");
+
+            const returnTo = `/dashboard/view?vercel=connected`;
+            document.cookie = [
+                `vercel_oauth_return=${encodeURIComponent(returnTo)}`,
+                "Path=/",
+                "Max-Age=600",
+                "SameSite=Lax",
+            ].join("; ");
+
+            const link = `https://vercel.com/integrations/${VERCEL_INTEGRATION_SLUG}/new?state=${state}`;
+            window.location.assign(link);
+        } catch (e) {
+            console.error("Failed to start Vercel OAuth", e);
+            setPreviewError("Could not open Vercel. Try again in a moment.");
+            setVercelConnectOpening(false);
+        }
+    }, [appId]);
+
+    const rebuildLocalPreview = useCallback(async () => {
+        if (isPreviewBuilding) return;
+        setIsPreviewBuilding(true);
+        try {
+            setPreviewMode("webcontainer");
+            setLocalRestartKey((k) => k + 1);
+            setRefreshKey((k) => k + 1);
+        } finally {
+            setIsPreviewBuilding(false);
+        }
+    }, [isPreviewBuilding]);
+
+    const tryEmbedExistingPreview = useCallback(() => {
+        const url = (protectedPreviewUrl || "").trim();
+        if (!url) return;
+        setPreviewError(null);
+        setApp((prev) => (prev ? { ...prev, previewUrl: url } : prev));
+        setRefreshKey((k) => k + 1);
+    }, [protectedPreviewUrl]);
+
+    // If we just came back from Vercel OAuth, auto-resume the action.
+    useEffect(() => {
+        if (!isVercelConnected) return;
+        if (!appId) return;
+
+        let pending: any = null;
+        try {
+            const raw = localStorage.getItem("kloner_vercel_pending_app_preview");
+            if (raw) pending = JSON.parse(raw);
+        } catch {
+            pending = null;
+        }
+
+        if (!pending || pending.appId !== appId) return;
+
+        try {
+            localStorage.removeItem("kloner_vercel_pending_app_preview");
+        } catch {
+            // ignore
+        }
+
+        // No-op for embedded preview; deploy actions will work after connect.
+    }, [isVercelConnected, appId]);
+
+    // On editor open: automatically build and show the preview (with retries + automatic bypass).
+    useEffect(() => {
+        if (!appId) return;
+        if (loading) return;
+        if (isVercelChecking) return;
+        if (didAutoPreviewStartRef.current) return;
+
+        didAutoPreviewStartRef.current = true;
+
+        // Always use embedded local preview.
+        setPreviewMode("webcontainer");
+        // Kick the runner once to ensure it starts.
+        setRefreshKey((k) => k + 1);
+    }, [appId, loading, isVercelChecking]);
 
     const handleRefresh = () => {
         if (isRefreshing) return;
         setIsRefreshing(true);
-        setRefreshKey(prev => prev + 1);
-        // Reset loading state after a short delay
-        setTimeout(() => setIsRefreshing(false), 1000);
+        void rebuildLocalPreview().finally(() => {
+            setTimeout(() => setIsRefreshing(false), 500);
+        });
     };
 
     const handleRename = async () => {
@@ -346,7 +805,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    ...(csrf ? { "x-csrf": csrf } : {}),
+                    ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
                 },
                 body: JSON.stringify({ name: tempName.trim() }),
             });
@@ -427,9 +886,6 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                 >
                                     {app?.name || "Untitled Project"}
                                 </h1>
-                                <div className="absolute -right-6 top-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <Edit3 className="w-4 h-4 text-gray-400 hover:text-accent" />
-                                </div>
                             </div>
                         )}
                     </div>
@@ -445,10 +901,10 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                         <button
                             onClick={handleRefresh}
                             className="px-4 py-2 bg-[#F55F2A] text-white rounded flex items-center gap-2 rounded-full hover:bg-[#E04E1B]"
-                            title="Rebuild app"
+                            title="Restart the embedded local preview"
                         >
                             <RefreshCw className="w-4 h-4" />
-                            Rebuild
+                            {isPreviewBuilding ? "Rebuilding…" : "Rebuild"}
                         </button>
                         <button
                             onClick={handleDeploy}
@@ -565,26 +1021,328 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                 <div className="w-3 h-3 bg-yellow-400 rounded-full"></div>
                                 <div className="w-3 h-3 bg-green-400 rounded-full"></div>
                             </div>
-                            {/* <div className="flex-1 bg-white rounded-md px-3 py-1 text-sm text-gray-600 border">
-                                localhost:3000
-                            </div> */}
+                            {(lastDeployPreviewUrl || lastDeployLiveUrl) ? (
+                                <div className="ml-3 flex items-center gap-2 text-xs">
+                                    {lastDeployPreviewUrl ? (
+                                        <button
+                                            onClick={() => window.open(lastDeployPreviewUrl, "_blank", "noopener,noreferrer")}
+                                            className="px-3 py-1 rounded-full border border-gray-300 hover:bg-gray-50"
+                                            title="Open Vercel preview deployment"
+                                        >
+                                            View preview
+                                        </button>
+                                    ) : null}
+                                    {lastDeployLiveUrl ? (
+                                        <button
+                                            onClick={() => window.open(lastDeployLiveUrl, "_blank", "noopener,noreferrer")}
+                                            className="px-3 py-1 rounded-full border border-gray-300 hover:bg-gray-50"
+                                            title="Open live deployment"
+                                        >
+                                            View live
+                                        </button>
+                                    ) : null}
+                                </div>
+                            ) : null}
                         </div>
 
                         {/* App Content */}
                         <div className="flex-1 bg-white">
-                            {app ? (
-                                <WebContainerRunner
-                                    appId={appId}
-                                    files={app.files}
-                                    onFileChange={handleFileChangeFromContainer}
-                                    reloadToken={refreshKey}
+                            {previewMode === "webcontainer" ? (
+                                <div className="h-full w-full p-3">
+                                    <WebContainerRunner
+                                        appId={appId}
+                                        files={app.files}
+                                        onFileChange={handleFileChangeFromContainer}
+                                        reloadToken={refreshKey}
+                                        restartToken={localRestartKey}
+                                    />
+                                </div>
+                            ) : previewSrc ? (
+                                <iframe
+                                    title="App preview"
+                                    src={previewSrc}
+                                    className="w-full h-full"
+                                    sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-downloads"
+                                    referrerPolicy="no-referrer"
                                 />
                             ) : (
-                                <KlonerLoader />
+                                <div className="h-full w-full flex items-center justify-center">
+                                    <div className="max-w-md w-full p-6 text-center">
+                                        <div className="text-lg font-semibold mb-2">Preview</div>
+                                        <div className="text-sm text-gray-600 mb-4">
+                                            {autoPreviewPhase === "connecting"
+                                                ? "Connect Vercel to load your preview."
+                                                : autoPreviewPhase === "enabling-bypass"
+                                                    ? "Configuring secure preview access…"
+                                                    : autoPreviewPhase === "building"
+                                                        ? `Building preview…${autoPreviewAttempt ? ` (attempt ${autoPreviewAttempt})` : ""}`
+                                                        : autoPreviewPhase === "loading"
+                                                            ? "Loading preview…"
+                                                            : autoPreviewPhase === "error"
+                                                                ? "Could not load preview."
+                                                                : "Preparing preview…"}
+                                        </div>
+
+                                        {(autoPreviewError || previewError) ? (
+                                            <div className="mb-3 text-sm text-red-600">
+                                                {autoPreviewError || previewError}
+                                            </div>
+                                        ) : null}
+
+                                        {autoPreviewPhase === "error" && autoPreviewBypassUnsupported ? (
+                                            <div className="mb-4 w-full text-left">
+                                                <div className="text-xs text-gray-600 mb-2">
+                                                    If you create a Protection Bypass token in Vercel, paste it here to enable iframe embedding.
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        value={vercelProtectionBypassDraft}
+                                                        onChange={(e) => setVercelProtectionBypassDraft(e.target.value)}
+                                                        placeholder="Vercel bypass token"
+                                                        className="flex-1 px-3 py-2 border border-gray-300 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                                                    />
+                                                    <button
+                                                        onClick={() => void saveVercelProtectionBypass()}
+                                                        disabled={savingVercelProtectionBypass}
+                                                        className="px-4 py-2 bg-gray-900 text-white rounded-full hover:bg-black disabled:opacity-50"
+                                                    >
+                                                        {savingVercelProtectionBypass ? "Saving…" : "Save"}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : null}
+
+                                        <div className="flex flex-col gap-2 items-center">
+                                            {protectedPreviewUrl ? (
+                                                <button
+                                                    onClick={() => window.open(protectedPreviewUrl, "_blank", "noopener,noreferrer")}
+                                                    className="px-4 py-2 border border-gray-300 rounded-full hover:bg-gray-50"
+                                                >
+                                                    Open preview in new tab
+                                                </button>
+                                            ) : null}
+
+                                            <button
+                                                onClick={() => {
+                                                    setPreviewMode("webcontainer");
+                                                    setAutoPreviewError(null);
+                                                }}
+                                                className="px-4 py-2 border border-gray-300 rounded-full hover:bg-gray-50"
+                                            >
+                                                Use embedded local preview
+                                            </button>
+
+                                            <button
+                                                onClick={() => {
+                                                    if (autoPreviewBypassUnsupported && protectedPreviewUrl) {
+                                                        window.open(protectedPreviewUrl, "_blank", "noopener,noreferrer");
+                                                        return;
+                                                    }
+                                                    if (autoPreviewPhase === "connecting") {
+                                                        startVercelOAuthForPreview();
+                                                        return;
+                                                    }
+                                                    setPreviewMode("vercel");
+                                                    void runAutoPreviewSequence({ force: true });
+                                                }}
+                                                disabled={
+                                                    isPreviewBuilding ||
+                                                    autoPreviewPhase === "building" ||
+                                                    autoPreviewPhase === "enabling-bypass" ||
+                                                    autoPreviewPhase === "loading"
+                                                }
+                                                className="px-4 py-2 bg-[#F55F2A] text-white rounded-full hover:bg-[#E04E1B] disabled:opacity-50"
+                                            >
+                                                {autoPreviewBypassUnsupported && protectedPreviewUrl
+                                                    ? "Open preview"
+                                                    : autoPreviewPhase === "connecting"
+                                                    ? (vercelConnectOpening ? "Opening Vercel…" : "Connect Vercel")
+                                                    : autoPreviewPhase === "building" ||
+                                                        autoPreviewPhase === "enabling-bypass" ||
+                                                        autoPreviewPhase === "loading"
+                                                        ? "Working…"
+                                                        : "Retry"}
+                                            </button>
+
+                                            {autoPreviewPhase === "connecting" ? (
+                                                <div className="text-xs text-gray-500">
+                                                    Preview requires Vercel. We’ll continue automatically after you connect.
+                                                </div>
+                                            ) : null}
+
+                                            {(vercelDeploymentProtectionSettingsUrl || vercelSecuritySettingsUrl) ? (
+                                                <button
+                                                    onClick={() =>
+                                                        window.open(
+                                                            vercelDeploymentProtectionSettingsUrl || vercelSecuritySettingsUrl || "https://vercel.com/dashboard",
+                                                            "_blank",
+                                                            "noopener,noreferrer",
+                                                        )
+                                                    }
+                                                    className="text-xs text-gray-600 underline"
+                                                >
+                                                    Open Vercel protection settings
+                                                </button>
+                                            ) : null}
+                                        </div>
+                                    </div>
+                                </div>
                             )}
                         </div>
                     </div>
                 </div>
+
+                {vercelConnectOpen && (
+                    <div className="fixed inset-0 z-[17000] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+                        <div className="w-full max-w-md rounded-xl bg-white shadow-lg border border-neutral-200 overflow-hidden">
+                            <div className="p-4 border-b bg-gradient-to-b from-gray-50 to-white flex items-center justify-between">
+                                <div className="space-y-0.5">
+                                    <div className="font-semibold text-neutral-900">Connect Vercel</div>
+                                    <div className="text-[11px] text-neutral-600">Unlock production-style previews and deploys.</div>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        setVercelConnectOpen(false);
+                                        setVercelConnectOpening(false);
+                                    }}
+                                    className="p-2 hover:bg-gray-200 rounded transition-colors"
+                                    title="Close"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+                            <div className="p-4">
+                                <div className="text-sm text-gray-700 mb-3">
+                                    Required to build previews and deploy your app live.
+                                </div>
+
+                                <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-[11px] text-neutral-600">
+                                    <span className="font-semibold text-neutral-800">Status:</span>{" "}
+                                    {isVercelChecking
+                                        ? "Checking connection…"
+                                        : vercelConnectOpening
+                                            ? "Opening Vercel…"
+                                            : isVercelConnected
+                                                ? "Connected. You can build a preview now."
+                                                : "Not connected yet."}
+                                </div>
+
+                                <div className="mt-3 flex gap-2">
+                                    <button
+                                        onClick={startVercelOAuthForPreview}
+                                        disabled={isVercelChecking || vercelConnectOpening}
+                                        className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 bg-[#F55F2A] text-white rounded-full hover:opacity-90 disabled:opacity-50"
+                                    >
+                                        {(isVercelChecking || vercelConnectOpening) ? (
+                                            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/50 border-t-white" />
+                                        ) : null}
+                                        {vercelConnectOpening
+                                            ? "Opening Vercel…"
+                                            : isVercelChecking
+                                                ? "Checking…"
+                                                : "Connect Vercel"}
+                                    </button>
+                                    <button
+                                        onClick={async () => {
+                                            await refreshVercelStatus();
+                                            setVercelConnectOpening(false);
+                                        }}
+                                        className="px-4 py-2 rounded-full border border-neutral-200 hover:bg-neutral-50"
+                                        title="Re-check connection"
+                                    >
+                                        I already connected
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {deployChoiceOpen && !onDeploy && (
+                    <div className="fixed inset-0 z-[17000] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+                        <div className="w-full max-w-md rounded-xl bg-white shadow-lg border border-neutral-200 overflow-hidden">
+                            <div className="p-4 border-b bg-gradient-to-b from-gray-50 to-white flex items-center justify-between">
+                                <div className="space-y-0.5">
+                                    <div className="font-semibold text-neutral-900">Deploy</div>
+                                    <div className="text-[11px] text-neutral-600">Choose preview or live deployment.</div>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        if (deployChoiceBusy) return;
+                                        setDeployChoiceOpen(false);
+                                        setDeployChoiceError(null);
+                                    }}
+                                    className="p-2 hover:bg-gray-200 rounded transition-colors"
+                                    title="Close"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+
+                            <div className="p-4 space-y-3">
+                                {deployChoiceError ? (
+                                    <div className="text-sm text-red-600">{deployChoiceError}</div>
+                                ) : null}
+
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                        onClick={() => void runVercelDeploy("preview")}
+                                        disabled={!!deployChoiceBusy}
+                                        className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full border border-neutral-200 hover:bg-neutral-50 disabled:opacity-50"
+                                    >
+                                        {deployChoiceBusy === "preview" ? (
+                                            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-black/20 border-t-black/70" />
+                                        ) : null}
+                                        Deploy preview
+                                    </button>
+
+                                    <button
+                                        onClick={() => void runVercelDeploy("live")}
+                                        disabled={!!deployChoiceBusy}
+                                        className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full bg-[#F55F2A] text-white hover:bg-[#E04E1B] disabled:opacity-50"
+                                    >
+                                        {deployChoiceBusy === "live" ? (
+                                            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                                        ) : null}
+                                        Deploy live
+                                    </button>
+                                </div>
+
+                                {(lastDeployPreviewUrl || lastDeployLiveUrl) ? (
+                                    <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-[11px] text-neutral-700 space-y-1">
+                                        <div className="font-semibold text-neutral-800">Latest links</div>
+                                        {lastDeployPreviewUrl ? (
+                                            <div>
+                                                Preview:{" "}
+                                                <button
+                                                    onClick={() => window.open(lastDeployPreviewUrl, "_blank", "noopener,noreferrer")}
+                                                    className="underline"
+                                                >
+                                                    Open
+                                                </button>
+                                            </div>
+                                        ) : null}
+                                        {lastDeployLiveUrl ? (
+                                            <div>
+                                                Live:{" "}
+                                                <button
+                                                    onClick={() => window.open(lastDeployLiveUrl, "_blank", "noopener,noreferrer")}
+                                                    className="underline"
+                                                >
+                                                    Open
+                                                </button>
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                ) : null}
+
+                                <div className="text-[11px] text-neutral-600">
+                                    Embedded preview is always local. Deploys create real Vercel URLs.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

@@ -1,15 +1,72 @@
 // app/integrations/vercel/callback/VercelIntegrationCallbackClient.tsx
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 const ACCENT = "#f55f2a";
 
+function getCookieValue(name: string): string | null {
+    if (typeof document === "undefined") return null;
+    const parts = document.cookie.split(";");
+    for (const part of parts) {
+        const [k, ...rest] = part.trim().split("=");
+        if (k === name) {
+            return rest.join("=") || "";
+        }
+    }
+    return null;
+}
+
+function safeReturnPath(raw: string | null): string | null {
+    if (!raw) return null;
+    let decoded = raw;
+    try {
+        decoded = decodeURIComponent(raw);
+    } catch {
+        decoded = raw;
+    }
+
+    const path = decoded.trim();
+    if (!path) return null;
+    // Only allow same-origin relative paths.
+    if (!path.startsWith("/")) return null;
+    if (path.startsWith("//")) return null;
+    if (path.includes("://")) return null;
+    return path;
+}
+
+function inferReturnPathFromLocalStorage(): string | null {
+    if (typeof window === "undefined") return null;
+    try {
+        // Prefer more specific flows first.
+        const pendingAppPreview = window.localStorage.getItem("kloner_vercel_pending_app_preview");
+        if (pendingAppPreview) {
+            // App Builder preview restore is already handled by the legacy `vercel=connected` listener.
+            return "/dashboard/view?vercel=connected";
+        }
+
+        const pendingAppWizard = window.localStorage.getItem("kloner_vercel_pending_app_wizard");
+        if (pendingAppWizard) {
+            return "/dashboard/view?appVercel=connected";
+        }
+
+        const pendingDeploy = window.localStorage.getItem("kloner_vercel_pending_deploy");
+        if (pendingDeploy) {
+            return "/dashboard/view?vercel=connected";
+        }
+    } catch {
+        // ignore
+    }
+    return null;
+}
+
 export function VercelIntegrationCallbackClient() {
     const router = useRouter();
     const searchParams = useSearchParams();
+
+    const [returnTo, setReturnTo] = useState<string>("/dashboard/view");
 
     const statusParam = searchParams.get("status");
     const reasonParam = searchParams.get("reason");
@@ -27,33 +84,64 @@ export function VercelIntegrationCallbackClient() {
             // ignore
         }
 
-        router.replace("/dashboard/view?vercel=connected");
+        const returnCookie = getCookieValue("vercel_oauth_return");
+        const cookieReturn = safeReturnPath(returnCookie);
+        const inferredReturn = inferReturnPathFromLocalStorage();
+        const nextReturnTo = cookieReturn || inferredReturn || "/dashboard/view?vercel=connected";
+        setReturnTo(nextReturnTo);
+
+        // Best-effort cleanup.
+        try {
+            document.cookie = [
+                `vercel_oauth_return=`,
+                "Path=/",
+                "Max-Age=0",
+                "SameSite=Lax",
+            ].join("; ");
+        } catch {
+            // ignore
+        }
+
+        const t = window.setTimeout(() => {
+            router.replace(nextReturnTo);
+        }, 2400);
+
+        return () => window.clearTimeout(t);
     }, [isSuccess, router]);
 
     if (isSuccess) {
         return (
-            <main className="min-h-screen bg-black text-white flex items-center justify-center px-4">
-                <div className="max-w-md w-full text-center space-y-3">
-                    <p className="text-[11px] font-semibold tracking-[0.25em] uppercase text-zinc-400">
-                        Vercel integration
-                    </p>
-                    <h1 className="text-xl font-semibold tracking-tight">
-                        Finishing connection…
-                    </h1>
-                    <p className="text-sm text-zinc-300/90 leading-relaxed">
-                        Redirecting you back to your Kloner dashboard. If nothing happens,
-                        click the button below.
-                    </p>
-                    <div className="mt-4">
+            <main className="min-h-screen bg-white text-neutral-900 px-4">
+                <div className="mx-auto w-full max-w-xl pt-10">
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                        <div className="flex items-start gap-3">
+                            <div className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                                <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+                                    <path
+                                        fill="currentColor"
+                                        d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1 14-4-4 1.4-1.4L11 13.2l5.6-5.6L18 9l-7 7Z"
+                                    />
+                                </svg>
+                            </div>
+
+                            <div className="flex-1">
+                                <div className="text-sm font-semibold text-emerald-900">
+                                    Vercel successfully connected
+                                </div>
+                                <div className="mt-0.5 text-sm text-emerald-800/90">
+                                    You’ll be moved in a moment…
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="mt-4 text-center">
                         <Link
-                            href="/dashboard/view?vercel=connected"
-                            className="inline-flex items-center justify-center rounded-full px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60 transition-transform hover:-translate-y-0.5"
-                            style={{
-                                backgroundColor: ACCENT,
-                                boxShadow: `0 12px 30px ${ACCENT}55`,
-                            }}
+                            href={returnTo}
+                            className="text-sm font-semibold underline underline-offset-4"
+                            style={{ color: ACCENT }}
                         >
-                            Return to dashboard
+                            Continue now
                         </Link>
                     </div>
                 </div>
@@ -120,6 +208,12 @@ export function VercelIntegrationCallbackClient() {
                         >
                             Return to Kloner dashboard
                         </Link>
+                        <a
+                            href="/integrations/vercel"
+                            className="inline-flex items-center justify-center rounded-full px-5 py-2.5 text-sm font-semibold text-white/90 border border-white/15 bg-white/5 hover:bg-white/10 transition-transform hover:-translate-y-0.5"
+                        >
+                            Open integration page
+                        </a>
                         <Link
                             href="/"
                             className="text-xs sm:text-sm text-zinc-400 hover:text-zinc-200 transition-colors"

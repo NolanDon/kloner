@@ -18,7 +18,7 @@ import {
     ChevronDown,
     Type as TypeIcon,
 } from "lucide-react";
-import type { SelectionMeta } from "@/components/PreviewEditor";
+import type { SelectionMeta } from "@/components/editor/PreviewEditor";
 
 type FloatingBlockToolbarProps = {
     iframeRef: React.RefObject<HTMLIFrameElement>;

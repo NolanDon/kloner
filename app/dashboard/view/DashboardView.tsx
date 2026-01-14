@@ -48,7 +48,7 @@ import {
     type StorageReference,
 } from "firebase/storage";
 import { auth, db, storage } from "@/lib/firebase";
-import { buildFinalExport, buildSeoMetaMapForExport, SeoMeta, SeoMetaMap } from "@/components/PreviewEditor";
+import { buildFinalExport, buildSeoMetaMapForExport, SeoMeta, SeoMetaMap } from "@/components/editor/PreviewEditor";
 import PreviewEditorManager from "@/components/editor/PreviewEditorManager";
 import {
     Rocket,
@@ -1089,8 +1089,8 @@ function AppCard({
     onDelete: (appId: string) => void;
 }) {
     const router = useRouter();
-    
-    const formattedDate = app.createdAt?.toDate?.() 
+
+    const formattedDate = app.createdAt?.toDate?.()
         ? new Date(app.createdAt.toDate()).toLocaleDateString()
         : "Recently";
 
@@ -1133,10 +1133,10 @@ function AppCard({
                             fill="currentColor"
                             className="h-8 w-8 text-[#f55f2a]"
                         >
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                            <polyline points="14,2 14,8 20,8"/>
-                            <line x1="12" y1="13" x2="12" y2="13.01"/>
-                            <line x1="12" y1="17" x2="12" y2="17.01"/>
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <polyline points="14,2 14,8 20,8" />
+                            <line x1="12" y1="13" x2="12" y2="13.01" />
+                            <line x1="12" y1="17" x2="12" y2="17.01" />
                         </svg>
                     </div>
                     <div className="text-center mt-5">
@@ -1206,7 +1206,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
 
     const handleWebsiteGeneration = () => {
         setShowGenerationModal(false);
-        
+
         // Immediately prevent further clicks to avoid double-generation.
         setLocalDisabled(true);
 
@@ -1224,7 +1224,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
 
     const handleAppGeneration = () => {
         setShowGenerationModal(false);
-        
+
         if (onAppClick) {
             // Immediately prevent further clicks to avoid double-generation.
             setLocalDisabled(true);
@@ -1275,293 +1275,289 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     return (
         <>
             <div className={`flex flex-col ${sizeMinW} ${sizeMaxW}`}>
-            <div className={`group relative flex ${sizeMinH} w-full flex-col items-center justify-center rounded-xl border-2 border-dashed bg-white border-neutral-300 text-center transition ${effectiveLocked ? "opacity-70 cursor-wait" : "hover:border-neutral-400 cursor-pointer"}`} onClick={effectiveLocked ? undefined : handleClick}>
-                <div className="pointer-events-none flex flex-col items-center">
-                    <div
-                        className={`grid ${iconWrapperSize} place-items-center rounded-full border border-neutral-200 bg-neutral-50 transition group-hover:scale-105`}
-                    >
-                        {effectiveLocked ? (
-                            <Hammer
-                                className="h-7 w-7 text-neutral-600 ghost-hammer-swing aria-hidden"
-                            />
-                        ) : (
-                            <Plus
-                                className="h-7 w-7 text-neutral-600 aria-hidden"
-                            />
-                        )}
+                <div className={`group relative flex ${sizeMinH} w-full flex-col items-center justify-center rounded-xl border-2 border-dashed bg-white border-neutral-300 text-center transition ${effectiveLocked ? "opacity-70 cursor-wait" : "hover:border-neutral-400 cursor-pointer"}`} onClick={effectiveLocked ? undefined : handleClick}>
+                    <div className="pointer-events-none flex flex-col items-center">
+                        <div
+                            className={`grid ${iconWrapperSize} place-items-center rounded-full border border-neutral-200 bg-neutral-50 transition group-hover:scale-105`}
+                        >
+                            {effectiveLocked ? (
+                                <Hammer
+                                    className="h-7 w-7 text-neutral-600 ghost-hammer-swing aria-hidden"
+                                />
+                            ) : (
+                                <Plus
+                                    className="h-7 w-7 text-neutral-600 aria-hidden"
+                                />
+                            )}
 
+                        </div>
+                        <div className={`mt-3 font-semibold text-neutral-800 ${titleSize}`}>
+                            {title}
+                        </div>
+                        <div className={`mt-1 text-neutral-500 ${subtitleSize}`}>{subtitle}</div>
                     </div>
-                    <div className={`mt-3 font-semibold text-neutral-800 ${titleSize}`}>
-                        {title}
-                    </div>
-                    <div className={`mt-1 text-neutral-500 ${subtitleSize}`}>{subtitle}</div>
                 </div>
             </div>
-        </div>
 
-        {/* Generation Type Selection Modal */}
-        <AnimatePresence>
-            {showGenerationModal && (
-                <motion.div
-                    key="generation-modal"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-4"
-                    onMouseDown={(e) => {
-                        if (e.target === e.currentTarget) setShowGenerationModal(false);
-                    }}
-                >
+            {/* Generation Type Selection Modal */}
+            <AnimatePresence>
+                {showGenerationModal && (
                     <motion.div
-                        initial={{ opacity: 0, y: 10, scale: 0.98 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 10, scale: 0.98 }}
-                        transition={{ duration: 0.18, ease: "easeOut" }}
-                        className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white shadow-2xl"
+                        key="generation-modal"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-4"
+                        onMouseDown={(e) => {
+                            if (e.target === e.currentTarget) setShowGenerationModal(false);
+                        }}
                     >
-                        <div className="flex items-start justify-between gap-4 border-b border-neutral-200 px-5 py-4">
-                            <div className="space-y-1">
-                                <div className="text-sm font-semibold text-neutral-900">
-                                    Choose Generation Type
+                        <motion.div
+                            initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 10, scale: 0.98 }}
+                            transition={{ duration: 0.18, ease: "easeOut" }}
+                            className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white shadow-2xl"
+                        >
+                            <div className="flex items-start justify-between gap-4 border-b border-neutral-200 px-5 py-4">
+                                <div className="space-y-1">
+                                    <div className="text-sm font-semibold text-neutral-900">
+                                        Choose Generation Type
+                                    </div>
+                                    <div className="text-xs text-neutral-600">
+                                        Select what you&apos;d like to create.
+                                    </div>
                                 </div>
-                                <div className="text-xs text-neutral-600">
-                                    Select what you&apos;d like to create.
-                                </div>
-                            </div>
 
-                            <button
-                                type="button"
-                                onClick={() => setShowGenerationModal(false)}
-                                className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200"
-                                title="Close"
-                            >
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    viewBox="0 0 20 20"
-                                    fill="currentColor"
-                                    className="h-4 w-4 text-neutral-700"
-                                >
-                                    <path
-                                        fillRule="evenodd"
-                                        d="M4.47 4.47a.75.75 0 011.06 0L10 8.94l4.47-4.47a.75.75 0 111.06 1.06L11.06 10l4.47 4.47a.75.75 0 11-1.06 1.06L10 11.06l-4.47 4.47a.75.75 0 11-1.06-1.06L8.94 10 4.47 5.53a.75.75 0 010-1.06z"
-                                        clipRule="evenodd"
-                                    />
-                                </svg>
-                            </button>
-                        </div>
-
-                        <div className="space-y-3 px-5 py-4">
-                            <div className="relative">
                                 <button
                                     type="button"
-                                    onClick={handleWebsiteGeneration}
-                                    className="w-full rounded-xl border border-neutral-200 bg-white p-4 text-left transition hover:bg-neutral-50 hover:border-neutral-300"
+                                    onClick={() => setShowGenerationModal(false)}
+                                    className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200"
+                                    title="Close"
                                 >
-                                    <div className="flex items-start gap-3">
-                                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#f55f2a]/10">
-                                            <svg
-                                                xmlns="http://www.w3.org/2000/svg"
-                                                viewBox="0 0 24 24"
-                                                fill="currentColor"
-                                                className="h-5 w-5 text-[#f55f2a]"
-                                            >
-                                                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-                                            </svg>
-                                        </div>
-                                        <div className="flex-1 space-y-1">
-                                            <div className="flex items-center gap-2">
-                                                <div className="text-sm font-semibold text-neutral-900">
-                                                    Website (15 credits)
-                                                </div>
-                                                <div className="group relative">
-                                                    <div className="flex h-4 w-4 items-center justify-center rounded-full bg-neutral-200 text-xs font-semibold text-neutral-600 hover:bg-neutral-300 cursor-help">
-                                                        ?
-                                                    </div>
-                                                    {/* Tooltip */}
-                                                    <div className="absolute left-1/2 top-full mt-2 hidden w-64 -translate-x-1/2 rounded-lg border border-neutral-200 bg-white p-3 text-xs text-neutral-700 shadow-lg group-hover:block z-10">
-                                                        <div className="font-semibold text-neutral-900 mb-2">Website Features:</div>
-                                                        <ul className="space-y-1">
-                                                            <li>• Hosting images and media</li>
-                                                            <li>• Performance-focused</li>
-                                                            <li>• SEO-friendly static content</li>
-                                                            <li>• Fast loading pages</li>
-                                                        </ul>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div className="text-xs text-neutral-600">
-                                                Create an editable website with pages, content, and styling.
-                                            </div>
-                                        </div>
-                                    </div>
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 20 20"
+                                        fill="currentColor"
+                                        className="h-4 w-4 text-neutral-700"
+                                    >
+                                        <path
+                                            fillRule="evenodd"
+                                            d="M4.47 4.47a.75.75 0 011.06 0L10 8.94l4.47-4.47a.75.75 0 111.06 1.06L11.06 10l4.47 4.47a.75.75 0 11-1.06 1.06L10 11.06l-4.47 4.47a.75.75 0 11-1.06-1.06L8.94 10 4.47 5.53a.75.75 0 010-1.06z"
+                                            clipRule="evenodd"
+                                        />
+                                    </svg>
                                 </button>
                             </div>
 
-                            <div className="relative">
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setShowGenerationModal(false);
-                                        router.push("/community-builds");
-                                    }}
-                                    className="w-full rounded-xl border border-neutral-200 bg-white p-4 text-left transition hover:bg-neutral-50 hover:border-neutral-300"
-                                >
-                                    <div className="flex items-start gap-3">
-                                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10">
-                                            <svg
-                                                xmlns="http://www.w3.org/2000/svg"
-                                                viewBox="0 0 24 24"
-                                                fill="currentColor"
-                                                className="h-5 w-5 text-emerald-600"
-                                            >
-                                                <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/>
-                                            </svg>
-                                        </div>
-                                        <div className="flex-1 space-y-1">
-                                            <div className="flex items-center gap-2">
-                                                <div className="text-sm font-semibold text-neutral-900">
-                                                    Start from template
-                                                </div>
-                                                <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
-                                                    Free
-                                                </span>
-                                                <div className="group relative">
-                                                    <div className="flex h-4 w-4 items-center justify-center rounded-full bg-neutral-200 text-xs font-semibold text-neutral-600 hover:bg-neutral-300 cursor-help">
-                                                        ?
-                                                    </div>
-                                                    <div className="absolute left-1/2 top-full mt-2 hidden w-64 -translate-x-1/2 rounded-lg border border-neutral-200 bg-white p-3 text-xs text-neutral-700 shadow-lg group-hover:block z-10">
-                                                        <div className="font-semibold text-neutral-900 mb-2">Template Features:</div>
-                                                        <ul className="space-y-1">
-                                                            <li>• Pre-built HTML templates</li>
-                                                            <li>• Ready-to-customize designs</li>
-                                                            <li>• No credits required</li>
-                                                            <li>• Perfect for quick starts</li>
-                                                        </ul>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div className="text-xs text-neutral-600">
-                                                Browse free HTML page templates from the community.
-                                            </div>
-                                        </div>
-                                    </div>
-                                </button>
-                            </div>
-
-                            <div className="space-y-3">
+                            <div className="space-y-3 px-5 py-4">
                                 <div className="relative">
                                     <button
                                         type="button"
-                                        onClick={handleAppGeneration}
-                                        disabled={!isAdmin}
-                                        className={`w-full rounded-xl border p-4 text-left transition ${
-                                            !isAdmin
-                                                ? "border-neutral-200 bg-neutral-50 cursor-not-allowed opacity-60"
-                                                : "border-neutral-200 bg-white hover:bg-neutral-50 hover:border-neutral-300"
-                                        }`}
+                                        onClick={handleWebsiteGeneration}
+                                        className="w-full rounded-xl border border-neutral-200 bg-white p-4 text-left transition hover:bg-neutral-50 hover:border-neutral-300"
                                     >
                                         <div className="flex items-start gap-3">
-                                            <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${
-                                                !isAdmin ? "bg-neutral-100" : "bg-[#f55f2a]/10"
-                                            }`}>
+                                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#f55f2a]/10">
                                                 <svg
                                                     xmlns="http://www.w3.org/2000/svg"
                                                     viewBox="0 0 24 24"
                                                     fill="currentColor"
-                                                    className={`h-5 w-5 ${
-                                                        !isAdmin ? "text-neutral-400" : "text-[#f55f2a]"
-                                                    }`}
+                                                    className="h-5 w-5 text-[#f55f2a]"
                                                 >
-                                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                                                    <polyline points="14,2 14,8 20,8"/>
-                                                    <line x1="16" y1="13" x2="8" y2="13"/>
-                                                    <line x1="16" y1="17" x2="8" y2="17"/>
-                                                    <polyline points="10,9 9,9 8,9"/>
+                                                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
                                                 </svg>
                                             </div>
                                             <div className="flex-1 space-y-1">
                                                 <div className="flex items-center gap-2">
                                                     <div className="text-sm font-semibold text-neutral-900">
-                                                        Web App (15 credits)
+                                                        Website (15 credits)
                                                     </div>
-                                                    {!isAdmin && (
-                                                        <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-                                                            Coming Soon
-                                                        </span>
-                                                    )}
                                                     <div className="group relative">
                                                         <div className="flex h-4 w-4 items-center justify-center rounded-full bg-neutral-200 text-xs font-semibold text-neutral-600 hover:bg-neutral-300 cursor-help">
                                                             ?
                                                         </div>
                                                         {/* Tooltip */}
                                                         <div className="absolute left-1/2 top-full mt-2 hidden w-64 -translate-x-1/2 rounded-lg border border-neutral-200 bg-white p-3 text-xs text-neutral-700 shadow-lg group-hover:block z-10">
-                                                            <div className="font-semibold text-neutral-900 mb-2">Web App Features:</div>
+                                                            <div className="font-semibold text-neutral-900 mb-2">Website Features:</div>
                                                             <ul className="space-y-1">
-                                                                <li>• User authentication & login</li>
-                                                                <li>• AI integrations</li>
-                                                                <li>• Database & data storage</li>
-                                                                <li>• Interactive features</li>
+                                                                <li>• Hosting images and media</li>
+                                                                <li>• Performance-focused</li>
+                                                                <li>• SEO-friendly static content</li>
+                                                                <li>• Fast loading pages</li>
                                                             </ul>
                                                         </div>
                                                     </div>
                                                 </div>
                                                 <div className="text-xs text-neutral-600">
-                                                    {!isAdmin
-                                                        ? "Interactive web applications with advanced functionality."
-                                                        : "Create an interactive web application with advanced features."
-                                                    }
+                                                    Create an editable website with pages, content, and styling.
                                                 </div>
                                             </div>
-                                            {!isAdmin && (
-                                                <div className="flex items-center text-xs text-neutral-400">
-                                                    <Crown className="h-3 w-3" />
-                                                </div>
-                                            )}
                                         </div>
                                     </button>
                                 </div>
 
-                                {!isAdmin && user && (
-                                    <div className="space-y-2">
+                                <div className="relative">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowGenerationModal(false);
+                                            router.push("/community-builds");
+                                        }}
+                                        className="w-full rounded-xl border border-neutral-200 bg-white p-4 text-left transition hover:bg-neutral-50 hover:border-neutral-300"
+                                    >
+                                        <div className="flex items-start gap-3">
+                                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10">
+                                                <svg
+                                                    xmlns="http://www.w3.org/2000/svg"
+                                                    viewBox="0 0 24 24"
+                                                    fill="currentColor"
+                                                    className="h-5 w-5 text-emerald-600"
+                                                >
+                                                    <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z" />
+                                                </svg>
+                                            </div>
+                                            <div className="flex-1 space-y-1">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="text-sm font-semibold text-neutral-900">
+                                                        Start from template
+                                                    </div>
+                                                    <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                                                        Free
+                                                    </span>
+                                                    <div className="group relative">
+                                                        <div className="flex h-4 w-4 items-center justify-center rounded-full bg-neutral-200 text-xs font-semibold text-neutral-600 hover:bg-neutral-300 cursor-help">
+                                                            ?
+                                                        </div>
+                                                        <div className="absolute left-1/2 top-full mt-2 hidden w-64 -translate-x-1/2 rounded-lg border border-neutral-200 bg-white p-3 text-xs text-neutral-700 shadow-lg group-hover:block z-10">
+                                                            <div className="font-semibold text-neutral-900 mb-2">Template Features:</div>
+                                                            <ul className="space-y-1">
+                                                                <li>• Pre-built HTML templates</li>
+                                                                <li>• Ready-to-customize designs</li>
+                                                                <li>• No credits required</li>
+                                                                <li>• Perfect for quick starts</li>
+                                                            </ul>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="text-xs text-neutral-600">
+                                                    Browse free HTML page templates from the community.
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </button>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <div className="relative">
                                         <button
                                             type="button"
-                                            onClick={handleNotifyMe}
-                                            disabled={isNotifying || isSubscribed}
-                                            className={`w-full rounded-xl px-4 py-2 text-sm font-semibold text-white transition ${
-                                                isSubscribed
-                                                    ? "border border-green-500 bg-green-500 cursor-not-allowed"
-                                                    : "border border-[#f55f2a] bg-[#f55f2a] hover:bg-[#ff8a4c] disabled:opacity-60"
-                                            }`}
+                                            onClick={handleAppGeneration}
+                                            disabled={!isAdmin}
+                                            className={`w-full rounded-xl border p-4 text-left transition ${!isAdmin
+                                                    ? "border-neutral-200 bg-neutral-50 cursor-not-allowed opacity-60"
+                                                    : "border-neutral-200 bg-white hover:bg-neutral-50 hover:border-neutral-300"
+                                                }`}
                                         >
-                                            {isNotifying
-                                                ? "Subscribing…"
-                                                : isSubscribed
-                                                    ? "✓ Subscribed"
-                                                    : "Notify me when available"}
+                                            <div className="flex items-start gap-3">
+                                                <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${!isAdmin ? "bg-neutral-100" : "bg-[#f55f2a]/10"
+                                                    }`}>
+                                                    <svg
+                                                        xmlns="http://www.w3.org/2000/svg"
+                                                        viewBox="0 0 24 24"
+                                                        fill="currentColor"
+                                                        className={`h-5 w-5 ${!isAdmin ? "text-neutral-400" : "text-[#f55f2a]"
+                                                            }`}
+                                                    >
+                                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                                        <polyline points="14,2 14,8 20,8" />
+                                                        <line x1="16" y1="13" x2="8" y2="13" />
+                                                        <line x1="16" y1="17" x2="8" y2="17" />
+                                                        <polyline points="10,9 9,9 8,9" />
+                                                    </svg>
+                                                </div>
+                                                <div className="flex-1 space-y-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="text-sm font-semibold text-neutral-900">
+                                                            Web App (15 credits)
+                                                        </div>
+                                                        {!isAdmin && (
+                                                            <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                                                                Coming Soon
+                                                            </span>
+                                                        )}
+                                                        <div className="group relative">
+                                                            <div className="flex h-4 w-4 items-center justify-center rounded-full bg-neutral-200 text-xs font-semibold text-neutral-600 hover:bg-neutral-300 cursor-help">
+                                                                ?
+                                                            </div>
+                                                            {/* Tooltip */}
+                                                            <div className="absolute left-1/2 top-full mt-2 hidden w-64 -translate-x-1/2 rounded-lg border border-neutral-200 bg-white p-3 text-xs text-neutral-700 shadow-lg group-hover:block z-10">
+                                                                <div className="font-semibold text-neutral-900 mb-2">Web App Features:</div>
+                                                                <ul className="space-y-1">
+                                                                    <li>• User authentication & login</li>
+                                                                    <li>• AI integrations</li>
+                                                                    <li>• Database & data storage</li>
+                                                                    <li>• Interactive features</li>
+                                                                </ul>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-xs text-neutral-600">
+                                                        {!isAdmin
+                                                            ? "Interactive web applications with advanced functionality."
+                                                            : "Create an interactive web application with advanced features."
+                                                        }
+                                                    </div>
+                                                </div>
+                                                {!isAdmin && (
+                                                    <div className="flex items-center text-xs text-neutral-400">
+                                                        <Crown className="h-3 w-3" />
+                                                    </div>
+                                                )}
+                                            </div>
                                         </button>
-                                        {isSubscribed && (
-                                            <p className="text-xs text-neutral-600 text-center">
-                                                We&apos;ll notify you via email as soon as this feature is ready!
-                                            </p>
-                                        )}
                                     </div>
-                                )}
-                            </div>
-                        </div>
 
-                        <div className="flex items-center justify-end gap-2 border-t border-neutral-200 px-5 py-4">
-                            <button
-                                type="button"
-                                onClick={() => setShowGenerationModal(false)}
-                                className="rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-800 hover:bg-neutral-50"
-                            >
-                                Cancel
-                            </button>
-                        </div>
+                                    {!isAdmin && user && (
+                                        <div className="space-y-2">
+                                            <button
+                                                type="button"
+                                                onClick={handleNotifyMe}
+                                                disabled={isNotifying || isSubscribed}
+                                                className={`w-full rounded-xl px-4 py-2 text-sm font-semibold text-white transition ${isSubscribed
+                                                        ? "border border-green-500 bg-green-500 cursor-not-allowed"
+                                                        : "border border-[#f55f2a] bg-[#f55f2a] hover:bg-[#ff8a4c] disabled:opacity-60"
+                                                    }`}
+                                            >
+                                                {isNotifying
+                                                    ? "Subscribing…"
+                                                    : isSubscribed
+                                                        ? "✓ Subscribed"
+                                                        : "Notify me when available"}
+                                            </button>
+                                            {isSubscribed && (
+                                                <p className="text-xs text-neutral-600 text-center">
+                                                    We&apos;ll notify you via email as soon as this feature is ready!
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-end gap-2 border-t border-neutral-200 px-5 py-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowGenerationModal(false)}
+                                    className="rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-800 hover:bg-neutral-50"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </motion.div>
                     </motion.div>
-                </motion.div>
-            )}
-        </AnimatePresence>
+                )}
+            </AnimatePresence>
         </>
     );
 });
@@ -1631,7 +1627,7 @@ export default function PreviewPage(): JSX.Element {
                 body: JSON.stringify({ appId }),
             });
             if (!res.ok) throw new Error("Failed to delete app");
-            
+
             // Remove from local state
             setApps((prev) => prev.filter((a) => a.id !== appId));
             push("App deleted successfully", "ok");
@@ -1690,6 +1686,27 @@ export default function PreviewPage(): JSX.Element {
 
     const [appBuilderOpen, setAppBuilderOpen] = useState(false);
     const [currentAppId, setCurrentAppId] = useState<string | null>(null);
+
+    // ───────── web app wizard (new) ─────────
+    const [appWizardOpen, setAppWizardOpen] = useState(false);
+    const [appWizardStep, setAppWizardStep] = useState<1 | 2>(1);
+    const [appWizardBusy, setAppWizardBusy] = useState(false);
+    const [appWizardError, setAppWizardError] = useState<string | null>(null);
+    const [appWizardUrl, setAppWizardUrl] = useState<string>("");
+    const [appWizardSource, setAppWizardSource] = useState<"website" | "prompt">("website");
+    const [appWizardPrompt, setAppWizardPrompt] = useState<string>("");
+    const [appWizardSeedRenderId, setAppWizardSeedRenderId] = useState<string | null>(null);
+    const [appWizardTriedConnect, setAppWizardTriedConnect] = useState(false);
+    const [appWizardOpeningVercel, setAppWizardOpeningVercel] = useState(false);
+
+    const {
+        status: vercelStatus,
+        checking: vercelChecking,
+        refresh: refreshVercelStatus,
+    } = useVercelIntegration();
+
+    const isVercelConnected = vercelStatus === "connected";
+    const isVercelChecking = vercelStatus === "loading" || vercelChecking;
 
     const [activeSeoMetaByPage, setActiveSeoMetaByPage] = useState<
         Record<string, SeoMeta> | null
@@ -1904,8 +1921,8 @@ export default function PreviewPage(): JSX.Element {
             const res = await fetch("/api/app-builder/create", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ 
-                    name: appName, 
+                body: JSON.stringify({
+                    name: appName,
                     renderId: finalRenderId,
                     prompt: mode === "prompt" ? prompt : undefined
                 }),
@@ -1916,21 +1933,184 @@ export default function PreviewPage(): JSX.Element {
             }
 
             const { appId } = await res.json();
-            
+
             // Close the editor modal
             setEditorOpen(false);
             setActiveRenderId(undefined);
             setActiveSeoMetaByPage(null);
             setActiveArchivedPageIds([]);
-            
+
             // Open app builder as overlay
             setCurrentAppId(appId);
             setAppBuilderOpen(true);
+
+            // If this app was created from a prompt, immediately apply it to app/page.js via the app agent.
+            if (mode === "prompt" && prompt && typeof prompt === "string" && prompt.trim()) {
+                try {
+                    const csrf = await ensureSessionAndCsrf().catch(() => null);
+
+                    // Fetch files to issue the app scope cookie (needed for update-file).
+                    const filesRes = await fetch(`/api/app-builder/${appId}/files`, {
+                        method: "GET",
+                        credentials: "include",
+                        cache: "no-store",
+                        headers: {
+                            ...(csrf ? { "x-csrf": csrf } : {}),
+                        },
+                    });
+
+                    const filesJson = await filesRes.json().catch(() => ({} as any));
+                    const files = (filesJson?.files || {}) as Record<
+                        string,
+                        { content: string; lastModified: number }
+                    >;
+
+                    const pagePath = files["app/page.js"]
+                        ? "app/page.js"
+                        : files["app/page.tsx"]
+                            ? "app/page.tsx"
+                            : "app/page.js";
+
+                    const currentCode = files[pagePath]?.content || "";
+
+                    const agentRes = await fetch(`/api/app-builder/${appId}/agent`, {
+                        method: "POST",
+                        credentials: "include",
+                        headers: {
+                            "content-type": "application/json",
+                            ...(csrf ? { "x-csrf": csrf } : {}),
+                        },
+                        body: JSON.stringify({
+                            prompt: prompt.trim(),
+                            currentFile: pagePath,
+                            currentCode,
+                        }),
+                    });
+
+                    const agentJson = await agentRes.json().catch(() => ({} as any));
+                    const modifiedCode = (agentJson as any)?.modifiedCode;
+                    if (agentRes.ok && typeof modifiedCode === "string" && modifiedCode.trim()) {
+                        await fetch(`/api/app-builder/${appId}/update-file`, {
+                            method: "POST",
+                            credentials: "include",
+                            headers: {
+                                "content-type": "application/json",
+                                ...(csrf ? { "x-csrf": csrf } : {}),
+                            },
+                            body: JSON.stringify({ path: pagePath, content: modifiedCode }),
+                        });
+                    }
+                } catch (e) {
+                    console.warn("Prompt agent initialization failed", e);
+                }
+            }
+
+            return appId as string;
         } catch (error) {
             console.error("Failed to create app:", error);
             push("Failed to create app. Please try again.", "err");
+            return null;
         }
     }, [user, router, push, activeRenderId]);
+
+    const startWebAppWizard = useCallback(
+        (opts?: { seedRenderId?: string | null; url?: string | null }) => {
+            // Always refresh Vercel status when opening the wizard so we don't
+            // accidentally auto-advance from stale "connected" state.
+            void refreshVercelStatus();
+            const url = typeof opts?.url === "string" ? opts.url : "";
+            setAppWizardUrl(url);
+            setAppWizardSeedRenderId(opts?.seedRenderId ?? null);
+            setAppWizardSource("website");
+            setAppWizardPrompt("");
+            setAppWizardError(null);
+            setAppWizardBusy(false);
+            setAppWizardTriedConnect(false);
+            setAppWizardOpeningVercel(false);
+            setAppWizardStep(1);
+            setAppWizardOpen(true);
+        },
+        [refreshVercelStatus],
+    );
+
+    // Auto-advance app wizard when Vercel is connected.
+    useEffect(() => {
+        if (!appWizardOpen) return;
+        if (appWizardStep !== 1) return;
+        if (isVercelChecking) return;
+        if (!isVercelConnected) return;
+
+        const t = setTimeout(() => {
+            setAppWizardStep(2);
+        }, 1500);
+
+        return () => clearTimeout(t);
+    }, [appWizardOpen, appWizardStep, isVercelConnected, isVercelChecking]);
+
+    const submitAppWizardWebsite = useCallback(async () => {
+        if (appWizardBusy) return;
+        if (!isVercelConnected) {
+            setAppWizardError("Connect Vercel to continue.");
+            setAppWizardStep(1);
+            return;
+        }
+
+        setAppWizardBusy(true);
+        setAppWizardError(null);
+
+        try {
+            const url = (appWizardUrl || "").trim();
+
+            const seedId = appWizardSeedRenderId;
+            let renderIdToUse: string | undefined = seedId || undefined;
+
+            if (!renderIdToUse && url) {
+                const candidates = renders
+                    .filter((r) => !r.archived && typeof r.url === "string" && normUrl(r.url) === normUrl(url))
+                    .sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+
+                renderIdToUse = candidates[0]?.id;
+            }
+
+            const created = await handleCreateApp("clone", undefined, renderIdToUse);
+            if (created) {
+                setAppWizardOpen(false);
+            } else {
+                setAppWizardError("Failed to create app. Please try again.");
+            }
+        } finally {
+            setAppWizardBusy(false);
+        }
+    }, [appWizardBusy, isVercelConnected, appWizardUrl, appWizardSeedRenderId, renders, handleCreateApp]);
+
+    const submitAppWizardPrompt = useCallback(async () => {
+        if (appWizardBusy) return;
+        if (!isVercelConnected) {
+            setAppWizardError("Connect Vercel to continue.");
+            setAppWizardStep(1);
+            return;
+        }
+
+        const prompt = (appWizardPrompt || "").trim();
+        if (!prompt) {
+            setAppWizardError("Enter a prompt to continue.");
+            return;
+        }
+
+        setAppWizardBusy(true);
+        setAppWizardError(null);
+
+        try {
+            const created = await handleCreateApp("prompt", prompt);
+            if (created) {
+                setAppWizardOpen(false);
+            } else {
+                setAppWizardError("Failed to create app. Please try again.");
+            }
+        } finally {
+            setAppWizardBusy(false);
+        }
+    }, [appWizardBusy, isVercelConnected, appWizardPrompt, handleCreateApp]);
 
     // New: create an app from the starter template (free)
     const handleCreateTemplateApp = useCallback(async () => {
@@ -3876,12 +4056,6 @@ export default function PreviewPage(): JSX.Element {
 
     // ───────── deploy wizard state: project name → vercel → deploy ─────────
 
-    const {
-        status: vercelStatus,
-        checking: vercelChecking,
-        refresh: refreshVercelStatus,
-    } = useVercelIntegration();
-
     const autoDeployTriggeredRef = useRef(false);
 
     const [vercelInlineConnecting, setVercelInlineConnecting] = useState(false);
@@ -3951,7 +4125,66 @@ export default function PreviewPage(): JSX.Element {
         }
     }
 
-    // ───────── on OAuth callback (?vercel=connected) restore wizard state ─────────
+    function handleConnectVercelForAppWizard() {
+        const u = auth.currentUser;
+        if (!VERCEL_INTEGRATION_SLUG || !u) {
+            console.error("Missing integration slug or user not signed in");
+            setAppWizardError("Sign in to connect Vercel.");
+            return;
+        }
+
+        setAppWizardError(null);
+        setAppWizardTriedConnect(true);
+        setAppWizardOpeningVercel(true);
+
+        try {
+            const bytes = new Uint8Array(16);
+            crypto.getRandomValues(bytes);
+            const state = Array.from(bytes)
+                .map((b) => b.toString(16).padStart(2, "0"))
+                .join("");
+
+            // Persist wizard state so we can restore after OAuth redirect.
+            try {
+                const payload = {
+                    url: appWizardUrl,
+                    seedRenderId: appWizardSeedRenderId,
+                };
+                localStorage.setItem(
+                    "kloner_vercel_pending_app_wizard",
+                    JSON.stringify(payload),
+                );
+            } catch {
+                // ignore
+            }
+
+            localStorage.setItem("kloner_vercel_latest_csrf", state);
+            document.cookie = [
+                `vercel_oauth_state=${state}`,
+                "Path=/",
+                "Max-Age=600",
+                "SameSite=Lax",
+            ].join("; ");
+
+            // IMPORTANT: use a different callback signal than the legacy deploy wizard.
+            const returnTo = `/dashboard/view?appVercel=connected`;
+            document.cookie = [
+                `vercel_oauth_return=${encodeURIComponent(returnTo)}`,
+                "Path=/",
+                "Max-Age=600",
+                "SameSite=Lax",
+            ].join("; ");
+
+            const link = `https://vercel.com/integrations/${VERCEL_INTEGRATION_SLUG}/new?state=${state}`;
+            window.location.assign(link);
+        } catch (e) {
+            console.error("Inline Vercel connect failed to start", e);
+            setAppWizardError("Could not open Vercel. Try again in a moment.");
+            setAppWizardOpeningVercel(false);
+        }
+    }
+
+    // ───────── on OAuth callback (?vercel=connected) restore *legacy* wizard state ─────────
 
     useEffect(() => {
         const v = searchParams.get("vercel");
@@ -3960,6 +4193,39 @@ export default function PreviewPage(): JSX.Element {
         // ensure latest status from backend
         void (async () => {
             await refreshVercelStatus();
+
+            // If we were connecting Vercel from App Builder preview, restore that overlay.
+            let pendingApp: { appId?: string } | null = null;
+            try {
+                const raw = localStorage.getItem("kloner_vercel_pending_app_preview");
+                if (raw) pendingApp = JSON.parse(raw);
+            } catch {
+                pendingApp = null;
+            }
+
+            if (pendingApp?.appId) {
+                setCurrentAppId(pendingApp.appId);
+                setAppBuilderOpen(true);
+                return;
+            }
+
+            // If the app wizard flow somehow landed on the legacy signal, redirect it to the
+            // app-wizard-specific signal so we never open both flows at once.
+            try {
+                const raw = localStorage.getItem("kloner_vercel_pending_app_wizard");
+                if (raw) {
+                    const url = new URL(window.location.href);
+                    const params = url.searchParams;
+                    params.delete("vercel");
+                    params.set("appVercel", "connected");
+                    const qs = params.toString();
+                    const next = qs ? `${url.pathname}?${qs}` : url.pathname;
+                    router.replace(next, { scroll: false });
+                    return;
+                }
+            } catch {
+                // ignore
+            }
 
             let pending: { renderId?: string; projectName?: string } | null = null;
             try {
@@ -3985,6 +4251,64 @@ export default function PreviewPage(): JSX.Element {
             } catch {
                 // ignore
             }
+        })();
+    }, [searchParams, refreshVercelStatus, router]);
+
+    // ───────── on OAuth callback (?appVercel=connected) restore *app* wizard only ─────────
+
+    useEffect(() => {
+        const v = searchParams.get("appVercel");
+        if (v !== "connected") return;
+
+        void (async () => {
+            await refreshVercelStatus();
+
+            let pendingAppWizard: { url?: string; seedRenderId?: string | null } | null = null;
+            try {
+                const raw = localStorage.getItem("kloner_vercel_pending_app_wizard");
+                if (raw) pendingAppWizard = JSON.parse(raw);
+            } catch {
+                pendingAppWizard = null;
+            }
+
+            if (pendingAppWizard) {
+                setAppWizardUrl(typeof pendingAppWizard.url === "string" ? pendingAppWizard.url : "");
+                setAppWizardSeedRenderId(
+                    typeof pendingAppWizard.seedRenderId === "string" ? pendingAppWizard.seedRenderId : null,
+                );
+
+                try {
+                    localStorage.removeItem("kloner_vercel_pending_app_wizard");
+                } catch {
+                    // ignore
+                }
+            }
+
+            // If the pending payload is missing (cross-domain callback / local testing),
+            // default to the currently-selected URL from the dashboard.
+            // This prevents the wizard from showing “(no URL selected)” even when the user
+            // already has a URL selected via the top dropdown.
+            try {
+                setAppWizardUrl((prev) => {
+                    if (typeof prev === "string" && prev.trim()) return prev;
+
+                    const fromQuery = searchParams.get("u") || "";
+                    if (fromQuery.trim()) return fromQuery;
+
+                    const fromStorage = localStorage.getItem("kloner:lastUrl") || "";
+                    return fromStorage;
+                });
+            } catch {
+                // ignore
+            }
+
+            // Even if the pending payload is missing (cross-domain callback / local testing),
+            // open the app wizard so the user sees the intended flow.
+            setAppWizardOpen(true);
+            setAppWizardStep(1);
+            setAppWizardTriedConnect(true);
+            setAppWizardError(null);
+            setAppWizardBusy(false);
         })();
     }, [searchParams, refreshVercelStatus]);
 
@@ -4383,9 +4707,9 @@ export default function PreviewPage(): JSX.Element {
                                     </h1>
                                     {userTier !== "unknown" && (
                                         <div className="inline-flex items-center">
-                                            <div className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-1">
-                                                <Crown className="h-2.5 w-2.5 text-amber-500" />
-                                                <span className="text-[9px] font-semibold uppercase tracking-wide text-amber-700">
+                                            <div className="inline-flex items-center gap-1 rounded-full border border-accent bg-accent-50 px-2 py-1">
+                                                <Crown className="h-2.5 w-2.5 text-accent" />
+                                                <span className="text-[9px] font-semibold uppercase tracking-wide text-accent">
                                                     {planLabel}
                                                 </span>
 
@@ -4594,15 +4918,8 @@ export default function PreviewPage(): JSX.Element {
                                             locked={locked}
                                             onClick={() => buildFromCollection(collectionKeys)}
                                             onAppClick={() => {
-                                                if (isAdmin) {
-                                                    setEditorMode("app");
-                                                    setEditorOpen(true);
-                                                    setEditorHtml("");
-                                                    setEditorRefImg("");
-                                                    setActiveRenderId(undefined);
-                                                    setActiveSeoMetaByPage(null);
-                                                    setActiveArchivedPageIds([]);
-                                                }
+                                                if (!isAdmin) return;
+                                                startWebAppWizard({ seedRenderId: null, url: targetUrl || "" });
                                             }}
                                             isAdmin={isAdmin}
                                             onStartFromTemplate={handleCreateTemplateApp}
@@ -4769,20 +5086,20 @@ export default function PreviewPage(): JSX.Element {
                                             locked={locked}
                                             onClick={() => buildFromCollection(collectionKeys)}
                                             onAppClick={() => {
-                                                if (isAdmin) {
-                                                    // Find the most recent render from this group
-                                                    const groupRenders = renders.filter(r => 
-                                                        group.items.some(s => s.path === r.key) && !r.archived
-                                                    ).sort((a, b) => b.createdAt?.toMillis?.() - a.createdAt?.toMillis?.() || 0);
-                                                    const latestRender = groupRenders[0];
-                                                    setEditorMode("app");
-                                                    setEditorOpen(true);
-                                                    setEditorHtml("");
-                                                    setEditorRefImg("");
-                                                    setActiveRenderId(latestRender?.id);
-                                                    setActiveSeoMetaByPage(null);
-                                                    setActiveArchivedPageIds([]);
-                                                }
+                                                if (!isAdmin) return;
+                                                // Find the most recent render from this group (optional seed)
+                                                const groupRenders = renders
+                                                    .filter((r) =>
+                                                        group.items.some((s) => s.path === r.key) && !r.archived,
+                                                    )
+                                                    .sort(
+                                                        (a, b) =>
+                                                            b.createdAt?.toMillis?.() -
+                                                            a.createdAt?.toMillis?.() ||
+                                                            0,
+                                                    );
+                                                const latestRender = groupRenders[0];
+                                                startWebAppWizard({ seedRenderId: latestRender?.id || null, url: targetUrl || "" });
                                             }}
                                             isAdmin={isAdmin}
                                             onStartFromCommunityBuild={() => router.push("/community-builds")}
@@ -4809,7 +5126,9 @@ export default function PreviewPage(): JSX.Element {
                         onArchivedPageIdsChange={
                             handleArchivedPageIdsChange
                         }
-                        onCreateApp={handleCreateApp}
+                        onCreateApp={async (mode, prompt, renderId) => {
+                            await handleCreateApp(mode, prompt, renderId);
+                        }}
                         onClose={() => {
                             setEditorOpen(false);
                             setActiveRenderId(undefined);
@@ -4872,6 +5191,273 @@ export default function PreviewPage(): JSX.Element {
                         }}
                     />
                 )}
+
+                {/* web app wizard */}
+                <AnimatePresence>
+                    {appWizardOpen && (
+                        <motion.div
+                            key="app-wizard"
+                            className="fixed inset-0 z-[11400]"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                        >
+                            <motion.div
+                                className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+                                onClick={() => {
+                                    setAppWizardOpen(false);
+                                    setAppWizardError(null);
+                                    setAppWizardBusy(false);
+                                }}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                            />
+                            <div className="absolute inset-0 flex items-center justify-center p-4">
+                                <motion.div
+                                    className="w-full max-w-[520px] max-h-[calc(100vh-2rem)] overflow-auto rounded-2xl border border-neutral-200 bg-white shadow-2xl"
+                                    initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    exit={{ opacity: 0, y: 10, scale: 0.98 }}
+                                    transition={{ duration: 0.18, ease: "easeOut" }}
+                                >
+                                    <div className="flex items-start justify-between gap-4 border-b border-neutral-200 px-5 py-4">
+                                        <div className="space-y-1">
+                                            <div className="text-sm font-semibold text-neutral-900">Create a Web App</div>
+                                            <div className="text-xs text-neutral-600">
+                                                {appWizardStep === 1
+                                                    ? "Vercel is required to preview and deploy your app live."
+                                                    : "Choose how you want to create your app."}
+                                            </div>
+
+                                            <div className="pt-2">
+                                                <div className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-2 py-1 text-[11px]">
+                                                    <span
+                                                        className={[
+                                                            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold",
+                                                            appWizardStep === 1
+                                                                ? "text-white"
+                                                                : "text-neutral-700",
+                                                        ].join(" ")}
+                                                        style={appWizardStep === 1 ? { backgroundColor: ACCENT } : undefined}
+                                                    >
+                                                        <span className="opacity-90">Stage 1</span>
+                                                        <span className="opacity-90">·</span>
+                                                        <span className="opacity-95">Connect Vercel</span>
+                                                    </span>
+
+                                                    <span className="text-neutral-300">→</span>
+
+                                                    <span
+                                                        className={[
+                                                            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold",
+                                                            appWizardStep === 2
+                                                                ? "text-white"
+                                                                : "text-neutral-700",
+                                                        ].join(" ")}
+                                                        style={appWizardStep === 2 ? { backgroundColor: ACCENT } : undefined}
+                                                    >
+                                                        <span className="opacity-90">Stage 2</span>
+                                                        <span className="opacity-90">·</span>
+                                                        <span className="opacity-95">Create app</span>
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setAppWizardOpen(false);
+                                                setAppWizardError(null);
+                                                setAppWizardBusy(false);
+                                            }}
+                                            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200"
+                                            title="Close"
+                                        >
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                viewBox="0 0 20 20"
+                                                fill="currentColor"
+                                                className="h-4 w-4 text-neutral-700"
+                                            >
+                                                <path
+                                                    fillRule="evenodd"
+                                                    d="M4.47 4.47a.75.75 0 011.06 0L10 8.94l4.47-4.47a.75.75 0 111.06 1.06L11.06 10l4.47 4.47a.75.75 0 11-1.06 1.06L10 11.06l-4.47 4.47a.75.75 0 11-1.06-1.06L8.94 10 4.47 5.53a.75.75 0 010-1.06z"
+                                                    clipRule="evenodd"
+                                                />
+                                            </svg>
+                                        </button>
+                                    </div>
+
+                                    <div className="px-5 py-4">
+                                        {appWizardError ? (
+                                            <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                                                {appWizardError}
+                                            </div>
+                                        ) : null}
+
+                                        {appWizardStep === 1 ? (
+                                            <div className="space-y-3">
+                                                <div className="rounded-xl border border-neutral-200 bg-white p-4">
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <div className="text-sm font-semibold text-neutral-900">Vercel connection</div>
+                                                        <span
+                                                            className={[
+                                                                "inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-semibold",
+                                                                isVercelConnected
+                                                                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                                                    : "border-neutral-200 bg-neutral-50 text-neutral-700",
+                                                            ].join(" ")}
+                                                        >
+                                                            {(isVercelChecking || appWizardOpeningVercel) ? (
+                                                                <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-neutral-300 border-t-[rgba(245,95,42,0.95)]" />
+                                                            ) : isVercelConnected ? (
+                                                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                                                            ) : null}
+                                                            {isVercelConnected
+                                                                ? "Connected"
+                                                                : isVercelChecking
+                                                                    ? "Checking…"
+                                                                    : appWizardOpeningVercel
+                                                                        ? "Opening…"
+                                                                        : "Not connected"}
+                                                        </span>
+                                                    </div>
+                                                    <div className="mt-1 text-xs text-neutral-600">
+                                                        Necessary for running and hosting your application.
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleConnectVercelForAppWizard}
+                                                        disabled={isVercelChecking || appWizardOpeningVercel}
+                                                        className="flex-1 rounded-full px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
+                                                        style={{ backgroundColor: ACCENT }}
+                                                    >
+                                                        {appWizardOpeningVercel
+                                                            ? "Opening Vercel…"
+                                                            : isVercelChecking
+                                                                ? "Checking…"
+                                                                : "Connect Vercel"}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={async () => {
+                                                            await refreshVercelStatus();
+                                                        }}
+                                                        className="rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-800 hover:bg-neutral-50"
+                                                    >
+                                                        I already connected
+                                                    </button>
+                                                </div>
+
+                                                {!isVercelConnected && appWizardTriedConnect ? (
+                                                    <div className="text-[11px] text-neutral-500">
+                                                        If you finished in Vercel, click “I already connected”.
+                                                    </div>
+                                                ) : null}
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-3">
+                                                <div className="grid gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setAppWizardSource("website")}
+                                                        className={`w-full rounded-xl border p-4 text-left transition ${appWizardSource === "website"
+                                                                ? "border-[#f55f2a] bg-[#f55f2a]/5"
+                                                                : "border-neutral-200 bg-white hover:bg-neutral-50"
+                                                            }`}
+                                                    >
+                                                        <div className="text-sm font-semibold text-neutral-900">Build from this URL</div>
+                                                        <div className="mt-1 text-xs text-neutral-600 break-all">
+                                                                {appWizardUrl || targetUrl || "(no URL selected)"}
+                                                        </div>
+                                                    </button>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setAppWizardSource("prompt")}
+                                                        className={`w-full rounded-xl border p-4 text-left transition ${appWizardSource === "prompt"
+                                                                ? "border-[#f55f2a] bg-[#f55f2a]/5"
+                                                                : "border-neutral-200 bg-white hover:bg-neutral-50"
+                                                            }`}
+                                                    >
+                                                        <div className="text-sm font-semibold text-neutral-900">Build from a prompt</div>
+                                                        <div className="mt-1 text-xs text-neutral-600">Describe the app and we’ll generate the first version.</div>
+                                                    </button>
+                                                </div>
+
+                                                {appWizardSource === "prompt" ? (
+                                                    <div className="space-y-2">
+                                                        <textarea
+                                                            value={appWizardPrompt}
+                                                            onChange={(e) => setAppWizardPrompt(e.target.value)}
+                                                            placeholder="e.g. A simple CRM for my sales team with contacts, notes, and tasks…"
+                                                            className="w-full min-h-[110px] rounded-xl border border-neutral-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#f55f2a]/30"
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={submitAppWizardPrompt}
+                                                            disabled={appWizardBusy}
+                                                            className="w-full rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
+                                                            style={{ backgroundColor: ACCENT }}
+                                                        >
+                                                            {appWizardBusy ? "Creating…" : "Create app"}
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        onClick={submitAppWizardWebsite}
+                                                        disabled={appWizardBusy}
+                                                        className="w-full rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
+                                                        style={{ backgroundColor: ACCENT }}
+                                                    >
+                                                        {appWizardBusy ? "Creating…" : "Create app"}
+                                                    </button>
+                                                )}
+
+                                                <div className="text-[11px] text-neutral-500">
+                                                    After creating, App Builder opens automatically.
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="flex items-center justify-between gap-2 border-t border-neutral-200 px-5 py-4">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (appWizardStep === 2) setAppWizardStep(1);
+                                                else {
+                                                    setAppWizardOpen(false);
+                                                    setAppWizardError(null);
+                                                    setAppWizardBusy(false);
+                                                }
+                                            }}
+                                            className="rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-800 hover:bg-neutral-50"
+                                        >
+                                            {appWizardStep === 2 ? "Back" : "Cancel"}
+                                        </button>
+
+                                        {appWizardStep === 1 && !isVercelConnected ? null : appWizardStep === 1 ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => setAppWizardStep(2)}
+                                                className="rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+                                                style={{ backgroundColor: ACCENT }}
+                                            >
+                                                Continue
+                                            </button>
+                                        ) : null}
+                                    </div>
+                                </motion.div>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
 
                 {/* deploy wizard */}
                 <AnimatePresence>

@@ -209,6 +209,7 @@ export async function POST(
                 outputDirectory: ".next",
             },
             target: "production",
+            public: true,
         };
 
         if (vercelProjectId) {
@@ -249,8 +250,8 @@ export async function POST(
 
         // Update app with deployment info
         await docRef.update({
-            previewUrl: deploymentUrl,
             lastDeployUrl: deploymentUrl,
+            productionUrl: deploymentUrl,
             lastExportedAt: new Date(),
             isDeployed: true,
             updatedAt: new Date(),

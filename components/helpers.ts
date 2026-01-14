@@ -9,7 +9,7 @@ import {
     orderBy,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { SeoMeta } from "./PreviewEditor";
+import { SeoMeta } from "./editor/PreviewEditor";
 import { DeploymentDoc } from "@/app/dashboard/deployments/page";
 
 export function sanitizeName(raw: string): string {

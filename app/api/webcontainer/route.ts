@@ -1,6 +1,6 @@
 // app/api/webcontainer/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { spawn } from 'child_process';
+import { spawn, type ChildProcess } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
@@ -9,6 +9,20 @@ import { requireSessionAndMaybeCsrf } from '../_lib/route-guard';
 import { assertAppBuilderScope } from '../_lib/appBuilderScope';
 
 const runningProcesses = getProcessRegistry();
+
+type SetupRecord = {
+  process: ChildProcess;
+  tempDir: string;
+};
+
+// Tracks an in-flight install/build command for an appId so it can be cancelled.
+const setupProcesses = new Map<string, SetupRecord>();
+
+// Cancellation flag for an appId (best-effort; in-memory).
+const cancelledApps = new Set<string>();
+
+// Prevent concurrent starts for the same appId (dev only; in-memory).
+const startLocks = new Map<string, Promise<{ url: string }>>();
 
 export async function POST(request: NextRequest) {
   const internal = request.headers.get('x-kloner-internal') || '';
@@ -45,6 +59,9 @@ async function handleWebcontainerPost(body: any) {
       return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
     }
 
+    // A new start/build request clears any prior cancellation.
+    cancelledApps.delete(appId);
+
     // Basic payload limits to reduce abuse.
     const paths = Object.keys(files);
     if (paths.length > 300) {
@@ -75,40 +92,65 @@ async function handleWebcontainerPost(body: any) {
       return NextResponse.json({ url: `http://localhost:${port}` });
     }
 
+    // If a start is already in progress for this appId, await it.
+    if (runMode === 'dev' && startLocks.has(appId)) {
+      console.error('[WebContainer POST] Start already in progress for appId:', appId);
+      try {
+        const result = await startLocks.get(appId)!;
+        return NextResponse.json(result);
+      } catch (e) {
+        // If the in-flight start failed, fall through and try again.
+        startLocks.delete(appId);
+      }
+    }
+
     // If build mode and a process exists, reuse its tempDir to avoid re-installing into a new folder.
     let tempDir: string | null = null;
+    let createdTempDir = false;
     if (runMode === 'build' && runningProcesses.has(appId)) {
       tempDir = runningProcesses.get(appId)!.tempDir;
       console.error('[WebContainer POST] Reusing existing tempDir for build:', tempDir);
     }
 
-    // Create temp directory if needed
-    if (!tempDir) {
+    const ensureTempDir = async (): Promise<string> => {
+      if (tempDir) return tempDir;
+      createdTempDir = true;
       tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kloner-app-'));
       console.error('[WebContainer POST] Created temp directory:', tempDir);
-    }
+      return tempDir;
+    };
 
-    // Write files
-    for (const [filePath, fileData] of Object.entries(files)) {
-      const fullPath = path.join(tempDir, filePath);
-      await fs.mkdir(path.dirname(fullPath), { recursive: true });
-      await fs.writeFile(fullPath, (fileData as { content: string }).content);
-    }
-    console.error('[WebContainer POST] Files written successfully');
+    const writeFilesAndInstall = async (dir: string) => {
+      // Write files
+      for (const [filePath, fileData] of Object.entries(files)) {
+        if (cancelledApps.has(appId)) throw new Error('Cancelled');
+        const fullPath = path.join(dir, filePath);
+        await fs.mkdir(path.dirname(fullPath), { recursive: true });
+        await fs.writeFile(fullPath, (fileData as { content: string }).content);
+      }
+      console.error('[WebContainer POST] Files written successfully');
 
-    // Install dependencies (needed for both build + dev)
-    console.error('[WebContainer POST] Installing dependencies...');
-    await runCommand('npm', ['install'], tempDir);
-    console.error('[WebContainer POST] Dependencies installed');
+      if (cancelledApps.has(appId)) throw new Error('Cancelled');
+
+      // Install dependencies
+      console.error('[WebContainer POST] Installing dependencies...');
+      await runCommandCancelable('npm', ['install'], dir, appId, dir);
+      console.error('[WebContainer POST] Dependencies installed');
+    };
 
     if (runMode === 'build') {
+      const dir = await ensureTempDir();
+      await writeFilesAndInstall(dir);
+
+      if (cancelledApps.has(appId)) throw new Error('Cancelled');
+
       console.error('[WebContainer POST] Running build...');
-      const build = await runCommandCapture('npm', ['run', 'build'], tempDir, 180_000);
+      const build = await runCommandCaptureCancelable('npm', ['run', 'build'], dir, 180_000, appId, dir);
       const logs = [build.stdout, build.stderr].filter(Boolean).join('\n');
 
       // If we created a temp dir just for build, clean it up.
-      if (!runningProcesses.has(appId)) {
-        try { await fs.rm(tempDir, { recursive: true, force: true }); } catch {}
+      if (createdTempDir && dir) {
+        try { await fs.rm(dir, { recursive: true, force: true }); } catch {}
       }
 
       return NextResponse.json({
@@ -118,53 +160,70 @@ async function handleWebcontainerPost(body: any) {
       });
     }
 
-    // Find available port
-    const port = await findAvailablePort(3001);
-    console.error('[WebContainer POST] Using port:', port);
-
-    // Start dev server (HTTP to simplify cookie/site handling in dev)
-    console.error('[WebContainer POST] Starting dev server...');
-    const devProcess = spawn('npm', ['run', 'dev', '--', '--port', port.toString()], {
-      cwd: tempDir,
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-
-    devProcess.stdout.on('data', (data) => console.error('[Dev stdout]:', data.toString()));
-    devProcess.stderr.on('data', (data) => console.error('[Dev stderr]:', data.toString()));
-
-    console.error('[WebContainer POST] Registering process for appId:', appId, 'on port:', port);
-    runningProcesses.set(appId, { process: devProcess, port, tempDir });
-    console.error('[WebContainer POST] Process registered. Registry size:', runningProcesses.size);
-    console.error('[WebContainer POST] Registry keys:', Array.from(runningProcesses.keys()));
-
-    // Wait for server to be ready
-    const maxAttempts = 30;
-    const checkInterval = 500;
-    let attempts = 0;
-
-    console.error('[WebContainer POST] Waiting for server to be ready...');
-    while (attempts < maxAttempts) {
-      try {
-        const upstream = await fetch(`http://localhost:${port}`, { method: 'HEAD' });
-        const ok = upstream.ok || upstream.status === 200;
-        if (ok) {
-          console.error('[WebContainer POST] Server is ready after', attempts + 1, 'attempts');
-          break;
-        }
-      } catch (error) {
-        // Ignore errors, server not ready yet
+    // DEV mode: lock the start so we don't spawn multiple dev servers.
+    const startPromise = (async (): Promise<{ url: string }> => {
+      // Another request may have started it while we were waiting.
+      if (runningProcesses.has(appId)) {
+        const { port } = runningProcesses.get(appId)!;
+        return { url: `http://localhost:${port}` };
       }
-      await new Promise(resolve => setTimeout(resolve, checkInterval));
-      attempts++;
-    }
 
-    if (attempts >= maxAttempts) {
-      console.error('[WebContainer POST] Server failed to start after', maxAttempts, 'attempts');
-      throw new Error('Server failed to start');
-    }
+      if (cancelledApps.has(appId)) throw new Error('Cancelled');
 
-    console.error('[WebContainer POST] Returning success response for appId:', appId);
-    return NextResponse.json({ url: `http://localhost:${port}` });
+      const dir = await ensureTempDir();
+      await writeFilesAndInstall(dir);
+
+      if (cancelledApps.has(appId)) throw new Error('Cancelled');
+
+      const port = await findAvailablePort(3001);
+      console.error('[WebContainer POST] Using port:', port);
+
+      console.error('[WebContainer POST] Starting dev server...');
+      const devProcess = spawn('npm', ['run', 'dev', '--', '--port', port.toString()], {
+        cwd: dir,
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      devProcess.stdout.on('data', (data) => console.error('[Dev stdout]:', data.toString()));
+      devProcess.stderr.on('data', (data) => console.error('[Dev stderr]:', data.toString()));
+
+      console.error('[WebContainer POST] Registering process for appId:', appId, 'on port:', port);
+      runningProcesses.set(appId, { process: devProcess, port, tempDir: dir });
+
+      // Wait for server to be ready
+      const maxAttempts = 30;
+      const checkInterval = 500;
+      let attempts = 0;
+
+      console.error('[WebContainer POST] Waiting for server to be ready...');
+      while (attempts < maxAttempts) {
+        if (cancelledApps.has(appId)) throw new Error('Cancelled');
+        try {
+          const upstream = await fetch(`http://localhost:${port}`, { method: 'HEAD' });
+          const ok = upstream.ok || upstream.status === 200;
+          if (ok) {
+            console.error('[WebContainer POST] Server is ready after', attempts + 1, 'attempts');
+            break;
+          }
+        } catch {
+          // Ignore errors, server not ready yet
+        }
+        await new Promise(resolve => setTimeout(resolve, checkInterval));
+        attempts++;
+      }
+
+      if (attempts >= maxAttempts) {
+        console.error('[WebContainer POST] Server failed to start after', maxAttempts, 'attempts');
+        throw new Error('Server failed to start');
+      }
+
+      console.error('[WebContainer POST] Returning success response for appId:', appId);
+      return { url: `http://localhost:${port}` };
+    })();
+
+    startLocks.set(appId, startPromise.finally(() => startLocks.delete(appId)));
+    const result = await startLocks.get(appId)!;
+    return NextResponse.json(result);
   } catch (error) {
     console.error('WebContainer API error:', error);
     const msg = error instanceof Error ? error.message : 'Failed to start app';
@@ -200,9 +259,25 @@ export async function DELETE(request: NextRequest) {
 
 async function handleWebcontainerDelete(appId: string) {
   try {
+    // Mark cancelled so any in-flight build/install can abort.
+    cancelledApps.add(appId);
+
+    // Kill any in-flight setup process (npm install / npm run build).
+    const setup = setupProcesses.get(appId);
+    if (setup) {
+      try {
+        killProcessTree(setup.process);
+      } catch {}
+      setupProcesses.delete(appId);
+      // Best-effort cleanup: if no dev server is running, remove temp dir.
+      if (!runningProcesses.has(appId)) {
+        try { await fs.rm(setup.tempDir, { recursive: true, force: true }); } catch {}
+      }
+    }
+
     if (runningProcesses.has(appId)) {
       const { process, tempDir } = runningProcesses.get(appId)!;
-      try { process.kill(); } catch {}
+      try { killProcessTree(process); } catch {}
       try { await fs.rm(tempDir, { recursive: true, force: true }); } catch {}
       runningProcesses.delete(appId);
     }
@@ -214,27 +289,73 @@ async function handleWebcontainerDelete(appId: string) {
   }
 }
 
-async function runCommand(command: string, args: string[], cwd: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn(command, args, { cwd, stdio: 'inherit' });
-    proc.on('close', (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`Command failed: ${command} ${args.join(' ')}`));
-    });
-    proc.on('error', reject);
-  });
+function killProcessTree(proc: ChildProcess) {
+  if (!proc.pid) {
+    try { proc.kill('SIGTERM'); } catch {}
+    return;
+  }
+
+  // Prefer killing the process group on POSIX.
+  try {
+    process.kill(-proc.pid, 'SIGTERM');
+    return;
+  } catch {
+    // fall back
+  }
+
+  try { proc.kill('SIGTERM'); } catch {}
 }
 
-async function runCommandCapture(
+async function runCommandCancelable(
   command: string,
   args: string[],
   cwd: string,
-  timeoutMs: number
+  appId: string,
+  tempDir: string,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(command, args, {
+      cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: true,
+    });
+
+    setupProcesses.set(appId, { process: proc, tempDir });
+
+    proc.stdout?.on('data', (d) => console.error(`[Setup stdout ${appId}]:`, d.toString()));
+    proc.stderr?.on('data', (d) => console.error(`[Setup stderr ${appId}]:`, d.toString()));
+
+    proc.on('close', (code) => {
+      const current = setupProcesses.get(appId);
+      if (current?.process === proc) setupProcesses.delete(appId);
+      if (cancelledApps.has(appId)) return reject(new Error('Cancelled'));
+      if (code === 0) resolve();
+      else reject(new Error(`Command failed: ${command} ${args.join(' ')}`));
+    });
+
+    proc.on('error', (err) => {
+      const current = setupProcesses.get(appId);
+      if (current?.process === proc) setupProcesses.delete(appId);
+      if (cancelledApps.has(appId)) return reject(new Error('Cancelled'));
+      reject(err);
+    });
+  });
+}
+
+async function runCommandCaptureCancelable(
+  command: string,
+  args: string[],
+  cwd: string,
+  timeoutMs: number,
+  appId: string,
+  tempDir: string
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
-    const proc = spawn(command, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    const proc = spawn(command, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
     let stdout = '';
     let stderr = '';
+
+    setupProcesses.set(appId, { process: proc, tempDir });
 
     const killTimer = setTimeout(() => {
       try { proc.kill('SIGKILL'); } catch {}
@@ -251,11 +372,15 @@ async function runCommandCapture(
 
     proc.on('close', (code) => {
       clearTimeout(killTimer);
+      const current = setupProcesses.get(appId);
+      if (current?.process === proc) setupProcesses.delete(appId);
       resolve({ code: typeof code === 'number' ? code : 1, stdout, stderr });
     });
 
     proc.on('error', () => {
       clearTimeout(killTimer);
+      const current = setupProcesses.get(appId);
+      if (current?.process === proc) setupProcesses.delete(appId);
       resolve({ code: 1, stdout, stderr: stderr || 'Failed to start process' });
     });
   });

@@ -532,19 +532,19 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                                         Here are some suggestions based on your current selection:
                                     </p>
 
-                                <div className="flex flex-wrap gap-2">
-                                    {smartSuggestions.map((suggestion) => (
-                                        <button
-                                            key={suggestion}
-                                            type="button"
-                                            onClick={() => setPrompt(suggestion)}
-                                            className="inline-flex items-center gap-2 rounded-full border border-accent/20 bg-white px-3 py-2 text-xs font-medium text-accent shadow-sm hover:bg-accent/5 hover:border-accent/40 transition-colors"
-                                        >
-                                            <Rocket className="h-3 w-3" />
-                                            {suggestion}
-                                        </button>
-                                    ))}
-                                </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {smartSuggestions.map((suggestion) => (
+                                            <button
+                                                key={suggestion}
+                                                type="button"
+                                                onClick={() => setPrompt(suggestion)}
+                                                className="inline-flex items-center gap-2 rounded-full border border-accent/20 bg-white px-3 py-2 text-xs font-medium text-accent shadow-sm hover:bg-accent/5 hover:border-accent/40 transition-colors"
+                                            >
+                                                <Rocket className="h-3 w-3" />
+                                                {suggestion}
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
                         </div>

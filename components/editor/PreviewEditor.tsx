@@ -652,14 +652,14 @@ import { useAuth } from "@/src/hooks/useAuth";
 import { Camera, Code2, Eye, EyeOff, FileText, Images, Loader2, Maximize2, MessageSquare, Minimize2, Monitor, Palette, Redo2, Rocket, RotateCcw, RotateCw, Smartphone, Tablet, Trash2Icon, Undo2 } from "lucide-react";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { EditorSessionCounters, EditorSessionMetrics, EditorSessionUser, ExportAnalyticsUser, recordEditorSessionAnalytics, recordExportAnalytics } from "../../components/analytics";
-import AiEditPanelV2 from "../../components/editor/AiEditPanelV2";
+import AiEditPanelV2 from "../../components/editor/AiEditPanel";
 import { PreviewEditorTour } from "../../components/PreviewEditorTour";
-import { injectEditableOverlay } from "@/src/lib/klonerIframeRuntimeV2";
+import { injectEditableOverlay } from "@/src/lib/klonerIframeRuntime";
 import { MetaSettings, UploadedAsset } from "../../components/MetaSettings";
-import { FloatingBlockToolbar } from "@/src/lib/floatingToolbarV2";
 import { AiImageLibraryPanel } from "../../components/AiImageLibraryPanel";
 import { IS_MOBILE, sanitizeImageName } from "../../components/helpers";
-import MiniToolbar from "@/src/lib/miniToolbar";
+import MiniToolbar from "../../src/lib/miniToolbarV2";
+import FloatingBlockToolbar from "../../src/lib/floatingToolbar";
 
 function formatSnapshotTime(ts: number) {
     try {
@@ -990,7 +990,7 @@ type DerivedTheme = {
     fontFamilies: string[];
 };
 
-type SidePanelMode = "style" | "meta" | "ai-library" | "code";
+type SidePanelMode = "style" | "meta" | "ai-library" | "code" | "revision-chat";
 
 
 export type SeoMetaByPage = Record<string, SeoMeta>;
@@ -2266,7 +2266,7 @@ export default function PreviewEditorV2({
         return (
             <div className="flex flex-col gap-2 text-md bg-white">
                 <div className="flex items-center justify-between px-2">
-                    <span className="text-[11px] font-semibold tracking-widest text-gray-500 uppercase">
+                    <span className="text-[13px] font-semibold tracking-widest text-gray-500 uppercase">
                         Click to Revert
                     </span>
 
@@ -2278,7 +2278,7 @@ export default function PreviewEditorV2({
                                 e.stopPropagation();
                                 onClearAll();
                             }}
-                            className="text-[11px] font-semibold text-gray-500 hover:text-gray-800"
+                            className="text-[13px] font-semibold text-gray-500 hover:text-gray-800"
                             title="Clear history"
                         >
                             Clear
@@ -2333,7 +2333,7 @@ export default function PreviewEditorV2({
                                             e.stopPropagation();
                                             onDelete(snap.id);
                                         }}
-                                        className="text-[11px] font-semibold text-gray-500 hover:text-red-600"
+                                        className="text-[13px] font-semibold text-gray-500 hover:text-red-600"
                                         title="Delete snapshot"
                                     >
                                         Delete
@@ -4371,118 +4371,275 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
             <div className="absolute inset-4 overflow-hidden">
 
-                {/* Close */}
+                {/* Top right controls */}
                 {!IS_MOBILE && (
-                    <button
-                        type="button"
-                        onClick={() => {
-                            if (dirty) setClosePrompt(true);
-                            else performClose("discard");
-                        }}
-                        disabled={closing || aiEditing}
-                        aria-label="Close editor"
-                        className={`absolute top-5 right-5 z-[100] inline-flex h-6 w-6 items-center justify-center rounded-full border border-neutral-300 bg-white/90/90 text-neutral-700 shadow-md transition ${closing
-                            ? "cursor-not-allowed opacity-60"
-                            : "hover:bg-neutral-100 hover:text-neutral-900"
+                    <div className="absolute top-5 right-5 z-[100] flex items-center gap-2">
+                        {/* Deploy button */}
+                        <button
+                            type="button"
+                            onClick={() => setExportPrompt(true)}
+                            disabled={exporting}
+                            className={`inline-flex h-8 items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-3 py-1 text-[13px] font-semibold text-neutral-700 shadow-md transition ${
+                                exporting
+                                    ? "cursor-not-allowed opacity-60"
+                                    : "hover:bg-neutral-50 hover:text-neutral-900"
                             }`}
-                    >
-                        <span className="block h-[18px] w-[18px]">
-                            <svg
-                                viewBox="0 0 24 24"
-                                className="h-full w-full"
-                                aria-hidden="true"
-                            >
-                                <path
-                                    d="M6 6l12 12M18 6L6 18"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="1.8"
-                                    strokeLinecap="round"
-                                />
-                            </svg>
-                        </span>
-                    </button>
-                )}
-
-                {/* V2 Badge */}
-                {!IS_MOBILE && (
-                    <div className="absolute top-5 left-5 z-[100] inline-flex items-center gap-1 rounded-full bg-[#f55f2a] px-2 py-1 text-[10px] font-semibold text-white shadow-md">
-                        V2
+                            title="Deploy"
+                            aria-label="Deploy"
+                        >
+                            <Rocket className="h-3 w-3" aria-hidden="true" />
+                            <span>Deploy</span>
+                        </button>
+                        
+                        {/* Close button */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (dirty) setClosePrompt(true);
+                                else performClose("discard");
+                            }}
+                            disabled={closing || aiEditing}
+                            aria-label="Close editor"
+                            className={`inline-flex h-6 w-6 items-center justify-center rounded-full border border-neutral-300 bg-white text-neutral-700 shadow-md transition ${
+                                closing
+                                    ? "cursor-not-allowed opacity-60"
+                                    : "hover:bg-neutral-50 hover:text-neutral-900"
+                            }`}
+                        >
+                            <span className="block h-[18px] w-[18px]">
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    className="h-full w-full"
+                                    aria-hidden="true"
+                                >
+                                    <path
+                                        d="M6 6l12 12M18 6L6 18"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="1.8"
+                                        strokeLinecap="round"
+                                    />
+                                </svg>
+                            </span>
+                        </button>
                     </div>
                 )}
 
-                {/* FLOATING DEVICE SELECTOR – TOP CENTER */}
+                {/* V2 Badge moved to bottom right area */}
+
+                {/* TOP TOOLBAR (tools + device) */}
                 <div
                     id="kloner-device-toggle"
-                    className={`absolute ${IS_MOBILE ? 'bottom-20 left-1/2 z-[101]' : 'top-5 left-1/2 z-[101] '} -translate-x-1/2`}>
-                    <div className={`inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white/90/95 px-2 py-1 shadow-md`}>
-                        <motion.button
-                            disabled={aiEditing}
-                            type="button"
-                            onClick={() => handleDeviceChange("desktop")}
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.96 }}
-                            className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors ${device === "desktop"
-                                ? "bg-[#f55f2a] text-white"
-                                : "bg-white/90 text-neutral-600 hover:bg-neutral-100"
+                    className={`absolute z-[101] ${IS_MOBILE ? "bottom-20 left-4 right-4" : "flex items-center justify-center top-5 left-5 right-5"}`}
+                >
+                    <div className="flex items-center gap-2">
+                        {/* Tools strip (left of device) */}
+                        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                        {/* Mode switcher */}
+                        <div className="shrink-0 inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-1 shadow-md">
+                            <button
+                                type="button"
+                                onClick={() => handleModeClick("preview")}
+                                className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
+                                    mode === "preview"
+                                        ? "bg-[#f55f2a] text-white"
+                                        : "bg-white text-neutral-600 hover:bg-neutral-100"
                                 }`}
-                            title="Desktop"
-                        >
-                            <Monitor className="h-3 w-3" />
-                        </motion.button>
+                                title="Preview"
+                                aria-label="Preview"
+                            >
+                                <Eye className="h-3 w-3" aria-hidden="true" />
+                            </button>
 
-                        <motion.button
-                            disabled={aiEditing}
-                            type="button"
-                            onClick={() => handleDeviceChange("tablet")}
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.96 }}
-                            className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors ${device === "tablet"
-                                ? "bg-[#f55f2a] text-white"
-                                : "bg-white/90 text-neutral-600 hover:bg-neutral-100"
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSidebarHidden(true);
+                                    setSidePanelMode("style");
+                                    handleModeClick("screenshot");
+                                }}
+                                className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
+                                    mode === "screenshot"
+                                        ? "bg-[#f55f2a] text-white"
+                                        : "bg-white text-neutral-600 hover:bg-neutral-100"
                                 }`}
-                            title="Tablet"
-                        >
-                            <Tablet className="h-3 w-3" />
-                        </motion.button>
+                                title="Screenshot"
+                                aria-label="Screenshot"
+                            >
+                                <Camera className="h-3 w-3" aria-hidden="true" />
+                            </button>
 
-                        <motion.button
-                            type="button"
-                            disabled={aiEditing}
-                            onClick={() => handleDeviceChange("mobile")}
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.96 }}
-                            className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors ${device === "mobile"
-                                ? "bg-[#f55f2a] text-white"
-                                : "bg-white/90 text-neutral-600 hover:bg-neutral-100"
+                            {isDevCodeMode && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setSidebarHidden(false);
+                                        setSidePanelMode("code");
+                                        handleModeClick("code");
+                                    }}
+                                    className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
+                                        mode === "code"
+                                            ? "bg-[#f55f2a] text-white"
+                                            : "bg-white text-neutral-600 hover:bg-neutral-100"
+                                    }`}
+                                    title="Code"
+                                    aria-label="Code"
+                                >
+                                    <Code2 className="h-3 w-3" aria-hidden="true" />
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Panel tools */}
+                        <div className="shrink-0 inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-1 shadow-md">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const isActive = !sidebarHidden && sidePanelMode === "style" && mode === "preview";
+                                    if (isActive) {
+                                        setSidebarHidden(true);
+                                    } else {
+                                        setSidePanelMode("style");
+                                        setSidebarHidden(false);
+                                        if (mode === "screenshot" || mode === "code") handleModeClick("preview");
+                                    }
+                                }}
+                                className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
+                                    !sidebarHidden && sidePanelMode === "style" && mode === "preview"
+                                        ? "bg-[#f55f2a] text-white"
+                                        : "bg-white text-neutral-600 hover:bg-neutral-100"
                                 }`}
-                            title="Mobile"
-                        >
-                            <Smartphone className="h-3 w-3" />
-                        </motion.button>
+                                title="Styles"
+                                aria-label="Styles"
+                            >
+                                <Palette className="h-3 w-3" aria-hidden="true" />
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const isActive = !sidebarHidden && sidePanelMode === "meta";
+                                    if (isActive) {
+                                        setSidebarHidden(true);
+                                    } else {
+                                        setSidePanelMode("meta");
+                                        setSidebarHidden(false);
+                                        if (mode !== "preview") handleModeClick("preview");
+                                    }
+                                }}
+                                className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
+                                    !sidebarHidden && sidePanelMode === "meta"
+                                        ? "bg-[#f55f2a] text-white"
+                                        : "bg-white text-neutral-600 hover:bg-neutral-100"
+                                }`}
+                                title="SEO / Meta"
+                                aria-label="SEO / Meta"
+                            >
+                                <FileText className="h-3 w-3" aria-hidden="true" />
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const isActive = !sidebarHidden && sidePanelMode === "revision-chat";
+                                    if (isActive) {
+                                        setSidebarHidden(true);
+                                    } else {
+                                        setSidePanelMode("revision-chat");
+                                        setSidebarHidden(false);
+                                        if (mode !== "preview") handleModeClick("preview");
+                                    }
+                                }}
+                                className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
+                                    !sidebarHidden && sidePanelMode === "revision-chat"
+                                        ? "bg-[#f55f2a] text-white"
+                                        : "bg-white text-neutral-600 hover:bg-neutral-100"
+                                }`}
+                                title="AI edits"
+                                aria-label="AI edits"
+                            >
+                                <MessageSquare className="h-3 w-3" aria-hidden="true" />
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const isActive = !sidebarHidden && sidePanelMode === "ai-library";
+                                    if (isActive) {
+                                        setSidebarHidden(true);
+                                    } else {
+                                        setSidePanelMode("ai-library");
+                                        setSidebarHidden(false);
+                                        if (mode === "screenshot") handleModeClick("preview");
+                                    }
+                                }}
+                                className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
+                                    !sidebarHidden && sidePanelMode === "ai-library"
+                                        ? "bg-[#f55f2a] text-white"
+                                        : "bg-white text-neutral-600 hover:bg-neutral-100"
+                                }`}
+                                title="AI images"
+                                aria-label="AI images"
+                            >
+                                <Images className="h-3 w-3" aria-hidden="true" />
+                            </button>
+                        </div>
+                        </div>
+
+                        {/* Device switcher */}
+                        <div className="shrink-0 inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-1 shadow-md">
+                            <motion.button
+                                disabled={aiEditing}
+                                type="button"
+                                onClick={() => handleDeviceChange("desktop")}
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.96 }}
+                                className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
+                                    device === "desktop"
+                                        ? "bg-[#f55f2a] text-white"
+                                        : "bg-white text-neutral-600 hover:bg-neutral-100"
+                                }`}
+                                title="Desktop"
+                            >
+                                <Monitor className="h-3 w-3" />
+                            </motion.button>
+
+                            <motion.button
+                                disabled={aiEditing}
+                                type="button"
+                                onClick={() => handleDeviceChange("tablet")}
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.96 }}
+                                className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
+                                    device === "tablet"
+                                        ? "bg-[#f55f2a] text-white"
+                                        : "bg-white text-neutral-600 hover:bg-neutral-100"
+                                }`}
+                                title="Tablet"
+                            >
+                                <Tablet className="h-3 w-3" />
+                            </motion.button>
+
+                            <motion.button
+                                type="button"
+                                disabled={aiEditing}
+                                onClick={() => handleDeviceChange("mobile")}
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.96 }}
+                                className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
+                                    device === "mobile"
+                                        ? "bg-[#f55f2a] text-white"
+                                        : "bg-white text-neutral-600 hover:bg-neutral-100"
+                                }`}
+                                title="Mobile"
+                            >
+                                <Smartphone className="h-3 w-3" />
+                            </motion.button>
+                        </div>
                     </div>
                 </div>
 
-                {/* UI scale – top left */}
-                <div className={`absolute ${IS_MOBILE ? 'bottom-20 left-3' : 'top-5 left-5'} z-10 flex items-center gap-2 rounded-full ${IS_MOBILE ? '' : 'bg-white/90 shadow-md'} px-2 py-1 `}>
-                    <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-600">
-                        <button
-                            className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-white/90 text-neutral-600 shadow-md hover:bg-neutral-100"
-                            onClick={() => setUiScale((s) => Math.max(0.5, +(s - 0.05).toFixed(2)))}
-                            disabled={closing}
-                        >
-                            −
-                        </button>
-                        {!IS_MOBILE && (<span className="w-10 text-center">{Math.round(uiScale * 100)}%</span>)}
-                        <button
-                            className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-white/90 text-neutral-600 shadow-md hover:bg-neutral-100"
-                            onClick={() => setUiScale((s) => Math.min(1.25, +(s + 0.05).toFixed(2)))}
-                            disabled={closing}
-                        >
-                            +
-                        </button>
-                    </div>
-                </div>
+                {/* UI scale moved to bottom right */}
 
                 <div
                     className="relative bg-white/90 rounded-xl shadow-xl gap-4 p-4 grid grid-cols-1"
@@ -4494,205 +4651,51 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     }}
                 >
 
-                    {/* FLOATING LEFT ICON RAIL (META / CODE / DEPLOY / SCREENSHOT / STYLES) */}
-                    <div className="pointer-events-auto fixed left-4 top-1/2 z-40 -translate-y-1/2">
-                        <div className="flex flex-col gap-2 rounded-full border border-neutral-200 bg-white/90/80 p-1 shadow-md backdrop-blur-sm">
-                            {/* Styles */}
-                            <button
-                                id="kloner-selection-style"
-                                type="button"
-                                onClick={() => {
-                                    const isActive = !sidebarHidden && sidePanelMode === "style" && mode === "preview";
-                                    if (isActive) {
-                                        setSidebarHidden(true);
-                                    } else {
-                                        setSidePanelMode("style");
-                                        setSidebarHidden(false);
-                                        if (mode === "screenshot" || mode === "code") {
-                                            handleModeClick("preview");
-                                        }
-                                    }
-                                }}
-                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "style" && mode === "preview"
-                                    ? "bg-accent text-white"
-                                    : "border-neutral-300 bg-white/90 text-neutral-800 hover:bg-accent hover:text-white"
-                                    }`}
-                            >
-                                <Palette className="h-4 w-4" aria-hidden="true" />
-                                <span className="sr-only">Styles</span>
-                                <span className="pointer-events-none absolute left-11 top-1/2 hidden -translate-y-1/2 rounded-md bg-neutral-900 px-2 py-1 text-[10px] font-medium text-white shadow-sm group-hover:inline-block">
-                                    Styles
-                                </span>
-                            </button>
-
-                            {/* Meta */}
-                            <button
-                                type="button"
-                                id="kloner-meta-toggle"
-                                onClick={() => {
-                                    const isActive = !sidebarHidden && sidePanelMode === "meta";
-                                    if (isActive) {
-                                        setSidebarHidden(true);
-                                    } else {
-                                        setSidePanelMode("meta");
-                                        setSidebarHidden(false);
-
-                                        // meta editing should always work against the visual preview, not code/screenshot
-                                        if (mode !== "preview") {
-                                            handleModeClick("preview");
-                                        }
-                                    }
-                                }}
-                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "meta"
-                                    ? "bg-accent text-white"
-                                    : "border-neutral-300 bg-white/90 text-neutral-800 hover:bg-accent hover:text-white"
-                                    }`}
-                            >
-                                <FileText className="h-4 w-4" aria-hidden="true" />
-                                <span className="sr-only">Meta</span>
-                                <span className="pointer-events-none absolute left-11 top-1/2 hidden -translate-y-1/2 rounded-md bg-neutral-900 px-2 py-1 text-[10px] font-medium text-white shadow-sm group-hover:inline-block">
-                                    Meta
-                                </span>
-                            </button>
-
-                            {/* AI edit chatlog */}
-                            <button
-                                type="button"
-                                id="kloner-ai-edit-toggle"
-                                onClick={() => {
-                                    const isActive = !sidebarHidden && sidePanelMode === "revision-chat";
-                                    if (isActive) {
-                                        setSidebarHidden(true);
-                                    } else {
-                                        setSidePanelMode("revision-chat");
-                                        setSidebarHidden(false);
-
-                                        // AI edits always operate on the visual preview
-                                        if (mode !== "preview") {
-                                            handleModeClick("preview");
-                                        }
-                                    }
-                                }}
-                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "revision-chat"
-                                    ? "bg-accent text-white"
-                                    : "border-neutral-300 bg-white/90 text-neutral-800 hover:bg-accent hover:text-white"
-                                    }`}
-                            >
-                                <MessageSquare className="h-4 w-4" aria-hidden="true" />
-                                <span className="sr-only">AI edit chat</span>
-                                <span className="pointer-events-none absolute left-11 top-1/2 hidden -translate-y-1/2 rounded-md bg-neutral-900 px-2 py-1 text-[10px] font-medium text-white shadow-sm group-hover:inline-block">
-                                    AI edit chat
-                                </span>
-                            </button>
-
-                            {/* AI images */}
-                            <button
-                                type="button"
-                                id="kloner-ai-image-library"
-                                onClick={() => {
-                                    const isActive = !sidebarHidden && sidePanelMode === "ai-library";
-                                    if (isActive) {
-                                        setSidebarHidden(true);
-                                    } else {
-                                        setSidePanelMode("ai-library");
-                                        setSidebarHidden(false);
-                                        if (mode === "screenshot") {
-                                            handleModeClick("preview");
-                                        }
-                                    }
-                                }}
-                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${!sidebarHidden && sidePanelMode === "ai-library"
-                                    ? "bg-accent text-white"
-                                    : "border-neutral-300 bg-white/90 text-neutral-800 hover:bg-accent hover:text-white"
-                                    }`}
-                            >
-                                <Images className="h-4 w-4" aria-hidden="true" />
-                                <span className="sr-only">AI images</span>
-                                <span className="pointer-events-none absolute left-11 top-1/2 hidden -translate-y-1/2 rounded-md bg-neutral-900 px-2 py-1 text-[10px] font-medium text-white shadow-sm group-hover:inline-block">
-                                    AI images
-                                </span>
-                            </button>
-
-                            {/* Code */}
-                            {isDevCodeMode && (
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        const isActive = !sidebarHidden && sidePanelMode === "code" && mode === "code";
-
-                                        if (isActive) {
-                                            handleModeClick("preview");
-                                        } else {
-                                            setSidebarHidden(false);
-                                            setSidePanelMode("code");
-                                            handleModeClick("code");
-                                        }
-                                    }}
-                                    className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${mode === "code" && sidePanelMode === "code" && !sidebarHidden
-                                        ? "bg-accent text-white"
-                                        : "border-neutral-300 bg-white/90 text-neutral-800 hover:bg-accent hover:text-white"
-                                        }`}
-                                >
-                                    <Code2 className="h-4 w-4" aria-hidden="true" />
-                                    <span className="sr-only">Code</span>
-                                    <span className="pointer-events-none absolute left-11 top-1/2 hidden -translate-y-1/2 rounded-md bg-neutral-900 px-2 py-1 text-[10px] font-medium text-white shadow-sm group-hover:inline-block">
-                                        Code
-                                    </span>
-                                </button>
-                            )}
-
-                            {/* Deploy */}
-                            <button
-                                id="kloner-actions-row"
-                                type="button"
-                                onClick={() => setExportPrompt(true)}
-                                disabled={exporting}
-                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${exporting
-                                    ? "border-transparent bg-accent/70 text-white cursor-not-allowed"
-                                    : "border-neutral-300 bg-white/90 text-neutral-800 hover:bg-accent hover:text-white"
-                                    }`}
-                            >
-                                <Rocket className="h-4 w-4" aria-hidden="true" />
-                                <span className="sr-only">Deploy</span>
-                                <span className="pointer-events-none absolute left-11 top-1/2 hidden -translate-y-1/2 rounded-md bg-neutral-900 px-2 py-1 text-[10px] font-medium text-white shadow-sm group-hover:inline-block">
-                                    Deploy
-                                </span>
-                            </button>
-
-                            {/* Screenshot */}
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setSidebarHidden(true);
-                                    setSidePanelMode("style");
-                                    handleModeClick("screenshot");
-                                }}
-                                className={`group relative flex h-9 w-9 items-center justify-center rounded-full border text-[11px] shadow-sm transition ${mode === "screenshot"
-                                    ? "bg-accent text-white"
-                                    : "border-neutral-300 bg-white/90 text-neutral-800 hover:bg-accent hover:text-white"
-                                    }`}
-                            >
-                                <Camera className="h-4 w-4" aria-hidden="true" />
-                                <span className="sr-only">Screenshot</span>
-                                <span className="pointer-events-none absolute left-11 top-1/2 hidden -translate-y-1/2 rounded-md bg-neutral-900 px-2 py-1 text-[10px] font-medium text-white shadow-sm group-hover:inline-block">
-                                    Screenshot
-                                </span>
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* FLOATING EDITOR SIDEBAR? */}
+                    {/* LEFT SIDEBAR (consistent styling) */}
                     {!sidebarHidden && (
                         <motion.aside
                             id="kloner-style-sidebar"
-                            className="pointer-events-auto fixed left-16 top-20 bottom-20 z-40 bg-white/90 flex w-[300px] md:w-[450px] flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white/60 px-3 py-3 pb-5 shadow-lg backdrop-blur-sm"
+                            className="pointer-events-auto fixed left-0 top-0 bottom-0 z-40 bg-white flex w-[min(92vw,520px)] sm:w-[520px] flex-col overflow-hidden rounded-r-2xl border-r border-neutral-200 shadow-xl"
                             initial={{ x: -16, opacity: 0 }}
                             animate={{ x: 0, opacity: 1 }}
                             exit={{ x: -16, opacity: 0 }}
                             transition={{ duration: 0.18, ease: "easeOut" }}
                         >
-                            {/* put your panel contents in a scroll area */}
-                            <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                            {/* Panel header */}
+                            <div className="flex items-center justify-between px-4 py-3" style={{ backgroundColor: "rgba(245, 95, 42, 0.08)" }}>
+                                <div className="text-sm font-semibold text-[#f55f2a]">
+                                    {sidePanelMode === "style" && "🎨 Styles"}
+                                    {sidePanelMode === "meta" && "🔍 SEO / Meta"}
+                                    {sidePanelMode === "ai-library" && "🖼️ AI Images"}
+                                    {sidePanelMode === "revision-chat" && "💬 AI Edits"}
+                                    {sidePanelMode === "code" && "⌨️ Code"}
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setSidebarHidden(true)}
+                                    disabled={closing || aiEditing}
+                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-neutral-600 shadow-sm transition ${
+                                        closing ? "cursor-not-allowed opacity-60" : "hover:bg-neutral-50"
+                                    }`}
+                                    aria-label="Close panel"
+                                    title="Close panel"
+                                >
+                                    <span className="block h-4 w-4">
+                                        <svg viewBox="0 0 24 24" className="h-full w-full" aria-hidden="true">
+                                            <path
+                                                d="M6 6l12 12M18 6L6 18"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                strokeWidth="1.8"
+                                                strokeLinecap="round"
+                                            />
+                                        </svg>
+                                    </span>
+                                </button>
+                            </div>
+
+                            {/* Panel body */}
+                            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
                                 {/* STYLE MODE BODY */}
                                 {!controlsCollapsed && sidePanelMode === "style" && (
                                     <>
@@ -4701,39 +4704,35 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                 className="mt-1 border-t border-neutral-200 pt-3 text-[12px]"
                                                 id="kloner-selection-style"
                                             >
-                                                <div className="mb-1 flex items-center justify-between">
-                                                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
-                                                        Selection
-                                                    </div>
-                                                    <div className="text-[11px] text-neutral-400">
+                                                <div className="mb-3 flex items-center justify-between">
+                                                    <div className="text-[13px] font-medium text-neutral-800">
                                                         {selectionMeta.has
                                                             ? selectionMeta.tagName || "Element"
-                                                            : "Click any block to style it"}
+                                                            : "Select element to style"}
                                                     </div>
-                                                </div>
-                                                <div className="mb-2 text-[11px] text-neutral-400">
-                                                    Styles here are scoped to the current{" "}
-                                                    <span className="font-semibold">{device}</span> layout.
+                                                    <div className="text-[11px] text-neutral-500 font-medium">
+                                                        {device.toUpperCase()}
+                                                    </div>
                                                 </div>
 
                                                 <div className="space-y-3 text-[12px] max-h-64 overflow-y-auto pr-1 lg:max-h-none">
                                                     {(mergedThemeColors.length || theme.fontFamilies.length) > 0 && (
-                                                        <div className="mt-2 space-y-3 border-t border-neutral-200 pt-3">
-                                                            <div className="text-[11px] uppercase tracking-[0.14em] text-neutral-400">
-                                                                Theme (from this page)
+                                                        <div className="space-y-4">
+                                                            <div className="text-[13px] font-medium text-neutral-800">
+                                                                Theme Colors
                                                             </div>
 
                                                             {mergedThemeColors.length > 0 && (
                                                                 <div>
-                                                                    <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
-                                                                        Theme text color
+                                                                    <div className="mb-2 text-[11px] font-medium text-neutral-600">
+                                                                        Text
                                                                     </div>
-                                                                    <div className="flex flex-wrap gap-1">
+                                                                    <div className="grid grid-cols-6 gap-2">
                                                                         {mergedThemeColors.map((c) => (
                                                                             <button
                                                                                 key={`theme-text-${c}`}
                                                                                 type="button"
-                                                                                className="h-5 w-5 rounded-full border border-black/10 shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-40"
+                                                                                className="h-8 w-8 rounded border border-black/10 shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-40"
                                                                                 style={{ background: c }}
                                                                                 disabled={closing}
                                                                                 onClick={() =>
@@ -4750,16 +4749,16 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                                                             {mergedThemeColors.length > 0 && (
                                                                 <div>
-                                                                    <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
-                                                                        Theme background
+                                                                    <div className="mb-2 text-[11px] font-medium text-neutral-600">
+                                                                        Background
                                                                     </div>
 
-                                                                    <div className="mb-2 flex flex-wrap items-center gap-1">
+                                                                    <div className="mb-3 grid grid-cols-6 gap-2">
                                                                         {mergedThemeColors.map((c) => (
                                                                             <button
                                                                                 key={`theme-bg-${c}`}
                                                                                 type="button"
-                                                                                className="h-5 w-5 rounded-full border border-black/10 shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-40"
+                                                                                className="h-8 w-8 rounded border border-black/10 shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-40"
                                                                                 style={{ background: c }}
                                                                                 disabled={closing}
                                                                                 onClick={() =>
@@ -4781,16 +4780,16 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                                                     value: "transparent",
                                                                                 })
                                                                             }
-                                                                            className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-dashed border-neutral-400/80 bg-white/90 text-[9px] font-semibold uppercase tracking-wide text-neutral-500 shadow-sm transition hover:bg-neutral-50 hover:scale-105 active:scale-95 disabled:opacity-40"
-                                                                            title="Transparent background"
+                                                                            className="inline-flex h-8 w-8 items-center justify-center rounded border border-dashed border-neutral-400 bg-white text-[10px] font-medium text-neutral-600 shadow-sm transition hover:bg-neutral-50 hover:scale-105 active:scale-95 disabled:opacity-40"
+                                                                            title="Transparent"
                                                                         >
                                                                             ⌀
                                                                         </button>
                                                                     </div>
 
-                                                                    <div className="flex items-center gap-2 text-[11px]">
-                                                                        <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
-                                                                            Custom background
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-[11px] font-medium text-neutral-600">
+                                                                            Custom
                                                                         </span>
 
                                                                         <input
@@ -4805,7 +4804,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                                                     value,
                                                                                 });
                                                                             }}
-                                                                            className="h-6 w-6 cursor-pointer rounded-full border border-black/10 bg-transparent p-0"
+                                                                            className="h-6 w-6 cursor-pointer rounded border border-black/10 bg-transparent p-0"
                                                                         />
 
                                                                         <input
@@ -4828,7 +4827,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                                                     });
                                                                                 }
                                                                             }}
-                                                                            className="h-7 flex-1 rounded border border-neutral-300 bg-white/90 px-2 text-[11px] text-neutral-700 shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400"
+                                                                            className="h-6 flex-1 rounded border border-neutral-300 bg-white px-2 text-[12px] text-neutral-700 shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400"
                                                                             placeholder="#ffffff"
                                                                         />
                                                                     </div>
@@ -4839,11 +4838,11 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                                                     {/* Font */}
                                                     <div>
-                                                        <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
+                                                        <div className="mb-2 text-[13px] font-medium text-neutral-800">
                                                             Font
                                                         </div>
                                                         <select
-                                                            className="w-full rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[12px] shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400 disabled:opacity-50"
+                                                            className="w-full rounded border border-neutral-300 bg-white px-3 py-2 text-[12px] shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400 disabled:opacity-50"
                                                             disabled={closing}
                                                             onChange={(e) => {
                                                                 const opt = FONT_OPTIONS.find(
@@ -4874,15 +4873,15 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                                                     {/* Size & headings */}
                                                     <div>
-                                                        <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
-                                                            Size & headings
+                                                        <div className="mb-2 text-[13px] font-medium text-neutral-800">
+                                                            Size
                                                         </div>
-                                                        <div className="flex flex-wrap gap-1">
+                                                        <div className="flex flex-wrap gap-2">
                                                             {FONT_SIZE_PRESETS.map((s) => (
                                                                 <button
                                                                     key={s.id}
                                                                     type="button"
-                                                                    className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] leading-tight shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                    className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                     disabled={closing}
                                                                     onClick={() =>
                                                                         sendStyleCommand({
@@ -4899,10 +4898,10 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                                                     {/* Text align */}
                                                     <div>
-                                                        <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
-                                                            Text align
+                                                        <div className="mb-2 text-[13px] font-medium text-neutral-800">
+                                                            Align
                                                         </div>
-                                                        <div className="flex gap-1">
+                                                        <div className="flex gap-2">
                                                             {[
                                                                 { id: "left", label: "Left" },
                                                                 { id: "center", label: "Center" },
@@ -4911,7 +4910,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                                 <button
                                                                     key={a.id}
                                                                     type="button"
-                                                                    className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                    className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                     disabled={closing}
                                                                     onClick={() =>
                                                                         sendStyleCommand({
@@ -4928,14 +4927,14 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                                                     {/* Weight & transform */}
                                                     <div>
-                                                        <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
-                                                            Font weight & transform
+                                                        <div className="mb-2 text-[13px] font-medium text-neutral-800">
+                                                            Weight
                                                         </div>
 
-                                                        <div className="flex flex-wrap gap-1">
+                                                        <div className="flex flex-wrap gap-2">
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-light shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-light shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -4948,7 +4947,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-normal shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-normal shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -4961,7 +4960,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-semibold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -4974,7 +4973,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-semibold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-semibold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -4983,11 +4982,11 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                                     })
                                                                 }
                                                             >
-                                                                Semi-bold
+                                                                Semibold
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-bold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-bold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -4998,23 +4997,18 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             >
                                                                 Bold
                                                             </button>
-                                                            <button
-                                                                type="button"
-                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] font-extrabold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
-                                                                disabled={closing}
-                                                                onClick={() =>
-                                                                    sendStyleCommand({
-                                                                        kind: "weight",
-                                                                        value: "800",
-                                                                    })
-                                                                }
-                                                            >
-                                                                Extra-bold
-                                                            </button>
+                                                        </div>
+                                                    </div>
 
+                                                    {/* Text transform */}
+                                                    <div>
+                                                        <div className="mb-2 text-[13px] font-medium text-neutral-800">
+                                                            Transform
+                                                        </div>
+                                                        <div className="flex gap-2">
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] uppercase tracking-[0.14em] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5023,11 +5017,11 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                                     })
                                                                 }
                                                             >
-                                                                UPPERCASE
+                                                                UPPER
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] normal-case shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5036,23 +5030,23 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                                     })
                                                                 }
                                                             >
-                                                                Aa
+                                                                Normal
                                                             </button>
                                                         </div>
                                                     </div>
 
                                                     {/* Text color */}
                                                     <div>
-                                                        <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
-                                                            Text color
+                                                        <div className="mb-2 text-[13px] font-medium text-neutral-800">
+                                                            Text Color
                                                         </div>
 
-                                                        <div className="mb-2 flex flex-wrap gap-1">
+                                                        <div className="mb-3 grid grid-cols-6 gap-2">
                                                             {TEXT_COLOR_SWATCHES.map((c) => (
                                                                 <button
                                                                     key={c}
                                                                     type="button"
-                                                                    className="h-5 w-5 rounded-full border border-black/10 shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-40"
+                                                                    className="h-8 w-8 rounded border border-black/10 shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-40"
                                                                     style={{ background: c }}
                                                                     disabled={closing}
                                                                     onClick={() =>
@@ -5065,9 +5059,9 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             ))}
                                                         </div>
 
-                                                        <div className="flex items-center gap-2 text-[11px]">
-                                                            <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
-                                                                Custom text
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-[11px] font-medium text-neutral-600">
+                                                                Custom
                                                             </span>
 
                                                             <input
@@ -5082,7 +5076,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                                         value,
                                                                     });
                                                                 }}
-                                                                className="h-6 w-6 cursor-pointer rounded-full border border-black/10 bg-transparent p-0"
+                                                                className="h-6 w-6 cursor-pointer rounded border border-black/10 bg-transparent p-0"
                                                             />
 
                                                             <input
@@ -5105,7 +5099,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                                         });
                                                                     }
                                                                 }}
-                                                                className="h-7 flex-1 rounded border border-neutral-300 bg-white/90 px-2 text-[11px] text-neutral-700 shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400"
+                                                                className="h-6 flex-1 rounded border border-neutral-300 bg-white px-2 text-[12px] text-neutral-700 shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400"
                                                                 placeholder="#111827"
                                                             />
                                                         </div>
@@ -5113,15 +5107,15 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                                                     {/* Background */}
                                                     <div>
-                                                        <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
+                                                        <div className="mb-2 text-[13px] font-medium text-neutral-800">
                                                             Background
                                                         </div>
-                                                        <div className="flex flex-wrap gap-1">
+                                                        <div className="grid grid-cols-6 gap-2">
                                                             {BG_COLOR_SWATCHES.map((c) => (
                                                                 <button
                                                                     key={c}
                                                                     type="button"
-                                                                    className="h-5 w-5 rounded-full border border-black/10 shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-40"
+                                                                    className="h-8 w-8 rounded border border-black/10 shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-40"
                                                                     style={{ background: c }}
                                                                     disabled={closing}
                                                                     onClick={() =>
@@ -5135,15 +5129,15 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                         </div>
                                                     </div>
 
-                                                    {/* Letter spacing */}
+                                                    {/* Spacing */}
                                                     <div>
-                                                        <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
-                                                            Letter spacing
+                                                        <div className="mb-2 text-[13px] font-medium text-neutral-800">
+                                                            Spacing
                                                         </div>
-                                                        <div className="flex flex-wrap gap-1">
+                                                        <div className="flex gap-2">
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5156,7 +5150,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5169,7 +5163,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5183,15 +5177,15 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                         </div>
                                                     </div>
 
-                                                    {/* Block align */}
+                                                    {/* Layout */}
                                                     <div>
-                                                        <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
-                                                            Block align
+                                                        <div className="mb-2 text-[13px] font-medium text-neutral-800">
+                                                            Layout
                                                         </div>
-                                                        <div className="flex flex-wrap gap-1">
+                                                        <div className="flex gap-2">
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5204,7 +5198,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5217,7 +5211,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[11px] shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5247,17 +5241,39 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                                 {/* CODE MODE BODY – separate branch */}
                                 {isDevCodeMode && sidePanelMode === "code" && (
-                                    <>
+                                    <div className="space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">HTML Code</div>
+                                            <button
+                                                type="button"
+                                                onClick={async () => {
+                                                    try {
+                                                        await navigator.clipboard.writeText(htmlDraft);
+                                                    } catch {
+                                                        const el = document.createElement('textarea');
+                                                        el.value = htmlDraft;
+                                                        document.body.appendChild(el);
+                                                        el.select();
+                                                        document.execCommand('copy');
+                                                        document.body.removeChild(el);
+                                                    }
+                                                }}
+                                                className="inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 shadow-sm transition hover:bg-neutral-50 active:scale-95"
+                                            >
+                                                Copy HTML
+                                            </button>
+                                        </div>
                                         <div className="min-h-0 flex-1">
                                             <textarea
-                                                className="h-full w-full rounded border border-neutral-300 bg-white/90 p-2 font-mono text-[12px] leading-5 outline-none shadow-sm focus:ring-1 focus:ring-neutral-400 disabled:opacity-60"
+                                                className="h-[60vh] w-full resize-none rounded-xl border border-neutral-200 bg-white p-4 font-mono text-sm leading-6 text-neutral-900 shadow-sm outline-none placeholder:text-neutral-400 focus:border-[#f55f2a] focus:ring-2 focus:ring-[#f55f2a]/20 disabled:opacity-60"
                                                 value={htmlDraft}
                                                 onChange={(e) => setHtmlDraft(e.target.value)}
                                                 spellCheck={false}
                                                 disabled={closing}
+                                                placeholder="Enter your HTML code here..."
                                             />
                                         </div>
-                                    </>
+                                    </div>
                                 )}
 
                                 {sidePanelMode === "ai-library" && (
@@ -5280,10 +5296,9 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                                 {sidePanelMode === "revision-chat" && (
                                     <AiEditPanelV2
-                                        renderId={draftId ?? null}
+                                        renderId={draftId ?? undefined}
                                         refreshNonce={aiHistoryRefreshNonce}
                                         getSelectedBlockHtml={getSelectedBlockHtml}
-                                        getFullPageHtml={() => previewHtml}
                                         selectionMeta={selectionMeta}
                                         onAiHistoryChange={setAiHistory}
                                         onApplyBlockHtml={applyAiEditedBlockHtml}
@@ -5418,7 +5433,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             <button
                                                                 type="button"
                                                                 onClick={() => restorePage(p.id)}
-                                                                className="mt-1 text-[11px] font-medium text-emerald-600 hover:text-emerald-700"
+                                                                className="mt-1 text-[13px] font-medium text-emerald-600 hover:text-emerald-700"
                                                             >
                                                                 Restore
                                                             </button>
@@ -5539,17 +5554,17 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                                                         {/* instant validation feedback */}
                                                         {newPageUrlErr ? (
-                                                            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700">
+                                                            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-700">
                                                                 {newPageUrlErr}
                                                             </div>
                                                         ) : (
-                                                            <div className="text-[11px] text-neutral-500">
+                                                            <div className="text-[13px] text-neutral-500">
                                                                 Examples: pricing, about, blog/guides
                                                             </div>
                                                         )}
 
 
-                                                        <div className="text-[11px] text-neutral-500">
+                                                        <div className="text-[13px] text-neutral-500">
                                                             Example: pricing, about, services (only a-z, 0-9, and -)
                                                         </div>
                                                     </div>
@@ -5817,7 +5832,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                             >
                                 <div className="flex flex-col rounded-lg border border-neutral-200 bg-white/90/95 shadow-lg">
                                     <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-200">
-                                        <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+                                        <span className="text-[13px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
                                             History
                                         </span>
                                         <button
@@ -5897,7 +5912,33 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                         </div>
 
 
-                        <div className="hidden lg:block mb-3" id="kloner-apply-changes">
+                        <div className="hidden lg:block mb-3" style={{ marginLeft: !sidebarHidden ? "540px" : "20px", marginRight: "20px" }} id="kloner-apply-changes">
+                            {/* V2 Badge above Apply button */}
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="inline-flex items-center gap-1 rounded-full bg-[#f55f2a] px-2 py-1 text-[10px] font-semibold text-white shadow-md">
+                                    V2
+                                </div>
+                                {/* UI scale controls */}
+                                <div className="flex items-center gap-2 rounded-full bg-white shadow-md px-2 py-1">
+                                    <div className="flex items-center gap-1 text-[13px] font-semibold text-slate-600">
+                                        <button
+                                            className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-white text-neutral-600 shadow-md hover:bg-neutral-50"
+                                            onClick={() => setUiScale((s) => Math.max(0.5, +(s - 0.05).toFixed(2)))}
+                                            disabled={closing}
+                                        >
+                                            −
+                                        </button>
+                                        <span className="w-10 text-center">{Math.round(uiScale * 100)}%</span>
+                                        <button
+                                            className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-white text-neutral-600 shadow-md hover:bg-neutral-50"
+                                            onClick={() => setUiScale((s) => Math.min(1.25, +(s + 0.05).toFixed(2)))}
+                                            disabled={closing}
+                                        >
+                                            +
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                             <button
                                 onClick={() => {
                                     bumpSessionCounter("save")
@@ -5905,24 +5946,23 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 }}
                                 disabled={closing || savingDraft || !dirty}
                                 aria-busy={applyingPreview}
-                                className={`rounded px-4 py-4 w-full text-xl transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:scale-[.99] ${dirty
-                                    ? "bg-emerald-600 text-white hover:brightness-95 shadow-lg"
-                                    : "bg-emerald-50 text-emerald-700 pointer-events-none"
+                                className={`rounded-xl px-4 py-4 w-full text-xl font-semibold transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-green-500 active:scale-[.99] ${dirty
+                                    ? "bg-green-600 text-white hover:bg-green-700 shadow-lg"
+                                    : "bg-neutral-100 text-neutral-600 pointer-events-none"
                                     }`}
                                 title="Apply current draft to the live preview"
                             >
                                 {applyingPreview || savingDraft ? (
-                                    <a className="flex items-center justify-center flex-inline gap-2">
-                                        <Loader2 className="h-10 w-10 animate-spin" />
+                                    <div className="flex items-center justify-center gap-2">
+                                        <Loader2 className="h-5 w-5 animate-spin" />
                                         Updating preview…
-                                    </a>
+                                    </div>
                                 ) : dirty ? (
                                     "Apply changes"
                                 ) : (
                                     "Preview is up to date"
                                 )}
                             </button>
-
                         </div>
 
                         {exporting && !closing && (

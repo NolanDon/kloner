@@ -32,7 +32,7 @@ import {
     Loader2,
     BrushIcon,
 } from "lucide-react";
-import type { Device, SeoMeta, ViewMode } from "@/components/PreviewEditor";
+import type { Device, SeoMeta, ViewMode } from "@/components/editor/PreviewEditor";
 import PreviewEditorManager from "@/components/editor/PreviewEditorManager";
 import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 import {

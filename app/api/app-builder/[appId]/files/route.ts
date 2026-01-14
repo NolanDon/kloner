@@ -31,6 +31,7 @@ export async function GET(
             files: data.files || {},
             vercelProjectId: data.vercelProjectId,
             previewUrl: data.previewUrl,
+            vercelProtectionBypassSecret: (data as any).vercelProtectionBypassSecret || null,
         });
 
         // Bind the browser session to this specific appId for all follow-up writes.
