@@ -214,7 +214,11 @@ async function handleWebcontainerPost(body: any) {
       console.error('[WebContainer POST] Using port:', port);
 
       console.error('[WebContainer POST] Starting dev server...');
-      const devProcess = spawn('npm', ['run', 'dev', '--', '--port', port.toString()], {
+      const devProcess = spawn('env', [
+        'NEXT_IGNORE_NATIVE_SWC=1',
+        'SWC_BINARY_PATH=/dev/null',
+        'npm', 'run', 'dev', '--', '--port', port.toString()
+      ], {
         cwd: dir,
         stdio: ['pipe', 'pipe', 'pipe'],
         env: {
@@ -359,7 +363,13 @@ async function runCommandCancelable(
   tempDir: string,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const proc = spawn(command, args, {
+    const proc = spawn('env', [
+      'NEXT_IGNORE_NATIVE_SWC=1',
+      'SWC_BINARY_PATH=/dev/null',
+      ...command === 'npm' ? ['npm_config_cache=' + path.join(tempDir, '.npm'), 'npm_config_tmp=' + path.join(tempDir, 'tmp'), 'npm_config_userconfig=' + path.join(tempDir, '.npmrc')] : [],
+      command,
+      ...args
+    ], {
       cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: true,
@@ -369,6 +379,9 @@ async function runCommandCancelable(
         npm_config_cache: path.join(tempDir, '.npm'),
         npm_config_tmp: path.join(tempDir, 'tmp'),
         npm_config_userconfig: path.join(tempDir, '.npmrc'),
+        // Prevent Next.js from downloading native SWC binaries to save space
+        NEXT_IGNORE_NATIVE_SWC: '1',
+        SWC_BINARY_PATH: '/dev/null',
       },
     });
 
@@ -403,7 +416,13 @@ async function runCommandCaptureCancelable(
   tempDir: string
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
-    const proc = spawn(command, args, { 
+    const proc = spawn('env', [
+      'NEXT_IGNORE_NATIVE_SWC=1',
+      'SWC_BINARY_PATH=/dev/null',
+      ...command === 'npm' ? ['npm_config_cache=' + path.join(tempDir, '.npm'), 'npm_config_tmp=' + path.join(tempDir, 'tmp'), 'npm_config_userconfig=' + path.join(tempDir, '.npmrc')] : [],
+      command,
+      ...args
+    ], { 
       cwd, 
       stdio: ['ignore', 'pipe', 'pipe'], 
       detached: true,
