@@ -6,6 +6,7 @@ import { AppClientProviders } from "./AppClientProvider";
 import ChatWidgetProvider from "@/components/support/ChatWidgetProvider";
 import AffiliateRefCapture from "@/components/AffiliateRefCapture";
 import { Suspense } from "react";
+import StyledJsxRegistry from "./registry";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -60,15 +61,17 @@ export default function RootLayout({
   return (
     <html lang="en" className={inter.variable}>
       <body className="bg-white scroll-smooth snap-y snap-mandatory">
-        <AuthProviderServer>
-          <AppClientProviders>
-            <Suspense>
-              <AffiliateRefCapture />
-              {children}
-            </Suspense>
-            <ChatWidgetProvider />
-          </AppClientProviders>
-        </AuthProviderServer>
+        <StyledJsxRegistry>
+          <AuthProviderServer>
+            <AppClientProviders>
+              <Suspense>
+                <AffiliateRefCapture />
+                {children}
+              </Suspense>
+              <ChatWidgetProvider />
+            </AppClientProviders>
+          </AuthProviderServer>
+        </StyledJsxRegistry>
 
         {/* Google Analytics */}
         <script
