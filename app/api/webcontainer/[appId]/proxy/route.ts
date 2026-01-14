@@ -103,7 +103,18 @@ export async function GET(
             .replace(/(<[^>]*\s(?:src|href|action|formaction|data-src|data-href)\s*=\s*["'])(http:\/\/localhost:\d+\/[^"']*)/g, `$1${proxyBase}/$2`.replace(/http:\/\/localhost:\d+\//, ''))
             .replace(/(<[^>]*\s(?:src|href|action|formaction|data-src|data-href)\s*=\s*["'])(https:\/\/localhost:\d+\/[^"']*)/g, `$1${proxyBase}/$2`.replace(/https:\/\/localhost:\d+\//, ''))
             // Keep Next.js root-relative asset URLs inside the proxy scope.
-            .replace(/(<[^>]*\s(?:src|href|action|formaction|data-src|data-href)\s*=\s*["'])\/_next\//g, `$1${proxyBase}/_next/`);
+            .replace(/(<[^>]*\s(?:src|href|action|formaction|data-src|data-href)\s*=\s*["'])\/_next\/([^"']*)/g, (match, start, path) => {
+              const timestamp = Date.now();
+              return `${start}${proxyBase}/_next/${path}${path.includes('?') ? '&' : '?'}t=${timestamp}`;
+            });
+          
+          // Fix sandbox for iframes with srcdoc to allow scripts
+          rewrittenHtml = rewrittenHtml.replace(/(<iframe[^>]*srcdoc[^>]*sandbox\s*=\s*["'])([^"']*)(["'][^>]*>)/g, (match, start, sandbox, end) => {
+            if (!sandbox.includes('allow-scripts')) {
+              return start + sandbox + ' allow-scripts allow-same-origin' + end;
+            }
+            return match;
+          });
           
           // Add a base tag to set the correct base URL for the iframe
           if (rewrittenHtml.includes('<head>')) {
@@ -229,6 +240,12 @@ export async function GET(
   };
   
   console.log('createInitialRouterState global overrides and __NEXT_DATA__ interceptor installed');
+  
+  // Set webpack public path to proxy base for correct chunk loading
+  if (typeof __webpack_public_path__ !== 'undefined') {
+    __webpack_public_path__ = '${proxyBase}/';
+    console.log('Set __webpack_public_path__ to:', __webpack_public_path__);
+  }
 })();
 </script>`);
           }

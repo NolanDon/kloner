@@ -69,6 +69,9 @@ import {
     Plus,
     CrownIcon,
     Edit2,
+    Clock12Icon,
+    ClockPlus,
+    RotateCcw,
 } from "lucide-react";
 import {
     isHttpUrl,
@@ -1191,6 +1194,9 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     const router = useRouter();
     const [localDisabled, setLocalDisabled] = useState(false);
     const [showGenerationModal, setShowGenerationModal] = useState(false);
+    const [selectedGenerationType, setSelectedGenerationType] = useState<"template" | "webapp" | null>(null);
+
+    // ───────── notification states ─────────
     const [isNotifying, setIsNotifying] = useState(false);
     const [isSubscribed, setIsSubscribed] = useState(false);
 
@@ -1455,8 +1461,8 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                             onClick={handleAppGeneration}
                                             disabled={!isAdmin}
                                             className={`w-full rounded-xl border p-4 text-left transition ${!isAdmin
-                                                    ? "border-neutral-200 bg-neutral-50 cursor-not-allowed opacity-60"
-                                                    : "border-neutral-200 bg-white hover:bg-neutral-50 hover:border-neutral-300"
+                                                ? "border-neutral-200 bg-neutral-50 cursor-not-allowed opacity-60"
+                                                : "border-neutral-200 bg-white hover:bg-neutral-50 hover:border-neutral-300"
                                                 }`}
                                         >
                                             <div className="flex items-start gap-3">
@@ -1525,8 +1531,8 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                 onClick={handleNotifyMe}
                                                 disabled={isNotifying || isSubscribed}
                                                 className={`w-full rounded-xl px-4 py-2 text-sm font-semibold text-white transition ${isSubscribed
-                                                        ? "border border-green-500 bg-green-500 cursor-not-allowed"
-                                                        : "border border-[#f55f2a] bg-[#f55f2a] hover:bg-[#ff8a4c] disabled:opacity-60"
+                                                    ? "border border-green-500 bg-green-500 cursor-not-allowed"
+                                                    : "border border-[#f55f2a] bg-[#f55f2a] hover:bg-[#ff8a4c] disabled:opacity-60"
                                                     }`}
                                             >
                                                 {isNotifying
@@ -1693,7 +1699,7 @@ export default function PreviewPage(): JSX.Element {
     const [appWizardBusy, setAppWizardBusy] = useState(false);
     const [appWizardError, setAppWizardError] = useState<string | null>(null);
     const [appWizardUrl, setAppWizardUrl] = useState<string>("");
-    const [appWizardSource, setAppWizardSource] = useState<"website" | "prompt">("website");
+    const [appWizardSource, setAppWizardSource] = useState<"website" | "prompt" | "sample">("website");
     const [appWizardPrompt, setAppWizardPrompt] = useState<string>("");
     const [appWizardSeedRenderId, setAppWizardSeedRenderId] = useState<string | null>(null);
     const [appWizardTriedConnect, setAppWizardTriedConnect] = useState(false);
@@ -1910,11 +1916,8 @@ export default function PreviewPage(): JSX.Element {
             let finalRenderId = renderId;
 
             if (mode === "clone") {
-                appName = renderId ? `App from Render ${renderId.slice(0, 8)}` : "Cloned Website App";
-                // For clone mode, use the provided renderId or activeRenderId
                 finalRenderId = renderId || activeRenderId || undefined;
             } else if (mode === "prompt") {
-                appName = prompt ? `App: ${prompt.slice(0, 30)}...` : "New App from Prompt";
                 finalRenderId = undefined; // No render for prompt mode
             }
 
@@ -2082,6 +2085,29 @@ export default function PreviewPage(): JSX.Element {
             setAppWizardBusy(false);
         }
     }, [appWizardBusy, isVercelConnected, appWizardUrl, appWizardSeedRenderId, renders, handleCreateApp]);
+
+    const submitAppWizardSample = useCallback(async () => {
+        if (appWizardBusy) return;
+        if (!isVercelConnected) {
+            setAppWizardError("Connect Vercel to continue.");
+            setAppWizardStep(1);
+            return;
+        }
+
+        setAppWizardBusy(true);
+        setAppWizardError(null);
+
+        try {
+            const created = await handleCreateApp("clone", undefined, undefined);
+            if (created) {
+                setAppWizardOpen(false);
+            } else {
+                setAppWizardError("Failed to create app. Please try again.");
+            }
+        } finally {
+            setAppWizardBusy(false);
+        }
+    }, [appWizardBusy, isVercelConnected, handleCreateApp]);
 
     const submitAppWizardPrompt = useCallback(async () => {
         if (appWizardBusy) return;
@@ -5297,82 +5323,99 @@ export default function PreviewPage(): JSX.Element {
                                         ) : null}
 
                                         {appWizardStep === 1 ? (
-                                            <div className="space-y-3">
-                                                <div className="rounded-xl border border-neutral-200 bg-white p-4">
-                                                    <div className="flex items-center justify-between gap-3">
-                                                        <div className="text-sm font-semibold text-neutral-900">Vercel connection</div>
-                                                        <span
-                                                            className={[
-                                                                "inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-semibold",
-                                                                isVercelConnected
-                                                                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                                                    : "border-neutral-200 bg-neutral-50 text-neutral-700",
-                                                            ].join(" ")}
-                                                        >
-                                                            {(isVercelChecking || appWizardOpeningVercel) ? (
-                                                                <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-neutral-300 border-t-[rgba(245,95,42,0.95)]" />
-                                                            ) : isVercelConnected ? (
-                                                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                                                            ) : null}
-                                                            {isVercelConnected
-                                                                ? "Connected"
-                                                                : isVercelChecking
-                                                                    ? "Checking…"
-                                                                    : appWizardOpeningVercel
-                                                                        ? "Opening…"
-                                                                        : "Not connected"}
-                                                        </span>
+                                            <div className="space-y-6">
+                                                {/* Vercel Header with Status */}
+                                                <div className="flex items-center justify-center gap-3">
+                                                    {/* Vercel Logo Placeholder */}
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="h-6 w-6 rounded bg-black flex items-center justify-center">
+                                                            <span className="text-xs font-bold text-white">V</span>
+                                                        </div>
+                                                        <div className="text-lg font-semibold text-neutral-900">Vercel</div>
                                                     </div>
-                                                    <div className="mt-1 text-xs text-neutral-600">
-                                                        Necessary for running and hosting your application.
-                                                    </div>
+                                                    {isVercelConnected ? (
+                                                        <CheckCircle2 className="h-5 w-5 text-green-500" />
+                                                    ) : isVercelChecking ? (
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
+                                                            <span className="text-xs text-amber-600">Checking…</span>
+                                                        </div>
+                                                    ) : (
+                                                        <ClockPlus className="h-5 w-5 text-amber-500 animate-pulse" />
+                                                    )}
                                                 </div>
 
-                                                <div className="flex gap-2">
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleConnectVercelForAppWizard}
-                                                        disabled={isVercelChecking || appWizardOpeningVercel}
-                                                        className="flex-1 rounded-full px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
-                                                        style={{ backgroundColor: ACCENT }}
+                                                {/* Connection Content */}
+                                                {isVercelConnected ? (
+                                                    <motion.div
+                                                        initial={{ opacity: 0, y: 10 }}
+                                                        animate={{ opacity: 1, y: 0 }}
+                                                        className="text-center"
                                                     >
-                                                        {appWizardOpeningVercel
-                                                            ? "Opening Vercel…"
-                                                            : isVercelChecking
-                                                                ? "Checking…"
-                                                                : "Connect Vercel"}
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={async () => {
-                                                            await refreshVercelStatus();
-                                                        }}
-                                                        className="rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-800 hover:bg-neutral-50"
+                                                        <p className="text-sm text-neutral-600">Successfully connected</p>
+                                                    </motion.div>
+                                                ) : (
+                                                    <motion.div
+                                                        initial={{ opacity: 0, scale: 0.95 }}
+                                                        animate={{ opacity: 1, scale: 1 }}
+                                                        transition={{ delay: 0.5 }}
+                                                        className="space-y-4"
                                                     >
-                                                        I already connected
-                                                    </button>
-                                                </div>
-
-                                                {!isVercelConnected && appWizardTriedConnect ? (
-                                                    <div className="text-[11px] text-neutral-500">
-                                                        If you finished in Vercel, click “I already connected”.
-                                                    </div>
-                                                ) : null}
+                                                        <div className="text-center">
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleConnectVercelForAppWizard}
+                                                                disabled={appWizardOpeningVercel}
+                                                                className="inline-flex items-center justify-center rounded-full px-6 py-3 text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
+                                                                style={{ backgroundColor: ACCENT }}
+                                                            >
+                                                                {appWizardOpeningVercel ? (
+                                                                    <>
+                                                                        <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                                                                        Opening Vercel…
+                                                                    </>
+                                                                ) : (
+                                                                    "Connect Vercel"
+                                                                )}
+                                                            </button>
+                                                        </div>
+                                                        {/* {appWizardTriedConnect ? (
+                                                            <motion.div
+                                                                initial={{ opacity: 0 }}
+                                                                animate={{ opacity: 1 }}
+                                                                className="text-center text-xs text-neutral-500"
+                                                            >
+                                                                If you finished in Vercel, click &ldquo;I already connected&rdquo;.
+                                                            </motion.div>
+                                                        ) : null} */}
+                                                    </motion.div>
+                                                )}
                                             </div>
                                         ) : (
                                             <div className="space-y-3">
                                                 <div className="grid gap-2">
                                                     <button
                                                         type="button"
+                                                        onClick={() => setAppWizardSource("sample")}
+                                                        className={`w-full rounded-xl border p-4 text-left transition ${appWizardSource === "sample"
+                                                            ? "border-[#f55f2a] bg-[#f55f2a]/5"
+                                                            : "border-neutral-200 bg-white hover:bg-neutral-50"
+                                                            }`}
+                                                    >
+                                                        <div className="text-sm font-semibold text-neutral-900">Quick start</div>
+                                                        <div className="mt-1 text-xs text-neutral-600">Start from a Kloner sample app.</div>
+                                                    </button>
+                                                    <button
+                                                        type="button"
                                                         onClick={() => setAppWizardSource("website")}
                                                         className={`w-full rounded-xl border p-4 text-left transition ${appWizardSource === "website"
-                                                                ? "border-[#f55f2a] bg-[#f55f2a]/5"
-                                                                : "border-neutral-200 bg-white hover:bg-neutral-50"
+                                                            ? "border-[#f55f2a] bg-[#f55f2a]/5"
+                                                            : "border-neutral-200 bg-white hover:bg-neutral-50"
                                                             }`}
                                                     >
                                                         <div className="text-sm font-semibold text-neutral-900">Build from this URL</div>
                                                         <div className="mt-1 text-xs text-neutral-600 break-all">
-                                                                {appWizardUrl || targetUrl || "(no URL selected)"}
+                                                            {appWizardUrl || targetUrl || "(no URL selected)"}
                                                         </div>
                                                     </button>
 
@@ -5380,8 +5423,8 @@ export default function PreviewPage(): JSX.Element {
                                                         type="button"
                                                         onClick={() => setAppWizardSource("prompt")}
                                                         className={`w-full rounded-xl border p-4 text-left transition ${appWizardSource === "prompt"
-                                                                ? "border-[#f55f2a] bg-[#f55f2a]/5"
-                                                                : "border-neutral-200 bg-white hover:bg-neutral-50"
+                                                            ? "border-[#f55f2a] bg-[#f55f2a]/5"
+                                                            : "border-neutral-200 bg-white hover:bg-neutral-50"
                                                             }`}
                                                     >
                                                         <div className="text-sm font-semibold text-neutral-900">Build from a prompt</div>
@@ -5410,7 +5453,7 @@ export default function PreviewPage(): JSX.Element {
                                                 ) : (
                                                     <button
                                                         type="button"
-                                                        onClick={submitAppWizardWebsite}
+                                                        onClick={appWizardSource === "sample" ? submitAppWizardSample : submitAppWizardWebsite}
                                                         disabled={appWizardBusy}
                                                         className="w-full rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
                                                         style={{ backgroundColor: ACCENT }}
@@ -5418,10 +5461,6 @@ export default function PreviewPage(): JSX.Element {
                                                         {appWizardBusy ? "Creating…" : "Create app"}
                                                     </button>
                                                 )}
-
-                                                <div className="text-[11px] text-neutral-500">
-                                                    After creating, App Builder opens automatically.
-                                                </div>
                                             </div>
                                         )}
                                     </div>

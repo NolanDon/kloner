@@ -62,12 +62,17 @@ export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh,
     ]);
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
+    const [isHydrated, setIsHydrated] = useState(false);
     const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
     const [currentCheckpoint, setCurrentCheckpoint] = useState<string | null>(null);
     const [databaseConnections, setDatabaseConnections] = useState<DatabaseConnection[]>([]);
     const [restorePoints, setRestorePoints] = useState<RestorePointItem[]>([]);
     const [isRestoreBusy, setIsRestoreBusy] = useState(false);
     const [lastRestorePointId, setLastRestorePointId] = useState<string | null>(null);
+
+    useEffect(() => {
+        setIsHydrated(true);
+    }, []);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -537,7 +542,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh,
                                 </div>
                             )}
                             <div className="text-xs opacity-70 mt-2">
-                                {message.timestamp.toLocaleTimeString()}
+                                {isHydrated && message.timestamp.toLocaleTimeString()}
                             </div>
                         </div>
                     </div>

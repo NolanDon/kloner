@@ -21,8 +21,18 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
   const [isLoading, setIsLoading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [canRetry, setCanRetry] = useState(false);
   const [startAttempt, setStartAttempt] = useState(0);
+  const [loadingStatus, setLoadingStatus] = useState('');
   const maxRetries = 3;
+  const retryApp = () => {
+    setStartAttempt(0);
+    setError(null);
+    setPreviewUrl(null);
+    setCanRetry(false);
+    // Force restart by changing restartToken
+    restartToken = Date.now();
+  };
   const proxyBaseRef = useRef<string | null>(null);
   const lastReloadTokenRef = useRef<number | null>(null);
   const lastRestartTokenRef = useRef<number | null>(null);
@@ -50,6 +60,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
         setIsLoading(true);
         setError(null);
         setPreviewUrl(null);
+        setLoadingStatus('Starting app container...');
 
         console.log('Starting app with ID:', appId);
         console.log('Files:', Object.keys(filesRef.current));
@@ -64,6 +75,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
           lastRestartTokenRef.current !== restartToken;
 
         if (shouldRestart) {
+          setLoadingStatus('Restarting app...');
           try {
             const csrf = await ensureSessionAndCsrf().catch(() => null);
             await fetch('/api/webcontainer', {
@@ -100,66 +112,205 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
 
         const data = await response.json();
         console.log('App started successfully:', data);
+        setLoadingStatus('Connecting to app...');
+
+        // For dev environments, try multiple strategies to connect to the app
+        const isLocalhost = typeof window !== 'undefined' && 
+          (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
         // Poll the proxy endpoint to ensure it's ready.
         // This can legitimately take a while (first compile, cold start, etc).
         const maxAttempts = 120; // ~2-3 minutes total with backoff
         let attempts = 0;
         let proxyReady = false;
-        let delayMs = 500;
+        let delayMs = 1000; // Start with 1s delay
+        let consecutiveErrors = 0;
+        const maxConsecutiveErrors = 10;
 
-        while (attempts < maxAttempts && !proxyReady) {
+        while (attempts < maxAttempts && !proxyReady && consecutiveErrors < maxConsecutiveErrors) {
           if (startRunIdRef.current !== runId) return;
+          
           try {
+            setLoadingStatus(`Checking connection (${attempts + 1}/${maxAttempts})...`);
             console.log(`Checking if proxy is ready (attempt ${attempts + 1}/${maxAttempts})...`);
-            const proxyCheck = await fetch(proxyUrl, { 
-              method: 'HEAD',
-              cache: 'no-store',
-            });
+            
+            // Try multiple endpoints for better reliability
+            const endpoints = [
+              proxyUrl, // Main proxy endpoint
+              proxyUrl.replace('/proxy/', '/proxy'), // Without trailing slash
+            ];
 
-            // Auth failures won't fix themselves.
-            if (proxyCheck.status === 401 || proxyCheck.status === 403) {
-              throw new Error('Not authorized to access preview (session/scope).');
+            // If app provided a direct URL in response, also try that via proxy
+            if (data.url && isLocalhost) {
+              const directPort = new URL(data.url).port;
+              endpoints.push(`/api/webcontainer/${appId}/proxy-direct/${directPort}/`);
             }
 
-            // Consider any 2xx a success.
-            if ((proxyCheck.status >= 200 && proxyCheck.status < 300) || proxyCheck.ok) {
-              proxyReady = true;
-              console.log('Proxy is ready!');
-              break;
+            // Add a fallback endpoint that might work if the proxy is misconfigured
+            endpoints.push(`/api/webcontainer/${appId}/health`);
+
+            let bestResponse = null;
+            let bestStatus = 0;
+
+            for (const endpoint of endpoints) {
+              try {
+                const proxyCheck = await fetch(endpoint, { 
+                  method: 'HEAD',
+                  cache: 'no-store',
+                  signal: AbortSignal.timeout(5000), // 5s timeout per check
+                });
+
+                if (proxyCheck.status > bestStatus) {
+                  bestResponse = proxyCheck;
+                  bestStatus = proxyCheck.status;
+                }
+
+                // Auth failures won't fix themselves.
+                if (proxyCheck.status === 401 || proxyCheck.status === 403) {
+                  throw new Error('Not authorized to access preview (session/scope).');
+                }
+
+                // Consider any 2xx or 3xx a success (redirects are OK)
+                if ((proxyCheck.status >= 200 && proxyCheck.status < 400) || proxyCheck.ok) {
+                  proxyReady = true;
+                  setLoadingStatus('Connected! Loading app...');
+                  console.log(`Proxy is ready! (endpoint: ${endpoint}, status: ${proxyCheck.status})`);
+                  // Update proxyUrl to the working endpoint
+                  proxyBaseRef.current = endpoint;
+                  break;
+                }
+              } catch (endpointError) {
+                console.log(`Endpoint ${endpoint} failed:`, endpointError);
+              }
+            }
+
+            if (proxyReady) break;
+
+            if (proxyReady) break;
+
+            // Log the best status we got
+            if (bestResponse) {
+              console.log(`Proxy not ready yet, best status: ${bestStatus}`);
+              
+              // Reset consecutive error count on any response
+              consecutiveErrors = 0;
+              
+              // If we're getting 4xx/5xx but the server is responding, reduce delay for faster retries
+              if (bestStatus >= 400 && bestStatus < 600) {
+                delayMs = Math.max(500, delayMs * 0.8); // Reduce delay for server errors
+                
+                // Special handling for 500 errors - they might be transient
+                if (bestStatus === 500) {
+                  console.log('Got 500 error - this might be a temporary server issue, retrying more aggressively');
+                  delayMs = Math.max(200, delayMs * 0.5); // Even faster for 500s
+                }
+              }
             } else {
-              console.log(`Proxy not ready yet, status: ${proxyCheck.status}`);
+              consecutiveErrors++;
+              console.log(`No response from proxy (consecutive errors: ${consecutiveErrors})`);
+              
+              // Increase delay on consecutive connection failures
+              if (consecutiveErrors >= 3) {
+                delayMs = Math.min(3000, delayMs * 1.5);
+              }
             }
+
           } catch (err) {
-            console.log('Proxy check failed:', err);
+            consecutiveErrors++;
+            console.log(`Proxy check failed (consecutive errors: ${consecutiveErrors}):`, err);
+            
+            // Exponential backoff on errors
+            if (consecutiveErrors >= 5) {
+              delayMs = Math.min(5000, delayMs * 2);
+            }
           }
 
-          await new Promise(resolve => setTimeout(resolve, delayMs));
-          delayMs = Math.min(2000, Math.floor(delayMs * 1.25));
+          // Dynamic delay based on progress and errors
+          const progressDelay = Math.min(delayMs, 500 + (attempts * 50)); // Increase delay over time
+          await new Promise(resolve => setTimeout(resolve, progressDelay));
           attempts++;
         }
 
-        if (!proxyReady) {
-          throw new Error('Proxy endpoint did not become ready in time');
+        if (consecutiveErrors >= maxConsecutiveErrors) {
+          // Try one final fallback: direct connection attempt if available
+          if (data.url && isLocalhost) {
+            console.log('Trying direct connection as final fallback...');
+            try {
+              const directCheck = await fetch(data.url, {
+                method: 'HEAD',
+                mode: 'no-cors', // Handle CORS issues
+                signal: AbortSignal.timeout(3000),
+              });
+              console.log('Direct connection seems to work, using proxy anyway for security');
+            } catch (directError) {
+              console.log('Direct connection also failed:', directError);
+            }
+          }
+          
+          // If all proxy attempts failed, provide a more helpful error message
+          const errorMsg = `Proxy endpoint did not become ready after ${attempts} attempts over ${Math.round((attempts * delayMs) / 1000)}s. The app appears to be running (started successfully), but the proxy connection is failing with 500 errors. This usually indicates a server-side proxy configuration issue.`;
+          
+          console.error('Proxy connection failed:', errorMsg);
+          throw new Error(errorMsg);
         }
         
         // Use same-origin proxy to satisfy COEP/CORP and cookies on HTTPS
-        setPreviewUrl(proxyUrl);
+        setPreviewUrl(proxyBaseRef.current);
       } catch (err) {
         console.error('Error starting app:', err);
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         setError(errorMessage);
         
+        // Classify error types for better retry logic
+        const isNetworkError = errorMessage.includes('Failed to fetch') || 
+                              errorMessage.includes('NetworkError') ||
+                              errorMessage.includes('ERR_') ||
+                              errorMessage.includes('net::');
+        
+        const isServerError = errorMessage.includes('Failed to start app') ||
+                             errorMessage.includes('500') ||
+                             errorMessage.includes('Internal Server Error');
+        
+        const isTimeout = errorMessage.includes('timeout') || 
+                         errorMessage.includes('did not become ready');
+        
+        const isProxyError = errorMessage.includes('Proxy endpoint') ||
+                            errorMessage.includes('proxy connection');
+        
+        const isRetryable = isNetworkError || isServerError || isTimeout || isProxyError;
+        
         // Retry logic for transient failures
-        if (startAttempt < maxRetries && errorMessage.includes('Failed to start app')) {
-          console.log(`Retrying... (attempt ${startAttempt + 1}/${maxRetries})`);
+        if (startAttempt < maxRetries && isRetryable) {
+          const retryDelay = Math.min(5000, 1000 * Math.pow(2, startAttempt)); // Exponential backoff
+          console.log(`Retrying in ${retryDelay}ms... (attempt ${startAttempt + 1}/${maxRetries})`);
+          console.log(`Error type: ${isNetworkError ? 'Network' : isServerError ? 'Server' : isTimeout ? 'Timeout' : 'Unknown'}`);
+          
           setStartAttempt(prev => prev + 1);
+          setCanRetry(false); // Disable retry button during automatic retry
+          
           setTimeout(() => {
+            // Reset some state for retry
+            setError(null);
             const retry = async () => {
               await startApp();
             };
             retry();
-          }, 2000);
+          }, retryDelay);
+        } else if (startAttempt >= maxRetries) {
+          let finalErrorMessage = `Failed after ${maxRetries} attempts: ${errorMessage}`;
+          
+          if (isProxyError) {
+            finalErrorMessage += '\n\nThe app started successfully, but the connection proxy is failing. This is usually a temporary server issue. Try refreshing the page or waiting a few minutes before trying again.';
+          } else if (isServerError) {
+            finalErrorMessage += '\n\nThis appears to be a server-side issue. The app builder service may be temporarily unavailable. Please try again in a few minutes.';
+          }
+          
+          setError(finalErrorMessage);
+          setCanRetry(true);
+        } else {
+          // Non-retryable error
+          console.log('Error is not retryable:', errorMessage);
+          setCanRetry(false);
         }
       } finally {
         setIsLoading(false);
@@ -226,7 +377,22 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
       {error && (
         <div className="p-4 border-b border-black/10">
           {isLoading && <p className="text-accent">Loading...</p>}
-          {error && <p className="text-red-600">Error: {error}</p>}
+          {error && (
+            <div className="space-y-3">
+              <p className="text-red-600 whitespace-pre-line">{error}</p>
+              {canRetry && (
+                <button
+                  onClick={retryApp}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-lg hover:bg-[#e54f1a] transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Try Again
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
       {previewUrl ? (
@@ -237,14 +403,21 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
         />
       ) : (
         <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
+          <div className="text-center max-w-md">
             <div className="flex items-center justify-center gap-1 mb-4">
               <div className="w-2 h-2 bg-accent rounded-full animate-bounce [animation-delay:-0.3s]"></div>
               <div className="w-2 h-2 bg-accent rounded-full animate-bounce [animation-delay:-0.15s]"></div>
               <div className="w-2 h-2 bg-accent rounded-full animate-bounce"></div>
             </div>
-            <p className="text-lg font-medium text-gray-700">Building app...</p>
-            <p className="text-sm text-gray-500 mt-1">This may take a few moments</p>
+            <p className="text-lg font-medium text-gray-700">
+              {isLoading && startAttempt === 0 ? 'Building app...' : `Retry ${startAttempt + 1}/${maxRetries + 1}...`}
+            </p>
+            <p className="text-sm text-gray-500 mt-1">{loadingStatus}</p>
+            {startAttempt > 0 && (
+              <p className="text-xs text-gray-400 mt-2">
+                Some apps take longer to start on first run
+              </p>
+            )}
           </div>
         </div>
       )}

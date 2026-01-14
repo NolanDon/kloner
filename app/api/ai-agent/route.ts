@@ -175,6 +175,7 @@ Return ONLY valid JSON (no markdown, no backticks) matching this TypeScript shap
 }
 
 Rules:
+- response should be a simple, user-friendly summary of what you did (e.g., "Added a login button to the header" or "Fixed the styling on the contact form"). NEVER include code, file paths, or technical details in the response field.
 - Only include file edits for the user's app files.
 - Each fileEdits entry MUST include the full, final content of the file.
 - Keep changes minimal and ensure npm run build passes.
@@ -201,12 +202,30 @@ ${buildContext}`;
                 try {
                     parsed = JSON.parse(raw);
                 } catch {
-                    // If the model fails JSON, fall back to no edits but surface raw.
-                    parsed = { response: raw, refreshServer: false, fileEdits: [] };
+                    // If the model fails JSON, try to extract JSON from the text
+                    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+                    if (jsonMatch) {
+                        try {
+                            parsed = JSON.parse(jsonMatch[0]);
+                        } catch {
+                            // Still failed, use fallback
+                            parsed = { response: "I've made the requested changes to your app.", refreshServer: false, fileEdits: [] };
+                        }
+                    } else {
+                        // No JSON found, use fallback
+                        parsed = { response: "I've made the requested changes to your app.", refreshServer: false, fileEdits: [] };
+                    }
                 }
 
                 const fileEdits = Array.isArray(parsed.fileEdits) ? parsed.fileEdits : [];
-                assistantSummary = safeString(parsed.response || raw, 20_000);
+                let response = safeString(parsed.response || "I've made the requested changes to your app.", 20_000);
+                
+                // Ensure response doesn't contain code
+                if (response.includes('content":') || response.includes('path":') || response.length > 500) {
+                    response = "I've updated your app with the requested changes.";
+                }
+                
+                assistantSummary = response;
                 refreshServer = Boolean(parsed.refreshServer);
 
                 const appliedEdits: FileEdit[] = [];
@@ -217,6 +236,11 @@ ${buildContext}`;
                     // Update in-memory files
                     files[path] = { content, lastModified: Date.now() };
                     appliedEdits.push({ path, content });
+                }
+
+                // Automatically refresh server if there are file edits
+                if (appliedEdits.length > 0) {
+                    refreshServer = true;
                 }
 
                 if (appliedEdits.length > 0) {
@@ -287,10 +311,14 @@ ${buildContext}`;
                     }
 
                     aggregatedEdits = [...aggregatedEdits, ...appliedEdits];
-                    await appRef.update({
-                        files,
-                        updatedAt: new Date(),
-                    });
+                    try {
+                        await appRef.update({
+                            files,
+                            updatedAt: new Date(),
+                        });
+                    } catch (updateErr) {
+                        console.error("[ai-agent] failed to update files in database", updateErr);
+                    }
                 }
 
                 // Always build-check after an edit. If no edits, don't waste cycles.

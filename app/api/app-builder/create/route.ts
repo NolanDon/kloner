@@ -36,6 +36,7 @@ const nextConfig = {
   assetPrefix: '',
   images: {
     unoptimized: true,
+    domains: ['firebasestorage.googleapis.com'],
   },
   trailingSlash: false,
 }
@@ -258,7 +259,9 @@ a { color: inherit; }
 `,
   },
   "app/page.js": {
-    content: `export const dynamic = 'force-dynamic';
+    content: `'use client';
+
+export const dynamic = 'force-dynamic';
 
 export default function Home() {
   const now = new Date();
@@ -278,14 +281,14 @@ export default function Home() {
             <div>
               <h1 className="kloner-title">Your app starts here.</h1>
               <p className="kloner-sub">
-                This is a lightweight placeholder you can customize. Edit <b>app/page.js</b> and <b>app/globals.css</b> to make it yours.
+                This is a lightweight placeholder you can customize. Begin customizing with the agent to make it yours.
               </p>
 
               <div className="kloner-actions">
-                <a className="btn btn-primary" href="#" onClick={(e) => e.preventDefault()}>
+                <a className="no-underline btn btn-primary" href="#" onClick={(e) => e.preventDefault()}>
                   Primary action
                 </a>
-                <a className="btn" href="#" onClick={(e) => e.preventDefault()}>
+                <a className="no-underline btn" href="#" onClick={(e) => e.preventDefault()}>
                   Secondary action
                 </a>
               </div>
