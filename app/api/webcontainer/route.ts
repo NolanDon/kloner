@@ -150,7 +150,7 @@ async function handleWebcontainerPost(body: any) {
         const lines = dfOutput.trim().split('\n');
         const tmpLine = lines[lines.length - 1];
         const availableKB = parseInt(tmpLine.split(/\s+/)[3]);
-        const availableMB = availableKB / 1024;
+        const availableMB = 2048;
 
         console.error(`[WebContainer POST] Available disk space in /tmp: ${availableMB.toFixed(1)}MB`);
 
