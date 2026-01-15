@@ -227,12 +227,10 @@ async function handleWebcontainerPost(body: any) {
         await fs.writeFile(fullPath, content);
       }
 
-      // Create a minimal next.config.js that doesn't interfere with CSS processing
+      // Create a minimal next.config.js
       const nextConfigPath = path.join(dir, 'next.config.js');
       await fs.writeFile(nextConfigPath, `
 module.exports = {
-  // Disable telemetry to reduce noise
-  telemetry: false,
 }
 `);
 
