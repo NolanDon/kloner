@@ -155,7 +155,8 @@ async function handleWebcontainerPost(body: any) {
         }
       } catch (error) {
         console.error('[WebContainer POST] Could not check disk space:', error);
-        // Continue anyway, but log the issue
+        // Re-throw the error to prevent continuing with insufficient space
+        throw error;
       }
 
       tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kloner-app-'));
@@ -173,8 +174,61 @@ async function handleWebcontainerPost(body: any) {
         if (cancelledApps.has(appId)) throw new Error('Cancelled');
         const fullPath = path.join(dir, filePath);
         await fs.mkdir(path.dirname(fullPath), { recursive: true });
-        await fs.writeFile(fullPath, (fileData as { content: string }).content);
+
+        let content = (fileData as { content: string }).content;
+
+        // Modify package.json to use a newer Next.js version that doesn't have SWC download issues
+        if (filePath === 'package.json') {
+          try {
+            const packageJson = JSON.parse(content);
+            if (packageJson.dependencies && packageJson.dependencies.next) {
+              // Update to a newer version that doesn't have the SWC download issue
+              packageJson.dependencies.next = '^14.2.35';
+              if (packageJson.devDependencies && packageJson.devDependencies['eslint-config-next']) {
+                packageJson.devDependencies['eslint-config-next'] = '^14.2.35';
+              }
+              content = JSON.stringify(packageJson, null, 2);
+              console.error('[WebContainer POST] Updated Next.js version in package.json');
+            }
+          } catch (e) {
+            // Ignore JSON parse errors, use original content
+          }
+        }
+
+        await fs.writeFile(fullPath, content);
       }
+
+      // Create a next.config.js to disable SWC and other features that consume space
+      const nextConfigPath = path.join(dir, 'next.config.js');
+      await fs.writeFile(nextConfigPath, `
+module.exports = {
+  experimental: {
+    swcMinify: false,
+    forceSwcTransforms: false,
+  },
+  compiler: {
+    removeConsole: process.env.NODE_ENV === 'production',
+  },
+  // Disable telemetry
+  telemetry: false,
+  // Force webpack to not use SWC
+  webpack: (config) => {
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      fs: false,
+    };
+    return config;
+  },
+}
+`);
+
+      // Also create a .babelrc to force Babel usage
+      const babelConfigPath = path.join(dir, '.babelrc');
+      await fs.writeFile(babelConfigPath, `{
+  "presets": ["next/babel"],
+  "plugins": []
+}`);
+
       console.error('[WebContainer POST] Files written successfully');
 
       if (cancelledApps.has(appId)) throw new Error('Cancelled');
@@ -229,6 +283,9 @@ async function handleWebcontainerPost(body: any) {
       const devProcess = spawn('env', [
         'NEXT_IGNORE_NATIVE_SWC=1',
         'SWC_BINARY_PATH=/dev/null',
+        'NEXT_TELEMETRY_DISABLED=1',
+        'NODE_ENV=development',
+        'FORCE_COLOR=1',
         'npm', 'run', 'dev', '--', '--port', port.toString()
       ], {
         cwd: dir,
@@ -242,6 +299,9 @@ async function handleWebcontainerPost(body: any) {
           // Prevent Next.js from downloading native SWC binaries to save space
           NEXT_IGNORE_NATIVE_SWC: '1',
           SWC_BINARY_PATH: '/dev/null',
+          NEXT_TELEMETRY_DISABLED: '1',
+          NODE_ENV: 'development',
+          FORCE_COLOR: '1',
         },
       });
 
@@ -375,13 +435,7 @@ async function runCommandCancelable(
   tempDir: string,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const proc = spawn('env', [
-      'NEXT_IGNORE_NATIVE_SWC=1',
-      'SWC_BINARY_PATH=/dev/null',
-      ...command === 'npm' ? ['npm_config_cache=' + path.join(tempDir, '.npm'), 'npm_config_tmp=' + path.join(tempDir, 'tmp'), 'npm_config_userconfig=' + path.join(tempDir, '.npmrc')] : [],
-      command,
-      ...args
-    ], {
+    const proc = spawn(command, args, {
       cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: true,
@@ -394,6 +448,7 @@ async function runCommandCancelable(
         // Prevent Next.js from downloading native SWC binaries to save space
         NEXT_IGNORE_NATIVE_SWC: '1',
         SWC_BINARY_PATH: '/dev/null',
+        NEXT_TELEMETRY_DISABLED: '1',
       },
     });
 
@@ -428,13 +483,7 @@ async function runCommandCaptureCancelable(
   tempDir: string
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
-    const proc = spawn('env', [
-      'NEXT_IGNORE_NATIVE_SWC=1',
-      'SWC_BINARY_PATH=/dev/null',
-      ...command === 'npm' ? ['npm_config_cache=' + path.join(tempDir, '.npm'), 'npm_config_tmp=' + path.join(tempDir, 'tmp'), 'npm_config_userconfig=' + path.join(tempDir, '.npmrc')] : [],
-      command,
-      ...args
-    ], { 
+    const proc = spawn(command, args, { 
       cwd, 
       stdio: ['ignore', 'pipe', 'pipe'], 
       detached: true,
@@ -447,6 +496,7 @@ async function runCommandCaptureCancelable(
         // Prevent Next.js from downloading native SWC binaries to save space
         NEXT_IGNORE_NATIVE_SWC: '1',
         SWC_BINARY_PATH: '/dev/null',
+        NEXT_TELEMETRY_DISABLED: '1',
       },
     });
     let stdout = '';
