@@ -480,7 +480,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
       const timer = window.setTimeout(cleanup, delayMs);
       pendingCleanupTimers.set(appId, timer);
     };
-  }, [appId, startAttempt, restartToken, previewUrl]);
+  }, [appId, startAttempt, restartToken]);
 
   // Reload the iframe without tearing down the underlying server/process.
   useEffect(() => {

@@ -191,6 +191,8 @@ async function attachAffiliateToUserDoc(u: User): Promise<void> {
 /* ───────── CSRF helper ───────── */
 
 export let csrfPromise: Promise<string | null> | null = null;
+let cachedCsrfToken: string | null = null;
+let csrfTokenExpiry: number = 0;
 
 async function fetchCsrf(): Promise<string | null> {
     try {
@@ -217,9 +219,26 @@ async function fetchCsrf(): Promise<string | null> {
 }
 
 export async function ensureSessionAndCsrf(): Promise<string | null> {
-    // Always try to fetch fresh CSRF token to avoid stale tokens
-    csrfPromise = fetchCsrf();
-    return csrfPromise;
+    // Check if we have a cached token that's still valid (within 5 minutes)
+    const now = Date.now();
+    if (cachedCsrfToken && csrfTokenExpiry > now) {
+        return cachedCsrfToken;
+    }
+
+    // If no cached token or it's expired, fetch a new one
+    if (!csrfPromise) {
+        csrfPromise = fetchCsrf();
+    }
+
+    const token = await csrfPromise;
+    csrfPromise = null; // Reset promise
+
+    if (token) {
+        cachedCsrfToken = token;
+        csrfTokenExpiry = now + (5 * 60 * 1000); // 5 minutes
+    }
+
+    return token;
 }
 
 /* ───────── Session cookie with CSRF ───────── */
