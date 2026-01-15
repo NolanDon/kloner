@@ -259,7 +259,7 @@ export async function GET(
               console.log('Found __NEXT_DATA__:', nextData);
 
               // Ensure Next.js loads chunks + CSS through the proxy base path.
-              nextData.assetPrefix = proxyBase;
+              // nextData.assetPrefix = proxyBase; // Disabled - let HTML rewriting handle this
               
               // Ensure safe router state defaults
               if (nextData.page && nextData.page !== '/') {

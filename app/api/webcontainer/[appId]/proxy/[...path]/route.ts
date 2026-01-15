@@ -89,6 +89,7 @@ export async function GET(
     const targetUrl = `http://localhost:${info.port}/${subPath}`;
 
     console.log(`Proxying request to: ${targetUrl}`);
+    console.log(`App info:`, { appId: params.appId, port: info.port, tempDir: info.tempDir });
 
     const upstream = await fetch(targetUrl, {
       headers: {
@@ -97,7 +98,19 @@ export async function GET(
       },
       // Add a timeout to avoid hanging requests
       signal: AbortSignal.timeout(30000),
+    }).catch(err => {
+      console.error(`Failed to fetch ${targetUrl}:`, err);
+      console.error(`App registry info:`, { appId: params.appId, port: info.port, tempDir: info.tempDir });
+      throw err;
     });
+
+    console.log(`Upstream response status: ${upstream.status}, content-type: ${upstream.headers.get('content-type')}`);
+    console.log(`Upstream response ok: ${upstream.ok}`);
+    
+    if (upstream.status === 404) {
+      console.error(`404 error for ${targetUrl} - static asset not found`);
+      console.error(`App is running on port ${info.port}, tempDir: ${info.tempDir}`);
+    }
 
     const contentType = upstream.headers.get('content-type') || '';
     const isHtml = contentType.includes('text/html');

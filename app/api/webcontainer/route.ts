@@ -216,8 +216,23 @@ async function handleWebcontainerPost(body: any) {
               if (packageJson.devDependencies && packageJson.devDependencies['eslint-config-next']) {
                 packageJson.devDependencies['eslint-config-next'] = '^14.2.35';
               }
+              
+              // Ensure scripts exist
+              if (!packageJson.scripts) {
+                packageJson.scripts = {};
+              }
+              if (!packageJson.scripts.dev) {
+                packageJson.scripts.dev = 'next dev';
+              }
+              if (!packageJson.scripts.build) {
+                packageJson.scripts.build = 'next build';
+              }
+              if (!packageJson.scripts.start) {
+                packageJson.scripts.start = 'next start';
+              }
+              
               content = JSON.stringify(packageJson, null, 2);
-              console.error('[WebContainer POST] Updated Next.js version in package.json');
+              console.error('[WebContainer POST] Updated Next.js version and ensured scripts in package.json');
             }
           } catch (e) {
             // Ignore JSON parse errors, use original content
@@ -231,6 +246,7 @@ async function handleWebcontainerPost(body: any) {
       const nextConfigPath = path.join(dir, 'next.config.js');
       await fs.writeFile(nextConfigPath, `
 module.exports = {
+  // Minimal config for WebContainer
 }
 `);
 
@@ -240,7 +256,7 @@ module.exports = {
 
       // Install dependencies with maximum space optimization
       console.error('[WebContainer POST] Installing dependencies...');
-      await runCommandCancelable('npm', ['install', '--omit=optional', '--omit=dev', '--prefer-offline', '--no-audit', '--no-fund', '--no-package-lock'], dir, appId, dir);
+      await runCommandCancelable('npm', ['install', '--omit=optional', '--prefer-offline', '--no-audit', '--no-fund', '--no-package-lock'], dir, appId, dir);
       console.error('[WebContainer POST] Dependencies installed');
       
       // Clean npm cache immediately after install to free space
@@ -300,7 +316,7 @@ module.exports = {
         'NEXT_TELEMETRY_DISABLED=1',
         'NODE_ENV=development',
         'FORCE_COLOR=1',
-        'npm', 'run', 'dev', '--', '--port', port.toString()
+        'npm', 'run', 'dev', '--', '--port', port.toString(), '--hostname', '0.0.0.0'
       ], {
         cwd: dir,
         stdio: ['pipe', 'pipe', 'pipe'],
