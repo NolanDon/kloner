@@ -83,14 +83,18 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
           setLoadingStatus('Restarting app...');
           try {
             const csrf = await ensureSessionAndCsrf().catch(() => null);
-            await fetch('/api/webcontainer', {
-              method: 'DELETE',
-              headers: {
-                'Content-Type': 'application/json',
-                ...(csrf ? { 'x-csrf': csrf } : {}),
-              },
-              body: JSON.stringify({ appId }),
-            });
+            if (!csrf) {
+              console.log('No CSRF token available for restart cleanup');
+            } else {
+              await fetch('/api/webcontainer', {
+                method: 'DELETE',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-csrf': csrf,
+                },
+                body: JSON.stringify({ appId }),
+              });
+            }
           } catch (e) {
             console.log('Restart cleanup failed (continuing):', e);
           }
@@ -101,11 +105,17 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
         }
 
         const csrf = await ensureSessionAndCsrf().catch(() => null);
+        console.log('CSRF token obtained:', csrf ? 'present' : 'null');
+        
+        if (!csrf) {
+          throw new Error('Failed to obtain CSRF token. Please refresh the page and try again.');
+        }
+        
         const response = await fetch('/api/webcontainer', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            ...(csrf ? { 'x-csrf': csrf } : {}),
+            'x-csrf': csrf,
           },
           body: JSON.stringify({ appId, files: filesRef.current }),
         });
@@ -366,17 +376,21 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
         pendingCleanupTimers.delete(appId);
         ensureSessionAndCsrf()
           .catch(() => null)
-          .then((csrf) =>
-            fetch('/api/webcontainer', {
+          .then((csrf) => {
+            if (!csrf) {
+              console.log('No CSRF token available for cleanup');
+              return;
+            }
+            return fetch('/api/webcontainer', {
               method: 'DELETE',
               keepalive: true,
               headers: {
                 'Content-Type': 'application/json',
-                ...(typeof csrf === 'string' && csrf ? { 'x-csrf': csrf } : {}),
+                'x-csrf': csrf,
               },
               body: JSON.stringify({ appId }),
-            }).catch(console.error)
-          );
+            }).catch(console.error);
+          });
       };
 
       const timer = window.setTimeout(cleanup, delayMs);
