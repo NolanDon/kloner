@@ -111,6 +111,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
     }, 15000); // Wait 15 seconds before starting health checks
 
     return () => clearTimeout(healthCheckDelay);
+  }, [previewUrl]);
+
   // Monitor iframe loading and trigger rebuilds if it fails
   useEffect(() => {
     if (!previewUrl) return;
@@ -125,7 +127,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
 
     return () => clearTimeout(loadTimeout);
   }, [previewUrl]);
-    // Cancel any pending cleanup for this appId (e.g. StrictMode remount).
+
+  useEffect(() => {
     const pending = pendingCleanupTimers.get(appId);
     if (typeof pending === 'number') {
       clearTimeout(pending);
@@ -477,7 +480,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
       const timer = window.setTimeout(cleanup, delayMs);
       pendingCleanupTimers.set(appId, timer);
     };
-  }, [appId, startAttempt, restartToken]);
+  }, [appId, startAttempt, restartToken, previewUrl]);
 
   // Reload the iframe without tearing down the underlying server/process.
   useEffect(() => {
@@ -491,7 +494,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
     const base = proxyBaseRef.current;
     const nextUrl = `${base}?t=${Date.now()}`;
     setPreviewUrl(nextUrl);
-  }, [reloadToken]);
+  }, [reloadToken, previewUrl]);
 
   return (
     <div className="h-full flex flex-col bg-white text-black/90 border border-black/10 rounded-2xl shadow">
