@@ -154,8 +154,8 @@ async function handleWebcontainerPost(body: any) {
 
         console.error(`[WebContainer POST] Available disk space in /tmp: ${availableMB.toFixed(1)}MB`);
 
-        // Let's test the actual limits - bump requirements way up
-        if (availableMB < 800) {
+        // FUCK IT - let's test the absolute limits
+        if (availableMB < 1000) {
           console.error('[WebContainer POST] Attempting emergency cleanup...');
           try {
             // More aggressive cleanup
@@ -173,13 +173,13 @@ async function handleWebcontainerPost(body: any) {
             const availableMB2 = availableKB2 / 1024;
             console.error(`[WebContainer POST] Available disk space after cleanup: ${availableMB2.toFixed(1)}MB`);
             
-            if (availableMB2 >= 600) { // Accept 600MB as minimum after aggressive cleanup
+            if (availableMB2 >= 800) { // Accept 800MB as minimum after aggressive cleanup
               console.error('[WebContainer POST] Continuing with reduced space requirement after cleanup');
             } else {
-              throw new Error(`Insufficient disk space even after cleanup: ${availableMB2.toFixed(1)}MB available, need at least 600MB`);
+              throw new Error(`Insufficient disk space even after cleanup: ${availableMB2.toFixed(1)}MB available, need at least 800MB`);
             }
           } catch (cleanupError) {
-            throw new Error(`Insufficient disk space: ${availableMB.toFixed(1)}MB available, need at least 800MB`);
+            throw new Error(`Insufficient disk space: ${availableMB.toFixed(1)}MB available, need at least 1000MB`);
           }
         }
       } catch (error) {
