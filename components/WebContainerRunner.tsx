@@ -28,6 +28,25 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
   const retryScheduledRef = useRef(false);
   const totalAttemptsRef = useRef(0); // Circuit breaker for infinite retries
   const maxTotalAttempts = 5; // Absolute maximum attempts across all retries
+  const assetFailureCountRef = useRef(0); // Track 404s for static assets
+  const maxAssetFailures = 3; // Rebuild after this many asset 404s
+  const rebuildScheduledRef = useRef(false); // Prevent multiple rebuilds
+  
+  const handleAssetFailure = () => {
+    assetFailureCountRef.current += 1;
+    console.log(`Asset failure detected (${assetFailureCountRef.current}/${maxAssetFailures})`);
+    
+    if (assetFailureCountRef.current >= maxAssetFailures && !rebuildScheduledRef.current) {
+      console.log('Too many asset failures, triggering rebuild...');
+      rebuildScheduledRef.current = true;
+      
+      // Reset failure count for the rebuild
+      assetFailureCountRef.current = 0;
+      
+      // Trigger a rebuild by incrementing startAttempt
+      setStartAttempt(prev => prev + 1);
+    }
+  };
   const retryApp = () => {
     setStartAttempt(0);
     setError(null);
@@ -35,6 +54,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
     setCanRetry(false);
     retryScheduledRef.current = false;
     totalAttemptsRef.current = 0; // Reset circuit breaker on manual retry
+    assetFailureCountRef.current = 0; // Reset asset failure count
+    rebuildScheduledRef.current = false; // Reset rebuild flag
     // Force restart by changing restartToken
     restartToken = Date.now();
   };
@@ -48,6 +69,34 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
   useEffect(() => {
     filesRef.current = files;
   }, [files]);
+
+  // Monitor app loading and trigger rebuilds on asset failures
+  useEffect(() => {
+    if (!previewUrl) return;
+
+    // Perform periodic health checks to detect asset failures
+    const healthCheckInterval = setInterval(async () => {
+      if (!previewUrl) return;
+      
+      try {
+        // Try to fetch a critical asset to check if the app is serving properly
+        const healthCheckUrl = `${previewUrl.replace(/\/$/, '')}/_next/static/css/app/layout.css`;
+        const response = await fetch(healthCheckUrl, { method: 'HEAD' });
+        
+        if (response.status === 404) {
+          console.log('Critical asset 404 detected, triggering rebuild check...');
+          handleAssetFailure();
+        } else if (response.ok) {
+          // Reset failure count on successful asset fetch
+          assetFailureCountRef.current = 0;
+        }
+      } catch (error) {
+        // Ignore fetch errors, might be network issues
+      }
+    }, 5000); // Check every 5 seconds
+
+    return () => clearInterval(healthCheckInterval);
+  }, [previewUrl]);
 
   useEffect(() => {
     // Cancel any pending cleanup for this appId (e.g. StrictMode remount).
@@ -366,10 +415,10 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
       startRunIdRef.current = runId + 1;
 
       // Cleanup on unmount.
-      // If unmounted almost immediately, this is likely React StrictMode or hot reload; defer cleanup significantly.
-      // Otherwise, stop immediately so installs/builds don't keep running after navigation.
+      // Use a much longer delay to ensure assets can load before cleanup
+      // This prevents premature termination that causes 404s for CSS/JS chunks
       const elapsedMs = Math.max(0, Date.now() - (effectStartedAtRef.current || 0));
-      const delayMs = elapsedMs < 2000 ? 5000 : 0; // Increased delay to 5 seconds for fast remounts
+      const delayMs = elapsedMs < 10000 ? 30000 : 5000; // 30s delay for fast remounts, 5s otherwise
 
       const cleanup = () => {
         console.log(`[WebContainerRunner] Cleaning up app ${appId} after ${elapsedMs}ms elapsed, delay was ${delayMs}ms`);
@@ -440,6 +489,15 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
           src={previewUrl}
           className="w-full h-full border border-black/10 rounded-lg"
           title="App Preview"
+          onLoad={() => {
+            console.log('Iframe loaded successfully');
+            // Reset asset failure count on successful load
+            assetFailureCountRef.current = 0;
+          }}
+          onError={() => {
+            console.log('Iframe failed to load');
+            handleAssetFailure();
+          }}
         />
       ) : (
         <div className="flex-1 flex items-center justify-center">
