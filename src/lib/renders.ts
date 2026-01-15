@@ -62,10 +62,15 @@ export async function resolveStorageUrl(
     pathOrUrl: string
 ): Promise<string> {
     if (!pathOrUrl) return "";
-    if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+    if (/^https?:\/\//i.test(pathOrUrl)) {
+        // If it's already a full URL, use the proxy to avoid CORS issues
+        return `/api/user-blob/proxy?url=${encodeURIComponent(pathOrUrl)}`;
+    }
     try {
         // Use client-side firebase/storage ref + getStorage to resolve a path to a download URL
-        return await getDownloadURL(ref(getStorage(), pathOrUrl));
+        const firebaseUrl = await getDownloadURL(ref(getStorage(), pathOrUrl));
+        // Use proxy to avoid CORS issues
+        return `/api/user-blob/proxy?url=${encodeURIComponent(firebaseUrl)}`;
     } catch {
         return "";
     }
