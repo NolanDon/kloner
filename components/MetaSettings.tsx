@@ -303,8 +303,9 @@ export function MetaSettings({
 
                 {/* Favicon block */}
 
-                <div className="flex h-14 w-14 my-2 items-center justify-center overflow-hidden rounded-md border border-neutral-200 bg-neutral-50">
-                    {hasFavicon ? (
+                {hasFavicon && (
+                    <div className="flex h-14 w-14 my-2 items-center justify-center overflow-hidden rounded-md border border-neutral-200 bg-neutral-50">
+
                         // eslint-disable-next-line @next/next/no-img-element
                         <Image
                             src={draftMeta.faviconUrl as any}
@@ -313,15 +314,11 @@ export function MetaSettings({
                             height={20}
                             className="h-full w-full object-contain"
                         />
+                    </div>
+                )}
 
-                    ) : (
-                        <span className="px-2 text-center text-xs text-neutral-400">
-                            No favicon
-                        </span>
-                    )}
-                </div>
                 {draftMeta.faviconUrl && (
-                    <span className="max-w-[200px] truncate text-xs text-neutral-700">
+                    <span className="max-w-[200px] truncate text-md text-neutral-700">
                         {draftMeta.faviconUrl?.slice(0, 50) + '...'}
                     </span>
                 )}
@@ -331,7 +328,7 @@ export function MetaSettings({
                         <div className="flex items-center gap-4">
 
                             <div className="flex flex-col gap-1">
-                                <span className="text-xs text-neutral-500">
+                                <span className="text-md text-neutral-500">
                                     Square PNG, SVG, or ICO. At least 64×64
                                     recommended.
                                 </span>
@@ -343,7 +340,7 @@ export function MetaSettings({
                                 type="button"
                                 onClick={handlePickFavicon}
                                 disabled={uploading}
-                                className="inline-flex items-center rounded-full bg-accent px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
+                                className="inline-flex items-center rounded-full bg-accent px-3 py-1.5 text-md font-medium text-white disabled:opacity-60"
                             >
                                 {uploading
                                     ? "Uploading…"
@@ -367,7 +364,7 @@ export function MetaSettings({
                 {/* Main form fields */}
                 <div className="flex flex-col gap-4">
                     <div className="flex flex-col gap-1.5">
-                        <label className="text-xs font-medium text-neutral-700">
+                        <label className="text-md font-medium text-neutral-700">
                             Page title
                         </label>
                         <input
@@ -382,7 +379,7 @@ export function MetaSettings({
                     </div>
 
                     <div className="flex flex-col gap-1.5">
-                        <label className="text-xs font-medium text-neutral-700">
+                        <label className="text-md font-medium text-neutral-700">
                             Meta description
                         </label>
                         <textarea
@@ -397,7 +394,7 @@ export function MetaSettings({
                     </div>
 
                     <div className="flex flex-col gap-1.5">
-                        <label className="text-xs font-medium text-neutral-700">
+                        <label className="text-md font-medium text-neutral-700">
                             JSON-LD (optional)
                         </label>
                         <textarea

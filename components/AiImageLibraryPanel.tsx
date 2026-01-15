@@ -218,13 +218,13 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId }: Props) {
             </button>
 
             {loading && (
-                <div className="flex flex-1 items-center justify-center text-xs text-neutral-500">
+                <div className="flex flex-1 items-center justify-center text-md text-neutral-500">
                     Loading images…
                 </div>
             )}
 
             {!loading && !error && items.length === 0 && (
-                <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center text-xs text-neutral-500">
+                <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center text-md text-neutral-500">
                     <ImageIcon className="h-6 w-6 text-neutral-300" />
                     <p>No saved AI images found for this project yet.</p>
                 </div>

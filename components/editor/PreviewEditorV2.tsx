@@ -4716,12 +4716,12 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                 id="kloner-selection-style"
                                             >
                                                 <div className="mb-3 flex items-center justify-between">
-                                                    <div className="text-[13px] font-medium text-neutral-800">
+                                                    <div className="text-[18px] font-medium text-neutral-800">
                                                         {selectionMeta.has
                                                             ? selectionMeta.tagName || "Element"
                                                             : "Select element to style"}
                                                     </div>
-                                                    <div className="text-[11px] text-neutral-500 font-medium">
+                                                    <div className="text-[16px] text-neutral-500 font-medium">
                                                         {device.toUpperCase()}
                                                     </div>
                                                 </div>
@@ -4729,13 +4729,9 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                 <div className="space-y-3 text-[12px] max-h-64 overflow-y-auto pr-1 lg:max-h-none">
                                                     {(mergedThemeColors.length || theme.fontFamilies.length) > 0 && (
                                                         <div className="space-y-4">
-                                                            <div className="text-[13px] font-medium text-neutral-800">
-                                                                Theme Colors
-                                                            </div>
-
                                                             {mergedThemeColors.length > 0 && (
                                                                 <div>
-                                                                    <div className="mb-2 text-[11px] font-medium text-neutral-600">
+                                                                    <div className="mb-2 text-[16px] font-medium text-neutral-600">
                                                                         Text
                                                                     </div>
                                                                     <div className="grid grid-cols-6 gap-2">
@@ -4760,7 +4756,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                                                             {mergedThemeColors.length > 0 && (
                                                                 <div>
-                                                                    <div className="mb-2 text-[11px] font-medium text-neutral-600">
+                                                                    <div className="mb-2 text-[16px] font-medium text-neutral-600">
                                                                         Background
                                                                     </div>
 
@@ -4799,7 +4795,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                                     </div>
 
                                                                     <div className="flex items-center gap-2">
-                                                                        <span className="text-[11px] font-medium text-neutral-600">
+                                                                        <span className="text-[16px] font-medium text-neutral-600">
                                                                             Custom
                                                                         </span>
 
@@ -5071,7 +5067,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                         </div>
 
                                                         <div className="flex items-center gap-2">
-                                                            <span className="text-[11px] font-medium text-neutral-600">
+                                                            <span className="text-[16px] font-medium text-neutral-600">
                                                                 Custom
                                                             </span>
 
