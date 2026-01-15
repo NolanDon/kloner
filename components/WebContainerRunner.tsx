@@ -31,7 +31,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
   const assetFailureCountRef = useRef(0); // Track 404s for static assets
   const maxAssetFailures = 3; // Rebuild after this many asset 404s
   const rebuildScheduledRef = useRef(false); // Prevent multiple rebuilds
-  const appLoadedSuccessfullyRef = useRef(false); // Track if app loaded successfully
+  const appLoadedSuccessfullyRef = useRef(false); // Track if app server is successfully loaded
+  const iframeLoadedSuccessfullyRef = useRef(false); // Track if iframe loaded successfully
   
   const handleAssetFailure = () => {
     // Don't count failures if app already loaded successfully
@@ -60,7 +61,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
     totalAttemptsRef.current = 0; // Reset circuit breaker on manual retry
     assetFailureCountRef.current = 0; // Reset asset failure count
     rebuildScheduledRef.current = false; // Reset rebuild flag
-    appLoadedSuccessfullyRef.current = false; // Reset success flag
+    appLoadedSuccessfullyRef.current = false; // Reset server success flag
+    iframeLoadedSuccessfullyRef.current = false; // Reset iframe success flag
     // Force restart by changing restartToken
     restartToken = Date.now();
   };
@@ -77,6 +79,9 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
 
   // Monitor app loading and trigger rebuilds on asset failures
   useEffect(() => {
+    // Disable aggressive health checks for now - rely on iframe error handling
+    return;
+    
     if (!previewUrl || appLoadedSuccessfullyRef.current) return;
 
     // Delay health checks to allow app to stabilize first
@@ -106,9 +111,20 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
     }, 15000); // Wait 15 seconds before starting health checks
 
     return () => clearTimeout(healthCheckDelay);
-  }, [previewUrl]);
-
+  // Monitor iframe loading and trigger rebuilds if it fails
   useEffect(() => {
+    if (!previewUrl) return;
+
+    const loadTimeout = setTimeout(() => {
+      // If iframe hasn't loaded successfully after 30 seconds, assume asset failures
+      if (!iframeLoadedSuccessfullyRef.current) {
+        console.log('Iframe load timeout - triggering rebuild check...');
+        handleAssetFailure();
+      }
+    }, 30000); // 30 seconds to load
+
+    return () => clearTimeout(loadTimeout);
+  }, [previewUrl]);
     // Cancel any pending cleanup for this appId (e.g. StrictMode remount).
     const pending = pendingCleanupTimers.get(appId);
     if (typeof pending === 'number') {
@@ -330,6 +346,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
         
         // Use same-origin proxy to satisfy COEP/CORP and cookies on HTTPS
         setPreviewUrl(proxyBaseRef.current);
+        appLoadedSuccessfullyRef.current = true; // Mark as successfully loaded when proxy is ready
       } catch (err) {
         console.error('Error starting app:', err);
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
@@ -424,11 +441,16 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
       // Abort any in-flight start/poll loop.
       startRunIdRef.current = runId + 1;
 
-      // Cleanup on unmount.
-      // Use a very conservative delay to prevent premature termination
-      // This is critical for asset loading - apps need time to serve static files
+      // Only cleanup if there's no active preview URL (app not successfully loaded)
+      // This prevents killing apps that are actively being viewed
+      if (previewUrl && appLoadedSuccessfullyRef.current) {
+        console.log(`[WebContainerRunner] Skipping cleanup for active app ${appId} with preview URL`);
+        return;
+      }
+
+      // Cleanup on unmount - but be very conservative
       const elapsedMs = Math.max(0, Date.now() - (effectStartedAtRef.current || 0));
-      const delayMs = elapsedMs < 30000 ? 60000 : 10000; // 60s delay for recent starts, 10s otherwise
+      const delayMs = elapsedMs < 60000 ? 120000 : 30000; // 2min delay for recent starts, 30s otherwise
 
       const cleanup = () => {
         console.log(`[WebContainerRunner] Cleaning up app ${appId} after ${elapsedMs}ms elapsed, delay was ${delayMs}ms`);
@@ -502,7 +524,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
           onLoad={() => {
             console.log('Iframe loaded successfully');
             setLoadingStatus(''); // Clear loading status when app is ready
-            appLoadedSuccessfullyRef.current = true; // Mark app as successfully loaded
+            iframeLoadedSuccessfullyRef.current = true; // Mark iframe as successfully loaded
             // Reset asset failure count on successful load
             assetFailureCountRef.current = 0;
           }}
