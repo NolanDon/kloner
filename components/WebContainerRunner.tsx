@@ -26,12 +26,15 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
   const [loadingStatus, setLoadingStatus] = useState('');
   const maxRetries = 2; // Reduced from 3 to be less aggressive
   const retryScheduledRef = useRef(false);
+  const totalAttemptsRef = useRef(0); // Circuit breaker for infinite retries
+  const maxTotalAttempts = 5; // Absolute maximum attempts across all retries
   const retryApp = () => {
     setStartAttempt(0);
     setError(null);
     setPreviewUrl(null);
     setCanRetry(false);
     retryScheduledRef.current = false;
+    totalAttemptsRef.current = 0; // Reset circuit breaker on manual retry
     // Force restart by changing restartToken
     restartToken = Date.now();
   };
@@ -279,10 +282,16 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
         const isProxyError = errorMessage.includes('Proxy endpoint') ||
                             errorMessage.includes('proxy connection');
         
-        const isRetryable = isNetworkError || isServerError || isTimeout || isProxyError;
+        const isDiskSpaceError = errorMessage.includes('Insufficient disk space');
+        
+        const isRetryable = (isNetworkError || isServerError || isTimeout || isProxyError) && !isDiskSpaceError;
+        
+        // Circuit breaker: prevent infinite retries
+        totalAttemptsRef.current += 1;
+        const maxTotalAttempts = 5; // Absolute maximum attempts across all retries
         
         // Retry logic for transient failures
-        if (startAttempt < maxRetries && isRetryable && !retryScheduledRef.current) {
+        if (startAttempt < maxRetries && isRetryable && !retryScheduledRef.current && totalAttemptsRef.current <= maxTotalAttempts) {
           // More graceful retry with longer delays: 3s, 8s (instead of 1s, 2s, 4s)
           const retryDelay = startAttempt === 0 ? 3000 : 8000;
           console.log(`Retrying in ${retryDelay}ms... (attempt ${startAttempt + 1}/${maxRetries})`);
@@ -301,13 +310,17 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
             };
             retry();
           }, retryDelay);
-        } else if (startAttempt >= maxRetries) {
-          let finalErrorMessage = `Failed after ${maxRetries} attempts: ${errorMessage}`;
+        } else if (startAttempt >= maxRetries || totalAttemptsRef.current > maxTotalAttempts) {
+          let finalErrorMessage = `Failed after ${totalAttemptsRef.current} total attempts: ${errorMessage}`;
           
-          if (isProxyError) {
+          if (totalAttemptsRef.current > maxTotalAttempts) {
+            finalErrorMessage += '\n\nToo many attempts have been made. This may indicate a persistent issue with the app builder service.';
+          } else if (isProxyError) {
             finalErrorMessage += '\n\nThe app started successfully, but the connection proxy is failing. This is usually a temporary server issue. Try refreshing the page or waiting a few minutes before trying again.';
           } else if (isServerError) {
             finalErrorMessage += '\n\nThis appears to be a server-side issue. The app builder service may be temporarily unavailable. Please try again in a few minutes.';
+          } else if (isDiskSpaceError) {
+            finalErrorMessage += '\n\nThe server is running low on disk space. This is a server-side limitation that cannot be resolved by retrying. Please try again later or contact support if this persists.';
           }
           
           setError(finalErrorMessage);
@@ -315,6 +328,13 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
         } else {
           // Non-retryable error
           console.log('Error is not retryable:', errorMessage);
+          let finalErrorMessage = errorMessage;
+          
+          if (isDiskSpaceError) {
+            finalErrorMessage += '\n\nThe server is running low on disk space. This is a server-side limitation that cannot be resolved by retrying. Please try again later or contact support if this persists.';
+          }
+          
+          setError(finalErrorMessage);
           setCanRetry(false);
         }
       } finally {

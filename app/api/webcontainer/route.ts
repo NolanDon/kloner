@@ -134,6 +134,10 @@ async function handleWebcontainerPost(body: any) {
         execSync(`find ${os.tmpdir()} -name '.npm' -type d -exec rm -rf {} + 2>/dev/null || true`);
         // Clean any leftover kloner temp files
         execSync(`find ${os.tmpdir()} -name 'kloner-*' -type f -mmin +30 -delete 2>/dev/null || true`);
+        // Clean old temp directories more aggressively
+        execSync(`find ${os.tmpdir()} -name 'kloner-app-*' -type d -mmin +10 -exec rm -rf {} + 2>/dev/null || true`);
+        // Clean npm cache files
+        execSync(`find ${os.tmpdir()} -name '.npm' -type d -exec rm -rf {} + 2>/dev/null || true`);
         console.error('[WebContainer POST] Cleaned up additional temp files');
       } catch (error) {
         // Ignore cleanup errors
@@ -150,8 +154,31 @@ async function handleWebcontainerPost(body: any) {
 
         console.error(`[WebContainer POST] Available disk space in /tmp: ${availableMB.toFixed(1)}MB`);
 
-        if (availableMB < 800) { // Require at least 800MB free for npm install
-          throw new Error(`Insufficient disk space: ${availableMB.toFixed(1)}MB available, need at least 800MB`);
+        // Try to free up space if we're close to the limit
+        if (availableMB < 400) {
+          console.error('[WebContainer POST] Attempting emergency cleanup...');
+          try {
+            // More aggressive cleanup
+            execSync(`rm -rf ${os.tmpdir()}/kloner-app-* 2>/dev/null || true`);
+            execSync(`rm -rf ${os.tmpdir()}/.npm 2>/dev/null || true`);
+            execSync(`find ${os.tmpdir()} -name "*.tmp" -type f -delete 2>/dev/null || true`);
+            
+            // Check space again after cleanup
+            const dfOutput2 = execSync('df -k /tmp').toString();
+            const lines2 = dfOutput2.trim().split('\n');
+            const tmpLine2 = lines2[lines2.length - 1];
+            const availableKB2 = parseInt(tmpLine2.split(/\s+/)[3]);
+            const availableMB2 = availableKB2 / 1024;
+            console.error(`[WebContainer POST] Available disk space after cleanup: ${availableMB2.toFixed(1)}MB`);
+            
+            if (availableMB2 >= 300) { // Accept 300MB as minimum after cleanup
+              console.error('[WebContainer POST] Continuing with reduced space requirement after cleanup');
+            } else {
+              throw new Error(`Insufficient disk space even after cleanup: ${availableMB2.toFixed(1)}MB available, need at least 300MB`);
+            }
+          } catch (cleanupError) {
+            throw new Error(`Insufficient disk space: ${availableMB.toFixed(1)}MB available, need at least 400MB`);
+          }
         }
       } catch (error) {
         console.error('[WebContainer POST] Could not check disk space:', error);
@@ -235,7 +262,7 @@ module.exports = {
 
       // Install dependencies
       console.error('[WebContainer POST] Installing dependencies...');
-      await runCommandCancelable('npm', ['install', '--omit=optional', '--prefer-offline', '--no-audit', '--no-fund'], dir, appId, dir);
+      await runCommandCancelable('npm', ['install', '--omit=optional', '--prefer-offline', '--no-audit', '--no-fund', '--no-package-lock'], dir, appId, dir);
       console.error('[WebContainer POST] Dependencies installed');
     };
 
