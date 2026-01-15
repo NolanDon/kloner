@@ -75,7 +75,7 @@ async function handleWebcontainerPost(body: any) {
 
     // Basic payload limits to reduce abuse.
     const paths = Object.keys(files);
-    if (paths.length > 300) {
+    if (paths.length > 500) { // Increased from 300
       return NextResponse.json({ error: 'Too many files' }, { status: 400 });
     }
 
@@ -86,7 +86,7 @@ async function handleWebcontainerPost(body: any) {
         return NextResponse.json({ error: 'Invalid file content' }, { status: 400 });
       }
       totalBytes += Buffer.byteLength(content, 'utf8');
-      if (totalBytes > 5_000_000) {
+      if (totalBytes > 10_000_000) { // Increased from 5MB to 10MB
         return NextResponse.json({ error: 'Files too large' }, { status: 400 });
       }
     }
@@ -158,7 +158,7 @@ async function handleWebcontainerPost(body: any) {
         console.error(`[WebContainer POST] Disk space metrics - Available: ${availableMB.toFixed(1)}MB, AppId: ${appId}, Mode: ${runMode}`);
 
         // Emergency cleanup if space is low
-        if (availableMB < 2000) {
+        if (availableMB < 3000) { // Increased from 2000MB
           console.error('[WebContainer POST] Attempting emergency cleanup...');
           try {
             // More aggressive cleanup - remove ALL kloner directories
@@ -173,18 +173,17 @@ async function handleWebcontainerPost(body: any) {
             const lines2 = dfOutput2.trim().split('\n');
             const tmpLine2 = lines2[lines2.length - 1];
             const availableKB2 = parseInt(tmpLine2.split(/\s+/)[3]);
-            // const availableMB2 = availableKB2 / 1024;
-            const availableMB2 = 2048;
+            const availableMB2 = availableKB2 / 1024; // Use actual measurement instead of hardcoded 2048
             console.error(`[WebContainer POST] Available disk space after cleanup: ${availableMB2.toFixed(1)}MB`);
 
-            if (availableMB2 >= 1500) { // Require 1500MB after cleanup
-              console.error('[WebContainer POST] Continuing with reduced space requirement after cleanup');
+            if (availableMB2 >= 2500) { // Increased from 1500MB - require more space after cleanup
+              console.error('[WebContainer POST] Continuing with increased space requirement after cleanup');
             } else {
-              throw new Error(`Insufficient disk space even after cleanup: ${availableMB2.toFixed(1)}MB available, need at least 1500MB`);
+              throw new Error(`Insufficient disk space even after cleanup: ${availableMB2.toFixed(1)}MB available, need at least 2500MB`);
             }
           } catch (cleanupError) {
             console.error(`[WebContainer POST] Emergency cleanup failed: ${cleanupError}`);
-            throw new Error(`Insufficient disk space: ${availableMB.toFixed(1)}MB available, need at least 2000MB`);
+            throw new Error(`Insufficient disk space: ${availableMB.toFixed(1)}MB available, need at least 3000MB`);
           }
         }
       } catch (error) {
@@ -259,10 +258,10 @@ module.exports = {
 
       if (cancelledApps.has(appId)) throw new Error('Cancelled');
 
-      // Install dependencies with maximum space optimization
+      // Install dependencies with optimized settings for Pro plan
       console.error('[WebContainer POST] Installing dependencies...');
       try {
-        await runCommandCancelable('npm', ['install', '--omit=optional', '--prefer-offline', '--no-audit', '--no-fund', '--no-package-lock'], dir, appId, dir);
+        await runCommandCancelable('npm', ['install', '--prefer-offline', '--no-audit', '--no-fund'], dir, appId, dir); // Removed --omit=optional for better compatibility
         console.error('[WebContainer POST] Dependencies installed');
       } catch (installError) {
         console.error(`[WebContainer POST] npm install failed for app ${appId}:`, installError);
@@ -270,7 +269,7 @@ module.exports = {
         throw installError;
       }
 
-      // Clean npm cache immediately after install to free space
+      // Clean npm cache after install to free space (but less aggressively)
       try {
         await runCommandCancelable('npm', ['cache', 'clean', '--force'], dir, appId, dir);
         console.error('[WebContainer POST] NPM cache cleaned');
