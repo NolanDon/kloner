@@ -306,7 +306,6 @@ export function MetaSettings({
                 {hasFavicon && (
                     <div className="flex h-14 w-14 my-2 items-center justify-center overflow-hidden rounded-md border border-neutral-200 bg-neutral-50">
 
-                        // eslint-disable-next-line @next/next/no-img-element
                         <Image
                             src={draftMeta.faviconUrl as any}
                             alt="Current favicon"
