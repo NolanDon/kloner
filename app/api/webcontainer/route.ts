@@ -227,27 +227,12 @@ async function handleWebcontainerPost(body: any) {
         await fs.writeFile(fullPath, content);
       }
 
-      // Create a next.config.js to disable SWC and other features that consume space
+      // Create a minimal next.config.js that doesn't interfere with CSS processing
       const nextConfigPath = path.join(dir, 'next.config.js');
       await fs.writeFile(nextConfigPath, `
 module.exports = {
-  experimental: {
-    swcMinify: false,
-    forceSwcTransforms: false,
-  },
-  compiler: {
-    removeConsole: process.env.NODE_ENV === 'production',
-  },
-  // Disable telemetry
+  // Disable telemetry to reduce noise
   telemetry: false,
-  // Force webpack to not use SWC
-  webpack: (config) => {
-    config.resolve.fallback = {
-      ...config.resolve.fallback,
-      fs: false,
-    };
-    return config;
-  },
 }
 `);
 
