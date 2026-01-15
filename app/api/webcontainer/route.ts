@@ -29,8 +29,8 @@ export async function POST(request: NextRequest) {
   try {
     const { execSync } = require('child_process');
     const tmpDir = os.tmpdir();
-    // Find and remove kloner-app-* directories older than 1 hour
-    execSync(`find ${tmpDir} -name 'kloner-app-*' -type d -mmin +60 -exec rm -rf {} + 2>/dev/null || true`);
+    // Find and remove kloner-app-* directories older than 5 minutes
+    execSync(`find ${tmpDir} -name 'kloner-app-*' -type d -mmin +5 -exec rm -rf {} + 2>/dev/null || true`);
     console.error('[WebContainer POST] Cleaned up old temp directories');
   } catch (error) {
     // Ignore cleanup errors
@@ -135,7 +135,7 @@ async function handleWebcontainerPost(body: any) {
         // Clean any leftover kloner temp files
         execSync(`find ${os.tmpdir()} -name 'kloner-*' -type f -mmin +30 -delete 2>/dev/null || true`);
         // Clean old temp directories more aggressively
-        execSync(`find ${os.tmpdir()} -name 'kloner-app-*' -type d -mmin +10 -exec rm -rf {} + 2>/dev/null || true`);
+        execSync(`find ${os.tmpdir()} -name 'kloner-app-*' -type d -mmin +2 -exec rm -rf {} + 2>/dev/null || true`);
         // Clean npm cache files
         execSync(`find ${os.tmpdir()} -name '.npm' -type d -exec rm -rf {} + 2>/dev/null || true`);
         console.error('[WebContainer POST] Cleaned up additional temp files');
@@ -150,15 +150,18 @@ async function handleWebcontainerPost(body: any) {
         const lines = dfOutput.trim().split('\n');
         const tmpLine = lines[lines.length - 1];
         const availableKB = parseInt(tmpLine.split(/\s+/)[3]);
-        const availableMB = 2048; // FUCK IT - just assume we have 2048MB available
+        const availableMB = availableKB / 1024;
 
         console.error(`[WebContainer POST] Available disk space in /tmp: ${availableMB.toFixed(1)}MB`);
 
-        // FUCK IT - let's test the absolute limits
-        if (availableMB < 1000) {
+        // Log disk space metrics for monitoring
+        console.error(`[WebContainer POST] Disk space metrics - Available: ${availableMB.toFixed(1)}MB, AppId: ${appId}, Mode: ${runMode}`);
+
+        // Emergency cleanup if space is low
+        if (availableMB < 1500) {
           console.error('[WebContainer POST] Attempting emergency cleanup...');
           try {
-            // More aggressive cleanup
+            // More aggressive cleanup - remove ALL kloner directories
             execSync(`rm -rf ${os.tmpdir()}/kloner-app-* 2>/dev/null || true`);
             execSync(`rm -rf ${os.tmpdir()}/.npm 2>/dev/null || true`);
             execSync(`find ${os.tmpdir()} -name "*.tmp" -type f -delete 2>/dev/null || true`);
@@ -173,13 +176,14 @@ async function handleWebcontainerPost(body: any) {
             const availableMB2 = availableKB2 / 1024;
             console.error(`[WebContainer POST] Available disk space after cleanup: ${availableMB2.toFixed(1)}MB`);
             
-            if (availableMB2 >= 800) { // Accept 800MB as minimum after aggressive cleanup
+            if (availableMB2 >= 1200) { // Require 1200MB after cleanup
               console.error('[WebContainer POST] Continuing with reduced space requirement after cleanup');
             } else {
-              throw new Error(`Insufficient disk space even after cleanup: ${availableMB2.toFixed(1)}MB available, need at least 800MB`);
+              throw new Error(`Insufficient disk space even after cleanup: ${availableMB2.toFixed(1)}MB available, need at least 1200MB`);
             }
           } catch (cleanupError) {
-            throw new Error(`Insufficient disk space: ${availableMB.toFixed(1)}MB available, need at least 1000MB`);
+            console.error(`[WebContainer POST] Emergency cleanup failed: ${cleanupError}`);
+            throw new Error(`Insufficient disk space: ${availableMB.toFixed(1)}MB available, need at least 1500MB`);
           }
         }
       } catch (error) {
@@ -256,8 +260,14 @@ module.exports = {
 
       // Install dependencies with maximum space optimization
       console.error('[WebContainer POST] Installing dependencies...');
-      await runCommandCancelable('npm', ['install', '--omit=optional', '--prefer-offline', '--no-audit', '--no-fund', '--no-package-lock'], dir, appId, dir);
-      console.error('[WebContainer POST] Dependencies installed');
+      try {
+        await runCommandCancelable('npm', ['install', '--omit=optional', '--prefer-offline', '--no-audit', '--no-fund', '--no-package-lock'], dir, appId, dir);
+        console.error('[WebContainer POST] Dependencies installed');
+      } catch (installError) {
+        console.error(`[WebContainer POST] npm install failed for app ${appId}:`, installError);
+        // Re-throw to trigger error handling
+        throw installError;
+      }
       
       // Clean npm cache immediately after install to free space
       try {

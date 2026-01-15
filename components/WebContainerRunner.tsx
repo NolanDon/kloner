@@ -57,6 +57,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
     setError(null);
     setPreviewUrl(null);
     setCanRetry(false);
+    setLoadingStatus(''); // Clear loading status on retry
     retryScheduledRef.current = false;
     totalAttemptsRef.current = 0; // Reset circuit breaker on manual retry
     assetFailureCountRef.current = 0; // Reset asset failure count
@@ -414,6 +415,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
           
           setError(finalErrorMessage);
           setCanRetry(true);
+          setLoadingStatus(''); // Clear loading status on final failure
         } else {
           // Non-retryable error
           console.log('Error is not retryable:', errorMessage);
@@ -425,6 +427,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
           
           setError(finalErrorMessage);
           setCanRetry(false);
+          setLoadingStatus(''); // Clear loading status on non-retryable error
         }
       } finally {
         setIsLoading(false);
@@ -500,23 +503,20 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
     <div className="h-full flex flex-col bg-white text-black/90 border border-black/10 rounded-2xl shadow">
       {error && (
         <div className="p-4 border-b border-black/10">
-          {isLoading && <p className="text-accent">Loading...</p>}
-          {error && (
-            <div className="space-y-3">
-              <p className="text-red-600 whitespace-pre-line">{error}</p>
-              {canRetry && (
-                <button
-                  onClick={retryApp}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-lg hover:bg-[#e54f1a] transition-colors"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  Try Again
-                </button>
-              )}
-            </div>
-          )}
+          <div className="space-y-3">
+            <p className="text-red-600 whitespace-pre-line">{error}</p>
+            {canRetry && (
+              <button
+                onClick={retryApp}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-lg hover:bg-[#e54f1a] transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Try Again
+              </button>
+            )}
+          </div>
         </div>
       )}
       {previewUrl ? (
@@ -536,7 +536,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
             handleAssetFailure();
           }}
         />
-      ) : (
+      ) : !error ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center max-w-md">
             <div className="flex items-center justify-center gap-1 mb-4">
@@ -555,7 +555,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
             )}
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
