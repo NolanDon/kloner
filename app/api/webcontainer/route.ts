@@ -154,14 +154,16 @@ async function handleWebcontainerPost(body: any) {
 
         console.error(`[WebContainer POST] Available disk space in /tmp: ${availableMB.toFixed(1)}MB`);
 
-        // Try to free up space if we're close to the limit
-        if (availableMB < 400) {
+        // For Vercel 512MB limit, be very aggressive with space management
+        if (availableMB < 250) {
           console.error('[WebContainer POST] Attempting emergency cleanup...');
           try {
             // More aggressive cleanup
             execSync(`rm -rf ${os.tmpdir()}/kloner-app-* 2>/dev/null || true`);
             execSync(`rm -rf ${os.tmpdir()}/.npm 2>/dev/null || true`);
             execSync(`find ${os.tmpdir()} -name "*.tmp" -type f -delete 2>/dev/null || true`);
+            execSync(`find ${os.tmpdir()} -name ".DS_Store" -type f -delete 2>/dev/null || true`);
+            execSync(`find ${os.tmpdir()} -name "core.*" -type f -delete 2>/dev/null || true`);
             
             // Check space again after cleanup
             const dfOutput2 = execSync('df -k /tmp').toString();
@@ -171,13 +173,13 @@ async function handleWebcontainerPost(body: any) {
             const availableMB2 = availableKB2 / 1024;
             console.error(`[WebContainer POST] Available disk space after cleanup: ${availableMB2.toFixed(1)}MB`);
             
-            if (availableMB2 >= 300) { // Accept 300MB as minimum after cleanup
+            if (availableMB2 >= 200) { // Accept 200MB as minimum after aggressive cleanup
               console.error('[WebContainer POST] Continuing with reduced space requirement after cleanup');
             } else {
-              throw new Error(`Insufficient disk space even after cleanup: ${availableMB2.toFixed(1)}MB available, need at least 300MB`);
+              throw new Error(`Insufficient disk space even after cleanup: ${availableMB2.toFixed(1)}MB available, need at least 200MB`);
             }
           } catch (cleanupError) {
-            throw new Error(`Insufficient disk space: ${availableMB.toFixed(1)}MB available, need at least 400MB`);
+            throw new Error(`Insufficient disk space: ${availableMB.toFixed(1)}MB available, need at least 250MB`);
           }
         }
       } catch (error) {
@@ -260,10 +262,19 @@ module.exports = {
 
       if (cancelledApps.has(appId)) throw new Error('Cancelled');
 
-      // Install dependencies
+      // Install dependencies with maximum space optimization
       console.error('[WebContainer POST] Installing dependencies...');
-      await runCommandCancelable('npm', ['install', '--omit=optional', '--prefer-offline', '--no-audit', '--no-fund', '--no-package-lock'], dir, appId, dir);
+      await runCommandCancelable('npm', ['install', '--omit=optional', '--omit=dev', '--prefer-offline', '--no-audit', '--no-fund', '--no-package-lock'], dir, appId, dir);
       console.error('[WebContainer POST] Dependencies installed');
+      
+      // Clean npm cache immediately after install to free space
+      try {
+        await runCommandCancelable('npm', ['cache', 'clean', '--force'], dir, appId, dir);
+        console.error('[WebContainer POST] NPM cache cleaned');
+      } catch (cacheError) {
+        // Ignore cache cleaning errors
+        console.error('[WebContainer POST] Failed to clean npm cache:', cacheError);
+      }
     };
 
     if (runMode === 'build') {
