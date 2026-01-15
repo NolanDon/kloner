@@ -4366,17 +4366,6 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         }
     }
 
-    if (!isAdmin) {
-        return (
-            <div className="fixed inset-0 z-[9999] bg-black/50 flex items-center justify-center">
-                <div className="bg-white rounded-lg p-6 max-w-md text-center">
-                    <p className="text-lg font-semibold text-neutral-900">Access Denied</p>
-                    <p className="text-neutral-600 mt-2">This feature is only available to administrators.</p>
-                </div>
-            </div>
-        );
-    }
-
     return (
         <div
             ref={containerRef}
