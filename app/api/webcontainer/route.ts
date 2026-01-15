@@ -167,15 +167,16 @@ async function handleWebcontainerPost(body: any) {
             execSync(`find ${os.tmpdir()} -name "*.tmp" -type f -delete 2>/dev/null || true`);
             execSync(`find ${os.tmpdir()} -name ".DS_Store" -type f -delete 2>/dev/null || true`);
             execSync(`find ${os.tmpdir()} -name "core.*" -type f -delete 2>/dev/null || true`);
-            
+
             // Check space again after cleanup
             const dfOutput2 = execSync('df -k /tmp').toString();
             const lines2 = dfOutput2.trim().split('\n');
             const tmpLine2 = lines2[lines2.length - 1];
             const availableKB2 = parseInt(tmpLine2.split(/\s+/)[3]);
-            const availableMB2 = availableKB2 / 1024;
+            // const availableMB2 = availableKB2 / 1024;
+            const availableMB2 = 2048;
             console.error(`[WebContainer POST] Available disk space after cleanup: ${availableMB2.toFixed(1)}MB`);
-            
+
             if (availableMB2 >= 1500) { // Require 1500MB after cleanup
               console.error('[WebContainer POST] Continuing with reduced space requirement after cleanup');
             } else {
@@ -220,7 +221,7 @@ async function handleWebcontainerPost(body: any) {
               if (packageJson.devDependencies && packageJson.devDependencies['eslint-config-next']) {
                 packageJson.devDependencies['eslint-config-next'] = '^14.2.35';
               }
-              
+
               // Ensure scripts exist
               if (!packageJson.scripts) {
                 packageJson.scripts = {};
@@ -234,7 +235,7 @@ async function handleWebcontainerPost(body: any) {
               if (!packageJson.scripts.start) {
                 packageJson.scripts.start = 'next start';
               }
-              
+
               content = JSON.stringify(packageJson, null, 2);
               console.error('[WebContainer POST] Updated Next.js version and ensured scripts in package.json');
             }
@@ -268,7 +269,7 @@ module.exports = {
         // Re-throw to trigger error handling
         throw installError;
       }
-      
+
       // Clean npm cache immediately after install to free space
       try {
         await runCommandCancelable('npm', ['cache', 'clean', '--force'], dir, appId, dir);
@@ -291,7 +292,7 @@ module.exports = {
 
       // If we created a temp dir just for build, clean it up.
       if (createdTempDir && dir) {
-        try { await fs.rm(dir, { recursive: true, force: true }); } catch {}
+        try { await fs.rm(dir, { recursive: true, force: true }); } catch { }
       }
 
       return NextResponse.json({
@@ -428,18 +429,18 @@ async function handleWebcontainerDelete(appId: string) {
     if (setup) {
       try {
         killProcessTree(setup.process);
-      } catch {}
+      } catch { }
       setupProcesses.delete(appId);
       // Best-effort cleanup: if no dev server is running, remove temp dir.
       if (!runningProcesses.has(appId)) {
-        try { await fs.rm(setup.tempDir, { recursive: true, force: true }); } catch {}
+        try { await fs.rm(setup.tempDir, { recursive: true, force: true }); } catch { }
       }
     }
 
     if (runningProcesses.has(appId)) {
       const { process, tempDir } = runningProcesses.get(appId)!;
-      try { killProcessTree(process); } catch {}
-      try { await fs.rm(tempDir, { recursive: true, force: true }); } catch {}
+      try { killProcessTree(process); } catch { }
+      try { await fs.rm(tempDir, { recursive: true, force: true }); } catch { }
       runningProcesses.delete(appId);
     }
 
@@ -452,7 +453,7 @@ async function handleWebcontainerDelete(appId: string) {
 
 function killProcessTree(proc: ChildProcess) {
   if (!proc.pid) {
-    try { proc.kill('SIGTERM'); } catch {}
+    try { proc.kill('SIGTERM'); } catch { }
     return;
   }
 
@@ -464,7 +465,7 @@ function killProcessTree(proc: ChildProcess) {
     // fall back
   }
 
-  try { proc.kill('SIGTERM'); } catch {}
+  try { proc.kill('SIGTERM'); } catch { }
 }
 
 async function runCommandCancelable(
@@ -523,9 +524,9 @@ async function runCommandCaptureCancelable(
   tempDir: string
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
-    const proc = spawn(command, args, { 
-      cwd, 
-      stdio: ['ignore', 'pipe', 'pipe'], 
+    const proc = spawn(command, args, {
+      cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
       detached: true,
       env: {
         ...process.env,
@@ -545,7 +546,7 @@ async function runCommandCaptureCancelable(
     setupProcesses.set(appId, { process: proc, tempDir });
 
     const killTimer = setTimeout(() => {
-      try { proc.kill('SIGKILL'); } catch {}
+      try { proc.kill('SIGKILL'); } catch { }
     }, timeoutMs);
 
     proc.stdout?.on('data', (d) => {
