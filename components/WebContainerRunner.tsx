@@ -27,16 +27,20 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
   const maxRetries = 2; // Reduced from 3 to be less aggressive
   const retryScheduledRef = useRef(false);
   const totalAttemptsRef = useRef(0); // Circuit breaker for infinite retries
-  const maxTotalAttempts = 5; // Absolute maximum attempts across all retries
+  const maxTotalAttempts = 10; // Absolute maximum attempts across all retries (increased from 5)
   const assetFailureCountRef = useRef(0); // Track 404s for static assets
   const maxAssetFailures = 3; // Rebuild after this many asset 404s
   const rebuildScheduledRef = useRef(false); // Prevent multiple rebuilds
+  const appLoadedSuccessfullyRef = useRef(false); // Track if app loaded successfully
   
   const handleAssetFailure = () => {
+    // Don't count failures if app already loaded successfully
+    if (appLoadedSuccessfullyRef.current) return;
+    
     assetFailureCountRef.current += 1;
     console.log(`Asset failure detected (${assetFailureCountRef.current}/${maxAssetFailures})`);
     
-    if (assetFailureCountRef.current >= maxAssetFailures && !rebuildScheduledRef.current) {
+    if (assetFailureCountRef.current >= maxAssetFailures && !rebuildScheduledRef.current && totalAttemptsRef.current < maxTotalAttempts) {
       console.log('Too many asset failures, triggering rebuild...');
       rebuildScheduledRef.current = true;
       
@@ -56,6 +60,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
     totalAttemptsRef.current = 0; // Reset circuit breaker on manual retry
     assetFailureCountRef.current = 0; // Reset asset failure count
     rebuildScheduledRef.current = false; // Reset rebuild flag
+    appLoadedSuccessfullyRef.current = false; // Reset success flag
     // Force restart by changing restartToken
     restartToken = Date.now();
   };
@@ -72,30 +77,35 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
 
   // Monitor app loading and trigger rebuilds on asset failures
   useEffect(() => {
-    if (!previewUrl) return;
+    if (!previewUrl || appLoadedSuccessfullyRef.current) return;
 
-    // Perform periodic health checks to detect asset failures
-    const healthCheckInterval = setInterval(async () => {
-      if (!previewUrl) return;
-      
-      try {
-        // Try to fetch a critical asset to check if the app is serving properly
-        const healthCheckUrl = `${previewUrl.replace(/\/$/, '')}/_next/static/css/app/layout.css`;
-        const response = await fetch(healthCheckUrl, { method: 'HEAD' });
+    // Delay health checks to allow app to stabilize first
+    const healthCheckDelay = setTimeout(() => {
+      // Perform periodic health checks to detect asset failures
+      const healthCheckInterval = setInterval(async () => {
+        if (!previewUrl || appLoadedSuccessfullyRef.current) return;
         
-        if (response.status === 404) {
-          console.log('Critical asset 404 detected, triggering rebuild check...');
-          handleAssetFailure();
-        } else if (response.ok) {
-          // Reset failure count on successful asset fetch
-          assetFailureCountRef.current = 0;
+        try {
+          // Try to fetch a critical asset to check if the app is serving properly
+          const healthCheckUrl = `${previewUrl.replace(/\/$/, '')}/_next/static/css/app/layout.css`;
+          const response = await fetch(healthCheckUrl, { method: 'HEAD' });
+          
+          if (response.status === 404) {
+            console.log('Critical asset 404 detected, triggering rebuild check...');
+            handleAssetFailure();
+          } else if (response.ok) {
+            // Reset failure count on successful asset fetch
+            assetFailureCountRef.current = 0;
+          }
+        } catch (error) {
+          // Ignore fetch errors, might be network issues
         }
-      } catch (error) {
-        // Ignore fetch errors, might be network issues
-      }
-    }, 5000); // Check every 5 seconds
+      }, 10000); // Check every 10 seconds (less aggressive)
 
-    return () => clearInterval(healthCheckInterval);
+      return () => clearInterval(healthCheckInterval);
+    }, 15000); // Wait 15 seconds before starting health checks
+
+    return () => clearTimeout(healthCheckDelay);
   }, [previewUrl]);
 
   useEffect(() => {
@@ -114,7 +124,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
         setIsLoading(true);
         setError(null);
         setPreviewUrl(null);
-        setLoadingStatus('Starting app container...');
+        setLoadingStatus('Starting app container... (This may take 1-2 minutes for first-time builds)');
 
         console.log('Starting app with ID:', appId);
         console.log('Files:', Object.keys(filesRef.current));
@@ -176,7 +186,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
 
         const data = await response.json();
         console.log('App started successfully:', data);
-        setLoadingStatus('Connecting to app...');
+        setLoadingStatus('Installing dependencies and building app... (1-2 minutes)');
 
         // For dev environments, try multiple strategies to connect to the app
         const isLocalhost = typeof window !== 'undefined' && 
@@ -195,7 +205,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
           if (startRunIdRef.current !== runId) return;
           
           try {
-            setLoadingStatus(`Checking connection (${attempts + 1}/${maxAttempts})...`);
+            setLoadingStatus(`Building and connecting... (${attempts + 1}/${maxAttempts}) - Large apps may take longer`);
             console.log(`Checking if proxy is ready (attempt ${attempts + 1}/${maxAttempts})...`);
             
             // Try multiple endpoints for better reliability
@@ -237,7 +247,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
                 // Consider any 2xx or 3xx a success (redirects are OK)
                 if ((proxyCheck.status >= 200 && proxyCheck.status < 400) || proxyCheck.ok) {
                   proxyReady = true;
-                  setLoadingStatus('Connected! Loading app...');
+                  setLoadingStatus('App built successfully! Loading interface...');
                   console.log(`Proxy is ready! (endpoint: ${endpoint}, status: ${proxyCheck.status})`);
                   // Update proxyUrl to the working endpoint
                   proxyBaseRef.current = endpoint;
@@ -347,7 +357,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
         
         // Circuit breaker: prevent infinite retries
         totalAttemptsRef.current += 1;
-        const maxTotalAttempts = 5; // Absolute maximum attempts across all retries
+        const maxTotalAttempts = 10; // Absolute maximum attempts across all retries
         
         // Retry logic for transient failures
         if (startAttempt < maxRetries && isRetryable && !retryScheduledRef.current && totalAttemptsRef.current <= maxTotalAttempts) {
@@ -415,10 +425,10 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
       startRunIdRef.current = runId + 1;
 
       // Cleanup on unmount.
-      // Use a much longer delay to ensure assets can load before cleanup
-      // This prevents premature termination that causes 404s for CSS/JS chunks
+      // Use a very conservative delay to prevent premature termination
+      // This is critical for asset loading - apps need time to serve static files
       const elapsedMs = Math.max(0, Date.now() - (effectStartedAtRef.current || 0));
-      const delayMs = elapsedMs < 10000 ? 30000 : 5000; // 30s delay for fast remounts, 5s otherwise
+      const delayMs = elapsedMs < 30000 ? 60000 : 10000; // 60s delay for recent starts, 10s otherwise
 
       const cleanup = () => {
         console.log(`[WebContainerRunner] Cleaning up app ${appId} after ${elapsedMs}ms elapsed, delay was ${delayMs}ms`);
@@ -491,6 +501,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
           title="App Preview"
           onLoad={() => {
             console.log('Iframe loaded successfully');
+            setLoadingStatus(''); // Clear loading status when app is ready
+            appLoadedSuccessfullyRef.current = true; // Mark app as successfully loaded
             // Reset asset failure count on successful load
             assetFailureCountRef.current = 0;
           }}
@@ -508,7 +520,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
               <div className="w-2 h-2 bg-accent rounded-full animate-bounce"></div>
             </div>
             <p className="text-lg font-medium text-gray-700">
-              {isLoading && startAttempt === 0 ? 'Building app...' : `Retry ${Math.min(startAttempt + 1, maxRetries + 1)}/${maxRetries + 1}...`}
+              {isLoading && startAttempt === 0 ? 'Building your app...' : startAttempt > 0 ? `Rebuilding after issues... (${Math.min(startAttempt + 1, maxRetries + 1)}/${maxRetries + 1})` : 'Loading app...'}
             </p>
             <p className="text-sm text-gray-500 mt-1">{loadingStatus}</p>
             {startAttempt > 0 && (
