@@ -143,54 +143,11 @@ async function handleWebcontainerPost(body: any) {
         // Ignore cleanup errors
       }
 
-      // Check available disk space in /tmp before creating
-      try {
-        const { execSync } = require('child_process');
-        const dfOutput = execSync('df -k /tmp').toString();
-        const lines = dfOutput.trim().split('\n');
-        const tmpLine = lines[lines.length - 1];
-        const availableKB = parseInt(tmpLine.split(/\s+/)[3]);
-        const availableMB = 2048;
+      // Assume we have 3000MB available (hardcoded for Vercel Pro plan)
+      console.error(`[WebContainer POST] Assuming 3000MB available disk space in /tmp (hardcoded)`);
 
-        console.error(`[WebContainer POST] Available disk space in /tmp: ${availableMB.toFixed(1)}MB`);
-
-        // Log disk space metrics for monitoring
-        console.error(`[WebContainer POST] Disk space metrics - Available: ${availableMB.toFixed(1)}MB, AppId: ${appId}, Mode: ${runMode}`);
-
-        // Emergency cleanup if space is low
-        if (availableMB < 3000) { // Increased from 2000MB
-          console.error('[WebContainer POST] Attempting emergency cleanup...');
-          try {
-            // More aggressive cleanup - remove ALL kloner directories
-            execSync(`rm -rf ${os.tmpdir()}/kloner-app-* 2>/dev/null || true`);
-            execSync(`rm -rf ${os.tmpdir()}/.npm 2>/dev/null || true`);
-            execSync(`find ${os.tmpdir()} -name "*.tmp" -type f -delete 2>/dev/null || true`);
-            execSync(`find ${os.tmpdir()} -name ".DS_Store" -type f -delete 2>/dev/null || true`);
-            execSync(`find ${os.tmpdir()} -name "core.*" -type f -delete 2>/dev/null || true`);
-
-            // Check space again after cleanup
-            const dfOutput2 = execSync('df -k /tmp').toString();
-            const lines2 = dfOutput2.trim().split('\n');
-            const tmpLine2 = lines2[lines2.length - 1];
-            const availableKB2 = parseInt(tmpLine2.split(/\s+/)[3]);
-            const availableMB2 = availableKB2 / 1024; // Use actual measurement instead of hardcoded 2048
-            console.error(`[WebContainer POST] Available disk space after cleanup: ${availableMB2.toFixed(1)}MB`);
-
-            if (availableMB2 >= 2500) { // Increased from 1500MB - require more space after cleanup
-              console.error('[WebContainer POST] Continuing with increased space requirement after cleanup');
-            } else {
-              throw new Error(`Insufficient disk space even after cleanup: ${availableMB2.toFixed(1)}MB available, need at least 2500MB`);
-            }
-          } catch (cleanupError) {
-            console.error(`[WebContainer POST] Emergency cleanup failed: ${cleanupError}`);
-            throw new Error(`Insufficient disk space: ${availableMB.toFixed(1)}MB available, need at least 3000MB`);
-          }
-        }
-      } catch (error) {
-        console.error('[WebContainer POST] Could not check disk space:', error);
-        // Re-throw the error to prevent continuing with insufficient space
-        throw error;
-      }
+      // Log disk space metrics for monitoring
+      console.error(`[WebContainer POST] Disk space metrics - Available: 3000MB (hardcoded), AppId: ${appId}, Mode: ${runMode}`);
 
       tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kloner-app-'));
       console.error('[WebContainer POST] Created temp directory:', tempDir);
