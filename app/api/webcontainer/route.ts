@@ -251,13 +251,6 @@ module.exports = {
 }
 `);
 
-      // Also create a .babelrc to force Babel usage
-      const babelConfigPath = path.join(dir, '.babelrc');
-      await fs.writeFile(babelConfigPath, `{
-  "presets": ["next/babel"],
-  "plugins": []
-}`);
-
       console.error('[WebContainer POST] Files written successfully');
 
       if (cancelledApps.has(appId)) throw new Error('Cancelled');
