@@ -356,12 +356,13 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
       startRunIdRef.current = runId + 1;
 
       // Cleanup on unmount.
-      // If unmounted almost immediately, this is likely React StrictMode; defer cleanup.
+      // If unmounted almost immediately, this is likely React StrictMode or hot reload; defer cleanup significantly.
       // Otherwise, stop immediately so installs/builds don't keep running after navigation.
       const elapsedMs = Math.max(0, Date.now() - (effectStartedAtRef.current || 0));
-      const delayMs = elapsedMs < 600 ? 1500 : 0;
+      const delayMs = elapsedMs < 2000 ? 5000 : 0; // Increased delay to 5 seconds for fast remounts
 
       const cleanup = () => {
+        console.log(`[WebContainerRunner] Cleaning up app ${appId} after ${elapsedMs}ms elapsed, delay was ${delayMs}ms`);
         pendingCleanupTimers.delete(appId);
         ensureSessionAndCsrf()
           .catch(() => null)
