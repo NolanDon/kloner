@@ -74,7 +74,7 @@ export function assertCsrf(req: NextRequest) {
  * - base64-encoded JSON, or
  * - raw JSON
  */
-function initAdmin() {
+export function initAdmin() {
     if (!getApps().length) {
         const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
         if (!raw) throw new Error("FIREBASE_SERVICE_ACCOUNT not set");

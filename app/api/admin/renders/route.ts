@@ -1,6 +1,7 @@
 // src/app/api/admin/renders/route.ts
 import { NextResponse } from "next/server";
 import admin from "firebase-admin";
+import { initAdmin } from "../../_lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,25 +9,8 @@ export const fetchCache = "force-no-store";
 export const revalidate = 0;
 
 function getAdminApp() {
-    if (admin.apps.length) return admin.app();
-
-    const projectId = process.env.FIREBASE_PROJECT_ID;
-    const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-    const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n");
-
-    if (!projectId || !clientEmail || !privateKey) {
-        throw new Error(
-            "Missing Firebase Admin env vars (FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY).",
-        );
-    }
-
-    return admin.initializeApp({
-        credential: admin.credential.cert({
-            projectId,
-            clientEmail,
-            privateKey,
-        }),
-    });
+    initAdmin();
+    return admin.app();
 }
 
 async function isRequestAdmin(req: Request) {

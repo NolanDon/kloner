@@ -1,22 +1,10 @@
 import { NextResponse } from "next/server";
 import admin from "firebase-admin";
+import { initAdmin } from "../../../_lib/auth";
 
 function getAdminApp() {
-    if (admin.apps.length) return admin.app();
-
-    const projectId = process.env.FIREBASE_PROJECT_ID;
-    const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-    let privateKey = process.env.FIREBASE_PRIVATE_KEY;
-
-    if (!projectId || !clientEmail || !privateKey) {
-        throw new Error("Missing Firebase Admin env vars (PROJECT_ID / CLIENT_EMAIL / PRIVATE_KEY)");
-    }
-
-    privateKey = privateKey.replace(/\\n/g, "\n");
-
-    return admin.initializeApp({
-        credential: admin.credential.cert({ projectId, clientEmail, privateKey }),
-    });
+    initAdmin();
+    return admin.app();
 }
 
 function pickBearer(req: Request): string | null {

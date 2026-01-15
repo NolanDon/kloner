@@ -1,17 +1,10 @@
 // app/api/admin/users/search/route.ts
 import { NextResponse } from "next/server";
 import admin from "firebase-admin";
+import { initAdmin } from "../../../_lib/auth";
 
 function getAdmin() {
-    if (!admin.apps.length) {
-        admin.initializeApp({
-            credential: admin.credential.cert({
-                projectId: process.env.FIREBASE_PROJECT_ID,
-                clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-                privateKey: process.env.FIREBASE_PRIVATE_KEY!.replace(/\\n/g, "\n"),
-            }),
-        });
-    }
+    initAdmin();
     return admin;
 }
 
