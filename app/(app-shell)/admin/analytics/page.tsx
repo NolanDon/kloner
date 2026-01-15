@@ -36,7 +36,7 @@ type DailyBucket = {
     count: number;
 };
 
-type TabId = "overview" | "usage" | "power" | "credits";
+type TabId = "overview" | "usage" | "power" | "credits" | "churn";
 
 function tsToDate(v: any): Date | null {
     if (!v) return null;
@@ -449,6 +449,23 @@ export default function AdminAnalyticsPage() {
 
         const lastSignupDate = dailyBuckets.length > 0 ? dailyBuckets[dailyBuckets.length - 1]!.date : null;
 
+        // Tier breakdown
+        const tierBreakdown = { free: 0, pro: 0, agency: 0, trial: 0 };
+        for (const r of filteredRows) {
+            const tier = (r.tier ?? "free").toLowerCase();
+            if (tier === "agency") tierBreakdown.agency++;
+            else if (tier === "pro") tierBreakdown.pro++;
+            else if (tier === "trial") tierBreakdown.trial++;
+            else tierBreakdown.free++;
+        }
+
+        // Conversion metrics
+        const conversionMetrics = {
+            signupToActive: totalUsers > 0 ? Math.round((activeThisWeek / totalUsers) * 100) : 0,
+            activeToVercel: activeThisWeek > 0 ? Math.round((vercelConnectedCount / activeThisWeek) * 100) : 0,
+            vercelToDeploy: vercelConnectedCount > 0 ? Math.round((usersWithDeployments / vercelConnectedCount) * 100) : 0,
+        };
+
         return {
             totalUsers,
             vercelConnectedCount,
@@ -458,6 +475,8 @@ export default function AdminAnalyticsPage() {
             avgMinutesPerUser,
             activeThisWeek,
             lastSignupDate,
+            tierBreakdown,
+            conversionMetrics,
         };
     }, [filteredRows, dailyBuckets]);
 
@@ -479,6 +498,53 @@ export default function AdminAnalyticsPage() {
         [filteredRows],
     );
 
+    const churnMetrics = useMemo(() => {
+        const now = new Date();
+        const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        const threeMonthsAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+        const sixMonthsAgo = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
+
+        let inactive1Month = 0;
+        let inactive3Months = 0;
+        let inactive6Months = 0;
+        let neverActive = 0;
+
+        let longestInactiveReturners: Array<{ user: UserAnalyticsRow; daysInactive: number }> = [];
+
+        for (const r of filteredRows) {
+            const lastSession = r.lastSessionEndedAt;
+            if (!lastSession) {
+                neverActive++;
+                continue;
+            }
+
+            const daysSinceLastSession = Math.floor((now.getTime() - lastSession.getTime()) / (1000 * 60 * 60 * 24));
+
+            if (lastSession < sixMonthsAgo) inactive6Months++;
+            else if (lastSession < threeMonthsAgo) inactive3Months++;
+            else if (lastSession < monthAgo) inactive1Month++;
+
+            // Track users who returned after being inactive
+            if (daysSinceLastSession > 30 && (r.editorSessionCount ?? 0) >= 2) {
+                longestInactiveReturners.push({ user: r, daysInactive: daysSinceLastSession });
+            }
+        }
+
+        // Sort by longest inactivity period
+        longestInactiveReturners.sort((a, b) => b.daysInactive - a.daysInactive);
+
+        const churnRate = filteredRows.length > 0 ? Math.round((inactive3Months / filteredRows.length) * 100) : 0;
+
+        return {
+            inactive1Month,
+            inactive3Months,
+            inactive6Months,
+            neverActive,
+            churnRate,
+            longestInactiveReturners: longestInactiveReturners.slice(0, 10), // Top 10
+        };
+    }, [filteredRows]);
+
     const creditsSummary = useMemo(() => {
         let aiRemaining = 0;
         let previewRemaining = 0;
@@ -487,6 +553,19 @@ export default function AdminAnalyticsPage() {
         let aiLow = 0;
         let previewLow = 0;
         let snapshotLow = 0;
+
+        let usersWithCredits = 0;
+        let usersOutOfAi = 0;
+        let usersOutOfPreview = 0;
+        let usersOutOfSnapshot = 0;
+
+        const creditDetails: Array<{
+            user: UserAnalyticsRow;
+            ai: number;
+            preview: number;
+            snapshot: number;
+            totalCredits: number;
+        }> = [];
 
         for (const r of filteredRows) {
             const ai = r.creditsAiEditsRemaining ?? 0;
@@ -497,12 +576,43 @@ export default function AdminAnalyticsPage() {
             previewRemaining += pv;
             snapshotRemaining += sn;
 
+            if (ai > 0 || pv > 0 || sn > 0) {
+                usersWithCredits++;
+            }
+
+            if (ai <= 0) usersOutOfAi++;
+            if (pv <= 0) usersOutOfPreview++;
+            if (sn <= 0) usersOutOfSnapshot++;
+
             if (ai > 0 && ai <= 5) aiLow++;
             if (pv > 0 && pv <= 5) previewLow++;
             if (sn > 0 && sn <= 5) snapshotLow++;
+
+            creditDetails.push({
+                user: r,
+                ai,
+                preview: pv,
+                snapshot: sn,
+                totalCredits: ai + pv + sn,
+            });
         }
 
-        return { aiRemaining, previewRemaining, snapshotRemaining, aiLow, previewLow, snapshotLow };
+        // Sort by total credits remaining (ascending - users running out first)
+        creditDetails.sort((a, b) => a.totalCredits - b.totalCredits);
+
+        return {
+            aiRemaining,
+            previewRemaining,
+            snapshotRemaining,
+            aiLow,
+            previewLow,
+            snapshotLow,
+            usersWithCredits,
+            usersOutOfAi,
+            usersOutOfPreview,
+            usersOutOfSnapshot,
+            creditDetails: creditDetails.slice(0, 20), // Top 20 users by lowest credits
+        };
     }, [filteredRows]);
 
     const usageKeys = useMemo(() => buildLastNDaysKeys(usageRangeDays), [usageRangeDays]);
@@ -603,6 +713,7 @@ export default function AdminAnalyticsPage() {
                     { id: "usage", label: "Usage" },
                     { id: "power", label: "Power users" },
                     { id: "credits", label: "Credits" },
+                    { id: "churn", label: "Churn" },
                 ].map((t) => (
                     <button
                         key={t.id}
@@ -621,6 +732,82 @@ export default function AdminAnalyticsPage() {
                 <>
                     {activeTab === "overview" && (
                         <div className="space-y-6">
+                            {/* Tier Breakdown */}
+                            <section className="rounded-xl border border-neutral-200 bg-white p-4">
+                                <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-neutral-500">User tier breakdown</p>
+                                <div className="grid gap-4 md:grid-cols-4 text-sm">
+                                    <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                        <p className="text-[11px] text-neutral-500 mb-1">Free tier</p>
+                                        <p className="text-xl font-semibold text-neutral-900">{overview.tierBreakdown.free}</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">Users</p>
+                                    </div>
+                                    <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                        <p className="text-[11px] text-neutral-500 mb-1">Pro tier</p>
+                                        <p className="text-xl font-semibold text-neutral-900">{overview.tierBreakdown.pro}</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">Users</p>
+                                    </div>
+                                    <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                        <p className="text-[11px] text-neutral-500 mb-1">Agency tier</p>
+                                        <p className="text-xl font-semibold text-neutral-900">{overview.tierBreakdown.agency}</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">Users</p>
+                                    </div>
+                                    <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                        <p className="text-[11px] text-neutral-500 mb-1">Trial</p>
+                                        <p className="text-xl font-semibold text-neutral-900">{overview.tierBreakdown.trial}</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">Users</p>
+                                    </div>
+                                </div>
+                            </section>
+
+                            {/* Conversion Funnel */}
+                            <section className="rounded-xl border border-neutral-200 bg-white p-4">
+                                <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Conversion funnel</p>
+                                <div className="grid gap-4 md:grid-cols-3 text-sm">
+                                    <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                        <p className="text-[11px] text-neutral-500 mb-1">Signup → Active (7d)</p>
+                                        <p className="text-xl font-semibold text-neutral-900">{overview.conversionMetrics.signupToActive}%</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">Of total signups</p>
+                                    </div>
+                                    <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                        <p className="text-[11px] text-neutral-500 mb-1">Active → Vercel</p>
+                                        <p className="text-xl font-semibold text-neutral-900">{overview.conversionMetrics.activeToVercel}%</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">Of active users</p>
+                                    </div>
+                                    <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                        <p className="text-[11px] text-neutral-500 mb-1">Vercel → Deploy</p>
+                                        <p className="text-xl font-semibold text-neutral-900">{overview.conversionMetrics.vercelToDeploy}%</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">Of Vercel users</p>
+                                    </div>
+                                </div>
+                            </section>
+
+                            {/* Churn Metrics */}
+                            <section className="rounded-xl border border-neutral-200 bg-white p-4">
+                                <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Churn analysis</p>
+                                <div className="grid gap-4 md:grid-cols-4 text-sm">
+                                    <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                        <p className="text-[11px] text-neutral-500 mb-1">Never active</p>
+                                        <p className="text-xl font-semibold text-neutral-900">{churnMetrics.neverActive}</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">No editor sessions</p>
+                                    </div>
+                                    <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                        <p className="text-[11px] text-neutral-500 mb-1">Inactive >1 month</p>
+                                        <p className="text-xl font-semibold text-neutral-900">{churnMetrics.inactive1Month}</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">Last session >30d ago</p>
+                                    </div>
+                                    <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                        <p className="text-[11px] text-neutral-500 mb-1">Inactive >3 months</p>
+                                        <p className="text-xl font-semibold text-neutral-900">{churnMetrics.inactive3Months}</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">Last session >90d ago</p>
+                                    </div>
+                                    <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                        <p className="text-[11px] text-neutral-500 mb-1">Churn rate (3mo)</p>
+                                        <p className="text-xl font-semibold text-neutral-900">{churnMetrics.churnRate}%</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">Of total users</p>
+                                    </div>
+                                </div>
+                            </section>
+
                             <section className="grid gap-4 md:grid-cols-3">
                                 <div className="rounded-xl border border-neutral-200 bg-white p-4">
                                     <p className="mb-1 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Total kloner users</p>
@@ -671,7 +858,7 @@ export default function AdminAnalyticsPage() {
                                         {dailyBuckets.map((b) => {
                                             const height = (b.count / maxDailyCount) * 140;
                                             return (
-                                                <div key={b.date} className="flex flex-col items-center gap-1">
+                                                <div key={b.date} className="whitespace-nowrap flex flex-col items-center gap-1">
                                                     <div
                                                         className="w-6 rounded-t-md bg-accent"
                                                         style={{ height }}
@@ -887,6 +1074,71 @@ export default function AdminAnalyticsPage() {
 
                     {activeTab === "credits" && (
                         <div className="space-y-6">
+                            {/* Most Recent Returners */}
+                            <section className="rounded-xl border border-neutral-200 bg-white p-4">
+                                <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Users who returned after long inactivity</p>
+                                <p className="mb-3 text-xs text-neutral-500">Most recent 5 users who returned after being inactive for 30+ days</p>
+                                <div className="space-y-1 text-xs">
+                                    {churnMetrics.longestInactiveReturners
+                                        .sort((a, b) => (b.user.lastSessionEndedAt?.getTime() ?? 0) - (a.user.lastSessionEndedAt?.getTime() ?? 0))
+                                        .slice(0, 5)
+                                        .length === 0 ? (
+                                        <p className="text-neutral-500">No users match this criteria.</p>
+                                    ) : (
+                                        churnMetrics.longestInactiveReturners
+                                            .sort((a, b) => (b.user.lastSessionEndedAt?.getTime() ?? 0) - (a.user.lastSessionEndedAt?.getTime() ?? 0))
+                                            .slice(0, 5)
+                                            .map((item) => (
+                                                <div
+                                                    key={item.user.id}
+                                                    className="flex items-center justify-between rounded-md border border-neutral-100 bg-neutral-50 px-3 py-2"
+                                                >
+                                                    <div className="flex flex-col min-w-0">
+                                                        <span className="font-medium text-neutral-900 truncate">{item.user.email ?? item.user.id}</span>
+                                                        <span className="text-[10px] text-neutral-500">Tier: {item.user.tier ?? "free"}</span>
+                                                    </div>
+                                                    <div className="text-right flex-shrink-0">
+                                                        <div className="text-[11px] text-neutral-700">
+                                                            Returned after {item.daysInactive} days
+                                                        </div>
+                                                        <div className="text-[10px] text-neutral-500">
+                                                            Last active: {item.user.lastSessionEndedAt?.toLocaleDateString() ?? 'Never'}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))
+                                    )}
+                                </div>
+                            </section>
+
+                            {/* Credit Pool Summary */}
+                            <section className="rounded-xl border border-neutral-200 bg-white p-4">
+                                <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Credit pools overview</p>
+                                <div className="grid gap-4 md:grid-cols-4 text-sm">
+                                    <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                        <p className="text-[11px] text-neutral-500 mb-1">Users with credits</p>
+                                        <p className="text-xl font-semibold text-neutral-900">{creditsSummary.usersWithCredits}</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">Have any credits left</p>
+                                    </div>
+                                    <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                        <p className="text-[11px] text-neutral-500 mb-1">Out of AI credits</p>
+                                        <p className="text-xl font-semibold text-neutral-900">{creditsSummary.usersOutOfAi}</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">AI edits ≤ 0</p>
+                                    </div>
+                                    <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                        <p className="text-[11px] text-neutral-500 mb-1">Out of previews</p>
+                                        <p className="text-xl font-semibold text-neutral-900">{creditsSummary.usersOutOfPreview}</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">Previews ≤ 0</p>
+                                    </div>
+                                    <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                        <p className="text-[11px] text-neutral-500 mb-1">Out of snapshots</p>
+                                        <p className="text-xl font-semibold text-neutral-900">{creditsSummary.usersOutOfSnapshot}</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">Snapshots ≤ 0</p>
+                                    </div>
+                                </div>
+                            </section>
+
+                            {/* Individual Credit Types */}
                             <section className="rounded-xl border border-neutral-200 bg-white p-4">
                                 <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Credit pools (remaining)</p>
                                 <div className="grid gap-4 md:grid-cols-3 text-sm">
@@ -908,39 +1160,163 @@ export default function AdminAnalyticsPage() {
                                 </div>
                             </section>
 
+                            {/* Users Running Out */}
                             <section className="rounded-xl border border-neutral-200 bg-white p-4">
-                                <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Users closest to running out</p>
+                                <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Users running out of credits (lowest first)</p>
                                 <div className="space-y-1 text-xs">
-                                    {[...filteredRows]
-                                        .sort((a, b) => {
-                                            const aMin = Math.min(
-                                                a.creditsAiEditsRemaining ?? Infinity,
-                                                a.creditsPreviewRemaining ?? Infinity,
-                                                a.creditsSnapshotRemaining ?? Infinity,
-                                            );
-                                            const bMin = Math.min(
-                                                b.creditsAiEditsRemaining ?? Infinity,
-                                                b.creditsPreviewRemaining ?? Infinity,
-                                                b.creditsSnapshotRemaining ?? Infinity,
-                                            );
-                                            return aMin - bMin;
-                                        })
-                                        .slice(0, 15)
-                                        .map((r) => (
+                                    {creditsSummary.creditDetails.length === 0 ? (
+                                        <p className="text-neutral-500">No users with credit data.</p>
+                                    ) : (
+                                        creditsSummary.creditDetails.map((detail) => (
                                             <div
-                                                key={r.id}
+                                                key={detail.user.id}
                                                 className="flex items-center justify-between rounded-md border border-neutral-100 bg-neutral-50 px-3 py-2"
                                             >
-                                                <div className="flex flex-col">
-                                                    <span className="font-medium text-neutral-900">{r.email ?? r.id}</span>
-                                                    <span className="text-[10px] text-neutral-500">Tier: {r.tier ?? "free"}</span>
+                                                <div className="flex flex-col min-w-0">
+                                                    <span className="font-medium text-neutral-900 truncate">{detail.user.email ?? detail.user.id}</span>
+                                                    <span className="text-[10px] text-neutral-500">Tier: {detail.user.tier ?? "free"}</span>
                                                 </div>
-                                                <div className="text-right text-[10px] text-neutral-700">
-                                                    AI: {r.creditsAiEditsRemaining ?? 0} · Prev: {r.creditsPreviewRemaining ?? 0} · Snap:{" "}
-                                                    {r.creditsSnapshotRemaining ?? 0}
+                                                <div className="text-right flex-shrink-0">
+                                                    <div className="text-[11px] text-neutral-700">
+                                                        Total: {detail.totalCredits} credits
+                                                    </div>
+                                                    <div className="text-[10px] text-neutral-500">
+                                                        AI: {detail.ai} · Prev: {detail.preview} · Snap: {detail.snapshot}
+                                                    </div>
                                                 </div>
                                             </div>
-                                        ))}
+                                        ))
+                                    )}
+                                </div>
+                            </section>
+
+                            {/* Longest Inactive Returners */}
+                            <section className="rounded-xl border border-neutral-200 bg-white p-4">
+                                <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Longest inactive returners</p>
+                                <p className="mb-3 text-xs text-neutral-500">Users who returned after being inactive for 30+ days (top 10)</p>
+                                <div className="space-y-1 text-xs">
+                                    {churnMetrics.longestInactiveReturners.length === 0 ? (
+                                        <p className="text-neutral-500">No users match this criteria.</p>
+                                    ) : (
+                                        churnMetrics.longestInactiveReturners.map((item, idx) => (
+                                            <div
+                                                key={item.user.id}
+                                                className="flex items-center justify-between rounded-md border border-neutral-100 bg-neutral-50 px-3 py-2"
+                                            >
+                                                <div className="flex flex-col min-w-0">
+                                                    <span className="font-medium text-neutral-900 truncate">{item.user.email ?? item.user.id}</span>
+                                                    <span className="text-[10px] text-neutral-500">Tier: {item.user.tier ?? "free"}</span>
+                                                </div>
+                                                <div className="text-right flex-shrink-0">
+                                                    <div className="text-[11px] text-neutral-700">
+                                                        {item.daysInactive} days inactive
+                                                    </div>
+                                                    <div className="text-[10px] text-neutral-500">
+                                                        Sessions: {item.user.editorSessionCount ?? 0} · Last: {item.user.lastSessionEndedAt?.toLocaleDateString() ?? 'Never'}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </section>
+                        </div>
+                    )}
+
+                    {activeTab === "churn" && (
+                        <div className="space-y-6">
+                            {/* Churn Overview */}
+                            <section className="rounded-xl border border-neutral-200 bg-white p-4">
+                                <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Churn overview</p>
+                                <div className="grid gap-4 md:grid-cols-4 text-sm">
+                                    <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                        <p className="text-[11px] text-neutral-500 mb-1">Never active</p>
+                                        <p className="text-xl font-semibold text-neutral-900">{churnMetrics.neverActive}</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">Signed up but never used editor</p>
+                                    </div>
+                                    <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                        <p className="text-[11px] text-neutral-500 mb-1">Inactive >1 month</p>
+                                        <p className="text-xl font-semibold text-neutral-900">{churnMetrics.inactive1Month}</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">Last session >30 days ago</p>
+                                    </div>
+                                    <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                        <p className="text-[11px] text-neutral-500 mb-1">Inactive >3 months</p>
+                                        <p className="text-xl font-semibold text-neutral-900">{churnMetrics.inactive3Months}</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">Last session >90 days ago</p>
+                                    </div>
+                                    <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                        <p className="text-[11px] text-neutral-500 mb-1">Churn rate (3mo)</p>
+                                        <p className="text-xl font-semibold text-neutral-900">{churnMetrics.churnRate}%</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">Users inactive >3 months</p>
+                                    </div>
+                                </div>
+                            </section>
+
+                            {/* Inactive Users by Time Period */}
+                            <section className="rounded-xl border border-neutral-200 bg-white p-4">
+                                <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Inactive users by time period</p>
+                                <div className="space-y-1 text-xs">
+                                    {filteredRows
+                                        .filter(r => r.lastSessionEndedAt)
+                                        .sort((a, b) => {
+                                            const aDays = Math.floor((new Date().getTime() - (a.lastSessionEndedAt?.getTime() ?? 0)) / (1000 * 60 * 60 * 24));
+                                            const bDays = Math.floor((new Date().getTime() - (b.lastSessionEndedAt?.getTime() ?? 0)) / (1000 * 60 * 60 * 24));
+                                            return bDays - aDays; // Most inactive first
+                                        })
+                                        .slice(0, 20)
+                                        .map((r) => {
+                                            const daysSince = Math.floor((new Date().getTime() - (r.lastSessionEndedAt?.getTime() ?? 0)) / (1000 * 60 * 60 * 24));
+                                            return (
+                                                <div
+                                                    key={r.id}
+                                                    className="flex items-center justify-between rounded-md border border-neutral-100 bg-neutral-50 px-3 py-2"
+                                                >
+                                                    <div className="flex flex-col min-w-0">
+                                                        <span className="font-medium text-neutral-900 truncate">{r.email ?? r.id}</span>
+                                                        <span className="text-[10px] text-neutral-500">Tier: {r.tier ?? "free"}</span>
+                                                    </div>
+                                                    <div className="text-right flex-shrink-0">
+                                                        <div className="text-[11px] text-neutral-700">
+                                                            {daysSince} days inactive
+                                                        </div>
+                                                        <div className="text-[10px] text-neutral-500">
+                                                            Sessions: {r.editorSessionCount ?? 0} · Minutes: {r.editorSessionTotalMinutes ?? 0}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                </div>
+                            </section>
+
+                            {/* Returners Analysis */}
+                            <section className="rounded-xl border border-neutral-200 bg-white p-4">
+                                <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Users who returned after long inactivity</p>
+                                <p className="mb-3 text-xs text-neutral-500">Users with 2+ sessions who returned after being inactive for 30+ days</p>
+                                <div className="space-y-1 text-xs">
+                                    {churnMetrics.longestInactiveReturners.length === 0 ? (
+                                        <p className="text-neutral-500">No users match this criteria.</p>
+                                    ) : (
+                                        churnMetrics.longestInactiveReturners.map((item) => (
+                                            <div
+                                                key={item.user.id}
+                                                className="flex items-center justify-between rounded-md border border-neutral-100 bg-neutral-50 px-3 py-2"
+                                            >
+                                                <div className="flex flex-col min-w-0">
+                                                    <span className="font-medium text-neutral-900 truncate">{item.user.email ?? item.user.id}</span>
+                                                    <span className="text-[10px] text-neutral-500">Tier: {item.user.tier ?? "free"}</span>
+                                                </div>
+                                                <div className="text-right flex-shrink-0">
+                                                    <div className="text-[11px] text-neutral-700">
+                                                        Returned after {item.daysInactive} days
+                                                    </div>
+                                                    <div className="text-[10px] text-neutral-500">
+                                                        Sessions: {item.user.editorSessionCount ?? 0} · Last active: {item.user.lastSessionEndedAt?.toLocaleDateString() ?? 'Never'}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
                                 </div>
                             </section>
                         </div>

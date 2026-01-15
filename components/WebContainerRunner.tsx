@@ -376,14 +376,16 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
         
         const isRetryable = (isNetworkError || isServerError || isTimeout || isProxyError) && !isDiskSpaceError;
         
+        console.log(`Error classification: Network=${isNetworkError}, Server=${isServerError}, Timeout=${isTimeout}, Proxy=${isProxyError}, DiskSpace=${isDiskSpaceError}, Retryable=${isRetryable}`);
+        
         // Circuit breaker: prevent infinite retries
         totalAttemptsRef.current += 1;
         const maxTotalAttempts = 10; // Absolute maximum attempts across all retries
         
         // Retry logic for transient failures
         if (startAttempt < maxRetries && isRetryable && !retryScheduledRef.current && totalAttemptsRef.current <= maxTotalAttempts) {
-          // More graceful retry with longer delays: 3s, 8s (instead of 1s, 2s, 4s)
-          const retryDelay = startAttempt === 0 ? 3000 : 8000;
+          // More graceful retry with longer delays: 5s, 15s (instead of 3s, 8s) to be less aggressive
+          const retryDelay = startAttempt === 0 ? 5000 : 15000;
           console.log(`Retrying in ${retryDelay}ms... (attempt ${startAttempt + 1}/${maxRetries})`);
           console.log(`Error type: ${isNetworkError ? 'Network' : isServerError ? 'Server' : isTimeout ? 'Timeout' : 'Unknown'}`);
           

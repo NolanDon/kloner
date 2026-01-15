@@ -158,7 +158,7 @@ async function handleWebcontainerPost(body: any) {
         console.error(`[WebContainer POST] Disk space metrics - Available: ${availableMB.toFixed(1)}MB, AppId: ${appId}, Mode: ${runMode}`);
 
         // Emergency cleanup if space is low
-        if (availableMB < 1500) {
+        if (availableMB < 2000) {
           console.error('[WebContainer POST] Attempting emergency cleanup...');
           try {
             // More aggressive cleanup - remove ALL kloner directories
@@ -176,14 +176,14 @@ async function handleWebcontainerPost(body: any) {
             const availableMB2 = availableKB2 / 1024;
             console.error(`[WebContainer POST] Available disk space after cleanup: ${availableMB2.toFixed(1)}MB`);
             
-            if (availableMB2 >= 1200) { // Require 1200MB after cleanup
+            if (availableMB2 >= 1500) { // Require 1500MB after cleanup
               console.error('[WebContainer POST] Continuing with reduced space requirement after cleanup');
             } else {
-              throw new Error(`Insufficient disk space even after cleanup: ${availableMB2.toFixed(1)}MB available, need at least 1200MB`);
+              throw new Error(`Insufficient disk space even after cleanup: ${availableMB2.toFixed(1)}MB available, need at least 1500MB`);
             }
           } catch (cleanupError) {
             console.error(`[WebContainer POST] Emergency cleanup failed: ${cleanupError}`);
-            throw new Error(`Insufficient disk space: ${availableMB.toFixed(1)}MB available, need at least 1500MB`);
+            throw new Error(`Insufficient disk space: ${availableMB.toFixed(1)}MB available, need at least 2000MB`);
           }
         }
       } catch (error) {
