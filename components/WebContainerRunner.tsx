@@ -25,11 +25,13 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
   const [startAttempt, setStartAttempt] = useState(0);
   const [loadingStatus, setLoadingStatus] = useState('');
   const maxRetries = 2; // Reduced from 3 to be less aggressive
+  const retryScheduledRef = useRef(false);
   const retryApp = () => {
     setStartAttempt(0);
     setError(null);
     setPreviewUrl(null);
     setCanRetry(false);
+    retryScheduledRef.current = false;
     // Force restart by changing restartToken
     restartToken = Date.now();
   };
@@ -280,7 +282,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
         const isRetryable = isNetworkError || isServerError || isTimeout || isProxyError;
         
         // Retry logic for transient failures
-        if (startAttempt < maxRetries && isRetryable) {
+        if (startAttempt < maxRetries && isRetryable && !retryScheduledRef.current) {
           // More graceful retry with longer delays: 3s, 8s (instead of 1s, 2s, 4s)
           const retryDelay = startAttempt === 0 ? 3000 : 8000;
           console.log(`Retrying in ${retryDelay}ms... (attempt ${startAttempt + 1}/${maxRetries})`);
@@ -288,8 +290,10 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
           
           setStartAttempt(prev => prev + 1);
           setCanRetry(false); // Disable retry button during automatic retry
+          retryScheduledRef.current = true;
           
           setTimeout(() => {
+            retryScheduledRef.current = false;
             // Reset some state for retry
             setError(null);
             const retry = async () => {
@@ -411,7 +415,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
               <div className="w-2 h-2 bg-accent rounded-full animate-bounce"></div>
             </div>
             <p className="text-lg font-medium text-gray-700">
-              {isLoading && startAttempt === 0 ? 'Building app...' : `Retry ${startAttempt + 1}/${maxRetries + 1}...`}
+              {isLoading && startAttempt === 0 ? 'Building app...' : `Retry ${Math.min(startAttempt + 1, maxRetries + 1)}/${maxRetries + 1}...`}
             </p>
             <p className="text-sm text-gray-500 mt-1">{loadingStatus}</p>
             {startAttempt > 0 && (
