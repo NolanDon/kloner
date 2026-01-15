@@ -125,7 +125,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
 
         // Poll the proxy endpoint to ensure it's ready.
         // This can legitimately take a while (first compile, cold start, etc).
-        const maxAttempts = 25; // Moderate polling attempts (~30-60 seconds total)
+        const maxAttempts = 5; // Moderate polling attempts (~30-60 seconds total)
         let attempts = 0;
         let proxyReady = false;
         let delayMs = 2000; // Start with 2s delay instead of 1s
