@@ -791,14 +791,14 @@ export default function AdminAnalyticsPage() {
                                         <p className="mt-1 text-[11px] text-neutral-500">No editor sessions</p>
                                     </div>
                                     <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
-                                        <p className="text-[11px] text-neutral-500 mb-1">Inactive >1 month</p>
+                                        <p className="text-[11px] text-neutral-500 mb-1">Inactive &gt;1 month</p>
                                         <p className="text-xl font-semibold text-neutral-900">{churnMetrics.inactive1Month}</p>
-                                        <p className="mt-1 text-[11px] text-neutral-500">Last session >30d ago</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">Last session &gt;30d ago</p>
                                     </div>
                                     <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
-                                        <p className="text-[11px] text-neutral-500 mb-1">Inactive >3 months</p>
+                                        <p className="text-[11px] text-neutral-500 mb-1">Inactive &gt;3 months</p>
                                         <p className="text-xl font-semibold text-neutral-900">{churnMetrics.inactive3Months}</p>
-                                        <p className="mt-1 text-[11px] text-neutral-500">Last session >90d ago</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">Last session &gt;90d ago</p>
                                     </div>
                                     <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
                                         <p className="text-[11px] text-neutral-500 mb-1">Churn rate (3mo)</p>
@@ -1235,19 +1235,19 @@ export default function AdminAnalyticsPage() {
                                         <p className="mt-1 text-[11px] text-neutral-500">Signed up but never used editor</p>
                                     </div>
                                     <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
-                                        <p className="text-[11px] text-neutral-500 mb-1">Inactive >1 month</p>
+                                        <p className="text-[11px] text-neutral-500 mb-1">Inactive &gt;1 month</p>
                                         <p className="text-xl font-semibold text-neutral-900">{churnMetrics.inactive1Month}</p>
-                                        <p className="mt-1 text-[11px] text-neutral-500">Last session >30 days ago</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">Last session &gt;30 days ago</p>
                                     </div>
                                     <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
-                                        <p className="text-[11px] text-neutral-500 mb-1">Inactive >3 months</p>
+                                        <p className="text-[11px] text-neutral-500 mb-1">Inactive &gt;3 months</p>
                                         <p className="text-xl font-semibold text-neutral-900">{churnMetrics.inactive3Months}</p>
-                                        <p className="mt-1 text-[11px] text-neutral-500">Last session >90 days ago</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">Last session &gt;90 days ago</p>
                                     </div>
                                     <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
                                         <p className="text-[11px] text-neutral-500 mb-1">Churn rate (3mo)</p>
                                         <p className="text-xl font-semibold text-neutral-900">{churnMetrics.churnRate}%</p>
-                                        <p className="mt-1 text-[11px] text-neutral-500">Users inactive >3 months</p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">Users inactive &gt;3 months</p>
                                     </div>
                                 </div>
                             </section>
