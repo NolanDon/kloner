@@ -314,13 +314,13 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
           let finalErrorMessage = `Failed after ${totalAttemptsRef.current} total attempts: ${errorMessage}`;
           
           if (totalAttemptsRef.current > maxTotalAttempts) {
-            finalErrorMessage += '\n\nToo many attempts have been made. This may indicate a persistent issue with the app builder service.';
+            finalErrorMessage += ' Error E001: Too many attempts.';
           } else if (isProxyError) {
-            finalErrorMessage += '\n\nThe app started successfully, but the connection proxy is failing. This is usually a temporary server issue. Try refreshing the page or waiting a few minutes before trying again.';
+            finalErrorMessage += ' Error E002: Proxy failed.';
           } else if (isServerError) {
-            finalErrorMessage += '\n\nThis appears to be a server-side issue. The app builder service may be temporarily unavailable. Please try again in a few minutes.';
+            finalErrorMessage += ' Error E003: Server issue.';
           } else if (isDiskSpaceError) {
-            finalErrorMessage += '\n\nThe server is running low on disk space. This is a server-side limitation that cannot be resolved by retrying. Please try again later or contact support if this persists.';
+            finalErrorMessage += ' Error E004: Disk space low.';
           }
           
           setError(finalErrorMessage);
@@ -331,7 +331,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
           let finalErrorMessage = errorMessage;
           
           if (isDiskSpaceError) {
-            finalErrorMessage += '\n\nThe server is running low on disk space. This is a server-side limitation that cannot be resolved by retrying. Please try again later or contact support if this persists.';
+            finalErrorMessage += ' Error E004: Disk space low.';
           }
           
           setError(finalErrorMessage);
