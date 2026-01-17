@@ -114,6 +114,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
 }) {
     const [app, setApp] = useState<AppData | null>(null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [currentFile, setCurrentFile] = useState<string | null>(null);
     const [fileTree, setFileTree] = useState<FileNode[]>([]);
     const [code, setCode] = useState<string>("");
@@ -410,20 +411,28 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
         const loadApp = async () => {
             try {
                 const res = await fetch(`/api/app-builder/${appId}/files`);
-                if (!res.ok) throw new Error("Failed to load app");
+                if (!res.ok) {
+                    if (res.status === 404) {
+                        console.error('App not found, closing editor');
+                        onClose();
+                        return;
+                    }
+                    throw new Error(`Failed to load app: ${res.status} ${res.statusText}`);
+                }
                 const data = await res.json();
                 setApp(data);
                 buildFileTree(data.files);
             } catch (err) {
-                console.error(err);
-                // If app doesn't exist, close the overlay
-                onClose();
+                console.error('Error loading app:', err);
+                // For network errors or server errors, don't close immediately
+                // Show error state instead
+                setError(err instanceof Error ? err.message : 'Failed to load app');
             } finally {
                 setLoading(false);
             }
         };
         loadApp();
-    }, [appId, onClose]);
+    }, [appId]);
 
     // Load panel width from localStorage on mount
     useEffect(() => {
@@ -830,6 +839,25 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     if (loading) {
         return (
             <KlonerLoader />
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="fixed inset-0 z-[16000] bg-black/70 backdrop-blur-sm flex items-center justify-center">
+                <div className="bg-white rounded-lg p-8 max-w-md">
+                    <div className="text-center">
+                        <div className="text-red-600 text-lg font-semibold mb-2">Failed to load app</div>
+                        <div className="text-gray-600 text-sm mb-4">{error}</div>
+                        <button
+                            onClick={() => window.location.reload()}
+                            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                        >
+                            Retry
+                        </button>
+                    </div>
+                </div>
+            </div>
         );
     }
 

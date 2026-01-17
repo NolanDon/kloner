@@ -360,6 +360,7 @@ function SidebarShell({
                             src={logo}
                             alt="kloner logo"
                             fill
+                            sizes="90px"
                             priority
                             className="object-contain"
                         />
@@ -500,6 +501,7 @@ function MobileHeader({
                             src={logo}
                             alt="kloner logo"
                             fill
+                            sizes="70px"
                             priority
                             className="object-contain"
                         />

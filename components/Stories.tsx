@@ -69,7 +69,7 @@ function ReelContextPill({ r }: { r: Reel }) {
     <div className="pointer-events-none absolute left-3 right-3 bottom-3">
       <div className="inline-flex max-w-full items-start gap-2 rounded-2xl bg-black/55 px-3 py-2 text-white ring-1 ring-white/10 backdrop-blur">
         <span className="relative mt-[1px] h-5 w-5 shrink-0">
-          <Image src={logo} alt="Kloner" fill className="object-contain" />
+          <Image src={logo} alt="Kloner" fill sizes="20px" className="object-contain" />
         </span>
 
         <div className="min-w-0">
@@ -107,7 +107,7 @@ function ReelCard({ r, i }: { r: Reel; i: number }) {
         <div className="absolute left-3 right-3 top-3 flex items-center gap-2">
           <div className="relative h-8 w-8 overflow-hidden rounded-full bg-white/20 ring-1 ring-white/40">
             {r.avatar ? (
-              <Image src={r.avatar} alt={`${r.handle} avatar`} fill className="object-cover" />
+              <Image src={r.avatar} alt={`${r.handle} avatar`} fill sizes="32px" className="object-cover" />
             ) : (
               <div className="grid h-full w-full place-items-center text-xs text-white/80">
                 {r.handle.replace('@', '')[0]?.toUpperCase()}
@@ -143,6 +143,7 @@ export default function Stories() {
                 src={logo}
                 alt="Kloner logo"
                 fill
+                sizes="120px"
                 className="object-contain"
               />
             </span>

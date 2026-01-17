@@ -108,6 +108,17 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
       // Ignore storage errors
     }
   };
+
+  // Helper function to warm up preview URL for cookie setting
+  const warmUpPreviewUrl = async (url: string) => {
+    try {
+      console.log('Warming up preview URL for cookie:', url);
+      await fetch(url, { method: 'HEAD', mode: 'no-cors' });
+      console.log('Warm up fetch completed');
+    } catch (error) {
+      console.log('Warm up fetch failed:', error);
+    }
+  };
   
   const handleAssetFailure = () => {
     // Don't count failures if app already loaded successfully
@@ -265,21 +276,21 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
 
           try {
             const headers = await getAuthenticatedHeaders();
-            const statusResponse = await fetch(`/api/webcontainer-status?code=${existingCode}&appId=${appId}`, {
+            const statusResponse = await fetch(`/api/v1/webcontainer/status/${existingCode}?appId=${appId}`, {
               headers,
               credentials: "include"
             });
             if (statusResponse.ok) {
               const statusData = await statusResponse.json();
             console.log(`🔍 Checking existing container ${existingCode}: status='${statusData.status}', progress=${statusData.uiProgress}%, url=${!!statusData.url}, machineId=${statusData.machineId || 'none'}`);
-              const allowedStatuses = ['ready', 'running', 'compiled', 'started', 'completed', 'finished', 'active', 'online'];
-              console.log(`ℹ️ Allowed statuses for direct connection: [${allowedStatuses.join(', ')}]`);
-              const isAllowedStatus = allowedStatuses.includes(statusData.status);
+              const isAllowedStatus = statusData.status === 'ready' || statusData.uiStage === 'ready';
 
               if (isAllowedStatus) {
                 if (statusData.url) {
                   console.log(`✅ Existing container ${existingCode} is ready (${statusData.status}), connecting directly:`, statusData.url);
                   pollingCodeRef.current = existingCode;
+                  // Warm up the URL to set cookies for cross-origin iframe
+                  warmUpPreviewUrl(statusData.url);
                   setPreviewUrl(statusData.url);
                   setLoadingStatus(`Connected to machine ${statusData.machineId}!`);
                   setIsLoading(false);
@@ -317,12 +328,14 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
                   
                   console.log(`✅ Direct connection to existing container ${existingCode} successful`);
                   pollingCodeRef.current = existingCode;
+                  // Warm up the URL to set cookies
+                  warmUpPreviewUrl(statusData.url);
                   setPreviewUrl(statusData.url);
                   setLoadingStatus('Connected to existing machine!');
                   setIsLoading(false);
                   appLoadedSuccessfullyRef.current = true;
                   return;
-                } catch (error) {
+                } catch (error: any) {
                   console.log(`❌ Direct connection to existing container ${existingCode} failed (100% progress):`, error?.message || error);
                 }
               } else if (statusData.status !== 'booting' && statusData.url && statusData.machineId) {
@@ -337,12 +350,14 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
                   
                   console.log(`✅ Machine exists connection successful for container ${existingCode} (${statusData.machineId})`);
                   pollingCodeRef.current = existingCode;
+                  // Warm up the URL to set cookies
+                  warmUpPreviewUrl(statusData.url);
                   setPreviewUrl(statusData.url);
                   setLoadingStatus(`Connected to machine ${statusData.machineId}!`);
                   setIsLoading(false);
                   appLoadedSuccessfullyRef.current = true;
                   return;
-                } catch (error) {
+                } catch (error: any) {
                   console.log(`❌ Machine exists connection failed for container ${existingCode}:`, error?.message || error);
                 }
               } else {
@@ -442,7 +457,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
 
           try {
             const headers = await getAuthenticatedHeaders();
-            const statusResponse = await fetch(`/api/webcontainer-status?code=${code}&appId=${appId}`, {
+            const statusResponse = await fetch(`/api/v1/webcontainer/status/${code}?appId=${appId}`, {
               headers,
               credentials: "include"
             });
@@ -479,7 +494,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
             // Store the status data for UI display
             setCurrentStatusData(statusData);
 
-            if (statusData.status === 'ready' || statusData.status === 'running' || statusData.status === 'compiled' || statusData.status === 'started') {
+            if (statusData.status === 'ready' || statusData.uiStage === 'ready') {
               // App is ready! Set the preview URL
               const deploymentUrl = statusData.url;
               console.log('Deployment ready at:', deploymentUrl);
@@ -499,6 +514,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
                 setLoadingStatus(`Deployment ready on machine ${statusData.machineId}! Waiting for DNS propagation...`);
                 // Add a longer delay for DNS propagation (Fly.io can be slow)
                 setTimeout(() => {
+                  // Warm up the URL to set cookies
+                  warmUpPreviewUrl(deploymentUrl);
                   setPreviewUrl(deploymentUrl);
                   setLoadingStatus(`Connected to machine ${statusData.machineId}! Loading interface...`);
                   setIsPolling(false); // Stop polling state
@@ -511,6 +528,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
                   }
                 }, 10000); // 10 second delay for DNS
               } else {
+                // Warm up the URL to set cookies
+                warmUpPreviewUrl(deploymentUrl);
                 setPreviewUrl(deploymentUrl);
                 setLoadingStatus(`Connected to machine ${statusData.machineId}! Loading interface...`);
                 setIsPolling(false); // Stop polling state
@@ -542,6 +561,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
                   
                   // If we get here without throwing, assume the URL is reachable
                   console.log('Direct connection successful, proceeding with URL:', statusData.url);
+                  // Warm up the URL to set cookies
+                  warmUpPreviewUrl(statusData.url);
                   setPreviewUrl(statusData.url);
                   setLoadingStatus('App ready! Loading interface...');
                   setIsPolling(false);
@@ -581,6 +602,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
                   }).catch(() => ({ ok: true }));
                   
                   console.log('URL is reachable during build, connecting early to show build progress');
+                  // Warm up the URL to set cookies
+                  warmUpPreviewUrl(statusData.url);
                   setPreviewUrl(statusData.url);
                   setLoadingStatus(`Connecting to machine ${statusData.machineId}... (showing build progress)`);
                   setIsPolling(false);
@@ -846,6 +869,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
     // Force iframe reload via cache-busting query param.
     const base = proxyBaseRef.current;
     const nextUrl = `${base}?t=${Date.now()}`;
+    // Warm up the URL to ensure cookies are set
+    warmUpPreviewUrl(nextUrl);
     setPreviewUrl(nextUrl);
   }, [reloadToken, previewUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -914,6 +939,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
             className="w-full h-full border border-black/10 rounded-lg"
             title="App Preview"
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
+            referrerPolicy="no-referrer"
             onLoad={() => {
               console.log('Iframe loaded successfully - preview should now be active at:', previewUrl);
               setLoadingStatus(''); // Clear loading status when app is ready

@@ -646,13 +646,13 @@ function RenderCardInner({
                         No snapshot available
                     </div>
                 ) : (
-                    <a className="block h-full w-full" title="Open the base screenshot">
+                    <a className="block h-full w-full relative" title="Open the base screenshot">
                         <Image
                             src={refImgUrl}
                             alt={r.nameHint || "preview"}
                             fill
                             sizes="(min-width: 1024px) 420px, 100vw"
-                            loading="lazy"
+                            priority
                             onError={refImgErr}
                             className={`pointer-events-none select-none object-cover opacity-[0.25] ${isArchivedFlag ? "grayscale" : ""
                                 }`}

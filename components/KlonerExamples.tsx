@@ -182,6 +182,7 @@ export default function DeckImageCarousel({
                                     src={logo}
                                     alt="Kloner logo"
                                     fill
+                                    sizes="120px"
                                     className="object-contain"
                                 />
                             </span>
@@ -296,6 +297,7 @@ export default function DeckImageCarousel({
                                                 src={item.src}
                                                 alt={item.alt || item.label || "Showcase image"}
                                                 fill
+                                                sizes="(min-width: 768px) 75vw, 100vw"
                                                 priority={idx === 0}
                                                 className="object-cover object-top"
                                             />

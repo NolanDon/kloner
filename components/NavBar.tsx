@@ -149,6 +149,7 @@ export default function NavBar(): JSX.Element {
                 src={logo}
                 alt="kloner logo"
                 fill
+                sizes="80px"
                 priority
                 className="object-contain"
               />

@@ -1,11 +1,12 @@
 // app/api/webcontainer/[appId]/proxy/[...path]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { getProcessRegistry } from '../../../../_lib/processRegistry';
 import { verifySession } from '../../../../_lib/auth';
 import { assertAppBuilderScope } from '../../../../_lib/appBuilderScope';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+const BACKEND_ORIGIN = process.env.BACKEND_ORIGIN || process.env.BACKEND_URL || process.env.PUBLIC_ORIGIN || `http://127.0.0.1:${process.env.PORT || 8080}`;
 
 // Handle CORS preflight
 export async function OPTIONS(req: NextRequest) {
@@ -22,28 +23,8 @@ export async function HEAD(
     const session = await verifySession(req);
     assertAppBuilderScope(req, session.uid, params.appId);
 
-    const registry = getProcessRegistry();
-    
-    // Detailed logging to stderr to ensure it shows
-    console.error('[Proxy HEAD] =========== HEAD REQUEST ===========');
-    console.error('[Proxy HEAD] Checking appId:', params.appId);
-    console.error('[Proxy HEAD] Registry size:', registry.size);
-    console.error('[Proxy HEAD] Registry keys:', Array.from(registry.keys()));
-    console.error('[Proxy HEAD] Full registry:', JSON.stringify(
-      Array.from(registry.entries()).map(([k, v]) => [k, { port: v.port }])
-    ));
-    
-    const info = registry.get(params.appId);
-    console.error('[Proxy HEAD] Info found:', !!info);
-    
-    if (!info) {
-      console.error('[Proxy HEAD] App not found in registry:', params.appId);
-      return new NextResponse(null, { status: 404 });
-    }
-
-    console.error('[Proxy HEAD] App found, port:', info.port);
     const subPath = (params.path || []).join('/');
-    const targetUrl = `http://localhost:${info.port}/${subPath}`;
+    const targetUrl = `${BACKEND_ORIGIN}/api/v1/webcontainer/${params.appId}/proxy/${subPath}`;
 
     try {
       const upstream = await fetch(targetUrl, {
@@ -76,20 +57,10 @@ export async function GET(
     const session = await verifySession(req);
     assertAppBuilderScope(req, session.uid, params.appId);
 
-    const registry = getProcessRegistry();
-    const info = registry.get(params.appId);
-    
-    if (!info) {
-      console.error(`App not running: ${params.appId}`);
-      console.log('Running apps:', Array.from(registry.keys()));
-      return NextResponse.json({ error: 'App not running', appId: params.appId }, { status: 404 });
-    }
-
     const subPath = (params.path || []).join('/');
-    const targetUrl = `http://localhost:${info.port}/${subPath}`;
+    const targetUrl = `${BACKEND_ORIGIN}/api/v1/webcontainer/${params.appId}/proxy/${subPath}`;
 
     console.log(`Proxying request to: ${targetUrl}`);
-    console.log(`App info:`, { appId: params.appId, port: info.port, tempDir: info.tempDir });
 
     const upstream = await fetch(targetUrl, {
       headers: {
@@ -100,7 +71,6 @@ export async function GET(
       signal: AbortSignal.timeout(30000),
     }).catch(err => {
       console.error(`Failed to fetch ${targetUrl}:`, err);
-      console.error(`App registry info:`, { appId: params.appId, port: info.port, tempDir: info.tempDir });
       throw err;
     });
 
@@ -109,7 +79,6 @@ export async function GET(
     
     if (upstream.status === 404) {
       console.error(`404 error for ${targetUrl} - static asset not found`);
-      console.error(`App is running on port ${info.port}, tempDir: ${info.tempDir}`);
     }
 
     const contentType = upstream.headers.get('content-type') || '';
@@ -283,9 +252,62 @@ export async function GET(
       return NextResponse.json({ error: 'Request timeout' }, { status: 504 });
     }
     
-    return NextResponse.json({ 
-      error: 'Proxy failed', 
-      message: err instanceof Error ? err.message : 'Unknown error' 
-    }, { status: 500 });
+// Handle POST requests
+export async function POST(
+  req: NextRequest,
+  { params }: { params: { appId: string; path?: string[] } }
+) {
+  return proxyRequest(req, params);
+}
+
+// Handle PUT requests
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: { appId: string; path?: string[] } }
+) {
+  return proxyRequest(req, params);
+}
+
+// Handle DELETE requests
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: { appId: string; path?: string[] } }
+) {
+  return proxyRequest(req, params);
+}
+
+// Handle PATCH requests
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: { appId: string; path?: string[] } }
+) {
+  return proxyRequest(req, params);
+}
+
+// Generic proxy function for non-GET requests
+async function proxyRequest(req: NextRequest, params: { appId: string; path?: string[] }) {
+  try {
+    const session = await verifySession(req);
+    assertAppBuilderScope(req, session.uid, params.appId);
+
+    const subPath = (params.path || []).join('/');
+    const targetUrl = `${BACKEND_ORIGIN}/api/v1/webcontainer/${params.appId}/proxy/${subPath}`;
+
+    const upstream = await fetch(targetUrl, {
+      method: req.method,
+      headers: req.headers,
+      body: req.body,
+    });
+
+    const responseHeaders = new Headers(upstream.headers);
+    responseHeaders.set('Cross-Origin-Resource-Policy', 'same-origin');
+
+    return new NextResponse(upstream.body, {
+      status: upstream.status,
+      headers: responseHeaders,
+    });
+  } catch (err) {
+    console.error(`[Proxy ${req.method}] Error:`, err);
+    return new NextResponse('Server error', { status: 500 });
   }
 }

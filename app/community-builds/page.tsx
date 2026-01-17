@@ -33,6 +33,7 @@ export default function CommunityBuildsPage() {
                                 src={logo}
                                 alt="Kloner logo"
                                 fill
+                                sizes="(max-width: 640px) 90px, 120px"
                                 className="object-contain"
                             />
                         </span>
