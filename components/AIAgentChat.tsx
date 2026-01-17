@@ -110,17 +110,33 @@ export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh,
     // Load chat history on mount
     useEffect(() => {
         if (typeof window !== 'undefined') {
-            const saved = localStorage.getItem(`chat_history_${appId}`);
-            if (saved) {
-                try {
+            try {
+                const saved = localStorage.getItem(`chat_history_${appId}`);
+                if (saved) {
+                    // Check if the stored data is unreasonably large (> 5MB)
+                    if (saved.length > 5 * 1024 * 1024) {
+                        console.warn('Chat history too large, skipping load');
+                        return;
+                    }
+
                     const parsed = JSON.parse(saved);
-                    const loadedMessages = parsed.map((msg: any) => ({
-                        ...msg,
-                        timestamp: new Date(msg.timestamp)
-                    }));
-                    setMessages(loadedMessages);
-                } catch (e) {
-                    console.error('Failed to load chat history', e);
+                    if (Array.isArray(parsed)) {
+                        const loadedMessages = parsed.map((msg: any) => ({
+                            ...msg,
+                            timestamp: new Date(msg.timestamp)
+                        })).filter(msg =>
+                            msg.id && msg.role && msg.content !== undefined && msg.timestamp instanceof Date
+                        );
+                        setMessages(loadedMessages);
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to load chat history, starting fresh:', error);
+                // Clear corrupted data
+                try {
+                    localStorage.removeItem(`chat_history_${appId}`);
+                } catch (clearError) {
+                    console.error('Failed to clear corrupted chat history:', clearError);
                 }
             }
         }
@@ -189,10 +205,36 @@ export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh,
         scrollToBottom();
     }, [messages, scrollToBottom]);
 
-    // Save chat history whenever messages change
+    // Save chat history whenever messages change (with quota management)
     useEffect(() => {
         if (typeof window !== 'undefined') {
-            localStorage.setItem(`chat_history_${appId}`, JSON.stringify(messages));
+            try {
+                // Limit messages to prevent quota exceeded errors
+                // Keep only the most recent 50 messages
+                const messagesToSave = messages.slice(-50);
+
+                localStorage.setItem(`chat_history_${appId}`, JSON.stringify(messagesToSave));
+            } catch (error) {
+                if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+                    console.warn('localStorage quota exceeded, clearing old chat history and retrying...');
+
+                    try {
+                        // Clear this app's chat history and try again with limited messages
+                        localStorage.removeItem(`chat_history_${appId}`);
+
+                        // Keep only the last 20 messages as a fallback
+                        const limitedMessages = messages.slice(-20);
+                        localStorage.setItem(`chat_history_${appId}`, JSON.stringify(limitedMessages));
+
+                        console.log('Successfully saved limited chat history after clearing');
+                    } catch (retryError) {
+                        console.error('Failed to save chat history even after clearing:', retryError);
+                        // Continue without saving - chat will still work
+                    }
+                } else {
+                    console.error('Failed to save chat history:', error);
+                }
+            }
         }
     }, [messages, appId]);
 
