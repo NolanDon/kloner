@@ -300,7 +300,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
                   console.log(`❌ Existing container ${existingCode} has allowed status '${statusData.status}' but no URL provided`);
                 }
               } else {
-                console.log(`❌ Existing container ${existingCode} status '${statusData.status}' not in allowed list: [${allowedStatuses.join(', ')}]`);
+                console.log(`❌ Existing container ${existingCode} status '${statusData.status}'`);
                 
                 // For booting containers, don't try fallback connections - they're not ready
                 if (statusData.status === 'booting') {
