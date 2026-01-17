@@ -70,7 +70,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
         const data = await res.json().catch(() => null);
         csrf = data?.csrf || null;
       }
-    } catch (error) {
+    } catch (error: any) {
       console.warn("Failed to fetch CSRF token:", error);
     }
 
@@ -200,7 +200,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
             // Reset failure count on successful asset fetch
             assetFailureCountRef.current = 0;
           }
-        } catch (error) {
+        } catch (error: any) {
           // Ignore fetch errors, might be network issues
         }
       }, 10000); // Check every 10 seconds (less aggressive)
@@ -322,7 +322,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
                   setIsLoading(false);
                   appLoadedSuccessfullyRef.current = true;
                   return;
-                } catch (error) {
+                } catch (error: any) {
                   console.log(`❌ Direct connection to existing container ${existingCode} failed (100% progress):`, error?.message || error);
                 }
               } else if (statusData.status !== 'booting' && statusData.url && statusData.machineId) {
@@ -342,7 +342,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
                   setIsLoading(false);
                   appLoadedSuccessfullyRef.current = true;
                   return;
-                } catch (error) {
+                } catch (error: any) {
                   console.log(`❌ Machine exists connection failed for container ${existingCode}:`, error?.message || error);
                 }
               } else {

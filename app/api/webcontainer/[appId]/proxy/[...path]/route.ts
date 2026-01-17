@@ -252,6 +252,10 @@ export async function GET(
       return NextResponse.json({ error: 'Request timeout' }, { status: 504 });
     }
     
+    return NextResponse.json({ error: 'Proxy request failed' }, { status: 500 });
+  }
+}
+
 // Handle POST requests
 export async function POST(
   req: NextRequest,
