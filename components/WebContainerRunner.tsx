@@ -2,6 +2,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from 'react';
+import { db } from "@/lib/firebase";
+import { doc, onSnapshot, updateDoc, getDoc } from "firebase/firestore";
+import { useAuth } from "@/src/hooks/useAuth";
 
 // React 18 StrictMode in dev intentionally mounts/unmounts twice.
 // If we eagerly stop the local runner on unmount, we create a start/stop/start loop.
@@ -14,9 +17,11 @@ interface WebContainerRunnerProps {
   onFileChange?: (path: string, content: string) => void;
   reloadToken?: number;
   restartToken?: number;
+  forceFreshStart?: number;
 }
 
-export default function WebContainerRunner({ appId, files, onFileChange, reloadToken, restartToken }: WebContainerRunnerProps) {
+export default function WebContainerRunner({ appId, files, onFileChange, reloadToken, restartToken, forceFreshStart }: WebContainerRunnerProps) {
+  const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -40,6 +45,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
   const rebuildScheduledRef = useRef(false); // Prevent multiple rebuilds
   const appLoadedSuccessfullyRef = useRef(false); // Track if app server is successfully loaded
   const iframeLoadedSuccessfullyRef = useRef(false); // Track if iframe loaded successfully
+  const lastForceFreshStartRef = useRef<number>(0);
   const pollingCodeRef = useRef<string | null>(null); // Track the current polling code
   const statusPollTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Track status polling timeout
   const iframeLoadTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Track iframe load timeout
@@ -83,21 +89,71 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
   };
 
   // Helper function to get stored container code for this app
-  const getStoredContainerCode = (appId: string): string | null => {
+  const getStoredContainerCode = async (appId: string, user: any): Promise<string | null> => {
+    // First try localStorage
     try {
       const stored = localStorage.getItem(`webcontainer_${appId}`);
-      return stored ? JSON.parse(stored).code : null;
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed.code && Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) { // 24 hours
+          return parsed.code;
+        }
+      }
     } catch {
-      return null;
+      // Ignore localStorage errors
     }
+    
+    // Also check Firebase for stored container codes
+    try {
+      if (user?.uid) {
+        const docRef = doc(db, 'kloner_users', user.uid, 'kloner_apps', appId);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data?.containerCode && data?.containerCodeTimestamp && 
+              Date.now() - data.containerCodeTimestamp < 24 * 60 * 60 * 1000) { // 24 hours
+            console.log(`🔍 Found container code in Firebase: ${data.containerCode}`);
+            // Store it back in localStorage for faster access next time
+            try {
+              localStorage.setItem(`webcontainer_${appId}`, JSON.stringify({ 
+                code: data.containerCode, 
+                timestamp: data.containerCodeTimestamp 
+              }));
+            } catch {
+              // Ignore localStorage errors
+            }
+            return data.containerCode;
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to check Firebase for container code:', error);
+    }
+    
+    return null;
   };
 
   // Helper function to store container code for this app
-  const storeContainerCode = (appId: string, code: string) => {
+  const storeContainerCode = async (appId: string, code: string, user: any) => {
     try {
       localStorage.setItem(`webcontainer_${appId}`, JSON.stringify({ code, timestamp: Date.now() }));
     } catch {
       // Ignore storage errors
+    }
+    
+    // Also store in Firebase for persistence across browsers/sessions
+    try {
+      if (user?.uid) {
+        const docRef = doc(db, 'kloner_users', user.uid, 'kloner_apps', appId);
+        await updateDoc(docRef, {
+          containerCode: code,
+          containerCodeTimestamp: Date.now(),
+          updatedAt: new Date(),
+        });
+        console.log(`💾 Stored container code ${code} for app ${appId} in Firebase`);
+      }
+    } catch (error) {
+      console.error('Failed to store container code in Firebase:', error);
     }
   };
 
@@ -245,6 +301,20 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
 
     const startApp = async () => {
       try {
+        // Reset hasStarted flag if force fresh start is requested
+        const isForceFreshStart = forceFreshStart && forceFreshStart > lastForceFreshStartRef.current;
+        if (isForceFreshStart) {
+          console.log('🔄 Force fresh start detected, resetting component state');
+          lastForceFreshStartRef.current = forceFreshStart;
+          setHasStarted(false);
+          setPreviewUrl(null);
+          setError(null);
+          setIsPolling(false);
+          setIsLoading(false);
+          appLoadedSuccessfullyRef.current = false;
+          iframeLoadedSuccessfullyRef.current = false;
+        }
+        
         if (hasStarted) {
           console.log('Already started, skipping duplicate startApp call');
           return;
@@ -263,8 +333,45 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
         console.log('Files:', Object.keys(filesRef.current));
         console.log('Files object:', filesRef.current);
 
-        // First, check if there's an existing container for this app
-        const existingCode = getStoredContainerCode(appId);
+        // Handle force fresh start - delete existing container and create new one
+        if (isForceFreshStart) {
+          console.log('🔄 Force fresh start requested - deleting existing container and creating new one');
+          
+          // Get the stored container code so we can delete it
+          const existingCode = await getStoredContainerCode(appId, user);
+          if (existingCode) {
+            console.log(`🗑️ Deleting existing container ${existingCode} before creating new one`);
+            try {
+              const headers = await getAuthenticatedHeaders();
+              const deleteResponse = await fetch(`/api/webcontainer-delete?code=${existingCode}&appId=${appId}`, {
+                method: 'DELETE',
+                headers,
+                credentials: "include"
+              });
+              
+              if (deleteResponse.ok) {
+                console.log(`✅ Successfully deleted container ${existingCode}`);
+              } else {
+                console.log(`⚠️ Failed to delete container ${existingCode}, but continuing with fresh start`);
+              }
+            } catch (error) {
+              console.log(`⚠️ Error deleting container ${existingCode}:`, error);
+              // Continue anyway - the container might already be gone
+            }
+          } else {
+            console.log('ℹ️ No existing container code found to delete');
+          }
+          
+          // Clear stored code and skip to container creation
+          clearStoredContainerCode(appId);
+          
+          // Skip existing container checks entirely - go straight to creation
+          console.log(`🏗️ Force fresh start: Creating new container for app ${appId}...`);
+          setLoadingStatus('Starting new machine... (This may take several minutes for first-time builds)');
+        } else {
+          // First, check if there's an existing container for this app
+          const existingCode = await getStoredContainerCode(appId, user);
+        
         if (existingCode) {
           console.log(`🔍 Found stored container code for app ${appId}: ${existingCode}`);
           setConnectingToExisting(true);
@@ -281,8 +388,15 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
             console.log(`🔍 Checking existing container ${existingCode}: status='${statusData.status}', progress=${statusData.uiProgress}%, url=${!!statusData.url}, machineId=${statusData.machineId || 'none'}`);
               const allowedStatuses = ['ready', 'running', 'compiled', 'started', 'completed', 'finished', 'active', 'online'];
               console.log(`ℹ️ Allowed statuses for direct connection: [${allowedStatuses.join(', ')}]`);
-              const isAllowedStatus = allowedStatuses.includes(statusData.status);
-
+              
+              // Allow containers that are either:
+              // 1. In allowed statuses, OR
+              // 2. Have URL + machineId + reasonable progress (>50%), OR  
+              // 3. Booting with high progress (90%+)
+              const isAllowedStatus = allowedStatuses.includes(statusData.status) || 
+                (statusData.url && statusData.machineId && statusData.uiProgress > 50) ||
+                (statusData.status === 'booting' && statusData.uiProgress >= 90);
+              
               if (isAllowedStatus) {
                 if (statusData.url) {
                   console.log(`✅ Existing container ${existingCode} is ready (${statusData.status}), connecting directly:`, statusData.url);
@@ -298,42 +412,21 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
               } else {
                 console.log(`❌ Existing container ${existingCode} status '${statusData.status}' not in allowed list: [${allowedStatuses.join(', ')}]`);
                 
-                // For booting containers, don't try fallback connections - they're not ready
-                if (statusData.status === 'booting') {
-                  console.log(`⏳ Container ${existingCode} is still booting, will create new one instead of waiting`);
-                  // Don't clear the code since it might become ready later, but don't try to connect
+                // For containers in error state, always clear them - never try to reconnect
+                if (statusData.status === 'error') {
+                  console.log(`🗑️ Clearing stored code for error container ${existingCode} - will not attempt reconnection`);
+                  clearStoredContainerCode(appId);
+                } else if (statusData.status === 'booting' && statusData.uiProgress < 50 && (!statusData.url || !statusData.machineId)) {
+                  // Only reject booting containers with low progress if they don't have URL/machineId
+                  console.log(`⏳ Container ${existingCode} is booting at ${statusData.uiProgress}% with incomplete info, will create new one`);
                 } else {
-                  // Clear stored codes for error containers without URLs - they're definitely unusable
-                  if (statusData.status === 'error' && !statusData.url) {
-                    console.log(`🗑️ Clearing stored code for unusable error container ${existingCode} (no URL)`);
-                    clearStoredContainerCode(appId);
-                  }
+                  console.log(`ℹ️ Container ${existingCode} (${statusData.status}, ${statusData.uiProgress}%) not ideal but has URL/machineId, will try fallback connection`);
                 }
               }
               
-              // Only try fallback connections for containers that are NOT booting
-              if (statusData.status !== 'booting') {
-                // If progress is 100% and we have a URL, try connecting regardless of status
-                console.log(`🔄 Existing container ${existingCode} shows 100% progress with URL, attempting direct connection:`, statusData.url);
-                try {
-                  await fetch(statusData.url, { 
-                    method: 'HEAD', 
-                    mode: 'no-cors',
-                    signal: AbortSignal.timeout(2000)
-                  });
-                  
-                  console.log(`✅ Direct connection to existing container ${existingCode} successful`);
-                  pollingCodeRef.current = existingCode;
-                  setPreviewUrl(statusData.url);
-                  setLoadingStatus('Connected to existing machine!');
-                  setIsLoading(false);
-                  appLoadedSuccessfullyRef.current = true;
-                  return;
-                } catch (error: any) {
-                  console.log(`❌ Direct connection to existing container ${existingCode} failed (100% progress):`, error?.message || error);
-                }
-              } else if (statusData.status !== 'booting' && statusData.url && statusData.machineId) {
-                // If we have a URL and machineId, the machine exists, try connecting
+              // Try fallback connections for containers that have URL and machineId, regardless of status
+              // (as long as they're not in error state)
+              if (statusData.url && statusData.machineId && statusData.status !== 'error') {
                 console.log(`🔄 Existing container ${existingCode} has URL and machineId (${statusData.machineId}), attempting connection:`, statusData.url);
                 try {
                   await fetch(statusData.url, { 
@@ -353,7 +446,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
                   console.log(`❌ Machine exists connection failed for container ${existingCode}:`, error?.message || error);
                 }
               } else {
-                console.log(`❌ Container ${existingCode} doesn't meet fallback conditions (status='${statusData.status}', progress=${statusData.uiProgress}%)`);
+                console.log(`❌ Container ${existingCode} doesn't meet fallback conditions (status='${statusData.status}', progress=${statusData.uiProgress}%, url=${!!statusData.url}, machineId=${!!statusData.machineId})`);
                 
                 // Clear stored codes for error containers without URLs - they're definitely unusable
                 if (statusData.status === 'error' && !statusData.url) {
@@ -380,9 +473,14 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
         } else {
           console.log(`ℹ️ No stored container code found for app ${appId}, creating new one`);
         }
+        } // End of forceFreshStart else block
 
-        // No existing container or it failed, create a new one
-        console.log(`🏗️ Creating new container for app ${appId}...`);
+        // Create a new container (either force fresh start or no existing container found)
+        if (isForceFreshStart) {
+          console.log(`🏗️ Force fresh start: Creating new container for app ${appId}...`);
+        } else {
+          console.log(`🏗️ Creating new container for app ${appId}...`);
+        }
         setLoadingStatus('Starting new machine... (This may take several minutes for first-time builds)');
 
         // Validate files before sending
@@ -436,7 +534,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
         pollingCodeRef.current = code;
         
         // Store the container code for future connections
-        storeContainerCode(appId, code);
+        await storeContainerCode(appId, code, user);
         
         setIsPolling(true); // Enter polling state
         setLoadingStatus(''); // Clear loading status when entering polling state
@@ -679,7 +777,9 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
 
         const isServerError = errorMessage.includes('Failed to start app') ||
                              errorMessage.includes('500') ||
-                             errorMessage.includes('Internal Server Error');
+                             errorMessage.includes('Internal Server Error') ||
+                             errorMessage.includes('We couldn\'t start the preview') ||
+                             errorMessage.includes('Please try again');
 
         const isTimeout = errorMessage.includes('timeout') ||
                          errorMessage.includes('did not become ready');
@@ -692,9 +792,17 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
         const isPreconditionError = errorMessage.includes('412') ||
                                    errorMessage.includes('Precondition Failed');
 
-        const isRetryable = (isNetworkError || isServerError || isTimeout || isProxyError) && !isDiskSpaceError && !isPreconditionError;
+        const isBuildError = errorMessage.includes('Build failed') ||
+                           errorMessage.includes('npm install failed') ||
+                           errorMessage.includes('yarn install failed') ||
+                           errorMessage.includes('pnpm install failed') ||
+                           errorMessage.includes('Installation failed') ||
+                           errorMessage.includes('Failed to install dependencies') ||
+                           errorMessage.includes('Could not resolve dependencies');
 
-        console.log(`Error classification: Network=${isNetworkError}, Server=${isServerError}, Timeout=${isTimeout}, Proxy=${isProxyError}, DiskSpace=${isDiskSpaceError}, Precondition=${isPreconditionError}, Retryable=${isRetryable}`);
+        const isRetryable = (isNetworkError || isServerError || isTimeout || isProxyError || isBuildError) && !isDiskSpaceError && !isPreconditionError;
+
+        console.log(`Error classification: Network=${isNetworkError}, Server=${isServerError}, Timeout=${isTimeout}, Proxy=${isProxyError}, Build=${isBuildError}, DiskSpace=${isDiskSpaceError}, Precondition=${isPreconditionError}, Retryable=${isRetryable}`);
 
         // Circuit breaker: prevent infinite retries
         totalAttemptsRef.current += 1;
@@ -702,10 +810,20 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
 
         // Retry logic for transient failures
         if (startAttempt < maxRetries && isRetryable && !retryScheduledRef.current && totalAttemptsRef.current <= maxTotalAttempts) {
-          // More graceful retry with longer delays: 5s, 15s (instead of 3s, 8s) to be less aggressive
-          const retryDelay = startAttempt === 0 ? 5000 : 15000;
-          console.log(`Retrying in ${retryDelay}ms... (attempt ${startAttempt + 1}/${maxRetries})`);
-          console.log(`Error type: ${isNetworkError ? 'Network' : isServerError ? 'Server' : isTimeout ? 'Timeout' : 'Unknown'}`);
+          // Allow more retries for build errors (up to 3 instead of 2)
+          const effectiveMaxRetries = isBuildError ? 3 : maxRetries;
+          
+          if (startAttempt >= effectiveMaxRetries) {
+            console.log(`Max retries reached for ${isBuildError ? 'build' : 'other'} error, not retrying`);
+          } else {
+            // More graceful retry with longer delays: 5s, 15s (instead of 3s, 8s) to be less aggressive
+            // Even longer delays for build errors: 10s, 30s
+            const retryDelay = isBuildError 
+              ? (startAttempt === 0 ? 10000 : 30000)  // 10s, 30s for build errors
+              : (startAttempt === 0 ? 5000 : 15000);   // 5s, 15s for other errors
+            
+            console.log(`Retrying in ${retryDelay}ms... (attempt ${startAttempt + 1}/${effectiveMaxRetries})`);
+            console.log(`Error type: ${isNetworkError ? 'Network' : isServerError ? 'Server' : isTimeout ? 'Timeout' : isProxyError ? 'Proxy' : isBuildError ? 'Build' : 'Unknown'}`);
 
           setStartAttempt(prev => prev + 1);
           setCanRetry(false); // Disable retry button during automatic retry
@@ -727,6 +845,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
             };
             retry();
           }, retryDelay);
+          }
         } else if (startAttempt >= maxRetries || totalAttemptsRef.current > maxTotalAttempts) {
           let finalErrorMessage = `Failed after ${totalAttemptsRef.current} total attempts: ${errorMessage}`;
 
@@ -740,6 +859,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
             finalErrorMessage += ' Error E004: Disk space low.';
           } else if (isPreconditionError) {
             finalErrorMessage += ' Error E005: Machine state conflict.';
+          } else if (isBuildError) {
+            finalErrorMessage += ' Error E006: Build/installation failed.';
           }
 
           setError(finalErrorMessage);
@@ -754,6 +875,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
             finalErrorMessage += ' Error E004: Disk space low.';
           } else if (isPreconditionError) {
             finalErrorMessage += ' Error E005: Machine state conflict.';
+          } else if (isBuildError) {
+            finalErrorMessage += ' Error E006: Build/installation failed.';
           }
 
           setError(finalErrorMessage);
@@ -846,7 +969,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
       const timer = window.setTimeout(cleanup, delayMs);
       pendingCleanupTimers.set(appId, timer);
     };
-  }, [appId, startAttempt, restartToken, previewUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [appId, startAttempt, restartToken, previewUrl, forceFreshStart]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reload the iframe without tearing down the underlying server/process.
   useEffect(() => {

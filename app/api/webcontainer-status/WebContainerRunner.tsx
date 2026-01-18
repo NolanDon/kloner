@@ -14,9 +14,10 @@ interface WebContainerRunnerProps {
   onFileChange?: (path: string, content: string) => void;
   reloadToken?: number;
   restartToken?: number;
+  forceFreshStart?: boolean;
 }
 
-export default function WebContainerRunner({ appId, files, onFileChange, reloadToken, restartToken }: WebContainerRunnerProps) {
+export default function WebContainerRunner({ appId, files, onFileChange, reloadToken, restartToken, forceFreshStart }: WebContainerRunnerProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -267,8 +268,14 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
         console.log('Files:', Object.keys(filesRef.current));
         console.log('Files object:', filesRef.current);
 
-        // First, check if there's an existing container for this app
-        const existingCode = getStoredContainerCode(appId);
+        // Handle force fresh start - clear all stored containers and skip existing container checks
+        if (forceFreshStart) {
+          console.log('🔄 Force fresh start requested - clearing all stored container codes');
+          clearStoredContainerCode(appId);
+          // Skip to container creation
+        } else {
+          // First, check if there's an existing container for this app
+          const existingCode = getStoredContainerCode(appId);
         if (existingCode) {
           console.log(`🔍 Found stored container code for app ${appId}: ${existingCode}`);
           setConnectingToExisting(true);
@@ -388,6 +395,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
         } else {
           console.log(`ℹ️ No stored container code found for app ${appId}, creating new one`);
         }
+        } // End of forceFreshStart else block
 
         // No existing container or it failed, create a new one
         console.log(`🏗️ Creating new container for app ${appId}...`);

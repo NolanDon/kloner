@@ -9,6 +9,10 @@ import KlonerLoader from "./KlonerLoader";
 import WebContainerRunner from "./WebContainerRunner";
 import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
+import { db } from "@/lib/firebase";
+import { doc, onSnapshot } from "firebase/firestore";
+import { useAuth } from "@/src/hooks/useAuth";
+import { useModal } from "@/components/ui/ModalContext";
 
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
@@ -27,6 +31,8 @@ type AppData = {
     vercelProjectId?: string;
     previewUrl?: string;
     vercelProtectionBypassSecret?: string | null;
+    generationStatus?: "processing" | "ready" | "error";
+    generationError?: string;
 };
 
 type AutoPreviewPhase =
@@ -112,6 +118,8 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     onClose: () => void;
     onDeploy?: (app: { id: string; name: string }) => void;
 }) {
+    const { user } = useAuth();
+    const { showConfirm, showAlert } = useModal();
     const [app, setApp] = useState<AppData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -120,6 +128,9 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     const [code, setCode] = useState<string>("");
     const [refreshKey, setRefreshKey] = useState(0);
     const [localRestartKey, setLocalRestartKey] = useState(0);
+    const [forceFreshStart, setForceFreshStart] = useState(false);
+    const forceFreshStartRef = useRef(false);
+    const forceFreshStartKey = useRef(0);
     const [viewMode, setViewMode] = useState<"ai" | "code">("ai"); // Default to AI chat
     const [isRenaming, setIsRenaming] = useState(false);
     const [tempName, setTempName] = useState("");
@@ -434,6 +445,66 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
         loadApp();
     }, [appId]);
 
+    // Firebase real-time listener for instant UI updates when files change
+    useEffect(() => {
+        if (!appId || !user?.uid) return;
+
+        const unsubscribe = onSnapshot(
+            doc(db, 'kloner_users', user.uid, 'kloner_apps', appId),
+            (docSnapshot) => {
+                if (docSnapshot.exists()) {
+                    const firebaseData = docSnapshot.data();
+                    if (firebaseData && firebaseData.files) {
+                        // Update local state immediately when Firebase changes
+                        setApp(prevApp => {
+                            if (!prevApp) return prevApp;
+                            
+                            // Check if generation status changed
+                            const generationStatusChanged = prevApp.generationStatus !== firebaseData.generationStatus ||
+                                                          prevApp.generationError !== firebaseData.generationError;
+                            
+                            // Only update if files or generation status actually changed to avoid unnecessary re-renders
+                            const filesChanged = JSON.stringify(prevApp.files) !== JSON.stringify(firebaseData.files);
+                            
+                            if (filesChanged || generationStatusChanged) {
+                                console.log('Firebase data updated, refreshing UI immediately');
+                                const updatedApp = {
+                                    ...prevApp,
+                                    files: firebaseData.files,
+                                    generationStatus: firebaseData.generationStatus,
+                                    generationError: firebaseData.generationError,
+                                    updatedAt: firebaseData.updatedAt
+                                };
+                                
+                                // Update file tree if files changed
+                                if (filesChanged) {
+                                    buildFileTree(firebaseData.files);
+                                }
+                                
+                                // If current file was modified, update the editor content
+                                if (currentFile && firebaseData.files[currentFile]) {
+                                    setCode(firebaseData.files[currentFile].content);
+                                }
+
+                                // Trigger WebContainer refresh to show updated content in iframe
+                                setRefreshKey((k) => k + 1);
+                                
+                                return updatedApp;
+                            }
+                            
+                            return prevApp;
+                        });
+                    }
+                }
+            },
+            (error) => {
+                console.error('Firebase listener error:', error);
+            }
+        );
+
+        return () => unsubscribe();
+    }, [appId, user?.uid, currentFile]);
+
     // Load panel width from localStorage on mount
     useEffect(() => {
         const savedWidth = localStorage.getItem('app-builder-left-panel-width');
@@ -738,12 +809,23 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
         }
     }, [appId]);
 
-    const rebuildLocalPreview = useCallback(async () => {
+    const rebuildLocalPreview = useCallback(async (forceFresh: boolean = false) => {
         if (isPreviewBuilding) return;
         setIsPreviewBuilding(true);
         try {
             setPreviewMode("webcontainer");
-            setLocalRestartKey((k) => k + 1);
+            if (forceFresh) {
+                console.log('🔄 AppBuilderEditor: Incrementing forceFreshStartKey');
+                forceFreshStartKey.current += 1;
+                setForceFreshStart(true);
+                // Reset the flag after a short delay to allow the component to re-render
+                setTimeout(() => {
+                    console.log('🔄 AppBuilderEditor: Resetting forceFreshStart to false');
+                    setForceFreshStart(false);
+                }, 100);
+            } else {
+                setLocalRestartKey((k) => k + 1);
+            }
             setRefreshKey((k) => k + 1);
         } finally {
             setIsPreviewBuilding(false);
@@ -797,10 +879,20 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
         setRefreshKey((k) => k + 1);
     }, [appId, loading, isVercelChecking]);
 
-    const handleRefresh = () => {
+    const handleRefresh = async (forceFresh: boolean = false) => {
         if (isRefreshing) return;
+        
+        if (forceFresh) {
+            // Show confirmation dialog for force fresh start
+            const confirmed = await showConfirm(
+                "This will delete the current machine and start completely fresh. Any unsaved changes may be lost. Continue?",
+                "Force Fresh Start"
+            );
+            if (!confirmed) return;
+        }
+        
         setIsRefreshing(true);
-        void rebuildLocalPreview().finally(() => {
+        void rebuildLocalPreview(forceFresh).finally(() => {
             setTimeout(() => setIsRefreshing(false), 500);
         });
     };
@@ -871,6 +963,42 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
         );
     }
 
+    if (app.generationStatus === "processing") {
+        return (
+            <div className="fixed inset-0 z-[16000] bg-black/70 backdrop-blur-sm flex items-center justify-center">
+                <div className="bg-white rounded-lg p-8 max-w-md">
+                    <div className="text-center">
+                        <KlonerLoader />
+                        <div className="text-gray-600 text-sm mt-4">
+                            Generating your app... This may take a few minutes.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (app.generationStatus === "error") {
+        return (
+            <div className="fixed inset-0 z-[16000] bg-black/70 backdrop-blur-sm flex items-center justify-center">
+                <div className="bg-white rounded-lg p-8 max-w-md">
+                    <div className="text-center">
+                        <div className="text-red-600 text-lg font-semibold mb-2">Generation Failed</div>
+                        <div className="text-gray-600 text-sm mb-4">
+                            {app.generationError || "An error occurred while generating your app."}
+                        </div>
+                        <button
+                            onClick={() => window.location.reload()}
+                            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                        >
+                            Retry
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="fixed inset-0 z-[16000] bg-black/70 backdrop-blur-sm">
             <div className="h-full w-full bg-white flex flex-col">
@@ -927,9 +1055,9 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                             {isSaving ? "Saving..." : "Save"}
                         </button>
                         <button
-                            onClick={handleRefresh}
+                            onClick={() => handleRefresh(true)}
                             className="px-4 py-2 bg-[#F55F2A] text-white rounded flex items-center gap-2 rounded-full hover:bg-[#E04E1B]"
-                            title="Restart the embedded local preview"
+                            title="Delete current machine and start fresh"
                         >
                             <RefreshCw className="w-4 h-4" />
                             {isPreviewBuilding ? "Rebuilding…" : "Rebuild"}
@@ -1083,6 +1211,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                         onFileChange={handleFileChangeFromContainer}
                                         reloadToken={refreshKey}
                                         restartToken={localRestartKey}
+                                        forceFreshStart={forceFreshStartKey.current}
                                     />
                                 </div>
                             ) : previewSrc ? (

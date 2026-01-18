@@ -1908,7 +1908,7 @@ export default function PreviewPage(): JSX.Element {
         [user],
     );
 
-    const handleCreateApp = useCallback(async (mode: "clone" | "prompt", prompt?: string, renderId?: string) => {
+    const handleCreateApp = useCallback(async (mode: "clone" | "url" | "prompt", prompt?: string, renderId?: string, url?: string) => {
         if (!user) return;
 
         try {
@@ -1916,26 +1916,63 @@ export default function PreviewPage(): JSX.Element {
             let finalRenderId = renderId;
 
             if (mode === "clone") {
-                finalRenderId = renderId || activeRenderId || undefined;
+                appName = "Starter Template";
+                finalRenderId = renderId; // Can be undefined for template
+            } else if (mode === "url") {
+                finalRenderId = undefined; // No render for URL mode
             } else if (mode === "prompt") {
                 finalRenderId = undefined; // No render for prompt mode
             }
 
-            const res = await fetch("/api/app-builder/create", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    name: appName,
-                    renderId: finalRenderId,
-                    prompt: mode === "prompt" ? prompt : undefined
-                }),
-            });
+            let appId: string;
 
-            if (!res.ok) {
-                throw new Error("Failed to create app");
+            if (mode === "url" && url) {
+                // Use the new URL generation endpoint
+                const res = await fetch("/api/generate-app-from-url", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ url, name: appName }),
+                });
+
+                if (res.status === 202) {
+                    const { appId: generatedAppId } = await res.json();
+                    appId = generatedAppId;
+                } else {
+                    throw new Error("Failed to generate app from URL");
+                }
+            } else if (mode === "prompt" && prompt) {
+                // Use the new prompt generation endpoint
+                const res = await fetch("/api/generate-app-from-prompt", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ prompt, name: appName }),
+                });
+
+                if (res.status === 202) {
+                    const { appId: generatedAppId } = await res.json();
+                    appId = generatedAppId;
+                } else {
+                    throw new Error("Failed to generate app from prompt");
+                }
+            } else {
+                // Use the existing create endpoint for clone mode
+                const res = await fetch("/api/app-builder/create", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        name: appName,
+                        renderId: finalRenderId,
+                        prompt: undefined
+                    }),
+                });
+
+                if (!res.ok) {
+                    throw new Error("Failed to create app");
+                }
+
+                const { appId: createdAppId } = await res.json();
+                appId = createdAppId;
             }
-
-            const { appId } = await res.json();
 
             // Close the editor modal
             setEditorOpen(false);
@@ -1947,66 +1984,7 @@ export default function PreviewPage(): JSX.Element {
             setCurrentAppId(appId);
             setAppBuilderOpen(true);
 
-            // If this app was created from a prompt, immediately apply it to app/page.js via the app agent.
-            if (mode === "prompt" && prompt && typeof prompt === "string" && prompt.trim()) {
-                try {
-                    const csrf = await ensureSessionAndCsrf().catch(() => null);
-
-                    // Fetch files to issue the app scope cookie (needed for update-file).
-                    const filesRes = await fetch(`/api/app-builder/${appId}/files`, {
-                        method: "GET",
-                        credentials: "include",
-                        cache: "no-store",
-                        headers: {
-                            ...(csrf ? { "x-csrf": csrf } : {}),
-                        },
-                    });
-
-                    const filesJson = await filesRes.json().catch(() => ({} as any));
-                    const files = (filesJson?.files || {}) as Record<
-                        string,
-                        { content: string; lastModified: number }
-                    >;
-
-                    const pagePath = files["app/page.js"]
-                        ? "app/page.js"
-                        : files["app/page.tsx"]
-                            ? "app/page.tsx"
-                            : "app/page.js";
-
-                    const currentCode = files[pagePath]?.content || "";
-
-                    const agentRes = await fetch(`/api/app-builder/${appId}/agent`, {
-                        method: "POST",
-                        credentials: "include",
-                        headers: {
-                            "content-type": "application/json",
-                            ...(csrf ? { "x-csrf": csrf } : {}),
-                        },
-                        body: JSON.stringify({
-                            prompt: prompt.trim(),
-                            currentFile: pagePath,
-                            currentCode,
-                        }),
-                    });
-
-                    const agentJson = await agentRes.json().catch(() => ({} as any));
-                    const modifiedCode = (agentJson as any)?.modifiedCode;
-                    if (agentRes.ok && typeof modifiedCode === "string" && modifiedCode.trim()) {
-                        await fetch(`/api/app-builder/${appId}/update-file`, {
-                            method: "POST",
-                            credentials: "include",
-                            headers: {
-                                "content-type": "application/json",
-                                ...(csrf ? { "x-csrf": csrf } : {}),
-                            },
-                            body: JSON.stringify({ path: pagePath, content: modifiedCode }),
-                        });
-                    }
-                } catch (e) {
-                    console.warn("Prompt agent initialization failed", e);
-                }
-            }
+            // No agent application for new modes, as they are full generations
 
             return appId as string;
         } catch (error) {
@@ -2075,7 +2053,12 @@ export default function PreviewPage(): JSX.Element {
                 renderIdToUse = candidates[0]?.id;
             }
 
-            const created = await handleCreateApp("clone", undefined, renderIdToUse);
+            const created = await handleCreateApp("url", undefined, undefined, url);
+            if (created === null) {
+                // Async processing started
+                setAppWizardBusy(false);
+                return;
+            }
             if (created) {
                 setAppWizardOpen(false);
             } else {
@@ -2128,6 +2111,11 @@ export default function PreviewPage(): JSX.Element {
 
         try {
             const created = await handleCreateApp("prompt", prompt);
+            if (created === null) {
+                // Async processing started
+                setAppWizardBusy(false);
+                return;
+            }
             if (created) {
                 setAppWizardOpen(false);
             } else {
