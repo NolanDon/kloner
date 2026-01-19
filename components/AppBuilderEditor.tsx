@@ -174,6 +174,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     const [code, setCode] = useState<string>("");
     const [refreshKey, setRefreshKey] = useState(0);
     const [localRestartKey, setLocalRestartKey] = useState(0);
+    const [reconnectKey, setReconnectKey] = useState(0);
     const [forceFreshStart, setForceFreshStart] = useState(false);
     const forceFreshStartRef = useRef(false);
     const forceFreshStartKey = useRef(0);
@@ -1175,6 +1176,11 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
         });
     };
 
+    const handleReconnect = () => {
+        setPreviewMode("webcontainer");
+        setReconnectKey((k) => k + 1);
+    };
+
     const handleRename = async () => {
         if (!app || !tempName.trim()) return;
 
@@ -1332,11 +1338,6 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                             <Upload className="w-4 h-4" />
                             {isSaving ? "Saving..." : isPreviewRestarting ? "Restarting…" : "Save"}
                         </button>
-                        {previewRestartError ? (
-                            <div className="text-xs text-red-600 px-2 max-w-[420px] truncate" title={previewRestartError}>
-                                {previewRestartError}
-                            </div>
-                        ) : null}
                         <button
                             onClick={() => handleRefresh(false)}
                             disabled={isPreviewRestarting || isRefreshing}
@@ -1345,6 +1346,15 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                         >
                             <Play className="w-4 h-4" />
                             {isPreviewRestarting ? "Restarting…" : "Restart preview"}
+                        </button>
+                        <button
+                            onClick={handleReconnect}
+                            disabled={isRefreshing || isPreviewRestarting || isPreviewBuilding}
+                            className="px-4 py-2 bg-[#F55F2A] text-xs font-semibold text-white rounded flex items-center gap-2 rounded-full hover:bg-[#E04E1B] disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Reconnect to the existing machine without rebuilding"
+                        >
+                            <RotateCcw className="w-4 h-4" />
+                            Reconnect
                         </button>
                         <button
                             onClick={() => handleRefresh(true)}
@@ -1373,6 +1383,14 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                     </div>
                 </div>
 
+                {previewRestartError ? (
+                    <div className="px-4 py-2 border-b bg-red-50 text-xs text-red-700">
+                        <div className="max-w-[900px] truncate" title={previewRestartError}>
+                            {previewRestartError}
+                        </div>
+                    </div>
+                ) : null}
+
                 <div className="flex flex-1 min-h-0" data-app-builder-container>
                     {/* Left Panel - AI Chat and Controls */}
                     <div 
@@ -1381,27 +1399,29 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                     >
                         {/* View Mode Toggle */}
                         <div className="p-3 border-b">
-                            <div className="flex bg-white rounded-lg p-1 shadow-sm">
+                            <div className="flex gap-2">
                                 <button
                                     onClick={() => setViewMode("ai")}
-                                    className={`flex-1 px-2 py-1 rounded text-xs flex items-center justify-center gap-1 ${
+                                    className={`flex-1 px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors ${
                                         viewMode === "ai"
-                                            ? "bg-[#F55F2A] text-white"
-                                            : "text-gray-600 hover:bg-gray-100"
+                                            ? "bg-[#F55F2A] text-white hover:bg-[#E04E1B]"
+                                            : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-100"
                                     }`}
+                                    title="UI"
                                 >
-                                    <MessageSquare className="w-3 h-3" />
-                                    AI
+                                    <MessageSquare className="w-4 h-4" />
+                                    UI
                                 </button>
                                 <button
                                     onClick={() => setViewMode("code")}
-                                    className={`flex-1 px-2 py-1 rounded text-xs flex items-center justify-center gap-1 ${
+                                    className={`flex-1 px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors ${
                                         viewMode === "code"
-                                            ? "bg-[#F55F2A] text-white"
-                                            : "text-gray-600 hover:bg-gray-100"
+                                            ? "bg-[#F55F2A] text-white hover:bg-[#E04E1B]"
+                                            : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-100"
                                     }`}
+                                    title="Code"
                                 >
-                                    <Code className="w-3 h-3" />
+                                    <Code className="w-4 h-4" />
                                     Code
                                 </button>
                             </div>
@@ -1504,6 +1524,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                         onFileChange={handleFileChangeFromContainer}
                                         reloadToken={refreshKey}
                                         restartToken={localRestartKey}
+                                        reconnectToken={reconnectKey}
                                         forceFreshStart={forceFreshStartKey.current}
                                     />
                                 </div>

@@ -17,10 +17,11 @@ interface WebContainerRunnerProps {
   onFileChange?: (path: string, content: string) => void;
   reloadToken?: number;
   restartToken?: number;
+  reconnectToken?: number;
   forceFreshStart?: number;
 }
 
-export default function WebContainerRunner({ appId, files, onFileChange, reloadToken, restartToken, forceFreshStart }: WebContainerRunnerProps) {
+export default function WebContainerRunner({ appId, files, onFileChange, reloadToken, restartToken, reconnectToken, forceFreshStart }: WebContainerRunnerProps) {
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
@@ -313,6 +314,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
   const proxyBaseRef = useRef<string | null>(null);
   const lastReloadTokenRef = useRef<number | null>(null);
   const lastRestartTokenRef = useRef<number | null>(null);
+  const lastReconnectTokenRef = useRef<number | null>(null);
+  const reconnectOnlyRef = useRef(false);
   const filesRef = useRef(files);
   const startRunIdRef = useRef(0);
   const effectStartedAtRef = useRef<number>(0);
@@ -353,6 +356,36 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
     iframeLoadedSuccessfullyRef.current = false;
     pollingCodeRef.current = null;
   }, [appId, restartToken]);
+
+  // Reconnect requested: re-run connection logic without rebuilding and without
+  // creating a new machine if the existing one can't be reached.
+  useEffect(() => {
+    if (typeof reconnectToken !== 'number') return;
+    if (reconnectToken <= 0) return;
+    if (lastReconnectTokenRef.current === reconnectToken) return;
+    lastReconnectTokenRef.current = reconnectToken;
+
+    console.log('[WebContainerRunner] Reconnect requested', { appId, reconnectToken });
+    reconnectOnlyRef.current = true;
+
+    setHasStarted(false);
+    setIsLoading(false);
+    setIsPolling(false);
+    setConnectingToExisting(true);
+    setPreviewUrl(null);
+    setError(null);
+    setCanRetry(false);
+    setLoadingStatus('');
+    setCurrentStatusData(null);
+
+    pollingRetryCountRef.current = 0;
+    containerNotFoundCountRef.current = 0;
+    assetFailureCountRef.current = 0;
+    rebuildScheduledRef.current = false;
+    appLoadedSuccessfullyRef.current = false;
+    iframeLoadedSuccessfullyRef.current = false;
+    pollingCodeRef.current = null;
+  }, [appId, reconnectToken]);
 
   // Monitor app loading and trigger rebuilds on asset failures
   useEffect(() => {
@@ -447,6 +480,9 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
 
         console.log('Starting app with ID:', appId);
 
+  const reconnectOnly = reconnectOnlyRef.current;
+  reconnectOnlyRef.current = false;
+
         // Handle force fresh start - delete existing container and create new one
         if (isForceFreshStart) {
           console.log('🔄 Force fresh start requested - deleting existing container and creating new one');
@@ -485,6 +521,16 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
         } else {
           // First, check if there's an existing container for this app
           const existingCode = await getStoredContainerCode(appId, user);
+
+        if (!existingCode && reconnectOnly) {
+          console.log(`🔌 Reconnect requested but no stored container code found for app ${appId}`);
+          setConnectingToExisting(false);
+          setIsLoading(false);
+          setIsPolling(false);
+          setError('No saved machine found to reconnect.');
+          setCanRetry(true);
+          return;
+        }
         
         if (existingCode) {
           console.log(`🔍 Found stored container code for app ${appId}: ${existingCode}`);
@@ -551,6 +597,14 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
                   }
 
                   console.log(`❌ Probe failed for existing container ${existingCode}; clearing stored code and creating a new machine.`);
+                  if (reconnectOnly) {
+                    setConnectingToExisting(false);
+                    setIsLoading(false);
+                    setIsPolling(false);
+                    setError('Could not reach the existing machine. Try Reconnect again, or use Restart preview / Rebuild.');
+                    setCanRetry(true);
+                    return;
+                  }
                   await clearStoredContainerCodeEverywhere(appId, user);
                 } else {
                   console.log(`❌ Existing container ${existingCode} has allowed status '${statusData.status}' but no URL provided`);
@@ -641,6 +695,14 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
                 }
 
                 console.log(`❌ Probe failed for container ${existingCode}; clearing stored code.`);
+                if (reconnectOnly) {
+                  setConnectingToExisting(false);
+                  setIsLoading(false);
+                  setIsPolling(false);
+                  setError('Could not reach the existing machine. Try Reconnect again, or use Restart preview / Rebuild.');
+                  setCanRetry(true);
+                  return;
+                }
                 await clearStoredContainerCodeEverywhere(appId, user);
               } else {
                 console.log(`❌ Container ${existingCode} doesn't meet fallback conditions (status='${statusData.status}', progress=${statusData.uiProgress}%, url=${!!statusData.url}, machineId=${!!statusData.machineId})`);
@@ -659,18 +721,44 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
             }
           } catch (err) {
             console.log(`❌ Failed to check status of existing container ${existingCode}, will create new one:`, err);
+            if (reconnectOnly) {
+              setConnectingToExisting(false);
+              setIsLoading(false);
+              setIsPolling(false);
+              setError('Failed to reconnect to the existing machine. Try Reconnect again, or use Restart preview / Rebuild.');
+              setCanRetry(true);
+              return;
+            }
             // Clear the stored code since it's not usable
             await clearStoredContainerCodeEverywhere(appId, user);
           }
 
           // If we get here, the existing container is not usable
           console.log(`🆕 No usable existing container found for app ${appId}, creating new one`);
+          if (reconnectOnly) {
+            setConnectingToExisting(false);
+            setIsLoading(false);
+            setIsPolling(false);
+            setError('No usable existing machine to reconnect to. Use Restart preview / Rebuild to create a new one.');
+            setCanRetry(true);
+            return;
+          }
           setConnectingToExisting(false);
           await clearStoredContainerCodeEverywhere(appId, user);
         } else {
           console.log(`ℹ️ No stored container code found for app ${appId}, creating new one`);
         }
         } // End of forceFreshStart else block
+
+        if (reconnectOnly) {
+          // Reconnect-only should never fall through into "create new container".
+          setConnectingToExisting(false);
+          setIsLoading(false);
+          setIsPolling(false);
+          setError('Reconnect only: unable to reach an existing machine.');
+          setCanRetry(true);
+          return;
+        }
 
         // Create a new container (either force fresh start or no existing container found)
         if (isForceFreshStart) {
@@ -1248,12 +1336,6 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
               </button>
             )}
           </div>
-        </div>
-      )}
-      {previewUrl && iframeLoadedSuccessfullyRef.current && (
-        <div className="px-4 py-2 bg-green-50 border-b border-green-200 flex items-center gap-2">
-          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-          <span className="text-sm text-green-700 font-medium">Connected to machine</span>
         </div>
       )}
       {previewUrl ? (
