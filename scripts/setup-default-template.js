@@ -1,13 +1,15 @@
-// app/api/app-builder/create/route.ts
-import { NextRequest, NextResponse } from "next/server";
-import { getAdminDb } from "../../_lib/auth";
-import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
+// scripts/setup-default-template.js
+const admin = require('firebase-admin');
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+// Initialize Firebase Admin
+const serviceAccount = require('../serviceAccount.json');
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
 
-// Fallback template in case Firebase template is missing
-const fallbackTemplate = {
+const db = admin.firestore();
+
+const defaultTemplate = {
   "package.json": {
     content: JSON.stringify({
       name: "kloner-app",
@@ -256,7 +258,8 @@ a { color: inherit; }
   border-radius: 999px;
   border: 1px solid rgba(255,255,255,0.12);
   background: rgba(255,255,255,0.05);
-}`,
+}
+`,
   },
   "app/page.js": {
     content: `'use client';
@@ -378,173 +381,21 @@ export default function Error({ error, reset }) {
   },
 };
 
-// Fetch default template from Firebase
-async function getDefaultTemplate(db: any) {
+async function setupDefaultTemplate() {
   try {
-    const templateDoc = await db.collection("system").doc("default_app_template").get();
-    if (templateDoc.exists) {
-      const templateData = templateDoc.data();
-      return templateData.files || fallbackTemplate;
-    }
+    await db.collection("system").doc("default_app_template").set({
+      files: defaultTemplate,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      version: "1.0.0"
+    });
+
+    console.log("✅ Default app template set up successfully!");
+    console.log("📍 Location: system/default_app_template");
   } catch (error) {
-    console.error("Failed to load default template from Firebase:", error);
+    console.error("❌ Failed to set up default template:", error);
+  } finally {
+    process.exit(0);
   }
-  return fallbackTemplate;
 }
 
-export async function POST(req: NextRequest) {
-  return requireSessionAndMaybeCsrf(req, async ({ uid }) => {
-    const db = getAdminDb();
-
-    const body = await req.json();
-    const { name, renderId, prompt } = body;
-
-    if (!name || typeof name !== "string") {
-      return NextResponse.json({ error: "Name required" }, { status: 400 });
-    }
-
-    const appId = `app_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-    // Load default template from Firebase
-    let initialFiles = await getDefaultTemplate(db);
-
-    // If renderId is provided, generate initial content from the render
-    if (renderId) {
-      try {
-        const renderDoc = await db.collection("renders").doc(renderId).get();
-        if (renderDoc.exists) {
-          const renderData = renderDoc.data();
-          if (renderData?.userId === uid && renderData?.html) {
-            // Generate basic Next.js app from HTML
-            initialFiles = {
-              "package.json": {
-                content: JSON.stringify({
-                  name: name.toLowerCase().replace(/\s+/g, '-'),
-                  version: "0.1.0",
-                  private: true,
-                  scripts: {
-                    dev: "next dev",
-                    build: "next build",
-                    start: "next start",
-                    lint: "next lint"
-                  },
-                  dependencies: {
-                    next: "14.2.0",
-                    react: "^18",
-                    "react-dom": "^18"
-                  },
-                  devDependencies: {
-                    eslint: "^8",
-                    "eslint-config-next": "14.2.0"
-                  }
-                }, null, 2),
-              },
-              "next.config.js": {
-                content: `/** @type {import('next').NextConfig} */
-const nextConfig = {
-  basePath: '',
-  assetPrefix: '',
-  images: {
-    unoptimized: true,
-  },
-  trailingSlash: false,
-}
-
-module.exports = nextConfig`,
-              },
-              "app/globals.css": {
-                content: initialFiles["app/globals.css"]?.content || fallbackTemplate["app/globals.css"].content,
-              },
-              "app/page.js": {
-                content: `export const dynamic = 'force-dynamic';
-
-export default function Home() {
-  return (
-    <main className="kloner-shell">
-      <div className="kloner-card">
-        <div className="kloner-top">
-          <div className="kloner-brand">
-            <span className="kloner-dot" aria-hidden="true" />
-            <span>Kloner</span>
-          </div>
-          <div className="kloner-meta">Imported render</div>
-        </div>
-        <div className="kloner-body">
-          <div dangerouslySetInnerHTML={{ __html: \`${renderData.html.replace(/`/g, '\\`')}\` }} />
-        </div>
-      </div>
-    </main>
-  );
-}`,
-              },
-              "app/layout.js": {
-                content: `import './globals.css';
-
-export const metadata = {
-  title: '${name}',
-  description: 'Built with Kloner.',
-};
-
-export default function RootLayout({ children }) {
-  return (
-    <html lang="en">
-      <body>{children}</body>
-    </html>
-  );
-}`,
-              },
-              "app/error.js": {
-                content: `'use client';
-
-export default function Error({ error, reset }) {
-  return (
-    <main className="kloner-shell">
-      <div className="kloner-card">
-        <div className="kloner-top">
-          <div className="kloner-brand">
-            <span className="kloner-dot" aria-hidden="true" />
-            <span>Kloner</span>
-          </div>
-          <div className="kloner-meta">Error</div>
-        </div>
-        <div className="kloner-body">
-          <h1 className="kloner-title" style={{ fontSize: 26 }}>Something went wrong.</h1>
-          <p className="kloner-sub" style={{ marginTop: 10 }}>
-            {String(error?.message || 'An unexpected error occurred.')}
-          </p>
-          <div className="kloner-actions">
-            <button className="btn btn-primary" onClick={() => reset()}>Try again</button>
-          </div>
-        </div>
-      </div>
-    </main>
-  );
-}`,
-              },
-            };
-          }
-        }
-      } catch (error) {
-        console.error("Failed to load render for app creation:", error);
-        // Fall back to default template
-      }
-    }
-
-    const files: Record<string, { content: string; lastModified: number }> = {};
-    Object.entries(initialFiles as Record<string, { content: string }>).forEach(([path, { content }]) => {
-      files[path] = { content, lastModified: Date.now() };
-    });
-
-    await db.collection("kloner_users").doc(uid).collection("kloner_apps").doc(appId).set({
-      id: appId,
-      userId: uid,
-      name,
-      files,
-      renderId: renderId || null, // Store reference to source render
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-
-    return NextResponse.json({ appId });
-  });
-}
+setupDefaultTemplate();

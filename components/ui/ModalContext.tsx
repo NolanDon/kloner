@@ -11,6 +11,7 @@ interface ModalState {
   confirmText?: string;
   cancelText?: string;
   onConfirm?: () => void;
+  onCancel?: () => void;
 }
 
 interface ModalContextType {
@@ -49,6 +50,7 @@ export function ModalProvider({ children }: ModalProviderProps) {
         message,
         type: "alert",
         onConfirm: resolve,
+        onCancel: resolve,
       });
     });
   };
@@ -63,6 +65,7 @@ export function ModalProvider({ children }: ModalProviderProps) {
         confirmText: "OK",
         cancelText: "Cancel",
         onConfirm: () => resolve(true),
+        onCancel: () => resolve(false),
       });
     });
   };
@@ -79,10 +82,15 @@ export function ModalProvider({ children }: ModalProviderProps) {
   };
 
   const handleClose = () => {
+    // Closing a confirm dialog means "cancel".
     if (modalState.type === "confirm") {
-      // For confirm dialogs, closing without confirming resolves to false
+      if (modalState.onCancel) {
+        modalState.onCancel();
+      }
+    } else {
+      // Closing an alert should resolve the alert promise.
       if (modalState.onConfirm) {
-        (modalState.onConfirm as () => void)(); // This is a bit of a hack, but works for our use case
+        modalState.onConfirm();
       }
     }
     hideModal();

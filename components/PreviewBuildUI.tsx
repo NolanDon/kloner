@@ -85,11 +85,7 @@ export default function PreviewBuildUI({ userId, appId, code }: PreviewBuildUIPr
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center space-y-4">
-          <div className="flex items-center justify-center gap-1 mb-4">
-            <div className="w-3 h-3 bg-accent rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-            <div className="w-3 h-3 bg-accent rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-            <div className="w-3 h-3 bg-accent rounded-full animate-bounce"></div>
-          </div>
+          <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
           <p className="text-gray-600">Loading preview...</p>
         </div>
       </div>
@@ -192,11 +188,7 @@ export default function PreviewBuildUI({ userId, appId, code }: PreviewBuildUIPr
     <div className="flex-1 flex items-center justify-center">
       <div className="text-center max-w-md space-y-6">
         <div className="space-y-4">
-          <div className="flex items-center justify-center gap-1 mb-4">
-            <div className="w-3 h-3 bg-accent rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-            <div className="w-3 h-3 bg-accent rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-            <div className="w-3 h-3 bg-accent rounded-full animate-bounce"></div>
-          </div>
+          <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
 
           <div className="space-y-2">
             <h3 className="text-xl font-medium text-gray-900">

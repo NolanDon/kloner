@@ -4,6 +4,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Send, Bot, RotateCcw, Database, FileText, RefreshCw, X } from "lucide-react";
 import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
+import { useAuth } from "@/src/hooks/useAuth";
 
 type Message = {
     id: string;
@@ -51,6 +52,7 @@ type RestorePointItem = {
 };
 
 export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh, onFilesReplace }: AIAgentChatProps) {
+    const { user } = useAuth();
     const [messages, setMessages] = useState<Message[]>([
         {
             id: "welcome",
@@ -107,40 +109,17 @@ export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh,
         }, 50);
     }, []);
 
-    // Load chat history on mount
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            try {
-                const saved = localStorage.getItem(`chat_history_${appId}`);
-                if (saved) {
-                    // Check if the stored data is unreasonably large (> 5MB)
-                    if (saved.length > 5 * 1024 * 1024) {
-                        console.warn('Chat history too large, skipping load');
-                        return;
-                    }
-
-                    const parsed = JSON.parse(saved);
-                    if (Array.isArray(parsed)) {
-                        const loadedMessages = parsed.map((msg: any) => ({
-                            ...msg,
-                            timestamp: new Date(msg.timestamp)
-                        })).filter(msg =>
-                            msg.id && msg.role && msg.content !== undefined && msg.timestamp instanceof Date
-                        );
-                        setMessages(loadedMessages);
-                    }
-                }
-            } catch (error) {
-                console.error('Failed to load chat history, starting fresh:', error);
-                // Clear corrupted data
-                try {
-                    localStorage.removeItem(`chat_history_${appId}`);
-                } catch (clearError) {
-                    console.error('Failed to clear corrupted chat history:', clearError);
-                }
-            }
+    const loadedFromRemoteRef = useRef(false);
+    const initialLoadCompletedRef = useRef(false);
+    const lastSavedPayloadRef = useRef<string | null>(null);
+    const debugChatIo = useCallback(() => {
+        if (typeof window === "undefined") return false;
+        try {
+            return localStorage.getItem("kloner_debug_chat_io") === "1";
+        } catch {
+            return false;
         }
-    }, [appId]);
+    }, []);
 
     const withCsrfHeaders = useCallback(async () => {
         // Always fetch a fresh CSRF token to avoid stale token issues
@@ -166,6 +145,132 @@ export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh,
         if (csrf) headers["x-csrf"] = String(csrf);
         return headers;
     }, []);
+
+    // Load chat history from server (firebase-admin) and migrate any legacy localStorage once.
+    useEffect(() => {
+        if (loadedFromRemoteRef.current) return;
+        if (!user?.uid || !appId) return;
+
+        let cancelled = false;
+        (async () => {
+            try {
+                await ensureSessionAndCsrf().catch(() => null);
+                const res = await fetch(`/api/app-builder/${appId}/ai-chat`, {
+                    method: "GET",
+                    credentials: "include",
+                    cache: "no-store",
+                });
+                if (cancelled) return;
+
+                const data = res.ok ? await res.json().catch(() => null) : null;
+                const stored = Array.isArray(data?.messages) ? data.messages : null;
+
+                const toMessage = (m: any): Message | null => {
+                    if (!m || typeof m !== "object") return null;
+                    const id = typeof m.id === "string" ? m.id : "";
+                    const role = m.role === "user" || m.role === "assistant" ? m.role : null;
+                    const content = typeof m.content === "string" ? m.content : null;
+                    const type = m.type === "text" || m.type === "code" || m.type === "file-edit" ? m.type : "text";
+                    const ts = typeof m.timestampMs === "number" ? new Date(m.timestampMs) : (m.timestamp ? new Date(m.timestamp) : new Date());
+                    if (!id || !role || content == null || Number.isNaN(ts.getTime())) return null;
+                    return {
+                        id,
+                        role,
+                        content,
+                        type,
+                        timestamp: ts,
+                        restorePointId: typeof m.restorePointId === "string" ? m.restorePointId : undefined,
+                        restoreActionLabel: typeof m.restoreActionLabel === "string" ? m.restoreActionLabel : undefined,
+                    };
+                };
+
+                if (stored) {
+                    const loaded = stored.map(toMessage).filter(Boolean) as Message[];
+                    if (loaded.length) setMessages(loaded);
+                    loadedFromRemoteRef.current = true;
+                    return;
+                }
+
+                // No remote history yet; attempt a one-time migration from legacy localStorage
+                if (typeof window !== "undefined") {
+                    try {
+                        const legacy = localStorage.getItem(`chat_history_${appId}`);
+                        if (legacy) {
+                            const parsed = JSON.parse(legacy);
+                            if (Array.isArray(parsed)) {
+                                const loaded = parsed
+                                    .map((msg: any) => ({
+                                        ...msg,
+                                        timestamp: new Date(msg.timestamp),
+                                    }))
+                                    .filter((msg: any) => msg?.id && msg?.role && msg?.content !== undefined && msg?.timestamp instanceof Date)
+                                    .map((msg: any) => ({
+                                        id: String(msg.id),
+                                        role: msg.role === "user" || msg.role === "assistant" ? msg.role : "user",
+                                        content: String(msg.content ?? ""),
+                                        timestamp: msg.timestamp as Date,
+                                        type: msg.type === "code" || msg.type === "file-edit" ? msg.type : "text",
+                                        restorePointId: typeof msg.restorePointId === "string" ? msg.restorePointId : undefined,
+                                        restoreActionLabel: typeof msg.restoreActionLabel === "string" ? msg.restoreActionLabel : undefined,
+                                    })) as Message[];
+
+                                if (loaded.length) {
+                                    setMessages(loaded);
+                                    const headers = await withCsrfHeaders();
+                                    await fetch(`/api/app-builder/${appId}/ai-chat`, {
+                                        method: "POST",
+                                        headers,
+                                        credentials: "include",
+                                        cache: "no-store",
+                                        body: JSON.stringify({
+                                            messages: loaded.map((m) => ({
+                                                id: m.id,
+                                                role: m.role,
+                                                content: m.content,
+                                                type: m.type,
+                                                timestampMs: m.timestamp.getTime(),
+                                                restorePointId: m.restorePointId ?? null,
+                                                restoreActionLabel: m.restoreActionLabel ?? null,
+                                            })),
+                                        }),
+                                    }).catch(() => null);
+                                }
+                            }
+                        }
+                    } catch {
+                        // ignore migration errors
+                    }
+
+                    try {
+                        localStorage.removeItem(`chat_history_${appId}`);
+                    } catch {
+                        // ignore
+                    }
+                }
+
+                loadedFromRemoteRef.current = true;
+            } catch (e) {
+                // If server read fails, fall back to in-memory only.
+                console.warn("Failed to load chat history", e);
+                if (debugChatIo()) {
+                    console.log("[AIAgentChat] chat load failed", {
+                        appId,
+                        uid: user?.uid || null,
+                        path: `kloner_users/${user?.uid || "<no-uid>"}/kloner_apps/${appId}/ai_chat/default`,
+                    });
+                }
+                loadedFromRemoteRef.current = true;
+            } finally {
+                // Allow saving after the first load attempt finishes.
+                initialLoadCompletedRef.current = true;
+                if (debugChatIo()) console.log("[AIAgentChat] chat load complete", { appId });
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [appId, debugChatIo, user?.uid, withCsrfHeaders]);
 
     const fetchRestorePoints = useCallback(async () => {
         try {
@@ -205,38 +310,85 @@ export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh,
         scrollToBottom();
     }, [messages, scrollToBottom]);
 
-    // Save chat history whenever messages change (with quota management)
+    const saveTimerRef = useRef<number | null>(null);
+    // Save chat history via server (debounced)
     useEffect(() => {
-        if (typeof window !== 'undefined') {
+        if (!isHydrated) return;
+        if (!initialLoadCompletedRef.current) return;
+        if (!user?.uid || !appId) return;
+
+        if (saveTimerRef.current) {
+            window.clearTimeout(saveTimerRef.current);
+        }
+
+        saveTimerRef.current = window.setTimeout(async () => {
             try {
-                // Limit messages to prevent quota exceeded errors
-                // Keep only the most recent 50 messages
-                const messagesToSave = messages.slice(-50);
+                // Keep a reasonable tail to prevent doc bloat.
+                const tailMax = 120;
+                const base = messages.slice(-tailMax).map((m) => ({
+                    id: m.id,
+                    role: m.role,
+                    content: m.content,
+                    type: m.type,
+                    timestampMs: m.timestamp.getTime(),
+                    restorePointId: m.restorePointId ?? null,
+                    restoreActionLabel: m.restoreActionLabel ?? null,
+                }));
 
-                localStorage.setItem(`chat_history_${appId}`, JSON.stringify(messagesToSave));
-            } catch (error) {
-                if (error instanceof DOMException && error.name === 'QuotaExceededError') {
-                    console.warn('localStorage quota exceeded, clearing old chat history and retrying...');
+                const encoder = typeof TextEncoder !== "undefined" ? new TextEncoder() : null;
+                const sizeBytes = (payload: any) => {
+                    const raw = JSON.stringify(payload);
+                    return encoder ? encoder.encode(raw).length : raw.length;
+                };
 
-                    try {
-                        // Clear this app's chat history and try again with limited messages
-                        localStorage.removeItem(`chat_history_${appId}`);
+                let payload = base;
+                // Firestore doc limit is ~1MB. Keep a safe margin.
+                const MAX_BYTES = 800_000;
+                if (sizeBytes(payload) > MAX_BYTES) payload = base.slice(-60);
+                if (sizeBytes(payload) > MAX_BYTES) payload = base.slice(-30);
 
-                        // Keep only the last 20 messages as a fallback
-                        const limitedMessages = messages.slice(-20);
-                        localStorage.setItem(`chat_history_${appId}`, JSON.stringify(limitedMessages));
+                // Skip writes if nothing changed since last successful save.
+                const raw = JSON.stringify(payload);
+                if (lastSavedPayloadRef.current === raw) {
+                    if (debugChatIo()) console.log("[AIAgentChat] chat save skipped (unchanged)", { appId });
+                    return;
+                }
 
-                        console.log('Successfully saved limited chat history after clearing');
-                    } catch (retryError) {
-                        console.error('Failed to save chat history even after clearing:', retryError);
-                        // Continue without saving - chat will still work
-                    }
-                } else {
-                    console.error('Failed to save chat history:', error);
+                await ensureSessionAndCsrf().catch(() => null);
+                const headers = await withCsrfHeaders();
+                const res = await fetch(`/api/app-builder/${appId}/ai-chat`, {
+                    method: "POST",
+                    headers,
+                    credentials: "include",
+                    cache: "no-store",
+                    body: JSON.stringify({ messages: payload }),
+                });
+                if (!res.ok) {
+                    throw new Error(`Chat save failed: ${res.status}`);
+                }
+
+                lastSavedPayloadRef.current = raw;
+                if (debugChatIo()) console.log("[AIAgentChat] chat saved", { appId, messages: payload.length });
+            } catch (e) {
+                // Non-fatal: chat still works, just won't persist.
+                console.warn("Failed to save chat history", e);
+                if (debugChatIo()) {
+                    console.log("[AIAgentChat] chat save failed", {
+                        appId,
+                        uid: user?.uid || null,
+                        path: `kloner_users/${user?.uid || "<no-uid>"}/kloner_apps/${appId}/ai_chat/default`,
+                    });
                 }
             }
-        }
-    }, [messages, appId]);
+        }, 750);
+
+        return () => {
+            if (saveTimerRef.current) {
+                window.clearTimeout(saveTimerRef.current);
+                saveTimerRef.current = null;
+            }
+        };
+    }, [appId, debugChatIo, isHydrated, messages, user?.uid, withCsrfHeaders]);
 
     const createCheckpoint = useCallback((description: string) => {
         const checkpointId = `checkpoint_${Date.now()}`;

@@ -49,6 +49,52 @@ type CodedError = Error & { code?: string };
 
 type PreviewMode = "vercel" | "webcontainer";
 
+function mergeFilesPreferNewest(
+    localFiles: AppData["files"],
+    remoteFiles: AppData["files"],
+): AppData["files"] {
+    const merged: AppData["files"] = {};
+    const keys = new Set<string>([...Object.keys(localFiles || {}), ...Object.keys(remoteFiles || {})]);
+    for (const key of keys) {
+        const local = (localFiles as any)?.[key];
+        const remote = (remoteFiles as any)?.[key];
+        if (!local && remote) {
+            merged[key] = remote;
+            continue;
+        }
+        if (!remote && local) {
+            merged[key] = local;
+            continue;
+        }
+        if (!local && !remote) continue;
+
+        const localTs = typeof local?.lastModified === "number" ? local.lastModified : 0;
+        const remoteTs = typeof remote?.lastModified === "number" ? remote.lastModified : 0;
+
+        // Prefer the newest edit; if tied, prefer local to avoid "undo" flicker
+        // while a client write is still in-flight.
+        merged[key] = remoteTs > localTs ? remote : local;
+    }
+    return merged;
+}
+
+function filesShallowEqualByContentAndTimestamp(
+    a: AppData["files"],
+    b: AppData["files"],
+): boolean {
+    const aKeys = Object.keys(a || {});
+    const bKeys = Object.keys(b || {});
+    if (aKeys.length !== bKeys.length) return false;
+    for (const key of aKeys) {
+        const av = (a as any)[key];
+        const bv = (b as any)[key];
+        if (!bv) return false;
+        if (av?.lastModified !== bv?.lastModified) return false;
+        if (av?.content !== bv?.content) return false;
+    }
+    return true;
+}
+
 function csrfHeaders(csrf: unknown): HeadersInit | undefined {
     if (typeof csrf === "string" && csrf.trim()) {
         return { "x-csrf": csrf };
@@ -136,6 +182,8 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     const [tempName, setTempName] = useState("");
     const [isSaving, setIsSaving] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [isPreviewRestarting, setIsPreviewRestarting] = useState(false);
+    const [previewRestartError, setPreviewRestartError] = useState<string | null>(null);
     const [isDeploying, setIsDeploying] = useState(false);
     const [isPreviewBuilding, setIsPreviewBuilding] = useState(false);
     const [previewError, setPreviewError] = useState<string | null>(null);
@@ -160,6 +208,10 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     const [leftPanelWidth, setLeftPanelWidth] = useState(500); // Default wider AI chat panel
     const [isResizing, setIsResizing] = useState(false);
     const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const restartDebounceRef = useRef<NodeJS.Timeout | null>(null);
+    const restartInFlightRef = useRef(false);
+    const restartQueuedRef = useRef(false);
+    const restartQueuedInteractiveRef = useRef(false);
 
     const { status: vercelStatus, checking: vercelChecking, refresh: refreshVercelStatus } =
         useVercelIntegration();
@@ -198,6 +250,205 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     function sleep(ms: number): Promise<void> {
         return new Promise((resolve) => setTimeout(resolve, ms));
     }
+
+    async function fetchFreshCsrf(): Promise<string | null> {
+        try {
+            const res = await fetch("/api/auth/csrf", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                credentials: "include",
+                cache: "no-store",
+            });
+            if (!res.ok) return null;
+            const data = await res.json().catch(() => null);
+            return (data as any)?.csrf || null;
+        } catch {
+            return null;
+        }
+    }
+
+    const pollPreviewReady = useCallback(async (code: string) => {
+        const startedAt = Date.now();
+        let attempt = 0;
+
+        while (Date.now() - startedAt < 180_000) {
+            attempt += 1;
+            try {
+                const url = `/api/webcontainer-status?code=${encodeURIComponent(code)}&appId=${encodeURIComponent(appId)}`;
+                const res = await fetch(url, {
+                    method: "GET",
+                    credentials: "include",
+                    cache: "no-store",
+                });
+
+                // Treat these as user-visible "expired" cases.
+                if (res.status === 404 || res.status === 409) {
+                    const data = await res.json().catch(() => ({} as any));
+                    return { ok: false as const, error: String((data as any)?.error || "Preview expired") };
+                }
+
+                if (res.ok) {
+                    const data = await res.json().catch(() => ({} as any));
+                    const status = String((data as any)?.status || "").toLowerCase();
+                    const uiStage = String((data as any)?.uiStage || (data as any)?.ui_stage || "").toLowerCase();
+                    if (uiStage === "ready" || status === "ready") {
+                        return { ok: true as const, data };
+                    }
+                    // A few backends report "running/compiled/started" as effectively ready.
+                    if (["running", "compiled", "started", "online", "active", "completed", "finished"].includes(status)) {
+                        return { ok: true as const, data };
+                    }
+                }
+            } catch {
+                // ignore transient errors
+            }
+
+            const waitMs = Math.min(5_000, 700 + attempt * 250);
+            await sleep(waitMs);
+        }
+
+        return { ok: false as const, error: "Timed out waiting for preview to become ready." };
+    }, [appId]);
+
+    const rebuildLocalPreview = useCallback(async (forceFresh: boolean = false) => {
+        if (isPreviewBuilding) return;
+        setIsPreviewBuilding(true);
+        try {
+            setPreviewMode("webcontainer");
+            if (forceFresh) {
+                console.log('🔄 AppBuilderEditor: Incrementing forceFreshStartKey');
+                forceFreshStartKey.current += 1;
+                setForceFreshStart(true);
+                // Reset the flag after a short delay to allow the component to re-render
+                setTimeout(() => {
+                    console.log('🔄 AppBuilderEditor: Resetting forceFreshStart to false');
+                    setForceFreshStart(false);
+                }, 100);
+            } else {
+                setLocalRestartKey((k) => k + 1);
+            }
+            setRefreshKey((k) => k + 1);
+        } finally {
+            setIsPreviewBuilding(false);
+        }
+    }, [isPreviewBuilding]);
+
+    const triggerPreviewRebuild = useCallback(
+        async ({ silent }: { silent: boolean }) => {
+            if (!appId) return;
+
+            if (restartInFlightRef.current) {
+                restartQueuedRef.current = true;
+                if (!silent) restartQueuedInteractiveRef.current = true;
+                return;
+            }
+
+            restartInFlightRef.current = true;
+            if (!silent) {
+                setIsPreviewRestarting(true);
+                setPreviewRestartError(null);
+            }
+
+            try {
+                // Prefer sending the locally stored container code when available.
+                // If absent, the backend/hub can resolve the latest preview by appId.
+                let storedCode = "";
+                try {
+                    const raw = localStorage.getItem(`webcontainer_${appId}`);
+                    if (raw) {
+                        const parsed = JSON.parse(raw);
+                        if (parsed?.code) storedCode = String(parsed.code).trim();
+                    }
+                } catch {
+                    // ignore
+                }
+
+                const csrf = await fetchFreshCsrf();
+                const payload: any = { appId };
+                if (storedCode) payload.code = storedCode;
+
+                const res = await fetch(`/api/app-builder/${appId}/preview/rebuild`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
+                    },
+                    credentials: "include",
+                    body: JSON.stringify(payload),
+                });
+
+                const data = await res.json().catch(() => ({} as any));
+                if (!res.ok || !(data as any)?.ok) {
+                    // If there is no active preview yet, fall back to creating/starting.
+                    if (res.status === 404 || res.status === 409) {
+                        if (!silent) setPreviewRestartError(null);
+                        await rebuildLocalPreview(true);
+                        return;
+                    }
+
+                    const msg = String((data as any)?.error || `Rebuild failed (HTTP ${res.status})`);
+                    if (!silent) throw Object.assign(new Error(msg), { status: res.status });
+                    return;
+                }
+
+                // Treat queued response as success; poll until ready, then refresh the iframe.
+                const code = String((data as any)?.code || storedCode || "");
+                if (!code) {
+                    if (!silent) throw new Error("Rebuild succeeded but no preview code was returned.");
+                    return;
+                }
+
+                const ready = await pollPreviewReady(code);
+                if (!ready.ok) {
+                    if (!silent) throw new Error(ready.error);
+                    return;
+                }
+
+                setRefreshKey((k) => k + 1);
+            } catch (err: any) {
+                if (!silent) {
+                    const msg = String(err?.message || "Failed to rebuild preview.");
+                    setPreviewRestartError(msg);
+                }
+            } finally {
+                if (!silent) setIsPreviewRestarting(false);
+                restartInFlightRef.current = false;
+
+                if (restartQueuedRef.current) {
+                    const nextInteractive = restartQueuedInteractiveRef.current;
+                    restartQueuedRef.current = false;
+                    restartQueuedInteractiveRef.current = false;
+                    void triggerPreviewRebuild({ silent: !nextInteractive });
+                }
+            }
+        },
+        [appId, pollPreviewReady, rebuildLocalPreview]
+    );
+
+    const restartPreviewNow = useCallback(async () => {
+        await triggerPreviewRebuild({ silent: false });
+    }, [triggerPreviewRebuild]);
+
+    const rebuildPreviewInPlaceSilently = useCallback(async () => {
+        await triggerPreviewRebuild({ silent: true });
+    }, [triggerPreviewRebuild]);
+
+    const schedulePreviewRestart = useCallback(() => {
+        if (!appId) return;
+        if (restartDebounceRef.current) {
+            clearTimeout(restartDebounceRef.current);
+            restartDebounceRef.current = null;
+        }
+
+        // Debounce rebuilds so rapid saves collapse into one.
+        // Use the same WebContainerRunner logic that runs when the user opens
+        // "Customize App": it will connect to an existing container when possible
+        // and otherwise spin up a fresh one with the latest file snapshot.
+        restartDebounceRef.current = setTimeout(() => {
+            restartDebounceRef.current = null;
+            void rebuildPreviewInPlaceSilently();
+        }, 900);
+    }, [appId, rebuildPreviewInPlaceSilently]);
 
     useEffect(() => {
         // Keep the draft in sync when app data loads.
@@ -464,13 +715,14 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                                           prevApp.generationError !== firebaseData.generationError;
                             
                             // Only update if files or generation status actually changed to avoid unnecessary re-renders
-                            const filesChanged = JSON.stringify(prevApp.files) !== JSON.stringify(firebaseData.files);
+                            const mergedFiles = mergeFilesPreferNewest(prevApp.files, firebaseData.files);
+                            const filesChanged = !filesShallowEqualByContentAndTimestamp(prevApp.files, mergedFiles);
                             
                             if (filesChanged || generationStatusChanged) {
                                 console.log('Firebase data updated, refreshing UI immediately');
                                 const updatedApp = {
                                     ...prevApp,
-                                    files: firebaseData.files,
+                                    files: mergedFiles,
                                     generationStatus: firebaseData.generationStatus,
                                     generationError: firebaseData.generationError,
                                     updatedAt: firebaseData.updatedAt
@@ -478,12 +730,12 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                 
                                 // Update file tree if files changed
                                 if (filesChanged) {
-                                    buildFileTree(firebaseData.files);
+                                    buildFileTree(mergedFiles);
                                 }
                                 
                                 // If current file was modified, update the editor content
-                                if (currentFile && firebaseData.files[currentFile]) {
-                                    setCode(firebaseData.files[currentFile].content);
+                                if (currentFile && (mergedFiles as any)[currentFile]) {
+                                    setCode((mergedFiles as any)[currentFile].content);
                                 }
 
                                 // Trigger WebContainer refresh to show updated content in iframe
@@ -654,33 +906,71 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
 
     const saveFileToServer = useCallback(async (path: string, content: string) => {
         try {
-            const csrf = await ensureSessionAndCsrf().catch(() => null);
+            // Always fetch a fresh CSRF token so the header matches the cookie.
+            // (Relying on an existing cookie can drift and cause 403s.)
+            let csrf: string | null = null;
+            try {
+                const res = await fetch("/api/auth/csrf", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    credentials: "include",
+                    cache: "no-store",
+                });
+                if (res.ok) {
+                    const data = await res.json().catch(() => null);
+                    csrf = data?.csrf || null;
+                }
+            } catch {
+                csrf = null;
+            }
             const res = await fetch(`/api/app-builder/${appId}/update-file`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                     ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
                 },
+                credentials: "include",
+                cache: "no-store",
                 body: JSON.stringify({ path, content }),
             });
             if (!res.ok) throw new Error("Failed to save");
+
+            // After a successful save, restart the preview machine (debounced)
+            // so the iframe reflects the latest Firebase files.
+            schedulePreviewRestart();
         } catch (err) {
             console.error("Auto-save failed", err);
         }
-    }, [appId]);
+    }, [appId, schedulePreviewRestart]);
 
     const handleSave = async () => {
         if (!currentFile || !app || isSaving) return;
 
         setIsSaving(true);
         try {
-            const csrf = await ensureSessionAndCsrf().catch(() => null);
+            let csrf: string | null = null;
+            try {
+                const res = await fetch("/api/auth/csrf", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    credentials: "include",
+                    cache: "no-store",
+                });
+                if (res.ok) {
+                    const data = await res.json().catch(() => null);
+                    csrf = data?.csrf || null;
+                }
+            } catch {
+                csrf = null;
+            }
             const res = await fetch(`/api/app-builder/${appId}/update-file`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                     ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
                 },
+                credentials: "include",
+                cache: "no-store",
                 body: JSON.stringify({ path: currentFile, content: code }),
             });
             if (!res.ok) throw new Error("Failed to save");
@@ -692,6 +982,8 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                     [currentFile]: { content: code, lastModified: Date.now() },
                 },
             } : null);
+
+            schedulePreviewRestart();
         } catch (err) {
             console.error("Save failed", err);
         } finally {
@@ -809,29 +1101,6 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
         }
     }, [appId]);
 
-    const rebuildLocalPreview = useCallback(async (forceFresh: boolean = false) => {
-        if (isPreviewBuilding) return;
-        setIsPreviewBuilding(true);
-        try {
-            setPreviewMode("webcontainer");
-            if (forceFresh) {
-                console.log('🔄 AppBuilderEditor: Incrementing forceFreshStartKey');
-                forceFreshStartKey.current += 1;
-                setForceFreshStart(true);
-                // Reset the flag after a short delay to allow the component to re-render
-                setTimeout(() => {
-                    console.log('🔄 AppBuilderEditor: Resetting forceFreshStart to false');
-                    setForceFreshStart(false);
-                }, 100);
-            } else {
-                setLocalRestartKey((k) => k + 1);
-            }
-            setRefreshKey((k) => k + 1);
-        } finally {
-            setIsPreviewBuilding(false);
-        }
-    }, [isPreviewBuilding]);
-
     const tryEmbedExistingPreview = useCallback(() => {
         const url = (protectedPreviewUrl || "").trim();
         if (!url) return;
@@ -892,7 +1161,16 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
         }
         
         setIsRefreshing(true);
-        void rebuildLocalPreview(forceFresh).finally(() => {
+        if (forceFresh) {
+            void rebuildLocalPreview(true).finally(() => {
+                setTimeout(() => setIsRefreshing(false), 500);
+            });
+            return;
+        }
+
+        // Default refresh: rebuild in-place inside the existing machine.
+        // Falls back to starting a fresh machine if no active preview exists.
+        void restartPreviewNow().finally(() => {
             setTimeout(() => setIsRefreshing(false), 500);
         });
     };
@@ -1048,15 +1326,30 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                     <div className="flex gap-2 items-center">
                         <button
                             onClick={handleSave}
-                            disabled={isSaving}
-                            className="px-4 py-2 bg-[#F55F2A] text-white rounded hover:bg-[#E04E1B] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all  rounded-full"
+                            disabled={isSaving || isPreviewRestarting}
+                            className="px-4 py-2 bg-[#F55F2A] text-xs font-semibold text-white rounded hover:bg-[#E04E1B] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all  rounded-full"
                         >
                             <Upload className="w-4 h-4" />
-                            {isSaving ? "Saving..." : "Save"}
+                            {isSaving ? "Saving..." : isPreviewRestarting ? "Restarting…" : "Save"}
+                        </button>
+                        {previewRestartError ? (
+                            <div className="text-xs text-red-600 px-2 max-w-[420px] truncate" title={previewRestartError}>
+                                {previewRestartError}
+                            </div>
+                        ) : null}
+                        <button
+                            onClick={() => handleRefresh(false)}
+                            disabled={isPreviewRestarting || isRefreshing}
+                            className="px-4 py-2 bg-[#F55F2A] text-xs font-semibold text-white rounded flex items-center gap-2 rounded-full hover:bg-[#E04E1B] disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Restart the existing preview machine and reload with the latest saved changes"
+                        >
+                            <Play className="w-4 h-4" />
+                            {isPreviewRestarting ? "Restarting…" : "Restart preview"}
                         </button>
                         <button
                             onClick={() => handleRefresh(true)}
-                            className="px-4 py-2 bg-[#F55F2A] text-white rounded flex items-center gap-2 rounded-full hover:bg-[#E04E1B]"
+                            disabled={isPreviewBuilding || isRefreshing || isPreviewRestarting}
+                            className="px-4 py-2 bg-[#F55F2A] text-xs font-semibold text-white rounded flex items-center gap-2 rounded-full hover:bg-[#E04E1B]"
                             title="Delete current machine and start fresh"
                         >
                             <RefreshCw className="w-4 h-4" />
@@ -1065,7 +1358,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                         <button
                             onClick={handleDeploy}
                             disabled={isDeploying}
-                            className="px-4 py-2 bg-[#F55F2A] text-white rounded hover:bg-[#E04E1B] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all  rounded-full"
+                            className="px-4 py-2 bg-[#F55F2A] text-xs font-semibold text-white rounded hover:bg-[#E04E1B] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all  rounded-full"
                         >
                             <Upload className="w-4 h-4" />
                             {isDeploying ? "Deploying..." : "Deploy"}
@@ -1080,10 +1373,10 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                     </div>
                 </div>
 
-                <div className="flex h-full" data-app-builder-container>
+                <div className="flex flex-1 min-h-0" data-app-builder-container>
                     {/* Left Panel - AI Chat and Controls */}
                     <div 
-                        className="flex flex-col border-r bg-gray-50 flex-shrink-0 max-h-full overflow-hidden" 
+                        className="flex flex-col border-r bg-gray-50 flex-shrink-0 min-h-0 overflow-hidden" 
                         style={{ width: `${leftPanelWidth}px` }}
                     >
                         {/* View Mode Toggle */}
@@ -1169,7 +1462,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                     />
 
                     {/* Right Panel - Browser-like App View */}
-                    <div className="flex-1 flex flex-col">
+                    <div className="flex-1 flex flex-col min-h-0">
                         {/* Browser Chrome */}
                         <div className="bg-gray-100 border-b px-4 py-2 flex items-center gap-2">
                             <div className="flex gap-1">
@@ -1308,7 +1601,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                                     autoPreviewPhase === "enabling-bypass" ||
                                                     autoPreviewPhase === "loading"
                                                 }
-                                                className="px-4 py-2 bg-[#F55F2A] text-white rounded-full hover:bg-[#E04E1B] disabled:opacity-50"
+                                                className="px-4 py-2 bg-[#F55F2A] text-xs font-semibold text-white rounded-full hover:bg-[#E04E1B] disabled:opacity-50"
                                             >
                                                 {autoPreviewBypassUnsupported && protectedPreviewUrl
                                                     ? "Open preview"
@@ -1388,7 +1681,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                     <button
                                         onClick={startVercelOAuthForPreview}
                                         disabled={isVercelChecking || vercelConnectOpening}
-                                        className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 bg-[#F55F2A] text-white rounded-full hover:opacity-90 disabled:opacity-50"
+                                        className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 bg-[#F55F2A] text-xs font-semibold text-white rounded-full hover:opacity-90 disabled:opacity-50"
                                     >
                                         {(isVercelChecking || vercelConnectOpening) ? (
                                             <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/50 border-t-white" />

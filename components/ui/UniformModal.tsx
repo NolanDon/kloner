@@ -41,9 +41,13 @@ export default function UniformModal({
   }, [isOpen, onClose]);
 
   const handleConfirm = () => {
-    if (onConfirm) {
-      onConfirm();
+    if (type === "confirm") {
+      // Confirm flows are closed by the provider's onConfirm handler.
+      if (onConfirm) onConfirm();
+      return;
     }
+
+    // Alert flows simply close the modal.
     onClose();
   };
 

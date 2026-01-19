@@ -15,6 +15,14 @@ service cloud.firestore {
         );
     }
 
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isOwnerOrAdmin(userId) {
+      return isOwner(userId) || isAdmin();
+    }
+
     function isSupport() {
       return request.auth != null
         && (
@@ -98,22 +106,24 @@ service cloud.firestore {
     /* ---------- KLONER USERS ---------- */
     match /kloner_users/{userId} {
 
-      allow read, write: if isSignedIn() && request.auth.uid == userId;
-      allow read, write: if isAdmin();
+      allow read, write: if isOwnerOrAdmin(userId);
 
       match /kloner_urls/{urlId} {
-        allow read, write: if isSignedIn()
-                            && (request.auth.uid == userId || isAdmin());
+        allow read, write: if isOwnerOrAdmin(userId);
       }
 
       match /kloner_renders/{renderId} {
-        allow read, write: if isSignedIn()
-                            && (request.auth.uid == userId || isAdmin());
+        allow read, write: if isOwnerOrAdmin(userId);
       }
 
       match /kloner_apps/{appId} {
-        allow read, write: if isSignedIn()
-                            && (request.auth.uid == userId || isAdmin());
+
+        allow read, write: if isOwnerOrAdmin(userId);
+
+        // Per-app AI chat history
+        match /ai_chat/{chatId} {
+          allow read, write: if isOwnerOrAdmin(userId);
+        }
       }
 
       match /deployments/{deploymentId} {

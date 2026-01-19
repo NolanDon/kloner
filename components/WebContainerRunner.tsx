@@ -112,7 +112,6 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
           const data = docSnap.data();
           if (data?.containerCode && data?.containerCodeTimestamp && 
               Date.now() - data.containerCodeTimestamp < 24 * 60 * 60 * 1000) { // 24 hours
-            console.log(`🔍 Found container code in Firebase: ${data.containerCode}`);
             // Store it back in localStorage for faster access next time
             try {
               localStorage.setItem(`webcontainer_${appId}`, JSON.stringify({ 
@@ -164,6 +163,91 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
     } catch {
       // Ignore storage errors
     }
+  };
+
+  const clearStoredContainerCodeEverywhere = async (appId: string, user: any) => {
+    clearStoredContainerCode(appId);
+    try {
+      if (user?.uid) {
+        const docRef = doc(db, 'kloner_users', user.uid, 'kloner_apps', appId);
+        await updateDoc(docRef, {
+          containerCode: null,
+          containerCodeTimestamp: null,
+          updatedAt: new Date(),
+        });
+      }
+    } catch (error) {
+      console.error('Failed to clear container code in Firebase:', error);
+    }
+  };
+
+  const probePreviewUrl = async (appId: string, url: string): Promise<boolean> => {
+    const attempts = 2;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        const headers = await getAuthenticatedHeaders();
+        const res = await fetch(
+          `/api/webcontainer-probe?appId=${encodeURIComponent(appId)}&url=${encodeURIComponent(url)}`,
+          { method: 'GET', headers, credentials: 'include', cache: 'no-store' }
+        );
+        const data = await res.json().catch(() => null);
+        if (res.ok && (data as any)?.ok && (data as any)?.reachable) return true;
+      } catch {
+        // ignore; retry
+      }
+
+      // small backoff before retry
+      if (i < attempts - 1) {
+        await new Promise((r) => setTimeout(r, 350));
+      }
+    }
+    return false;
+  };
+
+  const getFlyAppFromUrl = (maybeUrl: string): string | null => {
+    try {
+      const u = new URL(maybeUrl);
+      const host = u.hostname;
+      if (!host.endsWith(".fly.dev")) return null;
+      const app = host.replace(/\.fly\.dev$/i, "");
+      return app || null;
+    } catch {
+      return null;
+    }
+  };
+
+  const getFlyMachineState = async (
+    previewUrl: string,
+    machineId: string
+  ): Promise<{ ok: true; state?: string } | { ok: false; reason: string }> => {
+    const app = getFlyAppFromUrl(previewUrl);
+    if (!app) return { ok: false, reason: "no_fly_app" };
+
+    try {
+      const headers = await getAuthenticatedHeaders();
+      const res = await fetch(
+        `/api/fly-machine-status?app=${encodeURIComponent(app)}&machineId=${encodeURIComponent(machineId)}`,
+        { method: "GET", headers, credentials: "include", cache: "no-store" }
+      );
+      const data = await res.json().catch(() => null);
+      if (!res.ok) return { ok: false, reason: "http_error" };
+      if (!data?.ok) return { ok: false, reason: String(data?.reason || "not_ok") };
+      return { ok: true, state: data?.state };
+    } catch {
+      return { ok: false, reason: "fetch_failed" };
+    }
+  };
+
+  const isFlyMachineRunning = async (
+    previewUrl: string,
+    machineId: string
+  ): Promise<{ ok: true; running: boolean; state?: string } | { ok: false; reason: string }> => {
+    const flyState = await getFlyMachineState(previewUrl, machineId);
+    if (!flyState.ok) return flyState;
+
+    const normalized = String(flyState.state || "").toLowerCase();
+    const running = normalized === "started" || normalized === "running" || normalized === "starting";
+    return { ok: true, running, state: flyState.state };
   };
   
   const handleAssetFailure = () => {
@@ -237,6 +321,38 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
   useEffect(() => {
     filesRef.current = files;
   }, [files]);
+
+  // If the parent requests a restart, we must actually tear down our local
+  // "already started" guard and avoid reconnecting to a stale machine.
+  useEffect(() => {
+    if (typeof restartToken !== 'number') return;
+    // Treat non-positive tokens as "no restart requested" (common default is 0).
+    // This prevents an initial mount from being interpreted as a restart.
+    if (restartToken <= 0) return;
+    if (lastRestartTokenRef.current === restartToken) return;
+    lastRestartTokenRef.current = restartToken;
+
+    console.log('[WebContainerRunner] Restart requested', { appId, restartToken });
+
+    // Reset state so the main start effect can run again.
+    setHasStarted(false);
+    setIsLoading(false);
+    setIsPolling(false);
+    setConnectingToExisting(false);
+    setPreviewUrl(null);
+    setError(null);
+    setCanRetry(false);
+    setLoadingStatus('');
+    setCurrentStatusData(null);
+
+    pollingRetryCountRef.current = 0;
+    containerNotFoundCountRef.current = 0;
+    assetFailureCountRef.current = 0;
+    rebuildScheduledRef.current = false;
+    appLoadedSuccessfullyRef.current = false;
+    iframeLoadedSuccessfullyRef.current = false;
+    pollingCodeRef.current = null;
+  }, [appId, restartToken]);
 
   // Monitor app loading and trigger rebuilds on asset failures
   useEffect(() => {
@@ -330,8 +446,6 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
         containerNotFoundCountRef.current = 0; // Reset 404 counter
 
         console.log('Starting app with ID:', appId);
-        console.log('Files:', Object.keys(filesRef.current));
-        console.log('Files object:', filesRef.current);
 
         // Handle force fresh start - delete existing container and create new one
         if (isForceFreshStart) {
@@ -363,7 +477,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
           }
           
           // Clear stored code and skip to container creation
-          clearStoredContainerCode(appId);
+          await clearStoredContainerCodeEverywhere(appId, user);
           
           // Skip existing container checks entirely - go straight to creation
           console.log(`🏗️ Force fresh start: Creating new container for app ${appId}...`);
@@ -391,21 +505,53 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
               
               // Allow containers that are either:
               // 1. In allowed statuses, OR
-              // 2. Have URL + machineId + reasonable progress (>50%), OR  
-              // 3. Booting with high progress (90%+)
-              const isAllowedStatus = allowedStatuses.includes(statusData.status) || 
-                (statusData.url && statusData.machineId && statusData.uiProgress > 50) ||
+              // 2. Booting with high progress (90%+)
+              //
+              // IMPORTANT: do NOT treat "stopped" as reusable even if it still has a URL.
+              // A stopped Fly machine can continue to return a proxied/edge page that makes
+              // the iframe look "loaded" while the app is actually dead.
+              const isAllowedStatus =
+                allowedStatuses.includes(statusData.status) ||
                 (statusData.status === 'booting' && statusData.uiProgress >= 90);
               
               if (isAllowedStatus) {
                 if (statusData.url) {
-                  console.log(`✅ Existing container ${existingCode} is ready (${statusData.status}), connecting directly:`, statusData.url);
-                  pollingCodeRef.current = existingCode;
-                  setPreviewUrl(statusData.url);
-                  setLoadingStatus(`Connected to machine ${statusData.machineId}!`);
-                  setIsLoading(false);
-                  appLoadedSuccessfullyRef.current = true;
-                  return; // Successfully connected to existing container
+                  console.log(`✅ Existing container ${existingCode} is ready (${statusData.status}), probing before connecting:`, statusData.url);
+
+                  // If we have a Fly machineId, treat Fly as source-of-truth.
+                  // If Fly says the machine doesn't exist or isn't running/starting/started, do not reuse.
+                  if (statusData.machineId) {
+                    const fly = await isFlyMachineRunning(statusData.url, statusData.machineId);
+                    if (!fly.ok) {
+                      if (fly.reason === "not_found") {
+                        console.log(
+                          `🛫 Fly reports machine ${statusData.machineId} does not exist; clearing stored code for ${existingCode}.`
+                        );
+                        await clearStoredContainerCodeEverywhere(appId, user);
+                        throw new Error("fly_machine_not_found");
+                      }
+                      // missing_token / unavailable -> fall back to URL probe
+                    } else if (!fly.running) {
+                      console.log(
+                        `🛫 Fly reports machine ${statusData.machineId} is '${fly.state}', not reusable; clearing stored code for ${existingCode}.`
+                      );
+                      await clearStoredContainerCodeEverywhere(appId, user);
+                      throw new Error("fly_machine_not_running");
+                    }
+                  }
+
+                  const reachable = await probePreviewUrl(appId, statusData.url);
+                  if (reachable) {
+                    pollingCodeRef.current = existingCode;
+                    setPreviewUrl(statusData.url);
+                    setLoadingStatus(`Connected to machine ${statusData.machineId}!`);
+                    setIsLoading(false);
+                    appLoadedSuccessfullyRef.current = true;
+                    return; // Successfully connected to existing container
+                  }
+
+                  console.log(`❌ Probe failed for existing container ${existingCode}; clearing stored code and creating a new machine.`);
+                  await clearStoredContainerCodeEverywhere(appId, user);
                 } else {
                   console.log(`❌ Existing container ${existingCode} has allowed status '${statusData.status}' but no URL provided`);
                 }
@@ -415,7 +561,42 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
                 // For containers in error state, always clear them - never try to reconnect
                 if (statusData.status === 'error') {
                   console.log(`🗑️ Clearing stored code for error container ${existingCode} - will not attempt reconnection`);
-                  clearStoredContainerCode(appId);
+                  await clearStoredContainerCodeEverywhere(appId, user);
+                } else if (statusData.status === 'stopped') {
+                  // Backend sometimes reports "stopped" while Fly still shows the machine as started
+                  // (e.g. stale status cache or mismatch across systems). If we can verify via Fly,
+                  // prefer reuse (still gated by the server-side URL probe).
+                  if (statusData.url && statusData.machineId) {
+                    const flyState = await getFlyMachineState(statusData.url, statusData.machineId);
+                    if (flyState.ok) {
+                      console.log(`🛫 Fly machine state for ${statusData.machineId}:`, flyState.state);
+                      const normalized = String(flyState.state || "").toLowerCase();
+                      const flySaysRunning =
+                        normalized === "started" ||
+                        normalized === "running" ||
+                        normalized === "starting";
+                      if (flySaysRunning) {
+                        console.log(
+                          `✅ Fly reports machine ${statusData.machineId} is '${flyState.state}', probing URL before reusing stopped container ${existingCode}`
+                        );
+                        const reachable = await probePreviewUrl(appId, statusData.url);
+                        if (reachable) {
+                          pollingCodeRef.current = existingCode;
+                          setPreviewUrl(statusData.url);
+                          setLoadingStatus(`Connected to machine ${statusData.machineId}!`);
+                          setIsLoading(false);
+                          appLoadedSuccessfullyRef.current = true;
+                          return;
+                        }
+                        console.log(`❌ Probe failed despite Fly saying running; clearing stored code for ${existingCode}.`);
+                      }
+                    } else {
+                      console.log(`ℹ️ Fly verification unavailable for stopped container (${flyState.reason}); falling back to clearing code.`);
+                    }
+                  }
+
+                  console.log(`🗑️ Clearing stored code for stopped container ${existingCode} - will create a new machine`);
+                  await clearStoredContainerCodeEverywhere(appId, user);
                 } else if (statusData.status === 'booting' && statusData.uiProgress < 50 && (!statusData.url || !statusData.machineId)) {
                   // Only reject booting containers with low progress if they don't have URL/machineId
                   console.log(`⏳ Container ${existingCode} is booting at ${statusData.uiProgress}% with incomplete info, will create new one`);
@@ -426,50 +607,66 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
               
               // Try fallback connections for containers that have URL and machineId, regardless of status
               // (as long as they're not in error state)
-              if (statusData.url && statusData.machineId && statusData.status !== 'error') {
-                console.log(`🔄 Existing container ${existingCode} has URL and machineId (${statusData.machineId}), attempting connection:`, statusData.url);
-                try {
-                  await fetch(statusData.url, { 
-                    method: 'HEAD', 
-                    mode: 'no-cors',
-                    signal: AbortSignal.timeout(2000)
-                  });
-                  
-                  console.log(`✅ Machine exists connection successful for container ${existingCode} (${statusData.machineId})`);
+              if (statusData.url && statusData.machineId && statusData.status !== 'error' && statusData.status !== 'stopped') {
+                console.log(`🔄 Existing container ${existingCode} has URL and machineId (${statusData.machineId}), probing before fallback connect:`, statusData.url);
+
+                // Fly is the source of truth here.
+                const fly = await isFlyMachineRunning(statusData.url, statusData.machineId);
+                if (!fly.ok) {
+                  if (fly.reason === "not_found") {
+                    console.log(
+                      `🛫 Fly reports machine ${statusData.machineId} does not exist; clearing stored code for ${existingCode}.`
+                    );
+                    await clearStoredContainerCodeEverywhere(appId, user);
+                    throw new Error("fly_machine_not_found");
+                  }
+                  // If Fly check isn't available (missing token, etc), fall back to URL probe.
+                } else if (!fly.running) {
+                  console.log(
+                    `🛫 Fly reports machine ${statusData.machineId} is '${fly.state}', not reusable; clearing stored code for ${existingCode}.`
+                  );
+                  await clearStoredContainerCodeEverywhere(appId, user);
+                  throw new Error("fly_machine_not_running");
+                }
+
+                const reachable = await probePreviewUrl(appId, statusData.url);
+                if (reachable) {
+                  console.log(`✅ Probe succeeded for container ${existingCode} (${statusData.machineId})`);
                   pollingCodeRef.current = existingCode;
                   setPreviewUrl(statusData.url);
                   setLoadingStatus(`Connected to machine ${statusData.machineId}!`);
                   setIsLoading(false);
                   appLoadedSuccessfullyRef.current = true;
                   return;
-                } catch (error: any) {
-                  console.log(`❌ Machine exists connection failed for container ${existingCode}:`, error?.message || error);
                 }
+
+                console.log(`❌ Probe failed for container ${existingCode}; clearing stored code.`);
+                await clearStoredContainerCodeEverywhere(appId, user);
               } else {
                 console.log(`❌ Container ${existingCode} doesn't meet fallback conditions (status='${statusData.status}', progress=${statusData.uiProgress}%, url=${!!statusData.url}, machineId=${!!statusData.machineId})`);
                 
                 // Clear stored codes for error containers without URLs - they're definitely unusable
                 if (statusData.status === 'error' && !statusData.url) {
                   console.log(`🗑️ Clearing stored code for unusable error container ${existingCode} (no URL)`);
-                  clearStoredContainerCode(appId);
+                  await clearStoredContainerCodeEverywhere(appId, user);
                 }
               } // End of status !== 'booting' check
             } else if (statusResponse.status === 404) {
               console.log(`❌ Container ${existingCode} not found (404) - clearing invalid stored code`);
-              clearStoredContainerCode(appId);
+              await clearStoredContainerCodeEverywhere(appId, user);
             } else {
               console.log(`❌ Failed to get status for container ${existingCode}: ${statusResponse.status} ${statusResponse.statusText}`);
             }
           } catch (err) {
             console.log(`❌ Failed to check status of existing container ${existingCode}, will create new one:`, err);
             // Clear the stored code since it's not usable
-            clearStoredContainerCode(appId);
+            await clearStoredContainerCodeEverywhere(appId, user);
           }
 
           // If we get here, the existing container is not usable
           console.log(`🆕 No usable existing container found for app ${appId}, creating new one`);
           setConnectingToExisting(false);
-          clearStoredContainerCode(appId);
+          await clearStoredContainerCodeEverywhere(appId, user);
         } else {
           console.log(`ℹ️ No stored container code found for app ${appId}, creating new one`);
         }
@@ -507,19 +704,35 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
         // Start the webcontainer creation (async, fire-and-forget)
         const requestBody = { appId, files: validatedFiles, mode: 'dev' };
 
-        // Get authenticated headers
-        const headers = await getAuthenticatedHeaders();
+        const postWebcontainer = async (attempt: number): Promise<Response> => {
+          const headers = await getAuthenticatedHeaders();
+          return fetch('/api/webcontainer', {
+            method: 'POST',
+            headers,
+            credentials: "include",
+            cache: 'no-store',
+            body: JSON.stringify(requestBody),
+          });
+        };
 
-        const response = await fetch('/api/webcontainer', {
-          method: 'POST',
-          headers,
-          credentials: "include",
-          body: JSON.stringify(requestBody),
-        });
+        let response = await postWebcontainer(0);
 
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || 'Failed to start app');
+          const errorData = await response.json().catch(() => ({} as any));
+          const errorMsg = String(errorData?.error || 'Failed to start app');
+
+          // CSRF can drift (cookie/header mismatch). Refresh token and retry once.
+          if (response.status === 403 && errorMsg.toLowerCase().includes('csrf')) {
+            console.warn('Webcontainer start hit CSRF 403; retrying once with fresh CSRF token');
+            response = await postWebcontainer(1);
+          } else {
+            throw new Error(errorMsg);
+          }
+        }
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({} as any));
+          throw new Error(String(errorData?.error || 'Failed to start app'));
         }
 
         const data = await response.json();
@@ -564,7 +777,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
                   setCanRetry(true);
                   setLoadingStatus('');
                   // Clear the stored code since it's not working
-                  clearStoredContainerCode(appId);
+                  await clearStoredContainerCodeEverywhere(appId, user);
                   return;
                 }
                 
@@ -1098,11 +1311,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
           {!iframeLoadedSuccessfullyRef.current && (
             <div className="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm">
               <div className="text-center space-y-4">
-                <div className="flex items-center justify-center gap-1 mb-4">
-                  <div className="w-2 h-2 bg-accent rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                  <div className="w-2 h-2 bg-accent rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                  <div className="w-2 h-2 bg-accent rounded-full animate-bounce"></div>
-                </div>
+                <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
                 <div className="text-center space-y-2">
                   <p className="text-lg font-medium text-gray-700">Loading preview...</p>
                   <p className="text-sm text-gray-500">Preparing your app for display</p>
@@ -1117,11 +1326,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
             {isPolling ? (
               // Simple, clean polling state with 3-dot loader
               <div className="space-y-4">
-                <div className="flex items-center justify-center gap-1 mb-4">
-                  <div className="w-2 h-2 bg-accent rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                  <div className="w-2 h-2 bg-accent rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                  <div className="w-2 h-2 bg-accent rounded-full animate-bounce"></div>
-                </div>
+                <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
                 <div className="text-center space-y-2">
                   {currentStatusData && currentStatusData.uiTitle && currentStatusData.uiMessage ? (
                     <>
@@ -1157,11 +1362,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
             ) : (
               // Initial loading state
               <>
-                <div className="flex items-center justify-center gap-1 mb-4">
-                  <div className="w-2 h-2 bg-accent rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                  <div className="w-2 h-2 bg-accent rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                  <div className="w-2 h-2 bg-accent rounded-full animate-bounce"></div>
-                </div>
+                <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
                 <div className="text-center space-y-2">
                   <p className="text-lg font-medium text-gray-700">
                     {connectingToExisting ? 'Connecting to existing machine...' : 'Starting your app...'}

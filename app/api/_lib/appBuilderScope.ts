@@ -67,32 +67,62 @@ export function issueAppBuilderScopeCookie(res: NextResponse, uid: string, appId
 export function assertAppBuilderScope(req: NextRequest, uid: string, appId: string) {
     const token = req.cookies.get(COOKIE_NAME)?.value || "";
     if (!token) {
-        throw Object.assign(new Error("Missing app scope"), { status: 403 });
+        throw Object.assign(new Error("Missing app scope"), {
+            status: 403,
+            code: "MISSING_APP_SCOPE",
+            uid,
+            appId,
+        });
     }
 
     const [payloadB64, sigB64] = token.split(".");
     if (!payloadB64 || !sigB64) {
-        throw Object.assign(new Error("Invalid app scope"), { status: 403 });
+        throw Object.assign(new Error("Invalid app scope"), {
+            status: 403,
+            code: "INVALID_APP_SCOPE",
+            uid,
+            appId,
+        });
     }
 
     const expected = sign(payloadB64);
     if (!safeEqual(sigB64, expected)) {
-        throw Object.assign(new Error("Invalid app scope"), { status: 403 });
+        throw Object.assign(new Error("Invalid app scope"), {
+            status: 403,
+            code: "INVALID_APP_SCOPE",
+            uid,
+            appId,
+        });
     }
 
     let payload: ScopePayload;
     try {
         payload = JSON.parse(unbase64url(payloadB64).toString("utf8"));
     } catch {
-        throw Object.assign(new Error("Invalid app scope"), { status: 403 });
+        throw Object.assign(new Error("Invalid app scope"), {
+            status: 403,
+            code: "INVALID_APP_SCOPE",
+            uid,
+            appId,
+        });
     }
 
     const now = Math.floor(Date.now() / 1000);
     if (!payload || payload.exp < now) {
-        throw Object.assign(new Error("Expired app scope"), { status: 403 });
+        throw Object.assign(new Error("Expired app scope"), {
+            status: 403,
+            code: "EXPIRED_APP_SCOPE",
+            uid,
+            appId,
+        });
     }
 
     if (payload.uid !== uid || payload.appId !== appId) {
-        throw Object.assign(new Error("App scope mismatch"), { status: 403 });
+        throw Object.assign(new Error("App scope mismatch"), {
+            status: 403,
+            code: "APP_SCOPE_MISMATCH",
+            uid,
+            appId,
+        });
     }
 }

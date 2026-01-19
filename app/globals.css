@@ -133,3 +133,43 @@ body {
         background-color: transparent;
     }
 }
+
+/* 3-dot loader (matches the tracksite-hub preview loader exactly) */
+.kloner-dots {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    justify-content: center;
+    margin: 0 0 12px 0;
+}
+
+.kloner-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(245, 95, 42, 0.25);
+    animation: kloner-dot-bounce 1.05s infinite ease-in-out;
+}
+
+.kloner-dot:nth-child(2) {
+    animation-delay: 0.12s;
+}
+
+.kloner-dot:nth-child(3) {
+    animation-delay: 0.24s;
+}
+
+@keyframes kloner-dot-bounce {
+    0%,
+    80%,
+    100% {
+        transform: translateY(0);
+        opacity: 0.55;
+    }
+
+    40% {
+        transform: translateY(-6px);
+        opacity: 1;
+        background: #F55F2A;
+    }
+}
