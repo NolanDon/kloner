@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import Editor from "@monaco-editor/react";
-import { Folder, File, Play, Upload, X, RefreshCw, MessageSquare, Code, Edit3, Check, RotateCcw } from "lucide-react";
+import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Edit3, Check, RotateCcw } from "lucide-react";
 import AIAgentChat from "./AIAgentChat";
 import KlonerLoader from "./KlonerLoader";
 import WebContainerRunner from "./WebContainerRunner";
@@ -105,11 +105,13 @@ function csrfHeaders(csrf: unknown): HeadersInit | undefined {
 function addCacheBust(url: string, token: string | number): string {
     try {
         const u = new URL(url);
-        u.searchParams.set("t", String(token));
+        // IMPORTANT: `t` is reserved as the preview viewer token (capability).
+        // Use a different param for cache-busting.
+        u.searchParams.set("cb", String(token));
         return u.toString();
     } catch {
         const suffix = url.includes("?") ? "&" : "?";
-        return `${url}${suffix}t=${encodeURIComponent(String(token))}`;
+        return `${url}${suffix}cb=${encodeURIComponent(String(token))}`;
     }
 }
 
@@ -175,6 +177,8 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     const [refreshKey, setRefreshKey] = useState(0);
     const [localRestartKey, setLocalRestartKey] = useState(0);
     const [reconnectKey, setReconnectKey] = useState(0);
+    const [uiUpdatingToken, setUiUpdatingToken] = useState(0);
+    const [uiUpdatingCancelToken, setUiUpdatingCancelToken] = useState(0);
     const [forceFreshStart, setForceFreshStart] = useState(false);
     const forceFreshStartRef = useRef(false);
     const forceFreshStartKey = useRef(0);
@@ -213,6 +217,45 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     const restartInFlightRef = useRef(false);
     const restartQueuedRef = useRef(false);
     const restartQueuedInteractiveRef = useRef(false);
+
+    // Firebase can emit multiple snapshots in quick succession. Reloading the preview iframe for
+    // every snapshot causes heavy flicker and request thrash. Coalesce into at most ~1 reload/1.5s.
+    const firebasePreviewReloadTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const lastFirebasePreviewReloadAtRef = useRef<number>(0);
+    const currentFileRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        currentFileRef.current = currentFile;
+    }, [currentFile]);
+
+    const queuePreviewReloadFromFirebase = useCallback(() => {
+        const now = Date.now();
+        const minIntervalMs = 1500;
+        const debounceMs = 500;
+
+        const sinceLast = now - (lastFirebasePreviewReloadAtRef.current || 0);
+        const delay = Math.max(debounceMs, minIntervalMs - sinceLast);
+
+        if (firebasePreviewReloadTimerRef.current) {
+            clearTimeout(firebasePreviewReloadTimerRef.current);
+            firebasePreviewReloadTimerRef.current = null;
+        }
+
+        firebasePreviewReloadTimerRef.current = setTimeout(() => {
+            firebasePreviewReloadTimerRef.current = null;
+            lastFirebasePreviewReloadAtRef.current = Date.now();
+            setRefreshKey((k) => k + 1);
+        }, delay);
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            if (firebasePreviewReloadTimerRef.current) {
+                clearTimeout(firebasePreviewReloadTimerRef.current);
+                firebasePreviewReloadTimerRef.current = null;
+            }
+        };
+    }, []);
 
     const { status: vercelStatus, checking: vercelChecking, refresh: refreshVercelStatus } =
         useVercelIntegration();
@@ -368,6 +411,12 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                 const payload: any = { appId };
                 if (storedCode) payload.code = storedCode;
 
+                // When the AI agent triggers a rebuild in-place, switch the preview back
+                // into the loading state as the rebuild request goes out.
+                if (silent) {
+                    setUiUpdatingToken((k) => k + 1);
+                }
+
                 const res = await fetch(`/api/app-builder/${appId}/preview/rebuild`, {
                     method: "POST",
                     headers: {
@@ -383,12 +432,14 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                     // If there is no active preview yet, fall back to creating/starting.
                     if (res.status === 404 || res.status === 409) {
                         if (!silent) setPreviewRestartError(null);
+                        if (silent) setUiUpdatingCancelToken((k) => k + 1);
                         await rebuildLocalPreview(true);
                         return;
                     }
 
                     const msg = String((data as any)?.error || `Rebuild failed (HTTP ${res.status})`);
                     if (!silent) throw Object.assign(new Error(msg), { status: res.status });
+                    if (silent) setUiUpdatingCancelToken((k) => k + 1);
                     return;
                 }
 
@@ -396,12 +447,14 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                 const code = String((data as any)?.code || storedCode || "");
                 if (!code) {
                     if (!silent) throw new Error("Rebuild succeeded but no preview code was returned.");
+                    if (silent) setUiUpdatingCancelToken((k) => k + 1);
                     return;
                 }
 
                 const ready = await pollPreviewReady(code);
                 if (!ready.ok) {
                     if (!silent) throw new Error(ready.error);
+                    if (silent) setUiUpdatingCancelToken((k) => k + 1);
                     return;
                 }
 
@@ -410,6 +463,9 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                 if (!silent) {
                     const msg = String(err?.message || "Failed to rebuild preview.");
                     setPreviewRestartError(msg);
+                } else {
+                    // Silent (AI-triggered) rebuild failed; stop the "UI updating" loader.
+                    setUiUpdatingCancelToken((k) => k + 1);
                 }
             } finally {
                 if (!silent) setIsPreviewRestarting(false);
@@ -720,7 +776,6 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                             const filesChanged = !filesShallowEqualByContentAndTimestamp(prevApp.files, mergedFiles);
                             
                             if (filesChanged || generationStatusChanged) {
-                                console.log('Firebase data updated, refreshing UI immediately');
                                 const updatedApp = {
                                     ...prevApp,
                                     files: mergedFiles,
@@ -734,13 +789,18 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                     buildFileTree(mergedFiles);
                                 }
                                 
-                                // If current file was modified, update the editor content
-                                if (currentFile && (mergedFiles as any)[currentFile]) {
-                                    setCode((mergedFiles as any)[currentFile].content);
+                                // If the currently open file was modified, update the editor content.
+                                // Use a ref so this listener doesn't resubscribe on every tab switch.
+                                const openPath = currentFileRef.current;
+                                if (openPath && (mergedFiles as any)[openPath]) {
+                                    setCode((mergedFiles as any)[openPath].content);
                                 }
 
-                                // Trigger WebContainer refresh to show updated content in iframe
-                                setRefreshKey((k) => k + 1);
+                                // Trigger preview refresh ONLY when file content changed.
+                                // (Generation status changes shouldn't spam iframe reloads.)
+                                if (filesChanged) {
+                                    queuePreviewReloadFromFirebase();
+                                }
                                 
                                 return updatedApp;
                             }
@@ -756,7 +816,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
         );
 
         return () => unsubscribe();
-    }, [appId, user?.uid, currentFile]);
+    }, [appId, user?.uid, queuePreviewReloadFromFirebase]);
 
     // Load panel width from localStorage on mount
     useEffect(() => {
@@ -1339,15 +1399,6 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                             {isSaving ? "Saving..." : isPreviewRestarting ? "Restarting…" : "Save"}
                         </button>
                         <button
-                            onClick={() => handleRefresh(false)}
-                            disabled={isPreviewRestarting || isRefreshing}
-                            className="px-4 py-2 bg-[#F55F2A] text-xs font-semibold text-white rounded flex items-center gap-2 rounded-full hover:bg-[#E04E1B] disabled:opacity-50 disabled:cursor-not-allowed"
-                            title="Restart the existing preview machine and reload with the latest saved changes"
-                        >
-                            <Play className="w-4 h-4" />
-                            {isPreviewRestarting ? "Restarting…" : "Restart preview"}
-                        </button>
-                        <button
                             onClick={handleReconnect}
                             disabled={isRefreshing || isPreviewRestarting || isPreviewBuilding}
                             className="px-4 py-2 bg-[#F55F2A] text-xs font-semibold text-white rounded flex items-center gap-2 rounded-full hover:bg-[#E04E1B] disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1526,6 +1577,8 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                         restartToken={localRestartKey}
                                         reconnectToken={reconnectKey}
                                         forceFreshStart={forceFreshStartKey.current}
+                                        uiUpdatingToken={uiUpdatingToken}
+                                        uiUpdatingCancelToken={uiUpdatingCancelToken}
                                     />
                                 </div>
                             ) : previewSrc ? (

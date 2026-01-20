@@ -911,7 +911,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh,
                                 <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center">
                                     <span className="text-white font-bold text-sm">SB</span>
                                 </div>
-                                <h3 className="text-lg font-semibold">Connect Supabase</h3>
+                                <h3 className="text-lg font-semibold">Connect Database</h3>
                             </div>
                             <button
                                 onClick={() => setShowSupabaseSetup(false)}
@@ -928,7 +928,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh,
                                 </label>
                                 <input
                                     type="text"
-                                    placeholder="abcdefghijklmnopqrst"
+                                    placeholder="..."
                                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                                 />
                                 <p className="text-xs text-gray-500 mt-1">
@@ -942,7 +942,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh,
                                 </label>
                                 <input
                                     type="password"
-                                    placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                                    placeholder="..."
                                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                                 />
                                 <p className="text-xs text-gray-500 mt-1">
@@ -950,12 +950,12 @@ export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh,
                                 </p>
                             </div>
 
-                            <div className="bg-green-50 p-3 rounded-md">
+                            {/* <div className="bg-green-50 p-3 rounded-md">
                                 <p className="text-sm text-green-800">
                                     <strong>🔧 MCP Integration:</strong><br/>
                                     This will enable AI-powered database operations including schema exploration, query generation, and real-time development assistance.
                                 </p>
-                            </div>
+                            </div> */}
 
                             <div className="bg-blue-50 p-3 rounded-md">
                                 <p className="text-sm text-blue-800">
@@ -1000,12 +1000,6 @@ export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh,
                                     className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors"
                                 >
                                     🔗 Connect Existing Project
-                                </button>
-                                <button
-                                    onClick={() => setShowSupabaseSetup(false)}
-                                    className="px-4 py-2 text-gray-600 hover:text-gray-800"
-                                >
-                                    Cancel
                                 </button>
                             </div>
                         </div>

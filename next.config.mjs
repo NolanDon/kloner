@@ -27,10 +27,11 @@ const nextConfig = {
     },
     webpack: (config, { isServer }) => {
         if (isServer) {
-            // Ensure server chunks are emitted next to the server runtime.
-            // This avoids build-time chunk resolution failures where the runtime
-            // attempts `require("./<id>.js")` but chunks were written under `chunks/`.
-            config.output.chunkFilename = '[id].js';
+            // Keep server chunks under the default `chunks/` folder.
+            // Setting this to `[id].js` causes the server webpack runtime to
+            // `require("./<id>.js")` while Next still emits chunks under `chunks/`,
+            // which can crash builds with MODULE_NOT_FOUND.
+            config.output.chunkFilename = 'chunks/[id].js';
         }
 
         return config;

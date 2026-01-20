@@ -19,9 +19,11 @@ interface WebContainerRunnerProps {
   restartToken?: number;
   reconnectToken?: number;
   forceFreshStart?: number;
+  uiUpdatingToken?: number;
+  uiUpdatingCancelToken?: number;
 }
 
-export default function WebContainerRunner({ appId, files, onFileChange, reloadToken, restartToken, reconnectToken, forceFreshStart }: WebContainerRunnerProps) {
+export default function WebContainerRunner({ appId, files, onFileChange, reloadToken, restartToken, reconnectToken, forceFreshStart, uiUpdatingToken, uiUpdatingCancelToken }: WebContainerRunnerProps) {
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
@@ -32,7 +34,10 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
   const [loadingStatus, setLoadingStatus] = useState('');
   const [currentStatusData, setCurrentStatusData] = useState<any>(null); // Store latest status data for UI
   const [connectingToExisting, setConnectingToExisting] = useState(false); // Track if connecting to existing machine
-  const [hasStarted, setHasStarted] = useState(false); // Prevent multiple startApp calls
+  // Prevent duplicate starts for the *same* set of inputs. This avoids the
+  // original "start/stop" thrash bug while still allowing reconnect/retry tokens.
+  const lastStartKeyRef = useRef<string | null>(null);
+  const [isUiUpdating, setIsUiUpdating] = useState(false);
   const maxRetries = 2; // Reduced from 3 to be less aggressive
   const maxPollingRetries = 30; // Increased to allow up to 5 minutes of polling
   const pollingRetryCountRef = useRef(0); // Track polling retry attempts
@@ -296,7 +301,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
     setLoadingStatus(''); // Clear loading status on retry
     setCurrentStatusData(null); // Clear status data on retry
     setConnectingToExisting(false); // Reset connection state
-    setHasStarted(false); // Allow restart
+    lastStartKeyRef.current = null;
     retryScheduledRef.current = false;
     totalAttemptsRef.current = 0; // Reset circuit breaker on manual retry
     assetFailureCountRef.current = 0; // Reset asset failure count
@@ -312,9 +317,14 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
     restartToken = Date.now();
   };
   const proxyBaseRef = useRef<string | null>(null);
+  const previewUrlRef = useRef<string | null>(null);
+  const lastReloadIssuedAtRef = useRef<number>(0);
   const lastReloadTokenRef = useRef<number | null>(null);
   const lastRestartTokenRef = useRef<number | null>(null);
   const lastReconnectTokenRef = useRef<number | null>(null);
+  const lastUiUpdatingTokenRef = useRef<number | null>(null);
+  const lastUiUpdatingCancelTokenRef = useRef<number | null>(null);
+  const lastPreviewUrlForLoadRef = useRef<string | null>(null);
   const reconnectOnlyRef = useRef(false);
   const filesRef = useRef(files);
   const startRunIdRef = useRef(0);
@@ -324,6 +334,73 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
   useEffect(() => {
     filesRef.current = files;
   }, [files]);
+
+  useEffect(() => {
+    previewUrlRef.current = previewUrl;
+  }, [previewUrl]);
+
+  const withCacheBust = (url: string) => {
+    const cb = String(Date.now());
+    try {
+      const u = new URL(url);
+      // IMPORTANT: `t` is the viewer token (capability). Never overwrite it.
+      u.searchParams.set('cb', cb);
+      return u.toString();
+    } catch {
+      return url.includes('?') ? `${url}&cb=${cb}` : `${url}?cb=${cb}`;
+    }
+  };
+
+  // Track a stable base URL for reloads (strip only cache-busting params).
+  useEffect(() => {
+    if (!previewUrl) return;
+    try {
+      const u = new URL(previewUrl);
+      // IMPORTANT: keep `t` (viewer token). Only strip our cache-buster.
+      u.searchParams.delete('cb');
+      proxyBaseRef.current = u.toString();
+    } catch {
+      proxyBaseRef.current = String(previewUrl).split('?')[0] || previewUrl;
+    }
+  }, [previewUrl]);
+
+  // AI-triggered rebuild UX: immediately show a loading state that says "UI updating".
+  useEffect(() => {
+    if (typeof uiUpdatingToken !== 'number') return;
+    if (uiUpdatingToken <= 0) return;
+    if (lastUiUpdatingTokenRef.current === uiUpdatingToken) return;
+    lastUiUpdatingTokenRef.current = uiUpdatingToken;
+
+    setIsUiUpdating(true);
+    // Keep this phase visually stable: if we already have an iframe mounted,
+    // keep it and just show the overlay until the parent bumps reloadToken.
+    // (If we don't have a preview yet, we fall back to the standalone loader.)
+    if (!previewUrlRef.current) {
+      iframeLoadedSuccessfullyRef.current = false;
+      setPreviewUrl(null);
+      setIsLoading(true);
+    } else {
+      setIsLoading(false);
+    }
+    setError(null);
+    setCanRetry(false);
+    setConnectingToExisting(false);
+    setIsPolling(false);
+    setCurrentStatusData(null);
+    setLoadingStatus('');
+  }, [uiUpdatingToken]);
+
+  // Explicit cancel: stop the "UI updating" loader (e.g. if rebuild failed silently).
+  useEffect(() => {
+    if (typeof uiUpdatingCancelToken !== 'number') return;
+    if (uiUpdatingCancelToken <= 0) return;
+    if (lastUiUpdatingCancelTokenRef.current === uiUpdatingCancelToken) return;
+    lastUiUpdatingCancelTokenRef.current = uiUpdatingCancelToken;
+    setIsUiUpdating(false);
+    setIsLoading(false);
+    if (isPolling) setIsPolling(false);
+    if (currentStatusData) setCurrentStatusData(null);
+  }, [uiUpdatingCancelToken]);
 
   // If the parent requests a restart, we must actually tear down our local
   // "already started" guard and avoid reconnecting to a stale machine.
@@ -338,7 +415,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
     console.log('[WebContainerRunner] Restart requested', { appId, restartToken });
 
     // Reset state so the main start effect can run again.
-    setHasStarted(false);
+    lastStartKeyRef.current = null;
     setIsLoading(false);
     setIsPolling(false);
     setConnectingToExisting(false);
@@ -368,7 +445,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
     console.log('[WebContainerRunner] Reconnect requested', { appId, reconnectToken });
     reconnectOnlyRef.current = true;
 
-    setHasStarted(false);
+    lastStartKeyRef.current = null;
     setIsLoading(false);
     setIsPolling(false);
     setConnectingToExisting(true);
@@ -450,12 +527,12 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
 
     const startApp = async () => {
       try {
-        // Reset hasStarted flag if force fresh start is requested
+        // Reset duplicate-start guard if force fresh start is requested
         const isForceFreshStart = forceFreshStart && forceFreshStart > lastForceFreshStartRef.current;
         if (isForceFreshStart) {
           console.log('🔄 Force fresh start detected, resetting component state');
           lastForceFreshStartRef.current = forceFreshStart;
-          setHasStarted(false);
+          lastStartKeyRef.current = null;
           setPreviewUrl(null);
           setError(null);
           setIsPolling(false);
@@ -463,12 +540,13 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
           appLoadedSuccessfullyRef.current = false;
           iframeLoadedSuccessfullyRef.current = false;
         }
-        
-        if (hasStarted) {
+
+        const startKey = `${appId}|${startAttempt}|${restartToken ?? 0}|${reconnectToken ?? 0}|${forceFreshStart ?? 0}`;
+        if (lastStartKeyRef.current === startKey) {
           console.log('Already started, skipping duplicate startApp call');
           return;
         }
-        setHasStarted(true);
+        lastStartKeyRef.current = startKey;
 
         setIsLoading(true);
         setError(null);
@@ -601,7 +679,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
                     setConnectingToExisting(false);
                     setIsLoading(false);
                     setIsPolling(false);
-                    setError('Could not reach the existing machine. Try Reconnect again, or use Restart preview / Rebuild.');
+                    setError('Could not reach the existing machine. Try Reconnect again, or use Rebuild.');
                     setCanRetry(true);
                     return;
                   }
@@ -699,7 +777,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
                   setConnectingToExisting(false);
                   setIsLoading(false);
                   setIsPolling(false);
-                  setError('Could not reach the existing machine. Try Reconnect again, or use Restart preview / Rebuild.');
+                  setError('Could not reach the existing machine. Try Reconnect again, or use Rebuild.');
                   setCanRetry(true);
                   return;
                 }
@@ -725,7 +803,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
               setConnectingToExisting(false);
               setIsLoading(false);
               setIsPolling(false);
-              setError('Failed to reconnect to the existing machine. Try Reconnect again, or use Restart preview / Rebuild.');
+              setError('Failed to reconnect to the existing machine. Try Reconnect again, or use Rebuild.');
               setCanRetry(true);
               return;
             }
@@ -739,7 +817,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
             setConnectingToExisting(false);
             setIsLoading(false);
             setIsPolling(false);
-            setError('No usable existing machine to reconnect to. Use Restart preview / Rebuild to create a new one.');
+            setError('No usable existing machine to reconnect to. Use Rebuild to create a new one.');
             setCanRetry(true);
             return;
           }
@@ -1228,7 +1306,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
 
       // Only cleanup if there's no active preview URL (app not successfully loaded)
       // This prevents killing apps that are actively being viewed
-      if (previewUrl && appLoadedSuccessfullyRef.current) {
+      if (previewUrlRef.current && appLoadedSuccessfullyRef.current) {
         console.log(`[WebContainerRunner] Skipping cleanup for active app ${appId} with preview URL`);
         return;
       }
@@ -1270,7 +1348,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
       const timer = window.setTimeout(cleanup, delayMs);
       pendingCleanupTimers.set(appId, timer);
     };
-  }, [appId, startAttempt, restartToken, previewUrl, forceFreshStart]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [appId, startAttempt, restartToken, reconnectToken, forceFreshStart]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reload the iframe without tearing down the underlying server/process.
   useEffect(() => {
@@ -1278,13 +1356,17 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
     if (lastReloadTokenRef.current === reloadToken) return;
     lastReloadTokenRef.current = reloadToken;
     if (!proxyBaseRef.current) return;
-    if (!previewUrl) return;
 
-    // Force iframe reload via cache-busting query param.
-    const base = proxyBaseRef.current;
-    const nextUrl = `${base}?t=${Date.now()}`;
+    // Coalesce rapid reload requests to avoid request thrash + flicker.
+    const now = Date.now();
+    if (now - lastReloadIssuedAtRef.current < 800) return;
+    lastReloadIssuedAtRef.current = now;
+
+    // If we are currently masking the iframe behind a loading state (e.g. "UI updating"),
+    // we still want to reload as soon as the parent asks.
+    const nextUrl = withCacheBust(proxyBaseRef.current);
     setPreviewUrl(nextUrl);
-  }, [reloadToken, previewUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [reloadToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle iframe load timeout
   useEffect(() => {
@@ -1297,18 +1379,39 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
       return;
     }
 
-    // Reset iframe loaded state when URL changes
-    iframeLoadedSuccessfullyRef.current = false;
+    // Avoid loader flicker on "soft" reloads where only the cache-buster changes.
+    const isSoftReload = (() => {
+      const prev = lastPreviewUrlForLoadRef.current;
+      if (!prev) return false;
+      try {
+        const prevUrl = new URL(prev);
+        const nextUrl = new URL(previewUrl);
+        prevUrl.searchParams.delete('cb');
+        nextUrl.searchParams.delete('cb');
+        return prevUrl.toString() === nextUrl.toString();
+      } catch {
+        return false;
+      }
+    })();
+
+    lastPreviewUrlForLoadRef.current = previewUrl;
+
+    if (!isSoftReload) {
+      // Reset iframe loaded state on meaningful URL changes.
+      iframeLoadedSuccessfullyRef.current = false;
+    }
 
     // Set a timeout for iframe loading (30 seconds for DNS/network issues)
-    iframeLoadTimeoutRef.current = setTimeout(() => {
-      if (!iframeLoadedSuccessfullyRef.current) {
-        console.log('Iframe load timeout - URL may be unreachable:', previewUrl);
-        setError(`Unable to load preview at ${previewUrl}. The deployment may still be starting up or has failed. Please try again in a few minutes.`);
-        setCanRetry(true);
-        setPreviewUrl(null); // Hide the iframe
-      }
-    }, 30000); // 30 second timeout
+    if (!isSoftReload) {
+      iframeLoadTimeoutRef.current = setTimeout(() => {
+        if (!iframeLoadedSuccessfullyRef.current) {
+          console.log('Iframe load timeout - URL may be unreachable:', previewUrl);
+          setError(`Unable to load preview at ${previewUrl}. The deployment may still be starting up or has failed. Please try again in a few minutes.`);
+          setCanRetry(true);
+          setPreviewUrl(null); // Hide the iframe
+        }
+      }, 30000); // 30 second timeout
+    }
 
     return () => {
       if (iframeLoadTimeoutRef.current) {
@@ -1349,6 +1452,9 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
               console.log('Iframe loaded successfully - preview should now be active at:', previewUrl);
               setLoadingStatus(''); // Clear loading status when app is ready
               iframeLoadedSuccessfullyRef.current = true; // Mark iframe as successfully loaded
+              setIsUiUpdating(false);
+              if (isPolling) setIsPolling(false);
+              if (currentStatusData) setCurrentStatusData(null);
               // Reset asset failure count on successful load
               assetFailureCountRef.current = 0;
               // Clear the load timeout since we succeeded
@@ -1390,13 +1496,13 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
             }}
           />
           {/* Loading overlay while iframe loads */}
-          {!iframeLoadedSuccessfullyRef.current && (
+          {(isUiUpdating || !iframeLoadedSuccessfullyRef.current) && (
             <div className="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm">
               <div className="text-center space-y-4">
                 <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
                 <div className="text-center space-y-2">
-                  <p className="text-lg font-medium text-gray-700">Loading preview...</p>
-                  <p className="text-sm text-gray-500">Preparing your app for display</p>
+                  <p className="text-lg font-medium text-gray-700">{isUiUpdating ? 'UI updating…' : 'Loading preview...'}</p>
+                  <p className="text-sm text-gray-500">{isUiUpdating ? 'Applying the latest changes to your preview' : 'Preparing your app for display'}</p>
                 </div>
               </div>
             </div>
@@ -1447,10 +1553,10 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
                 <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
                 <div className="text-center space-y-2">
                   <p className="text-lg font-medium text-gray-700">
-                    {connectingToExisting ? 'Connecting to existing machine...' : 'Starting your app...'}
+                    {isUiUpdating ? 'Updating preview…' : (connectingToExisting ? 'Connecting to existing machine...' : 'Starting your app...')}
                   </p>
                   <p className="text-sm text-gray-500">
-                    {connectingToExisting ? 'Reconnecting to your saved session' : 'Setting up your development environment'}
+                    {isUiUpdating ? 'Applying the latest changes to your preview' : (connectingToExisting ? 'Reconnecting to your saved session' : 'Setting up your development environment')}
                   </p>
                 </div>
               </>

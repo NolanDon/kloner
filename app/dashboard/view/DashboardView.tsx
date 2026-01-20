@@ -62,7 +62,6 @@ import {
     Archive,
     Share2,
     WrenchIcon,
-    DeleteIcon,
     CheckCheck,
     ExternalLink,
     ArrowUpRight,
@@ -72,6 +71,7 @@ import {
     Clock12Icon,
     ClockPlus,
     RotateCcw,
+    X,
 } from "lucide-react";
 import {
     isHttpUrl,
@@ -586,16 +586,6 @@ function RenderCardInner({
                     >
                         Website
                     </span>
-
-                    {/* version label for all users (minimal) — prefer controllerVersion from Firestore */}
-                    {(controllerVersion) && (
-                        <span
-                            className="absolute right-2 top-2 z-40 inline-flex items-center rounded-full border border-neutral-200 bg-white/85 px-2 py-0.5 text-[10px] font-mono text-neutral-700 shadow-sm"
-                            title={`Version: ${controllerVersion}`}
-                        >
-                            {controllerVersion}
-                        </span>
-                    )}
                 </>
             )}
 
@@ -625,17 +615,9 @@ function RenderCardInner({
                     disabled={isDeleting || isBuilding}
                     aria-label="Discard preview"
                     title="Delete this editable preview"
-                    className={[
-                        "absolute -right-3 -top-3 z-40 inline-flex h-6 w-6 items-center justify-center rounded-full border shadow-sm",
-                        "transition-all duration-150",
-                        "bg-white/85 border-neutral-200 text-neutral-400",
-                        "hover:bg-red-600 hover:border-red-600 hover:text-white hover:shadow-md hover:scale-[1.04]",
-                        "active:scale-[0.98]",
-                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 focus-visible:ring-offset-2",
-                        "disabled:opacity-60 disabled:pointer-events-none",
-                    ].join(" ")}
+                    className="absolute right-2 top-2 z-50 inline-flex h-6 w-6 items-center justify-center rounded-full border shadow-sm transition-all duration-150 bg-white/85 border-neutral-200 text-neutral-400 hover:bg-red-600 hover:border-red-600 hover:text-white hover:shadow-md hover:scale-[1.04] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 focus-visible:ring-offset-2 disabled:opacity-60 disabled:pointer-events-none"
                 >
-                    <DeleteIcon className="h-3.5 w-3.5 transition-colors" />
+                    <X className="h-3.5 w-3.5 transition-colors" />
                 </button>
             )}
 
@@ -1093,10 +1075,6 @@ function AppCard({
 }) {
     const router = useRouter();
 
-    const formattedDate = app.createdAt?.toDate?.()
-        ? new Date(app.createdAt.toDate()).toLocaleDateString()
-        : "Recently";
-
     return (
         <div className="relative flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm hover:shadow-md transition-shadow">
             {/* Delete button - positioned inside the card for better visibility */}
@@ -1107,7 +1085,7 @@ function AppCard({
                 title="Delete this app"
                 className="absolute right-2 top-2 z-50 inline-flex h-6 w-6 items-center justify-center rounded-full border shadow-sm transition-all duration-150 bg-white/85 border-neutral-200 text-neutral-400 hover:bg-red-600 hover:border-red-600 hover:text-white hover:shadow-md hover:scale-[1.04] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 focus-visible:ring-offset-2 disabled:opacity-60 disabled:pointer-events-none"
             >
-                <DeleteIcon className="h-3.5 w-3.5 transition-colors" />
+                <X className="h-3.5 w-3.5 transition-colors" />
             </button>
 
             {/* App badge - moved to avoid overlap */}
@@ -1118,18 +1096,18 @@ function AppCard({
                 App
             </span>
 
-            {/* App ID badge - moved to bottom to avoid overlap */}
+            {/* App name badge - bottom right */}
             <span
-                className="absolute right-2 bottom-2 z-40 inline-flex items-center rounded-full border border-neutral-200 bg-white/85 px-2 py-0.5 text-[10px] font-mono text-neutral-700 shadow-sm"
-                title={`App ID: ${app.id.slice(0, 10)}`}
+                className="absolute right-2 bottom-2 z-40 inline-flex max-w-[180px] items-center truncate rounded-full border border-neutral-200 bg-white/85 px-2 py-0.5 text-[10px] font-medium text-neutral-800 shadow-sm"
+                title={app.name || "App"}
             >
-                {app.id.slice(0, 10)}
+                {app.name || app.id.slice(0, 10)}
             </span>
 
             {/* Main visual area */}
             <div className="relative aspect-[3/3] w-full overflow-hidden flex flex-col items-center justify-center bg-gradient-to-br from-neutral-50 to-neutral-100">
                 <div className="pointer-events-auto flex flex-col items-center gap-3">
-                    <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#f55f2a]/10">
+                    {/* <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#f55f2a]/10">
                         <svg
                             xmlns="http://www.w3.org/2000/svg"
                             viewBox="0 0 24 24"
@@ -1141,14 +1119,11 @@ function AppCard({
                             <line x1="12" y1="13" x2="12" y2="13.01" />
                             <line x1="12" y1="17" x2="12" y2="17.01" />
                         </svg>
-                    </div>
+                    </div> */}
                     <div className="text-center mt-5">
                         <h3 className="text-sm font-semibold text-neutral-900 max-w-[200px] truncate">
                             {app.name}
                         </h3>
-                        <p className="text-xs text-neutral-500 mt-1">
-                            Created {formattedDate}
-                        </p>
                     </div>
                 </div>
 
@@ -1271,37 +1246,32 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
         ? "Building an editable website."
         : "Create an editable website.";
 
-    const sizeMinH = "min-h-[260px]";
-    const sizeMaxW = "max-w-[350px]";
-    const sizeMinW = "min-w-[220px] sm:min-w-[260px]";
     const iconWrapperSize = "h-14 w-14";
-    const titleSize = "text-sm";
-    const subtitleSize = "text-sm";
 
     return (
         <>
-            <div className={`flex flex-col ${sizeMinW} ${sizeMaxW}`}>
-                <div className={`group relative flex ${sizeMinH} w-full flex-col items-center justify-center rounded-xl border-2 border-dashed bg-white border-neutral-300 text-center transition ${effectiveLocked ? "opacity-70 cursor-wait" : "hover:border-neutral-400 cursor-pointer"}`} onClick={effectiveLocked ? undefined : handleClick}>
-                    <div className="pointer-events-none flex flex-col items-center">
+            <div className="relative flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm hover:shadow-md transition-shadow">
+                <div className="relative aspect-[3/3] w-full overflow-hidden rounded-xl">
+                    <button
+                        type="button"
+                        onClick={handleClick}
+                        disabled={effectiveLocked}
+                        className={`group flex h-full w-full flex-col items-center justify-center rounded-xl border-2 border-dashed bg-white text-center transition ${effectiveLocked ? "opacity-70 cursor-wait" : "hover:border-neutral-400 cursor-pointer"} border-neutral-300`}
+                        aria-label="Generate a new website or app"
+                    >
                         <div
                             className={`grid ${iconWrapperSize} place-items-center rounded-full border border-neutral-200 bg-neutral-50 transition group-hover:scale-105`}
+                            aria-hidden
                         >
                             {effectiveLocked ? (
-                                <Hammer
-                                    className="h-7 w-7 text-neutral-600 ghost-hammer-swing aria-hidden"
-                                />
+                                <Hammer className="h-7 w-7 text-neutral-600 ghost-hammer-swing" />
                             ) : (
-                                <Plus
-                                    className="h-7 w-7 text-neutral-600 aria-hidden"
-                                />
+                                <Plus className="h-7 w-7 text-neutral-600" />
                             )}
-
                         </div>
-                        <div className={`mt-3 font-semibold text-neutral-800 ${titleSize}`}>
-                            {title}
-                        </div>
-                        <div className={`mt-1 text-neutral-500 ${subtitleSize}`}>{subtitle}</div>
-                    </div>
+                        <div className="mt-3 text-sm font-semibold text-neutral-800">{title}</div>
+                        <div className="mt-1 text-sm text-neutral-500">{subtitle}</div>
+                    </button>
                 </div>
             </div>
 
@@ -1387,9 +1357,8 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                         <div className="absolute left-1/2 top-full mt-2 hidden w-64 -translate-x-1/2 rounded-lg border border-neutral-200 bg-white p-3 text-xs text-neutral-700 shadow-lg group-hover:block z-10">
                                                             <div className="font-semibold text-neutral-900 mb-2">Website Features:</div>
                                                             <ul className="space-y-1">
-                                                                <li>• Hosting images and media</li>
+                                                                <li>• Cloned from this url</li>
                                                                 <li>• Performance-focused</li>
-                                                                <li>• SEO-friendly static content</li>
                                                                 <li>• Fast loading pages</li>
                                                             </ul>
                                                         </div>

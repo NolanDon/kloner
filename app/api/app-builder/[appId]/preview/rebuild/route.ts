@@ -18,6 +18,7 @@ export async function POST(req: NextRequest, { params }: { params: { appId: stri
 
             const body = await authedReq.json().catch(() => ({} as any));
             const requestedCode = typeof body?.code === "string" ? body.code.trim() : "";
+            const requestedFiles = body?.files;
 
             const db = getAdminDb();
             const appRef = db.collection("kloner_users").doc(uid).collection("kloner_apps").doc(appId);
@@ -38,6 +39,7 @@ export async function POST(req: NextRequest, { params }: { params: { appId: stri
                     code: codeToUse,
                     appId,
                     uid,
+                    files: requestedFiles,
                 });
 
             let rebuilt = await tryRebuild(requestedCode || storedCode || undefined);
