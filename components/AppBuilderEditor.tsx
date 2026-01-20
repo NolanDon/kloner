@@ -311,49 +311,6 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
         }
     }
 
-    const pollPreviewReady = useCallback(async (code: string) => {
-        const startedAt = Date.now();
-        let attempt = 0;
-
-        while (Date.now() - startedAt < 180_000) {
-            attempt += 1;
-            try {
-                const url = `/api/webcontainer-status?code=${encodeURIComponent(code)}&appId=${encodeURIComponent(appId)}`;
-                const res = await fetch(url, {
-                    method: "GET",
-                    credentials: "include",
-                    cache: "no-store",
-                });
-
-                // Treat these as user-visible "expired" cases.
-                if (res.status === 404 || res.status === 409) {
-                    const data = await res.json().catch(() => ({} as any));
-                    return { ok: false as const, error: String((data as any)?.error || "Preview expired") };
-                }
-
-                if (res.ok) {
-                    const data = await res.json().catch(() => ({} as any));
-                    const status = String((data as any)?.status || "").toLowerCase();
-                    const uiStage = String((data as any)?.uiStage || (data as any)?.ui_stage || "").toLowerCase();
-                    if (uiStage === "ready" || status === "ready") {
-                        return { ok: true as const, data };
-                    }
-                    // A few backends report "running/compiled/started" as effectively ready.
-                    if (["running", "compiled", "started", "online", "active", "completed", "finished"].includes(status)) {
-                        return { ok: true as const, data };
-                    }
-                }
-            } catch {
-                // ignore transient errors
-            }
-
-            const waitMs = Math.min(5_000, 700 + attempt * 250);
-            await sleep(waitMs);
-        }
-
-        return { ok: false as const, error: "Timed out waiting for preview to become ready." };
-    }, [appId]);
-
     const rebuildLocalPreview = useCallback(async (forceFresh: boolean = false) => {
         if (isPreviewBuilding) return;
         setIsPreviewBuilding(true);
@@ -411,11 +368,8 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                 const payload: any = { appId };
                 if (storedCode) payload.code = storedCode;
 
-                // When the AI agent triggers a rebuild in-place, switch the preview back
-                // into the loading state as the rebuild request goes out.
-                if (silent) {
-                    setUiUpdatingToken((k) => k + 1);
-                }
+                // Switch the preview into the "UI updating" state as the rebuild request goes out.
+                setUiUpdatingToken((k) => k + 1);
 
                 const res = await fetch(`/api/app-builder/${appId}/preview/rebuild`, {
                     method: "POST",
@@ -432,37 +386,41 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                     // If there is no active preview yet, fall back to creating/starting.
                     if (res.status === 404 || res.status === 409) {
                         if (!silent) setPreviewRestartError(null);
-                        if (silent) setUiUpdatingCancelToken((k) => k + 1);
+                        setUiUpdatingCancelToken((k) => k + 1);
                         await rebuildLocalPreview(true);
                         return;
                     }
 
                     const msg = String((data as any)?.error || `Rebuild failed (HTTP ${res.status})`);
                     if (!silent) throw Object.assign(new Error(msg), { status: res.status });
-                    if (silent) setUiUpdatingCancelToken((k) => k + 1);
+                    setUiUpdatingCancelToken((k) => k + 1);
                     return;
                 }
 
-                // Treat queued response as success; poll until ready, then refresh the iframe.
+                // Persist returned code so WebContainerRunner can poll status reliably.
                 const code = String((data as any)?.code || storedCode || "");
                 if (!code) {
                     if (!silent) throw new Error("Rebuild succeeded but no preview code was returned.");
-                    if (silent) setUiUpdatingCancelToken((k) => k + 1);
+                    setUiUpdatingCancelToken((k) => k + 1);
                     return;
                 }
 
-                const ready = await pollPreviewReady(code);
-                if (!ready.ok) {
-                    if (!silent) throw new Error(ready.error);
-                    if (silent) setUiUpdatingCancelToken((k) => k + 1);
-                    return;
+                try {
+                    localStorage.setItem(
+                        `webcontainer_${appId}`,
+                        JSON.stringify({ code, timestamp: Date.now() })
+                    );
+                } catch {
+                    // ignore
                 }
 
-                setRefreshKey((k) => k + 1);
+                // No extra polling here: WebContainerRunner will poll /api/webcontainer-status
+                // and reload the iframe when the machine becomes reachable.
             } catch (err: any) {
                 if (!silent) {
                     const msg = String(err?.message || "Failed to rebuild preview.");
                     setPreviewRestartError(msg);
+                    setUiUpdatingCancelToken((k) => k + 1);
                 } else {
                     // Silent (AI-triggered) rebuild failed; stop the "UI updating" loader.
                     setUiUpdatingCancelToken((k) => k + 1);
@@ -479,7 +437,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                 }
             }
         },
-        [appId, pollPreviewReady, rebuildLocalPreview]
+        [appId, rebuildLocalPreview]
     );
 
     const restartPreviewNow = useCallback(async () => {

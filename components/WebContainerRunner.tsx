@@ -310,11 +310,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
     iframeLoadedSuccessfullyRef.current = false; // Reset iframe success flag
     pollingCodeRef.current = null; // Reset polling code
     
-    // Clear stored container code on retry to force fresh start
-    clearStoredContainerCode(appId);
-    
-    // Force restart by changing restartToken
-    restartToken = Date.now();
+    // Do not clear stored container code on retry.
+    // Retry should attempt to reconnect to the saved machine first.
   };
   const proxyBaseRef = useRef<string | null>(null);
   const previewUrlRef = useRef<string | null>(null);
@@ -326,10 +323,28 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
   const lastUiUpdatingCancelTokenRef = useRef<number | null>(null);
   const lastPreviewUrlForLoadRef = useRef<string | null>(null);
   const reconnectOnlyRef = useRef(false);
+  const uiUpdatingPollRunIdRef = useRef(0);
+  const uiUpdatingStartedAtRef = useRef<number>(0);
+  const uiUpdatingAllowClearOnLoadRef = useRef(false);
+  const uiUpdatingSawNonReadyRef = useRef(false);
+  const isUiUpdatingRef = useRef(false);
   const filesRef = useRef(files);
   const startRunIdRef = useRef(0);
   const effectStartedAtRef = useRef<number>(0);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const getUpdatedAtMs = (updatedAt: any): number | null => {
+    try {
+      if (!updatedAt) return null;
+      const seconds = Number(updatedAt?._seconds);
+      const nanos = Number(updatedAt?._nanoseconds ?? updatedAt?._nanos);
+      if (!Number.isFinite(seconds)) return null;
+      const ms = seconds * 1000 + (Number.isFinite(nanos) ? nanos / 1_000_000 : 0);
+      return Number.isFinite(ms) ? ms : null;
+    } catch {
+      return null;
+    }
+  };
 
   useEffect(() => {
     filesRef.current = files;
@@ -338,6 +353,10 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
   useEffect(() => {
     previewUrlRef.current = previewUrl;
   }, [previewUrl]);
+
+  useEffect(() => {
+    isUiUpdatingRef.current = isUiUpdating;
+  }, [isUiUpdating]);
 
   const withCacheBust = (url: string) => {
     const cb = String(Date.now());
@@ -364,31 +383,177 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
     }
   }, [previewUrl]);
 
-  // AI-triggered rebuild UX: immediately show a loading state that says "UI updating".
+  // Rebuild UX: show a stable "UI updating" overlay and poll status until the
+  // machine becomes reachable again.
   useEffect(() => {
     if (typeof uiUpdatingToken !== 'number') return;
     if (uiUpdatingToken <= 0) return;
     if (lastUiUpdatingTokenRef.current === uiUpdatingToken) return;
     lastUiUpdatingTokenRef.current = uiUpdatingToken;
 
+    uiUpdatingStartedAtRef.current = Date.now();
+    const runId = ++uiUpdatingPollRunIdRef.current;
+    uiUpdatingAllowClearOnLoadRef.current = false;
+    uiUpdatingSawNonReadyRef.current = false;
+
     setIsUiUpdating(true);
-    // Keep this phase visually stable: if we already have an iframe mounted,
-    // keep it and just show the overlay until the parent bumps reloadToken.
-    // (If we don't have a preview yet, we fall back to the standalone loader.)
+    // Keep the iframe mounted when possible, but switch to a normal
+    // "building" UI state (polling) so users can see progress.
     if (!previewUrlRef.current) {
       iframeLoadedSuccessfullyRef.current = false;
       setPreviewUrl(null);
       setIsLoading(true);
-    } else {
-      setIsLoading(false);
     }
     setError(null);
     setCanRetry(false);
-    setConnectingToExisting(false);
-    setIsPolling(false);
+    setConnectingToExisting(true);
+    setIsPolling(true);
     setCurrentStatusData(null);
-    setLoadingStatus('');
-  }, [uiUpdatingToken]);
+    setLoadingStatus('Updating preview…');
+
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const sleepCancellable = async (ms: number) => {
+      const step = 250;
+      const started = Date.now();
+      while (uiUpdatingPollRunIdRef.current === runId && Date.now() - started < ms) {
+        await sleep(Math.min(step, ms - (Date.now() - started)));
+      }
+    };
+
+    const pollUntilReachable = async () => {
+      try {
+        const code = await getStoredContainerCode(appId, user);
+        if (uiUpdatingPollRunIdRef.current !== runId) return;
+
+        if (!code) {
+          setIsPolling(false);
+          setConnectingToExisting(false);
+          setIsUiUpdating(false);
+          setIsLoading(false);
+          setError('No saved machine found to update. Try Rebuild again.');
+          setCanRetry(true);
+          return;
+        }
+
+        pollingCodeRef.current = code;
+
+        // Keep the "building" UI visible for at least 15 seconds after a rebuild
+        // request goes out before we start status polling. This avoids UI flicker
+        // from immediate transient backend errors while the machine boots.
+        const minInitialWaitMs = 15000;
+        const uiStartedAt = uiUpdatingStartedAtRef.current || Date.now();
+        const elapsed = Math.max(0, Date.now() - uiStartedAt);
+        const remaining = Math.max(0, minInitialWaitMs - elapsed);
+        if (remaining > 0) {
+          // Ensure we show a clean "updating" state during the initial wait.
+          setCurrentStatusData(null);
+          await sleepCancellable(remaining);
+          if (uiUpdatingPollRunIdRef.current !== runId) return;
+        }
+
+        const startedAt = Date.now();
+        let attempt = 0;
+
+        while (uiUpdatingPollRunIdRef.current === runId && Date.now() - startedAt < 360000) {
+          attempt += 1;
+          try {
+            const headers = await getAuthenticatedHeaders();
+            const res = await fetch(`/api/webcontainer-status?code=${encodeURIComponent(code)}&appId=${encodeURIComponent(appId)}`, {
+              method: 'GET',
+              headers,
+              credentials: 'include',
+              cache: 'no-store',
+            });
+
+            if (uiUpdatingPollRunIdRef.current !== runId) return;
+
+            if (res.status === 404 || res.status === 409) {
+              const data = await res.json().catch(() => ({} as any));
+              setIsPolling(false);
+              setConnectingToExisting(false);
+              setIsUiUpdating(false);
+              setIsLoading(false);
+              setError(String((data as any)?.error || 'Preview expired.'));
+              setCanRetry(true);
+              return;
+            }
+
+            if (res.ok) {
+              const statusData = await res.json().catch(() => ({} as any));
+              setCurrentStatusData(statusData);
+
+              const status = String((statusData as any)?.status || '').toLowerCase();
+              const uiStage = String((statusData as any)?.uiStage || (statusData as any)?.ui_stage || '').toLowerCase();
+
+              const isEffectivelyReady =
+                uiStage === 'ready' ||
+                status === 'ready' ||
+                ['running', 'compiled', 'started', 'online', 'active', 'completed', 'finished'].includes(status);
+
+              if (!isEffectivelyReady) {
+                uiUpdatingSawNonReadyRef.current = true;
+              }
+
+              const url = String((statusData as any)?.url || '').trim();
+
+              // Avoid immediately "completing" if the status is stale from before the rebuild.
+              const updatedAtMs = getUpdatedAtMs((statusData as any)?.updatedAt);
+              const startedAtMs = uiUpdatingStartedAtRef.current || startedAt;
+              const allowAcceptReady =
+                uiUpdatingSawNonReadyRef.current ||
+                Date.now() - startedAtMs > 45000; // safety: don't block forever if backend doesn't emit non-ready
+
+              const statusIsFreshEnough =
+                typeof updatedAtMs === 'number' && Number.isFinite(updatedAtMs)
+                  ? updatedAtMs >= startedAtMs - 1500
+                  : allowAcceptReady;
+
+              if (url && isEffectivelyReady && allowAcceptReady && statusIsFreshEnough) {
+                const reachable = await probePreviewUrl(appId, url);
+                if (uiUpdatingPollRunIdRef.current !== runId) return;
+
+                if (reachable) {
+                  uiUpdatingAllowClearOnLoadRef.current = true;
+                  iframeLoadedSuccessfullyRef.current = false;
+                  setPreviewUrl(withCacheBust(url));
+                  setIsPolling(false);
+                  setConnectingToExisting(false);
+                  setIsUiUpdating(true); // keep overlay until iframe onLoad
+                  setIsLoading(false);
+                  return;
+                }
+              }
+            }
+            // Non-2xx responses are common mid-build; keep polling quietly.
+          } catch {
+            // Network/proxy hiccups mid-build are expected; keep polling.
+          }
+
+          const waitMs = Math.min(5000, 700 + attempt * 250);
+          await sleep(waitMs);
+        }
+
+        if (uiUpdatingPollRunIdRef.current !== runId) return;
+        setIsPolling(false);
+        setConnectingToExisting(false);
+        setIsUiUpdating(false);
+        setIsLoading(false);
+        setError('Timed out waiting for the preview to become reachable (6 min).');
+        setCanRetry(true);
+      } catch {
+        if (uiUpdatingPollRunIdRef.current !== runId) return;
+        setIsPolling(false);
+        setConnectingToExisting(false);
+        setIsUiUpdating(false);
+        setIsLoading(false);
+        setError('Failed while waiting for the preview to update.');
+        setCanRetry(true);
+      }
+    };
+
+    void pollUntilReachable();
+  }, [appId, uiUpdatingToken, user]);
 
   // Explicit cancel: stop the "UI updating" loader (e.g. if rebuild failed silently).
   useEffect(() => {
@@ -396,6 +561,9 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
     if (uiUpdatingCancelToken <= 0) return;
     if (lastUiUpdatingCancelTokenRef.current === uiUpdatingCancelToken) return;
     lastUiUpdatingCancelTokenRef.current = uiUpdatingCancelToken;
+    uiUpdatingPollRunIdRef.current += 1;
+    uiUpdatingAllowClearOnLoadRef.current = false;
+    uiUpdatingSawNonReadyRef.current = false;
     setIsUiUpdating(false);
     setIsLoading(false);
     if (isPolling) setIsPolling(false);
@@ -794,6 +962,90 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
             } else if (statusResponse.status === 404) {
               console.log(`❌ Container ${existingCode} not found (404) - clearing invalid stored code`);
               await clearStoredContainerCodeEverywhere(appId, user);
+            } else if (statusResponse.status >= 500) {
+              // Treat 5xx as transient backend/hub issues. Do NOT clear stored code
+              // or create a new machine; instead, keep listening until status recovers.
+              console.log(
+                `⚠️ Status service error for container ${existingCode}: ${statusResponse.status} ${statusResponse.statusText}. Entering polling mode instead of creating a new machine.`
+              );
+
+              setIsLoading(false);
+              setIsPolling(true);
+              setConnectingToExisting(true);
+              setError(null);
+              setCanRetry(false);
+              setCurrentStatusData(null);
+              setLoadingStatus('');
+
+              const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+              const startedAt = Date.now();
+              let attempt = 0;
+              while (startRunIdRef.current === runId && Date.now() - startedAt < 360000) {
+                attempt += 1;
+                try {
+                  const headers = await getAuthenticatedHeaders();
+                  const res = await fetch(
+                    `/api/webcontainer-status?code=${encodeURIComponent(existingCode)}&appId=${encodeURIComponent(appId)}`,
+                    { method: 'GET', headers, credentials: 'include', cache: 'no-store' }
+                  );
+
+                  if (startRunIdRef.current !== runId) return;
+
+                  if (res.status === 404 || res.status === 409) {
+                    const data = await res.json().catch(() => ({} as any));
+                    setIsPolling(false);
+                    setConnectingToExisting(false);
+                    setIsLoading(false);
+                    setError(String((data as any)?.error || 'Preview expired.'));
+                    setCanRetry(true);
+                    // code is invalid/expired; allow normal flow to create a new machine
+                    await clearStoredContainerCodeEverywhere(appId, user);
+                    break;
+                  }
+
+                  if (res.ok) {
+                    const statusData = await res.json().catch(() => ({} as any));
+                    setCurrentStatusData(statusData);
+
+                    const status = String((statusData as any)?.status || '').toLowerCase();
+                    const isReady =
+                      status === 'ready' ||
+                      ['running', 'compiled', 'started', 'online', 'active', 'completed', 'finished'].includes(status);
+                    const url = String((statusData as any)?.url || '').trim();
+
+                    if (url && isReady) {
+                      const reachable = await probePreviewUrl(appId, url);
+                      if (startRunIdRef.current !== runId) return;
+                      if (reachable) {
+                        pollingCodeRef.current = existingCode;
+                        iframeLoadedSuccessfullyRef.current = false;
+                        setPreviewUrl(url);
+                        setIsPolling(false);
+                        setConnectingToExisting(false);
+                        setIsLoading(false);
+                        setLoadingStatus(`Connected to machine ${statusData.machineId}!`);
+                        appLoadedSuccessfullyRef.current = true;
+                        return;
+                      }
+                    }
+                  }
+                } catch {
+                  // ignore transient errors; keep polling
+                }
+
+                const waitMs = Math.min(5000, 900 + attempt * 250);
+                await sleep(waitMs);
+              }
+
+              if (startRunIdRef.current !== runId) return;
+              // If we didn't connect, stop polling and show a neutral error.
+              setIsPolling(false);
+              setConnectingToExisting(false);
+              setIsLoading(false);
+              setError('Temporary backend issue while checking your saved machine. Please wait a moment and try Reconnect again.');
+              setCanRetry(false);
+              return;
             } else {
               console.log(`❌ Failed to get status for container ${existingCode}: ${statusResponse.status} ${statusResponse.statusText}`);
             }
@@ -1357,6 +1609,11 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
     lastReloadTokenRef.current = reloadToken;
     if (!proxyBaseRef.current) return;
 
+    // During rebuild updating, ignore external reload requests.
+    // Otherwise we can refresh the *old* preview, fire iframe onLoad,
+    // and prematurely drop the updating overlay.
+    if (isUiUpdatingRef.current) return;
+
     // Coalesce rapid reload requests to avoid request thrash + flicker.
     const now = Date.now();
     if (now - lastReloadIssuedAtRef.current < 800) return;
@@ -1430,7 +1687,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
             {canRetry && (
               <button
                 onClick={retryApp}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-lg hover:bg-[#e54f1a] transition-colors"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs bg-accent text-white rounded-lg hover:bg-[#e54f1a] transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -1452,6 +1709,14 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
               console.log('Iframe loaded successfully - preview should now be active at:', previewUrl);
               setLoadingStatus(''); // Clear loading status when app is ready
               iframeLoadedSuccessfullyRef.current = true; // Mark iframe as successfully loaded
+
+              // During rebuild updating, keep the overlay up until we've
+              // intentionally reloaded to the post-rebuild URL.
+              if (isUiUpdatingRef.current && !uiUpdatingAllowClearOnLoadRef.current) {
+                return;
+              }
+
+              uiUpdatingAllowClearOnLoadRef.current = false;
               setIsUiUpdating(false);
               if (isPolling) setIsPolling(false);
               if (currentStatusData) setCurrentStatusData(null);
@@ -1500,9 +1765,18 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
             <div className="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm">
               <div className="text-center space-y-4">
                 <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
-                <div className="text-center space-y-2">
+                <div className="text-center space-y-2 max-w-md">
                   <p className="text-lg font-medium text-gray-700">{isUiUpdating ? 'UI updating…' : 'Loading preview...'}</p>
-                  <p className="text-sm text-gray-500">{isUiUpdating ? 'Applying the latest changes to your preview' : 'Preparing your app for display'}</p>
+                  {isUiUpdating && currentStatusData && currentStatusData.uiTitle && currentStatusData.uiMessage ? (
+                    <>
+                      <p className="text-sm text-gray-600">{currentStatusData.uiTitle}</p>
+                      <p className="text-sm text-gray-500">{currentStatusData.uiMessage}</p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-gray-500">
+                      {isUiUpdating ? 'Applying the latest changes to your preview' : 'Preparing your app for display'}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -1520,14 +1794,6 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
                     <>
                       <p className="text-lg font-medium text-gray-700">{currentStatusData.uiTitle}</p>
                       <p className="text-sm text-gray-500">{currentStatusData.uiMessage}</p>
-                      {currentStatusData.uiProgress !== undefined && currentStatusData.uiProgress !== null && (
-                        <div className="w-full bg-gray-200 rounded-full h-2 mt-3">
-                          <div
-                            className="h-2 bg-accent rounded-full transition-all duration-300"
-                            style={{ width: `${Math.max(0, Math.min(100, currentStatusData.uiProgress))}%` }}
-                          ></div>
-                        </div>
-                      )}
                     </>
                   ) : pollingRetryCountRef.current === 0 ? (
                     <>
