@@ -79,6 +79,7 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
     const {
         plan,
         returnRenderId,
+        returnAppId,
         returnStep,
 
         // exit-offer inputs
@@ -186,6 +187,10 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
             ? `${appOrigin}/dashboard/view?wizard=1&step=${returnStep || 2}&render=${encodeURIComponent(
                 returnRenderId || "",
             )}&billing=success`
+            : returnAppId && returnStep
+                ? `${appOrigin}/dashboard/view?wizard=1&step=${returnStep || 3}&appId=${encodeURIComponent(
+                    returnAppId || "",
+                )}&billing=success`
             : `${appOrigin}/dashboard/view?billing=success`;
 
     const cancelUrl = `${appOrigin}/price?billing=cancelled`;

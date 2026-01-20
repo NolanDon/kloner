@@ -1083,7 +1083,7 @@ export default function SettingsPage(): JSX.Element {
                                             {vercelBadgeLabel}
                                         </span>
                                     </div>
-                                    <p className="mt-1 text-xs text-neutral-600">Deploy previews directly from Kloner.</p>
+                                    <p className="mt-1 text-xs text-neutral-600">Deploy live sites and apps directly from Kloner.</p>
 
                                     <div className="mt-2 flex gap-2">
                                         <button

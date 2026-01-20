@@ -336,6 +336,12 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
   const getUpdatedAtMs = (updatedAt: any): number | null => {
     try {
       if (!updatedAt) return null;
+      if (typeof updatedAt === 'number' && Number.isFinite(updatedAt)) return updatedAt;
+      if (updatedAt instanceof Date) return updatedAt.getTime();
+      if (typeof updatedAt === 'string') {
+        const parsed = Date.parse(updatedAt);
+        return Number.isFinite(parsed) ? parsed : null;
+      }
       const seconds = Number(updatedAt?._seconds);
       const nanos = Number(updatedAt?._nanoseconds ?? updatedAt?._nanos);
       if (!Number.isFinite(seconds)) return null;
@@ -344,6 +350,35 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
     } catch {
       return null;
     }
+  };
+
+  const formatStatusTime = (ms: number) => {
+    try {
+      return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    } catch {
+      return '';
+    }
+  };
+
+  const renderLiveStatusLine = (statusData: any) => {
+    if (!statusData) return null;
+    const stage = String(statusData?.uiStage || statusData?.status || '').trim();
+    const title = String(statusData?.uiTitle || '').trim();
+    const detail = String(statusData?.uiMessage || '').trim();
+    const message = [title, detail].filter(Boolean).join(' — ');
+    const updatedAtMs = getUpdatedAtMs(statusData?.updatedAt);
+    const timeLabel = typeof updatedAtMs === 'number' ? formatStatusTime(updatedAtMs) : '';
+    if (!stage && !message && !timeLabel) return null;
+
+    const left = [stage, timeLabel].filter(Boolean).join(' ');
+    return (
+      <div className="mt-6 w-full max-w-2xl rounded-2xl border border-black/10 bg-white/70 px-6 py-4 text-left shadow-sm backdrop-blur-sm">
+        <div className="text-sm text-black/80">
+          {left ? <span className="font-semibold">{left}</span> : null}
+          {message ? <span className="text-black/60">{`${left ? ' — ' : ''}${message}`}</span> : null}
+        </div>
+      </div>
+    );
   };
 
   useEffect(() => {
@@ -1765,19 +1800,23 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
             <div className="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm">
               <div className="text-center space-y-4">
                 <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
-                <div className="text-center space-y-2 max-w-md">
-                  <p className="text-lg font-medium text-gray-700">{isUiUpdating ? 'UI updating…' : 'Loading preview...'}</p>
-                  {isUiUpdating && currentStatusData && currentStatusData.uiTitle && currentStatusData.uiMessage ? (
-                    <>
-                      <p className="text-sm text-gray-600">{currentStatusData.uiTitle}</p>
-                      <p className="text-sm text-gray-500">{currentStatusData.uiMessage}</p>
-                    </>
-                  ) : (
-                    <p className="text-sm text-gray-500">
-                      {isUiUpdating ? 'Applying the latest changes to your preview' : 'Preparing your app for display'}
-                    </p>
-                  )}
-                </div>
+                {renderLiveStatusLine(
+                  isUiUpdating
+                    ? (currentStatusData
+                      ? { ...currentStatusData, updatedAt: currentStatusData?.updatedAt ?? Date.now() }
+                      : {
+                        uiStage: 'ui_updating',
+                        uiTitle: 'UI updating',
+                        uiMessage: 'Applying the latest changes to your preview',
+                        updatedAt: Date.now(),
+                      })
+                    : {
+                      uiStage: 'loading_preview',
+                      uiTitle: 'Loading preview',
+                      uiMessage: 'Preparing your app for display',
+                      updatedAt: Date.now(),
+                    }
+                )}
               </div>
             </div>
           )}
@@ -1789,42 +1828,47 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
               // Simple, clean polling state with 3-dot loader
               <div className="space-y-4">
                 <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
-                <div className="text-center space-y-2">
-                  {currentStatusData && currentStatusData.uiTitle && currentStatusData.uiMessage ? (
-                    <>
-                      <p className="text-lg font-medium text-gray-700">{currentStatusData.uiTitle}</p>
-                      <p className="text-sm text-gray-500">{currentStatusData.uiMessage}</p>
-                    </>
-                  ) : pollingRetryCountRef.current === 0 ? (
-                    <>
-                      <p className="text-lg font-medium text-gray-700">Building your app...</p>
-                      <p className="text-sm text-gray-500">This may take several minutes for first-time builds</p>
-                    </>
-                  ) : pollingRetryCountRef.current < maxPollingRetries ? (
-                    <>
-                      <p className="text-lg font-medium text-gray-700">Still building...</p>
-                      <p className="text-sm text-gray-500">Checking progress...</p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-lg font-medium text-gray-700">Connection timeout</p>
-                      <p className="text-sm text-red-600">Unable to verify build status</p>
-                    </>
-                  )}
-                </div>
+                {renderLiveStatusLine(
+                  currentStatusData
+                    ? { ...currentStatusData, updatedAt: currentStatusData?.updatedAt ?? Date.now() }
+                    : pollingRetryCountRef.current === 0
+                      ? {
+                        uiStage: 'building_app',
+                        uiTitle: 'Building your app',
+                        uiMessage: 'This may take several minutes for first-time builds',
+                        updatedAt: Date.now(),
+                      }
+                      : pollingRetryCountRef.current < maxPollingRetries
+                        ? {
+                          uiStage: 'still_building',
+                          uiTitle: 'Still building',
+                          uiMessage: 'Checking progress…',
+                          updatedAt: Date.now(),
+                        }
+                        : {
+                          uiStage: 'connection_timeout',
+                          uiTitle: 'Connection timeout',
+                          uiMessage: 'Unable to verify build status',
+                          updatedAt: Date.now(),
+                        }
+                )}
               </div>
             ) : (
               // Initial loading state
               <>
                 <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
-                <div className="text-center space-y-2">
-                  <p className="text-lg font-medium text-gray-700">
-                    {isUiUpdating ? 'Updating preview…' : (connectingToExisting ? 'Connecting to existing machine...' : 'Starting your app...')}
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    {isUiUpdating ? 'Applying the latest changes to your preview' : (connectingToExisting ? 'Reconnecting to your saved session' : 'Setting up your development environment')}
-                  </p>
-                </div>
+                {renderLiveStatusLine({
+                  uiStage: isUiUpdating
+                    ? 'updating_preview'
+                    : (connectingToExisting ? 'reconnecting' : 'starting_app'),
+                  uiTitle: isUiUpdating
+                    ? 'Updating preview'
+                    : (connectingToExisting ? 'Connecting to existing machine' : 'Starting your app'),
+                  uiMessage: isUiUpdating
+                    ? 'Applying the latest changes to your preview'
+                    : (connectingToExisting ? 'Reconnecting to your saved session' : 'Setting up your development environment'),
+                  updatedAt: Date.now(),
+                })}
               </>
             )}
           </div>

@@ -1170,6 +1170,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     const [localDisabled, setLocalDisabled] = useState(false);
     const [showGenerationModal, setShowGenerationModal] = useState(false);
     const [selectedGenerationType, setSelectedGenerationType] = useState<"template" | "webapp" | null>(null);
+    const [showWebAppNewBadge, setShowWebAppNewBadge] = useState(false);
 
     // ───────── notification states ─────────
     const [isNotifying, setIsNotifying] = useState(false);
@@ -1183,6 +1184,19 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
 
         // Show modal for all users to choose between website and web app
         setShowGenerationModal(true);
+
+        try {
+            const key = "kloner_webapp_new_badge_seen";
+            const seen = window.localStorage.getItem(key);
+            if (!seen) {
+                setShowWebAppNewBadge(true);
+                window.localStorage.setItem(key, "1");
+            } else {
+                setShowWebAppNewBadge(false);
+            }
+        } catch {
+            // ignore
+        }
     };
 
     const handleWebsiteGeneration = () => {
@@ -1456,6 +1470,11 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                         <div className="text-sm font-semibold text-neutral-900">
                                                             Web App (15 credits)
                                                         </div>
+                                                        {showWebAppNewBadge ? (
+                                                            <span className="inline-flex items-center rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800">
+                                                                New
+                                                            </span>
+                                                        ) : null}
                                                         {!isAdmin && (
                                                             <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
                                                                 Coming Soon
@@ -1662,6 +1681,16 @@ export default function PreviewPage(): JSX.Element {
     const [appBuilderOpen, setAppBuilderOpen] = useState(false);
     const [currentAppId, setCurrentAppId] = useState<string | null>(null);
 
+    // ───────── app deploy wizard (first deploy) ─────────
+    const [appDeployWizardOpen, setAppDeployWizardOpen] = useState(false);
+    const [appDeployWizardStep, setAppDeployWizardStep] = useState<1 | 2 | 3>(1);
+    const [appDeployWizardBusy, setAppDeployWizardBusy] = useState(false);
+    const [appDeployWizardError, setAppDeployWizardError] = useState<string | null>(null);
+    const [appDeployWizardAppId, setAppDeployWizardAppId] = useState<string | null>(null);
+    const [appDeployWizardAppName, setAppDeployWizardAppName] = useState<string>("");
+    const [appDeployWizardLiveUrl, setAppDeployWizardLiveUrl] = useState<string | null>(null);
+    const autoAppDeployTriggeredRef = useRef(false);
+
     // ───────── web app wizard (new) ─────────
     const [appWizardOpen, setAppWizardOpen] = useState(false);
     const [appWizardStep, setAppWizardStep] = useState<1 | 2>(1);
@@ -1731,33 +1760,51 @@ export default function PreviewPage(): JSX.Element {
         const wizardParam = search.get("wizard");
         const stepParam = search.get("step");
         const renderId = search.get("render");
+        const returnAppId = search.get("appId");
 
         if (billingParam !== "success" || wizardParam !== "1") return;
-        if (!renderId) return;
+        if (!renderId && !returnAppId) return;
         if (!user) return;
         if (didStripeRestoreRef.current) return;
         didStripeRestoreRef.current = true;
 
         void (async () => {
-            // pull latest nameHint from Firestore
+            // pull latest nameHint/app name from Firestore
             let nameFromDb = "";
             try {
-                const renderRef = doc(
-                    db,
-                    "kloner_users",
-                    user.uid,
-                    "kloner_renders",
-                    renderId,
-                );
-                const snap = await getDoc(renderRef);
-                if (snap.exists()) {
-                    const data = snap.data() as any;
-                    if (typeof data?.nameHint === "string") {
-                        nameFromDb = data.nameHint.trim();
+                if (renderId) {
+                    const renderRef = doc(
+                        db,
+                        "kloner_users",
+                        user.uid,
+                        "kloner_renders",
+                        renderId,
+                    );
+                    const snap = await getDoc(renderRef);
+                    if (snap.exists()) {
+                        const data = snap.data() as any;
+                        if (typeof data?.nameHint === "string") {
+                            nameFromDb = data.nameHint.trim();
+                        }
+                    }
+                } else if (returnAppId) {
+                    const appRef = doc(
+                        db,
+                        "kloner_users",
+                        user.uid,
+                        "kloner_apps",
+                        returnAppId,
+                    );
+                    const snap = await getDoc(appRef);
+                    if (snap.exists()) {
+                        const data = snap.data() as any;
+                        if (typeof data?.name === "string") {
+                            nameFromDb = data.name.trim();
+                        }
                     }
                 }
             } catch (e) {
-                console.error("Failed to restore nameHint after Stripe", e);
+                console.error("Failed to restore after Stripe", e);
             }
 
             // IMPORTANT: on production the Stripe webhook and/or custom-claims propagation can lag.
@@ -1780,22 +1827,36 @@ export default function PreviewPage(): JSX.Element {
                 // ignore; normal tier detection will run via auth effect
             }
 
-            // seed wizard state
-            setDeployWizardRenderId(renderId);
-            setDeployWizardProjectName(
-                nameFromDb || deployWizardProjectName || "",
-            );
-            setDeployWizardError(null);
-            setDeployWizardBusy(false);
-            setDeployWizardOpen(true);
+            if (renderId) {
+                // seed website deploy wizard state
+                setDeployWizardRenderId(renderId);
+                setDeployWizardProjectName(
+                    nameFromDb || deployWizardProjectName || "",
+                );
+                setDeployWizardError(null);
+                setDeployWizardBusy(false);
+                setDeployWizardOpen(true);
 
-            const nextStep =
-                stepParam === "3"
-                    ? 3
-                    : stepParam === "2"
-                        ? 2
-                        : 2;
-            setDeployWizardStep(nextStep);
+                const nextStep =
+                    stepParam === "3"
+                        ? 3
+                        : stepParam === "2"
+                            ? 2
+                            : 2;
+                setDeployWizardStep(nextStep);
+            } else if (returnAppId) {
+                // seed app deploy wizard state
+                setAppDeployWizardAppId(returnAppId);
+                setAppDeployWizardAppName(nameFromDb || "");
+                setAppDeployWizardError(null);
+                setAppDeployWizardBusy(false);
+                setAppDeployWizardLiveUrl(null);
+                setAppDeployWizardOpen(true);
+
+                const nextStep: 1 | 2 | 3 = stepParam === "1" ? 1 : stepParam === "2" ? 2 : 3;
+                setAppDeployWizardStep(nextStep);
+                autoAppDeployTriggeredRef.current = true;
+            }
 
             // clear billing params via router so useSearchParams updates
             try {
@@ -1806,6 +1867,7 @@ export default function PreviewPage(): JSX.Element {
                 params.delete("wizard");
                 params.delete("step");
                 params.delete("render");
+                params.delete("appId");
 
                 const qs = params.toString();
                 const next = qs ? `${url.pathname}?${qs}` : url.pathname;
@@ -1815,6 +1877,85 @@ export default function PreviewPage(): JSX.Element {
             }
         })();
     }, [search, user, router, deployWizardProjectName]);
+
+    const closeAppDeployWizard = useCallback(() => {
+        setAppDeployWizardOpen(false);
+        setAppDeployWizardBusy(false);
+        setAppDeployWizardError(null);
+        setAppDeployWizardLiveUrl(null);
+        setAppDeployWizardAppId(null);
+        setAppDeployWizardAppName("");
+        autoAppDeployTriggeredRef.current = false;
+    }, []);
+
+    const openAppDeployWizard = useCallback((app: { id: string; name: string }) => {
+        setAppDeployWizardAppId(app.id);
+        setAppDeployWizardAppName(app.name || "");
+        setAppDeployWizardError(null);
+        setAppDeployWizardBusy(false);
+        setAppDeployWizardLiveUrl(null);
+        autoAppDeployTriggeredRef.current = false;
+
+        setAppDeployWizardOpen(true);
+        setAppDeployWizardStep(1);
+    }, []);
+
+    const deployAppLive = useCallback(async (opts?: { force?: boolean }) => {
+        if (appDeployWizardBusy && !opts?.force) return;
+        if (!user) return;
+        if (!appDeployWizardAppId) return;
+
+        if (!isVercelConnected) {
+            setAppDeployWizardError("Connect Vercel to deploy.");
+            setAppDeployWizardStep(1);
+            return;
+        }
+
+        setAppDeployWizardBusy(true);
+        setAppDeployWizardError(null);
+        setAppDeployWizardLiveUrl(null);
+
+        try {
+            const csrfRes = await fetch("/api/auth/csrf", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                credentials: "include",
+                cache: "no-store",
+            });
+            const csrfData = csrfRes.ok ? await csrfRes.json().catch(() => null) : null;
+            const csrf = csrfData?.csrf ?? null;
+
+            const res = await fetch(`/api/app-builder/${appDeployWizardAppId}/deploy`, {
+                method: "POST",
+                headers: {
+                    ...(csrf ? { "x-csrf": csrf } : {}),
+                },
+                credentials: "include",
+            });
+
+            const data = await res.json().catch(() => ({} as any));
+            if (!res.ok || !data?.ok) {
+                throw new Error(data?.error || `Deploy failed (HTTP ${res.status})`);
+            }
+
+            const url = String(data?.url || data?.previewUrl || "").trim();
+            if (!url) throw new Error("Deploy completed but no URL was returned.");
+            setAppDeployWizardLiveUrl(url);
+        } catch (e: any) {
+            setAppDeployWizardError(e?.message || "Deploy failed.");
+        } finally {
+            setAppDeployWizardBusy(false);
+        }
+    }, [appDeployWizardAppId, appDeployWizardBusy, isVercelConnected, user]);
+
+    useEffect(() => {
+        if (!appDeployWizardOpen) return;
+        if (appDeployWizardStep !== 3) return;
+        if (!autoAppDeployTriggeredRef.current) return;
+
+        autoAppDeployTriggeredRef.current = false;
+        void deployAppLive({ force: true });
+    }, [appDeployWizardOpen, appDeployWizardStep, deployAppLive]);
 
 
 
@@ -1971,7 +2112,7 @@ export default function PreviewPage(): JSX.Element {
             const url = typeof opts?.url === "string" ? opts.url : "";
             setAppWizardUrl(url);
             setAppWizardSeedRenderId(opts?.seedRenderId ?? null);
-            setAppWizardSource("website");
+            setAppWizardSource("sample");
             setAppWizardPrompt("");
             setAppWizardError(null);
             setAppWizardBusy(false);
@@ -4672,6 +4813,71 @@ export default function PreviewPage(): JSX.Element {
         [checkoutBusy, deployWizardRenderId, deployWizardProjectName, step5SaleEndsAt],
     );
 
+    const startProCheckoutForAppDeploy = useCallback(
+        async (opts?: { exitOffer?: boolean; exitOfferReason?: "close" | "back" | "nav" | "outside" | "esc" }) => {
+            if (checkoutBusy) return;
+            if (!appDeployWizardAppId) return;
+            setCheckoutBusy(true);
+
+            try {
+                const csrfRes = await fetch("/api/auth/csrf", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    credentials: "include",
+                    cache: "no-store",
+                });
+
+                const csrfData = csrfRes.ok ? await csrfRes.json().catch(() => null) : null;
+                const csrf = csrfData?.csrf ?? null;
+
+                let offerPayload: any = {};
+                if (opts?.exitOffer) {
+                    const endsAt = step5SaleEndsAt;
+                    if (typeof endsAt === "number" && Date.now() <= endsAt) {
+                        offerPayload = {
+                            offer: "exit40",
+                            offerEndsAt: endsAt,
+                            offerReason: opts.exitOfferReason || "close",
+                            offerPromoCode: EXIT_OFFER_PROMO_CODE,
+                        };
+                    }
+                }
+
+                const res = await fetch("/api/billing/create-checkout-session", {
+                    method: "POST",
+                    headers: {
+                        "content-type": "application/json",
+                        ...(csrf ? { "x-csrf": csrf } : {}),
+                    },
+                    credentials: "include",
+                    body: JSON.stringify({
+                        plan: "pro",
+                        returnAppId: appDeployWizardAppId,
+                        returnStep: 3,
+                        ...offerPayload,
+                    }),
+                });
+
+                if (res.status === 401) {
+                    const next = encodeURIComponent("/dashboard/view?upgraded=1");
+                    window.location.href = `/login?next=${next}`;
+                    return;
+                }
+
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok || !data.url) {
+                    await showAlert(data?.error || "Unable to start checkout.", "Checkout Error");
+                    return;
+                }
+
+                window.location.href = data.url;
+            } finally {
+                setCheckoutBusy(false);
+            }
+        },
+        [checkoutBusy, appDeployWizardAppId, step5SaleEndsAt],
+    );
+
 
     return (
         <main className="min-h-screen bg-white">
@@ -5172,6 +5378,7 @@ export default function PreviewPage(): JSX.Element {
                             setAppBuilderOpen(false);
                             setCurrentAppId(null);
                         }}
+                        onDeploy={(app) => openAppDeployWizard(app)}
                     />
                 )}
 
@@ -5180,7 +5387,7 @@ export default function PreviewPage(): JSX.Element {
                     {appWizardOpen && (
                         <motion.div
                             key="app-wizard"
-                            className="fixed inset-0 z-[11400]"
+                            className="fixed inset-0 z-[18000]"
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
@@ -5364,13 +5571,18 @@ export default function PreviewPage(): JSX.Element {
                                                     </button>
                                                     <button
                                                         type="button"
-                                                        onClick={() => setAppWizardSource("website")}
-                                                        className={`w-full rounded-xl border p-4 text-left transition ${appWizardSource === "website"
-                                                            ? "border-[#f55f2a] bg-[#f55f2a]/5"
-                                                            : "border-neutral-200 bg-white hover:bg-neutral-50"
-                                                            }`}
+                                                        onClick={() => {
+                                                            // Disabled (coming soon)
+                                                        }}
+                                                        disabled
+                                                        className="w-full rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-left opacity-60 cursor-not-allowed"
                                                     >
-                                                        <div className="text-sm font-semibold text-neutral-900">Build from this URL</div>
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <div className="text-sm font-semibold text-neutral-900">Build from this URL</div>
+                                                            <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                                                                Coming soon
+                                                            </span>
+                                                        </div>
                                                         <div className="mt-1 text-xs text-neutral-600 break-all">
                                                             {appWizardUrl || targetUrl || "(no URL selected)"}
                                                         </div>
@@ -5378,46 +5590,31 @@ export default function PreviewPage(): JSX.Element {
 
                                                     <button
                                                         type="button"
-                                                        onClick={() => setAppWizardSource("prompt")}
-                                                        className={`w-full rounded-xl border p-4 text-left transition ${appWizardSource === "prompt"
-                                                            ? "border-[#f55f2a] bg-[#f55f2a]/5"
-                                                            : "border-neutral-200 bg-white hover:bg-neutral-50"
-                                                            }`}
+                                                        onClick={() => {
+                                                            // Disabled (coming soon)
+                                                        }}
+                                                        disabled
+                                                        className="w-full rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-left opacity-60 cursor-not-allowed"
                                                     >
-                                                        <div className="text-sm font-semibold text-neutral-900">Build from a prompt</div>
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <div className="text-sm font-semibold text-neutral-900">Build from a prompt</div>
+                                                            <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                                                                Coming soon
+                                                            </span>
+                                                        </div>
                                                         <div className="mt-1 text-xs text-neutral-600">Describe the app and we’ll generate the first version.</div>
                                                     </button>
                                                 </div>
 
-                                                {appWizardSource === "prompt" ? (
-                                                    <div className="space-y-2">
-                                                        <textarea
-                                                            value={appWizardPrompt}
-                                                            onChange={(e) => setAppWizardPrompt(e.target.value)}
-                                                            placeholder="e.g. A simple CRM for my sales team with contacts, notes, and tasks…"
-                                                            className="w-full min-h-[110px] rounded-xl border border-neutral-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#f55f2a]/30"
-                                                        />
-                                                        <button
-                                                            type="button"
-                                                            onClick={submitAppWizardPrompt}
-                                                            disabled={appWizardBusy}
-                                                            className="w-full rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
-                                                            style={{ backgroundColor: ACCENT }}
-                                                        >
-                                                            {appWizardBusy ? "Creating…" : "Create app"}
-                                                        </button>
-                                                    </div>
-                                                ) : (
-                                                    <button
-                                                        type="button"
-                                                        onClick={appWizardSource === "sample" ? submitAppWizardSample : submitAppWizardWebsite}
-                                                        disabled={appWizardBusy}
-                                                        className="w-full rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
-                                                        style={{ backgroundColor: ACCENT }}
-                                                    >
-                                                        {appWizardBusy ? "Creating…" : "Create app"}
-                                                    </button>
-                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={submitAppWizardSample}
+                                                    disabled={appWizardBusy}
+                                                    className="w-full rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
+                                                    style={{ backgroundColor: ACCENT }}
+                                                >
+                                                    {appWizardBusy ? "Creating…" : "Create app"}
+                                                </button>
                                             </div>
                                         )}
                                     </div>
@@ -5447,6 +5644,306 @@ export default function PreviewPage(): JSX.Element {
                                             >
                                                 Continue
                                             </button>
+                                        ) : null}
+                                    </div>
+                                </motion.div>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                {/* app deploy wizard */}
+                <AnimatePresence>
+                    {appDeployWizardOpen && (
+                        <motion.div
+                            key="app-deploy-wizard"
+                            className="fixed inset-0 z-[18050]"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                        >
+                            <motion.div
+                                className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+                                onClick={closeAppDeployWizard}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 0.18 }}
+                            />
+
+                            <div className="absolute inset-0 flex items-center justify-center px-4 sm:px-6">
+                                <motion.div
+                                    className="relative w-full max-w-md overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-xl"
+                                    initial={{ opacity: 0, y: 24, scale: 0.96 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    exit={{ opacity: 0, y: 16, scale: 0.96 }}
+                                    transition={{ duration: 0.22, ease: [0.23, 0.82, 0.25, 1] }}
+                                >
+                                    <div className="relative p-5 pt-6">
+                                        <div className="mb-3 flex items-center justify-between gap-3">
+                                            <div className="flex items-center gap-2">
+                                                <div
+                                                    className="flex h-8 w-8 items-center justify-center rounded-2xl"
+                                                    style={{ background: ACCENT }}
+                                                >
+                                                    <Rocket className="h-4 w-4 text-white" />
+                                                </div>
+                                                <div>
+                                                    <p className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+                                                        Web app deploy
+                                                    </p>
+                                                    <p className="text-lg font-semibold text-neutral-900">
+                                                        {appDeployWizardAppName ? `Deploy ${appDeployWizardAppName}` : "Deploy your web app"}
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <button
+                                                type="button"
+                                                onClick={closeAppDeployWizard}
+                                                className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200"
+                                                title="Close"
+                                            >
+                                                <svg
+                                                    xmlns="http://www.w3.org/2000/svg"
+                                                    viewBox="0 0 20 20"
+                                                    fill="currentColor"
+                                                    className="h-4 w-4 text-neutral-700"
+                                                >
+                                                    <path
+                                                        fillRule="evenodd"
+                                                        d="M4.47 4.47a.75.75 0 011.06 0L10 8.94l4.47-4.47a.75.75 0 111.06 1.06L11.06 10l4.47 4.47a.75.75 0 11-1.06 1.06L10 11.06l-4.47 4.47a.75.75 0 11-1.06-1.06L8.94 10 4.47 5.53a.75.75 0 010-1.06z"
+                                                        clipRule="evenodd"
+                                                    />
+                                                </svg>
+                                            </button>
+                                        </div>
+
+                                        {appDeployWizardError ? (
+                                            <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                                                {appDeployWizardError}
+                                            </div>
+                                        ) : null}
+
+                                        {appDeployWizardStep === 1 ? (
+                                            <div className="space-y-3">
+                                                <p className="text-sm text-neutral-600">
+                                                    Connect Vercel to deploy a live URL.
+                                                </p>
+
+                                                <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-[11px] text-neutral-700">
+                                                    <span className="font-semibold text-neutral-800">Status:</span>{" "}
+                                                    {isVercelChecking
+                                                        ? "Checking connection…"
+                                                        : isVercelConnected
+                                                            ? "Connected"
+                                                            : "Not connected"}
+                                                </div>
+
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            if (!isVercelConnected) {
+                                                                // Reuse the website/app wizard connect handler.
+                                                                void handleConnectVercelForAppWizard();
+                                                                return;
+                                                            }
+
+                                                            if (userTier === "free") {
+                                                                setAppDeployWizardStep(2);
+                                                            } else {
+                                                                setAppDeployWizardStep(3);
+                                                                autoAppDeployTriggeredRef.current = true;
+                                                            }
+                                                        }}
+                                                        className="flex-1 rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
+                                                        style={{ backgroundColor: ACCENT }}
+                                                        disabled={isVercelChecking}
+                                                    >
+                                                        {isVercelConnected ? "Continue" : "Connect Vercel"}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={closeAppDeployWizard}
+                                                        className="rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-800 hover:bg-neutral-50"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : null}
+
+                                        {appDeployWizardStep === 2 ? (
+                                            <div className="space-y-4">
+                                                <div className="rounded-2xl border border-neutral-200 bg-white px-4 py-4 shadow-sm">
+                                                    <div className="flex items-start justify-between gap-3">
+                                                        <div className="min-w-0">
+                                                            <p className="text-lg font-semibold text-neutral-900">
+                                                                Upgrade to publish live apps
+                                                            </p>
+                                                            <p className="mt-1 text-xs text-neutral-600">
+                                                                Includes a free trial. Cancel anytime.
+                                                            </p>
+                                                        </div>
+
+                                                        <div className="flex items-center gap-1 text-[11px] text-neutral-600 shrink-0">
+                                                            <span className="text-amber-500">★★★★★</span>
+                                                            <span className="text-neutral-500">4.9</span>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="mt-4 space-y-2">
+                                                        <div className="flex items-start gap-3 text-[14px] text-neutral-800">
+                                                            <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
+                                                                ✓
+                                                            </span>
+                                                            <span className="leading-snug">Publish live web apps (production URLs)</span>
+                                                        </div>
+
+                                                        <div className="flex items-start gap-3 text-[14px] text-neutral-800">
+                                                            <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
+                                                                ✓
+                                                            </span>
+                                                            <span className="leading-snug">One‑click deploys from the builder</span>
+                                                        </div>
+
+                                                        <div className="flex items-start gap-3 text-[14px] text-neutral-800">
+                                                            <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
+                                                                ✓
+                                                            </span>
+                                                            <span className="leading-snug">Higher limits and faster queue</span>
+                                                        </div>
+
+                                                        <div className="flex items-start gap-3 text-[14px] text-neutral-800">
+                                                            <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
+                                                                ✓
+                                                            </span>
+                                                            <span className="leading-snug">Priority support included</span>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="my-4 flex items-start gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2">
+                                                        <div className="mt-[1px] h-7 w-7 shrink-0 overflow-hidden rounded-full border border-neutral-200 bg-white">
+                                                            <Image
+                                                                src="/images/testimonial-avatar.jpg"
+                                                                alt="Customer avatar"
+                                                                width={28}
+                                                                height={28}
+                                                                className="h-full w-full object-cover"
+                                                                loading="lazy"
+                                                            />
+                                                        </div>
+
+                                                        <div className="min-w-0">
+                                                            <p className="text-[12px] leading-snug text-neutral-800">
+                                                                “I struggled with a slow wordpress site but didn&apos;t have the budget to redo it. This app helped me clone and redeploy it in under 10 minutes, I recommend it to anyone needing a quick landing page”
+                                                            </p>
+                                                            <p className="mt-1 text-[11px] text-neutral-500">Karissa, freelancer</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <motion.button
+                                                    type="button"
+                                                    onClick={() => void startProCheckoutForAppDeploy()}
+                                                    disabled={checkoutBusy}
+                                                    className="w-full rounded-2xl px-5 py-4 text-[15px] font-extrabold text-white shadow-[0_18px_44px_rgba(0,0,0,0.28)] focus:outline-none focus:ring-2 focus:ring-black/10 disabled:cursor-wait disabled:opacity-70"
+                                                    style={{ backgroundColor: ACCENT }}
+                                                    whileHover={{ scale: 1.01 }}
+                                                    whileTap={{ scale: 0.99 }}
+                                                    transition={{ duration: 0.16, ease: "easeOut" }}
+                                                >
+                                                    {checkoutBusy ? "Redirecting to Stripe…" : "Try Pro free and deploy →"}
+                                                </motion.button>
+
+                                                <p className="-mt-1 text-center text-[11px] text-neutral-500">
+                                                    Trial starts today. Cancel anytime before renewal.
+                                                </p>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={closeAppDeployWizard}
+                                                    className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
+                                                >
+                                                    Not now
+                                                </button>
+                                            </div>
+                                        ) : null}
+
+                                        {appDeployWizardStep === 3 ? (
+                                            <div className="space-y-4">
+                                                <p className="text-sm text-neutral-600">
+                                                    {appDeployWizardBusy
+                                                        ? "Deploying to Vercel…"
+                                                        : appDeployWizardLiveUrl
+                                                            ? "Your app is live."
+                                                            : "Ready to deploy."}
+                                                </p>
+
+                                                <div className="flex items-center gap-3 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-sm text-neutral-700">
+                                                    <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-white border border-neutral-300">
+                                                        {appDeployWizardBusy ? (
+                                                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-300 border-t-[rgba(245,95,42,0.95)]" />
+                                                        ) : appDeployWizardLiveUrl ? (
+                                                            <span className="text-base">🎉</span>
+                                                        ) : (
+                                                            <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                                                        )}
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <p className="text-neutral-900">
+                                                            {appDeployWizardBusy
+                                                                ? "Deploying…"
+                                                                : appDeployWizardLiveUrl
+                                                                    ? "Deployed"
+                                                                    : "Ready"}
+                                                        </p>
+                                                        {appDeployWizardLiveUrl ? (
+                                                            <p className="text-[11px] text-neutral-600 break-all">
+                                                                {appDeployWizardLiveUrl}
+                                                            </p>
+                                                        ) : (
+                                                            <p className="text-[11px] text-neutral-600">
+                                                                Deploy creates a production URL in Vercel.
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={closeAppDeployWizard}
+                                                        className="rounded-full border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-600 hover:bg-neutral-50"
+                                                    >
+                                                        Close
+                                                    </button>
+
+                                                    {appDeployWizardLiveUrl ? (
+                                                        <a
+                                                            href={appDeployWizardLiveUrl}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                            className="group flex flex-inline items-center gap-1 rounded-full px-3 py-1.5 text-sm text-white"
+                                                            style={{ backgroundColor: ACCENT }}
+                                                        >
+                                                            <span>View App</span>
+                                                            <Rocket className="h-4 w-4 transform transition-transform duration-150 group-hover:translate-x-0.5" />
+                                                        </a>
+                                                    ) : (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => void deployAppLive()}
+                                                            disabled={appDeployWizardBusy}
+                                                            className="rounded-full px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60"
+                                                            style={{ backgroundColor: ACCENT }}
+                                                        >
+                                                            {appDeployWizardBusy ? "Deploying…" : "Deploy"}
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
                                         ) : null}
                                     </div>
                                 </motion.div>

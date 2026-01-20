@@ -31,6 +31,8 @@ export async function GET(
             files: data.files || {},
             vercelProjectId: data.vercelProjectId,
             previewUrl: data.previewUrl,
+            isDeployed: Boolean((data as any).isDeployed),
+            productionUrl: (data as any).productionUrl || null,
             vercelProtectionBypassSecret: (data as any).vercelProtectionBypassSecret || null,
         });
 

@@ -30,6 +30,8 @@ type AppData = {
     files: { [path: string]: { content: string; lastModified: number } };
     vercelProjectId?: string;
     previewUrl?: string;
+    isDeployed?: boolean;
+    productionUrl?: string | null;
     vercelProtectionBypassSecret?: string | null;
     generationStatus?: "processing" | "ready" | "error";
     generationError?: string;
@@ -205,11 +207,9 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     const [previewMode, setPreviewMode] = useState<PreviewMode>("webcontainer");
     const [vercelConnectOpen, setVercelConnectOpen] = useState(false);
     const [vercelConnectOpening, setVercelConnectOpening] = useState(false);
-    const [deployChoiceOpen, setDeployChoiceOpen] = useState(false);
-    const [deployChoiceBusy, setDeployChoiceBusy] = useState<"preview" | "live" | null>(null);
     const [deployChoiceError, setDeployChoiceError] = useState<string | null>(null);
-    const [lastDeployPreviewUrl, setLastDeployPreviewUrl] = useState<string | null>(null);
     const [lastDeployLiveUrl, setLastDeployLiveUrl] = useState<string | null>(null);
+    const [showDeploySuccess, setShowDeploySuccess] = useState(false);
     const [leftPanelWidth, setLeftPanelWidth] = useState(500); // Default wider AI chat panel
     const [isResizing, setIsResizing] = useState(false);
     const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -698,6 +698,8 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                 }
                 const data = await res.json();
                 setApp(data);
+                const liveUrl = typeof data?.productionUrl === "string" ? data.productionUrl.trim() : "";
+                setLastDeployLiveUrl(liveUrl || null);
                 buildFileTree(data.files);
             } catch (err) {
                 console.error('Error loading app:', err);
@@ -739,8 +741,15 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                     files: mergedFiles,
                                     generationStatus: firebaseData.generationStatus,
                                     generationError: firebaseData.generationError,
+                                    isDeployed: Boolean((firebaseData as any).isDeployed),
+                                    productionUrl: (firebaseData as any).productionUrl || null,
                                     updatedAt: firebaseData.updatedAt
                                 };
+
+                                const nextLiveUrl = typeof (firebaseData as any).productionUrl === "string"
+                                    ? (firebaseData as any).productionUrl.trim()
+                                    : "";
+                                setLastDeployLiveUrl(nextLiveUrl || null);
                                 
                                 // Update file tree if files changed
                                 if (filesChanged) {
@@ -1013,23 +1022,26 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     const handleDeploy = () => {
         if (!app || isDeploying) return;
 
-        // Preserve existing behavior when a parent provides an alternate deploy flow.
-        if (onDeploy) {
-            onDeploy({ id: app.id, name: app.name });
+        const alreadyDeployed = Boolean(app.isDeployed) || Boolean(app.productionUrl);
+        if (!alreadyDeployed) {
+            if (onDeploy) {
+                onDeploy({ id: app.id, name: app.name });
+                return;
+            }
+            void showAlert("First deploy is handled in the dashboard deploy wizard.", "Deploy");
             return;
         }
 
-        setDeployChoiceError(null);
-        setDeployChoiceOpen(true);
+        void runVercelDeployLive();
     };
 
-    const runVercelDeploy = useCallback(async (target: "preview" | "live") => {
+    const runVercelDeployLive = useCallback(async () => {
         if (!appId) return;
-        if (deployChoiceBusy) return;
+        if (isDeploying) return;
 
         setIsDeploying(true);
-        setDeployChoiceBusy(target);
         setDeployChoiceError(null);
+        setShowDeploySuccess(false);
 
         try {
             // Ensure Vercel is connected before attempting either deploy.
@@ -1039,8 +1051,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
             }
 
             const csrf = await ensureSessionAndCsrf().catch(() => null);
-            const endpoint = target === "live" ? "deploy" : "preview";
-            const res = await fetch(`/api/app-builder/${appId}/${endpoint}`, {
+            const res = await fetch(`/api/app-builder/${appId}/deploy`, {
                 method: "POST",
                 headers: csrfHeaders(csrf),
                 credentials: "include",
@@ -1055,23 +1066,18 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
             const url = (data?.url || data?.previewUrl || "").toString().trim();
             if (!url) throw new Error("Deploy completed but no URL was returned.");
 
-            if (target === "live") setLastDeployLiveUrl(url);
-            else setLastDeployPreviewUrl(url);
-
-            // Keep a copy in app state for convenience (even though embedded preview is local now).
-            if (target === "preview") {
-                setApp((prev) => (prev ? { ...prev, previewUrl: url } : prev));
-            }
+            setLastDeployLiveUrl(url);
+            setShowDeploySuccess(true);
+            setTimeout(() => setShowDeploySuccess(false), 3500);
 
             return;
         } catch (err: any) {
             setDeployChoiceError(err?.message || "Deploy failed.");
         } finally {
-            setDeployChoiceBusy(null);
             // Keep deploy disabled for longer to prevent spam
             setTimeout(() => setIsDeploying(false), 5000);
         }
-    }, [appId, deployChoiceBusy, isVercelConnected]);
+    }, [appId, isDeploying, isVercelConnected]);
 
     const startVercelOAuthForPreview = useCallback(() => {
         if (!VERCEL_INTEGRATION_SLUG) {
@@ -1499,26 +1505,22 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                 <div className="w-3 h-3 bg-yellow-400 rounded-full"></div>
                                 <div className="w-3 h-3 bg-green-400 rounded-full"></div>
                             </div>
-                            {(lastDeployPreviewUrl || lastDeployLiveUrl) ? (
+                            {lastDeployLiveUrl ? (
                                 <div className="ml-3 flex items-center gap-2 text-xs">
-                                    {lastDeployPreviewUrl ? (
-                                        <button
-                                            onClick={() => window.open(lastDeployPreviewUrl, "_blank", "noopener,noreferrer")}
-                                            className="px-3 py-1 rounded-full border border-gray-300 hover:bg-gray-50"
-                                            title="Open Vercel preview deployment"
-                                        >
-                                            View preview
-                                        </button>
-                                    ) : null}
-                                    {lastDeployLiveUrl ? (
-                                        <button
-                                            onClick={() => window.open(lastDeployLiveUrl, "_blank", "noopener,noreferrer")}
-                                            className="px-3 py-1 rounded-full border border-gray-300 hover:bg-gray-50"
-                                            title="Open live deployment"
-                                        >
-                                            View live
-                                        </button>
-                                    ) : null}
+                                    <button
+                                        onClick={() => window.open(lastDeployLiveUrl, "_blank", "noopener,noreferrer")}
+                                        className="px-3 py-1 rounded-full border border-gray-300 hover:bg-gray-50"
+                                        title="Open live deployment"
+                                    >
+                                        View live
+                                    </button>
+                                </div>
+                            ) : null}
+
+                            {showDeploySuccess ? (
+                                <div className="ml-auto text-xs font-semibold text-emerald-700 flex items-center gap-1">
+                                    <span className="inline-block animate-pulse">🎉</span>
+                                    Deployed
                                 </div>
                             ) : null}
                         </div>
@@ -1740,91 +1742,6 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                     </div>
                 )}
 
-                {deployChoiceOpen && !onDeploy && (
-                    <div className="fixed inset-0 z-[17000] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-                        <div className="w-full max-w-md rounded-xl bg-white shadow-lg border border-neutral-200 overflow-hidden">
-                            <div className="p-4 border-b bg-gradient-to-b from-gray-50 to-white flex items-center justify-between">
-                                <div className="space-y-0.5">
-                                    <div className="font-semibold text-neutral-900">Deploy</div>
-                                    <div className="text-[11px] text-neutral-600">Choose preview or live deployment.</div>
-                                </div>
-                                <button
-                                    onClick={() => {
-                                        if (deployChoiceBusy) return;
-                                        setDeployChoiceOpen(false);
-                                        setDeployChoiceError(null);
-                                    }}
-                                    className="p-2 hover:bg-gray-200 rounded transition-colors"
-                                    title="Close"
-                                >
-                                    <X className="w-4 h-4" />
-                                </button>
-                            </div>
-
-                            <div className="p-4 space-y-3">
-                                {deployChoiceError ? (
-                                    <div className="text-sm text-red-600">{deployChoiceError}</div>
-                                ) : null}
-
-                                <div className="grid grid-cols-2 gap-2">
-                                    <button
-                                        onClick={() => void runVercelDeploy("preview")}
-                                        disabled={!!deployChoiceBusy}
-                                        className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full border border-neutral-200 hover:bg-neutral-50 disabled:opacity-50"
-                                    >
-                                        {deployChoiceBusy === "preview" ? (
-                                            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-black/20 border-t-black/70" />
-                                        ) : null}
-                                        Deploy preview
-                                    </button>
-
-                                    <button
-                                        onClick={() => void runVercelDeploy("live")}
-                                        disabled={!!deployChoiceBusy}
-                                        className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full bg-[#F55F2A] text-white hover:bg-[#E04E1B] disabled:opacity-50"
-                                    >
-                                        {deployChoiceBusy === "live" ? (
-                                            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                                        ) : null}
-                                        Deploy live
-                                    </button>
-                                </div>
-
-                                {(lastDeployPreviewUrl || lastDeployLiveUrl) ? (
-                                    <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-[11px] text-neutral-700 space-y-1">
-                                        <div className="font-semibold text-neutral-800">Latest links</div>
-                                        {lastDeployPreviewUrl ? (
-                                            <div>
-                                                Preview:{" "}
-                                                <button
-                                                    onClick={() => window.open(lastDeployPreviewUrl, "_blank", "noopener,noreferrer")}
-                                                    className="underline"
-                                                >
-                                                    Open
-                                                </button>
-                                            </div>
-                                        ) : null}
-                                        {lastDeployLiveUrl ? (
-                                            <div>
-                                                Live:{" "}
-                                                <button
-                                                    onClick={() => window.open(lastDeployLiveUrl, "_blank", "noopener,noreferrer")}
-                                                    className="underline"
-                                                >
-                                                    Open
-                                                </button>
-                                            </div>
-                                        ) : null}
-                                    </div>
-                                ) : null}
-
-                                <div className="text-[11px] text-neutral-600">
-                                    Embedded preview is always local. Deploys create real Vercel URLs.
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
             </div>
         </div>
     );
