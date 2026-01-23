@@ -1,94 +1,98 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSessionAndMaybeCsrf } from "../_lib/route-guard";
+import { assertAppBuilderScope } from "../_lib/appBuilderScope";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const FLY_API_BASE = "https://api.machines.dev/v1";
+async function fetchFlyMachineState(app: string, machineId: string) {
+    const token = (() => {
+        const raw = (process.env.FLY_API_TOKEN || "").trim();
+        if (!raw) return "";
 
-function jsonError(message: string, status: number, extra?: Record<string, any>) {
-  return NextResponse.json({ ok: false, error: message, ...extra }, { status });
-}
+        // Some local envs accidentally include multiple tokens separated by commas.
+        // Fly expects a single bearer token.
+        const first = raw
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)[0];
 
-async function fetchFlyMachine(app: string, machineId: string) {
-  const token = process.env.FLY_API_TOKEN;
-  if (!token) {
-    return { ok: false as const, reason: "missing_token" as const };
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 4000);
-
-  try {
-    const res = await fetch(`${FLY_API_BASE}/apps/${encodeURIComponent(app)}/machines/${encodeURIComponent(machineId)}`, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/json",
-      },
-      cache: "no-store",
-      signal: controller.signal,
-    });
-
-    const json = await res.json().catch(() => null);
-
-    if (!res.ok) {
-      if (res.status === 404) {
-        return {
-          ok: false as const,
-          reason: "not_found" as const,
-          status: res.status,
-          body: json,
-        };
-      }
-      return {
-        ok: false as const,
-        reason: "fly_error" as const,
-        status: res.status,
-        body: json,
-      };
+        return (first || raw).trim().replace(/^"|"$/g, "");
+    })();
+    if (!token) {
+        return { ok: false as const, status: 500, error: "FLY_API_TOKEN not set" };
     }
 
-    const state = (json as any)?.state as string | undefined;
-    return {
-      ok: true as const,
-      state,
-      raw: json,
-    };
-  } finally {
-    clearTimeout(timeout);
-  }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+
+    try {
+        const url = `https://api.machines.dev/v1/apps/${encodeURIComponent(app)}/machines/${encodeURIComponent(machineId)}`;
+        const res = await fetch(url, {
+            method: "GET",
+            headers: {
+                "accept": "application/json",
+                "authorization": `Bearer ${token}`,
+            },
+            cache: "no-store",
+            signal: controller.signal,
+        });
+
+        const json = await res.json().catch(() => ({} as any));
+        if (!res.ok) {
+            const msg = String(
+                (json as any)?.error ||
+                (json as any)?.message ||
+                `Fly error (HTTP ${res.status})`
+            );
+            return {
+                ok: false as const,
+                status: res.status,
+                error:
+                    (process.env.NODE_ENV !== "production" && (res.status === 401 || res.status === 403))
+                        ? `${msg} (Fly API rejected token; ensure FLY_API_TOKEN is a single valid token and restart dev server)`
+                        : msg,
+            };
+        }
+
+        const state = typeof (json as any)?.state === "string" ? (json as any).state : undefined;
+        return { ok: true as const, status: 200, state };
+    } catch (err: any) {
+        const aborted = err?.name === "AbortError";
+        return { ok: false as const, status: aborted ? 504 : 502, error: aborted ? "Timeout" : "Fetch failed" };
+    } finally {
+        clearTimeout(timeout);
+    }
 }
 
-export async function GET(request: NextRequest) {
-  const url = new URL(request.url);
-  const app = url.searchParams.get("app")?.trim() || "";
-  const machineId = url.searchParams.get("machineId")?.trim() || "";
+export async function GET(req: NextRequest) {
+    const url = new URL(req.url);
+    const app = (url.searchParams.get("app") || "").trim();
+    const machineId = (url.searchParams.get("machineId") || "").trim();
+    const appId = (url.searchParams.get("appId") || "").trim();
 
-  if (!app || !machineId) {
-    return jsonError("Missing app or machineId", 400);
-  }
+    if (!app || !machineId || !appId) {
+        return NextResponse.json(
+            { ok: false, reason: "missing_params", error: "Missing app, machineId, or appId" },
+            { status: 400 }
+        );
+    }
 
-  return requireSessionAndMaybeCsrf(
-    request,
-    async () => {
-      const result = await fetchFlyMachine(app, machineId);
+    return requireSessionAndMaybeCsrf(
+        req,
+        async ({ uid, req: authedReq }) => {
+            assertAppBuilderScope(authedReq, uid, appId);
 
-      if (!result.ok) {
-        if (result.reason === "missing_token") {
-          return NextResponse.json({ ok: false, reason: "missing_token" }, { status: 200 });
-        }
-        if (result.reason === "not_found") {
-          return NextResponse.json({ ok: false, reason: "not_found" }, { status: 200 });
-        }
-        return jsonError("Fly Machines API error", 502, {
-          flyStatus: result.status,
-          flyBody: result.body,
-        });
-      }
+            const r = await fetchFlyMachineState(app, machineId);
+            if (!r.ok) {
+                return NextResponse.json(
+                    { ok: false, reason: "fly_error", error: r.error },
+                    { status: r.status }
+                );
+            }
 
-      return NextResponse.json({ ok: true, app, machineId, state: result.state }, { status: 200 });
-    },
-    { csrf: false, methods: ["GET"] }
-  );
+            return NextResponse.json({ ok: true, state: r.state });
+        },
+        { csrf: false, methods: ["GET"] }
+    );
 }

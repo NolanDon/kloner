@@ -21,9 +21,11 @@ interface WebContainerRunnerProps {
   forceFreshStart?: number;
   uiUpdatingToken?: number;
   uiUpdatingCancelToken?: number;
+  navigatePath?: string | null;
+  navigatePathToken?: number;
 }
 
-export default function WebContainerRunner({ appId, files, onFileChange, reloadToken, restartToken, reconnectToken, forceFreshStart, uiUpdatingToken, uiUpdatingCancelToken }: WebContainerRunnerProps) {
+export default function WebContainerRunner({ appId, files, onFileChange, reloadToken, restartToken, reconnectToken, forceFreshStart, uiUpdatingToken, uiUpdatingCancelToken, navigatePath, navigatePathToken }: WebContainerRunnerProps) {
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
@@ -56,6 +58,25 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
   const statusPollTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Track status polling timeout
   const iframeLoadTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Track iframe load timeout
   const automaticRetryTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Track automatic retry timeout
+
+  const stopAllTimers = () => {
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
+    if (automaticRetryTimeoutRef.current) {
+      clearTimeout(automaticRetryTimeoutRef.current);
+      automaticRetryTimeoutRef.current = null;
+    }
+    if (statusPollTimeoutRef.current) {
+      clearTimeout(statusPollTimeoutRef.current);
+      statusPollTimeoutRef.current = null;
+    }
+    if (iframeLoadTimeoutRef.current) {
+      clearTimeout(iframeLoadTimeoutRef.current);
+      iframeLoadTimeoutRef.current = null;
+    }
+  };
   
   // Helper function to get CSRF token from cookies
   const ensureSessionAndCsrf = async (): Promise<string | null> => {
@@ -232,7 +253,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
     try {
       const headers = await getAuthenticatedHeaders();
       const res = await fetch(
-        `/api/fly-machine-status?app=${encodeURIComponent(app)}&machineId=${encodeURIComponent(machineId)}`,
+        `/api/fly-machine-status?app=${encodeURIComponent(app)}&machineId=${encodeURIComponent(machineId)}&appId=${encodeURIComponent(appId)}`,
         { method: "GET", headers, credentials: "include", cache: "no-store" }
       );
       const data = await res.json().catch(() => null);
@@ -257,8 +278,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
   };
   
   const handleAssetFailure = () => {
-    // Don't count failures if app already loaded successfully
-    if (appLoadedSuccessfullyRef.current) return;
+    // Don't count failures if iframe already loaded successfully
+    if (iframeLoadedSuccessfullyRef.current) return;
     
     assetFailureCountRef.current += 1;
     console.log(`Asset failure detected (${assetFailureCountRef.current}/${maxAssetFailures})`);
@@ -275,23 +296,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
     }
   };
   const retryApp = () => {
-    // Clear any pending retry timeout
-    if (retryTimeoutRef.current) {
-      clearTimeout(retryTimeoutRef.current);
-      retryTimeoutRef.current = null;
-    }
-    
-    // Clear any pending automatic retry timeout
-    if (automaticRetryTimeoutRef.current) {
-      clearTimeout(automaticRetryTimeoutRef.current);
-      automaticRetryTimeoutRef.current = null;
-    }
-    
-    // Clear any pending status polling
-    if (statusPollTimeoutRef.current) {
-      clearTimeout(statusPollTimeoutRef.current);
-      statusPollTimeoutRef.current = null;
-    }
+    stopAllTimers();
     
     setStartAttempt(0);
     setError(null);
@@ -321,6 +326,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
   const lastReconnectTokenRef = useRef<number | null>(null);
   const lastUiUpdatingTokenRef = useRef<number | null>(null);
   const lastUiUpdatingCancelTokenRef = useRef<number | null>(null);
+  const lastNavigatePathTokenRef = useRef<number | null>(null);
   const lastPreviewUrlForLoadRef = useRef<string | null>(null);
   const reconnectOnlyRef = useRef(false);
   const uiUpdatingPollRunIdRef = useRef(0);
@@ -362,15 +368,16 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
 
   const renderLiveStatusLine = (statusData: any) => {
     if (!statusData) return null;
-    const stage = String(statusData?.uiStage || statusData?.status || '').trim();
+    // const stage = String(statusData?.uiStage || statusData?.status || '').trim();
     const title = String(statusData?.uiTitle || '').trim();
     const detail = String(statusData?.uiMessage || '').trim();
     const message = [title, detail].filter(Boolean).join(' — ');
     const updatedAtMs = getUpdatedAtMs(statusData?.updatedAt);
     const timeLabel = typeof updatedAtMs === 'number' ? formatStatusTime(updatedAtMs) : '';
-    if (!stage && !message && !timeLabel) return null;
-
-    const left = [stage, timeLabel].filter(Boolean).join(' ');
+    // if (!stage && !message && !timeLabel) return null;
+    if (!message && !timeLabel) return null;
+    
+    const left = [timeLabel].filter(Boolean).join(' ');
     return (
       <div className="mt-6 w-full max-w-2xl rounded-2xl border border-black/10 bg-white/70 px-6 py-4 text-left shadow-sm backdrop-blur-sm">
         <div className="text-sm text-black/80">
@@ -405,6 +412,27 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
     }
   };
 
+  const withPreviewPath = (url: string, path: string) => {
+    const raw = String(path || '').trim();
+    if (!raw) return url;
+    // Strip any accidental query/hash.
+    const cleaned = raw.split('?')[0].split('#')[0];
+    const normalized = ('/' + cleaned).replace(/\/+/g, '/').replace(/\s+/g, '');
+
+    try {
+      const u = new URL(url);
+      const segs = u.pathname.split('/').filter(Boolean);
+      if (segs.length >= 2 && segs[0] === 'preview') {
+        const base = `/${segs[0]}/${segs[1]}`;
+        u.pathname = normalized === '/' ? base : `${base}${normalized}`;
+        return u.toString();
+      }
+      return url;
+    } catch {
+      return url;
+    }
+  };
+
   // Track a stable base URL for reloads (strip only cache-busting params).
   useEffect(() => {
     if (!previewUrl) return;
@@ -417,6 +445,22 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
       proxyBaseRef.current = String(previewUrl).split('?')[0] || previewUrl;
     }
   }, [previewUrl]);
+
+  // Allow the parent to navigate the preview iframe to a specific path under /preview/:code.
+  // This is used for a visible HMR smoke-test page.
+  useEffect(() => {
+    if (typeof navigatePathToken !== 'number') return;
+    if (navigatePathToken <= 0) return;
+    if (lastNavigatePathTokenRef.current === navigatePathToken) return;
+    lastNavigatePathTokenRef.current = navigatePathToken;
+
+    if (!navigatePath) return;
+    if (!proxyBaseRef.current) return;
+
+    const nextBase = withPreviewPath(proxyBaseRef.current, navigatePath);
+    proxyBaseRef.current = nextBase;
+    setPreviewUrl(withCacheBust(nextBase));
+  }, [navigatePath, navigatePathToken]);
 
   // Rebuild UX: show a stable "UI updating" overlay and poll status until the
   // machine becomes reachable again.
@@ -705,17 +749,9 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
 
   // Monitor iframe loading and trigger rebuilds if it fails
   useEffect(() => {
-    if (!previewUrl) return;
-
-    const loadTimeout = setTimeout(() => {
-      // If iframe hasn't loaded successfully after 30 seconds, assume asset failures
-      if (!iframeLoadedSuccessfullyRef.current) {
-        console.log('Iframe load timeout - triggering rebuild check...');
-        handleAssetFailure();
-      }
-    }, 30000); // 30 seconds to load
-
-    return () => clearTimeout(loadTimeout);
+    // Disabled: superseded by the dedicated iframe load timeout effect below.
+    // The old behavior could trigger rebuilds even when the preview was actually reachable.
+    return;
   }, [previewUrl]);
 
   useEffect(() => {
@@ -1304,25 +1340,21 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
                 console.log('Backend timed out but provided URL, attempting direct connection:', statusData.url);
                 
                 try {
-                  // Try a quick fetch to see if the URL is actually reachable
-                  const response = await fetch(statusData.url, { 
-                    method: 'HEAD', 
-                    mode: 'no-cors',
-                    signal: AbortSignal.timeout(5000) // 5 second timeout for direct check
-                  }).catch(() => ({ ok: true })); // Treat network errors as potentially ok for no-cors
-                  
-                  // If we get here without throwing, assume the URL is reachable
-                  console.log('Direct connection successful, proceeding with URL:', statusData.url);
-                  setPreviewUrl(statusData.url);
-                  setLoadingStatus('App ready! Loading interface...');
-                  setIsPolling(false);
-                  appLoadedSuccessfullyRef.current = true;
-                  pollingRetryCountRef.current = 0;
-                  if (retryTimeoutRef.current) {
-                    clearTimeout(retryTimeoutRef.current);
-                    retryTimeoutRef.current = null;
+                  const reachable = await probePreviewUrl(appId, statusData.url);
+                  if (reachable) {
+                    console.log('Direct probe successful, proceeding with URL:', statusData.url);
+                    iframeLoadedSuccessfullyRef.current = false;
+                    setPreviewUrl(statusData.url);
+                    setLoadingStatus('App ready! Loading interface...');
+                    setIsPolling(false);
+                    setError(null);
+                    setCanRetry(false);
+                    appLoadedSuccessfullyRef.current = true;
+                    pollingRetryCountRef.current = 0;
+                    stopAllTimers();
+                    return;
                   }
-                  return;
+                  console.log('Direct probe indicates URL is not reachable yet:', statusData.url);
                 } catch (directError) {
                   console.log('Direct connection also failed:', directError);
                   // Fall through to normal error handling
@@ -1344,24 +1376,21 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
               if (statusData.url && !['pending', 'archiving', 'uploading_archive', 'creating_machine'].includes(statusData.status)) {
                 console.log(`Backend reports ${statusData.status} but has URL, checking if app is actually ready:`, statusData.url);
                 try {
-                  // Quick check if the URL is reachable
-                  await fetch(statusData.url, { 
-                    method: 'HEAD', 
-                    mode: 'no-cors',
-                    signal: AbortSignal.timeout(3000)
-                  }).catch(() => ({ ok: true }));
-                  
-                  console.log('URL is reachable during build, connecting early to show build progress');
-                  setPreviewUrl(statusData.url);
-                  setLoadingStatus(`Connecting to machine ${statusData.machineId}... (showing build progress)`);
-                  setIsPolling(false);
-                  appLoadedSuccessfullyRef.current = true;
-                  pollingRetryCountRef.current = 0;
-                  if (retryTimeoutRef.current) {
-                    clearTimeout(retryTimeoutRef.current);
-                    retryTimeoutRef.current = null;
+                  const reachable = await probePreviewUrl(appId, statusData.url);
+                  if (reachable) {
+                    console.log('URL is reachable during build, connecting early to show build progress');
+                    iframeLoadedSuccessfullyRef.current = false;
+                    setPreviewUrl(statusData.url);
+                    setLoadingStatus(`Connecting to machine ${statusData.machineId}... (showing build progress)`);
+                    setIsPolling(false);
+                    setError(null);
+                    setCanRetry(false);
+                    appLoadedSuccessfullyRef.current = true;
+                    pollingRetryCountRef.current = 0;
+                    stopAllTimers();
+                    return;
                   }
-                  return;
+                  console.log('URL not yet reachable, continuing to poll');
                 } catch {
                   // Not reachable yet, continuing to poll
                   console.log('URL not yet reachable, continuing to poll');
@@ -1413,8 +1442,9 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
               setIsPolling(false);
               setCurrentStatusData(null); // Clear status data
               setLoadingStatus(''); // Clear loading status on timeout
-              setLoadingStatus('Build is taking longer than expected. The app may still be starting up...');
+              setError('Build is taking longer than expected. The app may still be starting up. Try Reconnect, or use Rebuild to start a new machine.');
               setCanRetry(true);
+              stopAllTimers();
               return; // Don't throw, just return to avoid getting stuck
             } else {
               // Retry polling
@@ -1698,9 +1728,18 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
       iframeLoadTimeoutRef.current = setTimeout(() => {
         if (!iframeLoadedSuccessfullyRef.current) {
           console.log('Iframe load timeout - URL may be unreachable:', previewUrl);
-          setError(`Unable to load preview at ${previewUrl}. The deployment may still be starting up or has failed. Please try again in a few minutes.`);
+          setError(`Unable to load preview at ${previewUrl}. The deployment may still be starting up or has failed. Try Reconnect, or use Rebuild to start a new machine.`);
           setCanRetry(true);
+          setIsLoading(false);
+          setIsPolling(false);
+          setConnectingToExisting(false);
+          setCurrentStatusData(null);
+          setLoadingStatus('');
+          setIsUiUpdating(false);
+          iframeLoadedSuccessfullyRef.current = false;
+          appLoadedSuccessfullyRef.current = false;
           setPreviewUrl(null); // Hide the iframe
+          stopAllTimers();
         }
       }, 30000); // 30 second timeout
     }
@@ -1742,8 +1781,17 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
             onLoad={() => {
               console.log('Iframe loaded successfully - preview should now be active at:', previewUrl);
-              setLoadingStatus(''); // Clear loading status when app is ready
-              iframeLoadedSuccessfullyRef.current = true; // Mark iframe as successfully loaded
+              // Treat iframe onLoad as a strong signal that the preview is interactive.
+              // Clear any stale error/polling state so the UI isn't stuck in "failed".
+              setError(null);
+              setCanRetry(false);
+              setIsLoading(false);
+              setIsPolling(false);
+              setConnectingToExisting(false);
+              setLoadingStatus('');
+              iframeLoadedSuccessfullyRef.current = true;
+              appLoadedSuccessfullyRef.current = true;
+              stopAllTimers();
 
               // During rebuild updating, keep the overlay up until we've
               // intentionally reloaded to the post-rebuild URL.
@@ -1765,7 +1813,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
 
               // Add a small delay then try to validate the deployment
               setTimeout(() => {
-                console.log('Preview loaded successfully - sticky routing via tsc_preview cookie should be active');
+                console.log('Machined Preview loaded successfully - sticky routing via tsc_preview cookie should be active');
                 // For now, just log that the deployment seems to be working
                 // CORS prevents us from doing detailed content checks
               }, 2000);
@@ -1776,6 +1824,13 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
               if (previewUrl.includes('tracksite-hub.fly.dev')) {
                 setError(`Preview failed to load. This may be due to cookie/session issues or the preview not being ready yet. Automatically refreshing in 10 seconds...`);
                 setCanRetry(true);
+                setIsLoading(false);
+                setIsPolling(false);
+                setConnectingToExisting(false);
+                setCurrentStatusData(null);
+                setLoadingStatus('');
+                iframeLoadedSuccessfullyRef.current = false;
+                appLoadedSuccessfullyRef.current = false;
                 setPreviewUrl(null); // Hide the iframe
                 // Automatically retry after 10 seconds for hub domain errors (only if not already scheduled)
                 if (!retryScheduledRef.current && totalAttemptsRef.current < maxTotalAttempts) {
@@ -1789,6 +1844,13 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
               } else if (previewUrl.includes('.fly.dev') || previewUrl.includes('localhost')) {
                 setError(`Unable to connect to ${previewUrl}. The deployment may still be starting up or has failed. Please try again in a few minutes.`);
                 setCanRetry(true);
+                setIsLoading(false);
+                setIsPolling(false);
+                setConnectingToExisting(false);
+                setCurrentStatusData(null);
+                setLoadingStatus('');
+                iframeLoadedSuccessfullyRef.current = false;
+                appLoadedSuccessfullyRef.current = false;
                 setPreviewUrl(null); // Hide the iframe
               } else {
                 handleAssetFailure();

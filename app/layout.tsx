@@ -79,16 +79,7 @@ export default function RootLayout({
           src="https://www.googletagmanager.com/gtag/js?id=G-FVKJJK0379"
           strategy="afterInteractive"
         />
-        <Script id="google-analytics" strategy="afterInteractive">
-          {`
-            window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
-            gtag('js', new Date());
-            gtag('config', 'G-FVKJJK0379', {
-              page_path: window.location.pathname,
-            });
-          `}
-        </Script>
+        <Script src="/ga-init.js" strategy="afterInteractive" />
       </body>
     </html>
   );

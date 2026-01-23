@@ -98,66 +98,12 @@ export async function GET(
           // Keep Next.js root-relative asset URLs inside the proxy scope.
           .replace(/(<[^>]*\s(?:src|href|action|formaction|data-src|data-href)\s*=\s*["'])\/_next\//g, `$1${proxyBase}/_next/`);
         
-        // Add a base tag to set the correct base URL for the iframe
+        // Add a shim script early in <head> (externalized to avoid CSP inline-script reports)
         if (rewrittenHtml.includes('<head>')) {
-          rewrittenHtml = rewrittenHtml.replace('<head>', `<head><script>
-(function() {
-  // Override createInitialRouterState globally before Next.js loads
-  var originalCreateInitialRouterState;
-  
-  Object.defineProperty(window, 'createInitialRouterState', {
-    get: function() {
-      return function(options) {
-        console.log('Intercepted createInitialRouterState call with options:', options);
-        try {
-          // Ensure required properties exist with safe defaults
-          if (!options) options = {};
-          
-          // Set safe defaults for router state
-          options.initialCanonicalUrl = options.initialCanonicalUrl || '/';
-          options.initialTree = options.initialTree || ['', {}, { children: ['page', {}, { children: ['', {}, {}] }] }];
-          options.initialParallelRoutes = options.initialParallelRoutes || {};
-          options.initialSeedData = options.initialSeedData || {};
-          
-          // Normalize canonical URL
-          if (typeof options.initialCanonicalUrl === 'string') {
-            try {
-              const url = new URL(options.initialCanonicalUrl, 'http://localhost:3000');
-              options.initialCanonicalUrl = url.pathname || '/';
-            } catch (e) {
-              options.initialCanonicalUrl = '/';
-            }
-          }
-          
-          console.log('Modified options:', options);
-          
-          // Return a basic router state
-          return {
-            tree: options.initialTree,
-            canonicalUrl: options.initialCanonicalUrl,
-            parallelRoutes: options.initialParallelRoutes,
-            seedData: options.initialSeedData
-          };
-        } catch (error) {
-          console.error('Error in createInitialRouterState override:', error);
-          return {
-            tree: ['', {}, { children: ['page', {}, { children: ['', {}, {}] }] }],
-            canonicalUrl: '/',
-            parallelRoutes: {},
-            seedData: {}
-          };
-        }
-      };
-    },
-    set: function(value) {
-      originalCreateInitialRouterState = value;
-    },
-    configurable: true
-  });
-  
-  console.log('createInitialRouterState global override installed');
-})();
-</script>`);
+          rewrittenHtml = rewrittenHtml.replace(
+            '<head>',
+            '<head><script src="/proxy/next-router-shim.js"></script>'
+          );
         }
         
         // Also modify __NEXT_DATA__ script tag if it exists
