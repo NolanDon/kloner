@@ -193,6 +193,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     const [isPreviewRestarting, setIsPreviewRestarting] = useState(false);
     const [previewRestartError, setPreviewRestartError] = useState<string | null>(null);
     const [isDevApplyTesting, setIsDevApplyTesting] = useState(false);
+    const [devHmrLastRunFailed, setDevHmrLastRunFailed] = useState(false);
     const [devHmrDebug, setDevHmrDebug] = useState<
         | null
         | {
@@ -677,6 +678,10 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
 
         setIsDevApplyTesting(true);
         try {
+            // Hide any previous debug unless something fails again.
+            setDevHmrLastRunFailed(false);
+            setDevHmrDebug(null);
+
             // Prefer sending the locally stored container code when available.
             let storedCode = "";
             try {
@@ -781,6 +786,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                             "Test HMR",
                         );
                     }
+                    setDevHmrLastRunFailed(true);
                     return;
                 }
 
@@ -835,12 +841,14 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
 
                 // Unknown inspect failure.
                 const msg = String((idata as any)?.error || `Inspect failed (HTTP ${ires.status})`);
+                setDevHmrLastRunFailed(true);
                 void showAlert(`${msg}\n\n(Details logged in console)`, "Test HMR");
                 return;
             }
 
             if (!inspectOk) {
                 const msg = String((inspectData as any)?.error || "Inspect timed out waiting for preview readiness.");
+                setDevHmrLastRunFailed(true);
                 void showAlert(`${msg}\n\n(Details logged in console)`, "Test HMR");
                 return;
             }
@@ -854,6 +862,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
             if (!chosenRoot || routerType === "unknown") {
                 const fallback = fallbackExistingEntry();
                 if (!fallback) {
+                    setDevHmrLastRunFailed(true);
                     void showAlert(
                         "Could not determine the Next.js router root from inspect (no app/pages dirs detected). Open a standard Next.js project template or start the preview, then retry.",
                         "Test HMR",
@@ -942,10 +951,12 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                             "Apply test",
                         );
                     }
+                    setDevHmrLastRunFailed(true);
                     return;
                 }
 
                 if (res.status === 409) {
+                    setDevHmrLastRunFailed(true);
                     void showAlert(
                         "Preview returned 409. Check console for hub response (+ __debug) — this is usually MACHINE_NOT_READY or PROXY_NOT_READY.",
                         "Test HMR",
@@ -954,6 +965,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                 }
 
                 const msg = String((data as any)?.error || `Apply failed (HTTP ${res.status})`);
+                setDevHmrLastRunFailed(true);
                 void showAlert(`${msg}\n\n(Details logged in console)`, "Test HMR");
                 return;
             }
@@ -1006,6 +1018,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
 
                 if (!wsOk) {
                     const extra = `wsUpgrades=${s2.wsUpgrades ?? "?"}\nlastWs.url=${s2.lastWsUrl || "(none)"}`;
+                    setDevHmrLastRunFailed(true);
                     void showAlert(
                         `HMR websocket not connected; changes will not hot-update.\n\n${extra}\n\n(See the debug panel next to the button.)`,
                         "Test HMR",
@@ -1015,6 +1028,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
 
                 if (!appliedSeen) {
                     const extra = `lastApply.requestId=${s2.lastApplyRequestId || "(none)"}\nlastApply.wrote=${String(s2.lastApplyWrote ?? "(none)")}\npaths=${s2.lastApplyPaths.join(", ") || "(none)"}`;
+                    setDevHmrLastRunFailed(true);
                     void showAlert(
                         `Apply succeeded, but inspect.lastApply did not confirm the expected path.\n\n${extra}\n\n(See the debug panel next to the button.)`,
                         "Test HMR",
@@ -1022,13 +1036,13 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                     return;
                 }
 
-                void showAlert(
-                    "Inspect OK + apply OK + HMR websocket connected. Click Test HMR again to see the timestamp/hue hot-update.",
-                    "Test HMR",
-                );
+                // Success: no popup and no debug panel.
+                setDevHmrDebug(null);
+                setDevHmrLastRunFailed(false);
             }
         } catch (err: any) {
             console.error("[dev-apply-test] failed", err);
+            setDevHmrLastRunFailed(true);
             void showAlert(err?.message || "Test HMR failed.", "Test HMR");
         } finally {
             setIsDevApplyTesting(false);
@@ -1973,9 +1987,9 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                     {isDevApplyTesting ? "Testing…" : "Test HMR"}
                                 </button>
 
-                                {devHmrDebug ? (
-                                    <div className="hidden lg:block max-w-[560px] px-3 py-2 rounded-2xl border border-black/10 bg-white/70 text-[11px] leading-snug">
-                                        <div className="font-semibold text-black/80">HMR debug</div>
+                                {devHmrDebug && devHmrLastRunFailed ? (
+                                    <div className="hidden lg:block max-w-[560px] px-3 py-2 rounded-2xl border border-red-200 bg-red-50/80 text-[11px] leading-snug">
+                                        <div className="font-semibold text-red-700">HMR check failed (debug)</div>
                                         <div className="text-black/60">root: {devHmrDebug.chosenRoot} ({devHmrDebug.routerType})</div>
                                         <div className="text-black/60">file: {devHmrDebug.appliedPath}</div>
                                         <div className="text-black/60">
