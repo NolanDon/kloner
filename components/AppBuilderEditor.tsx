@@ -307,6 +307,8 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
         appRef.current = app;
     }, [app]);
 
+    const suppressNextFilesReplaceApplyRef = useRef(false);
+
     const autoPreviewRunIdRef = useRef(0);
     const didAutoPreviewStartRef = useRef(false);
 
@@ -594,6 +596,174 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
             }
         },
         [appId, restartLocalPreview, showAlert]
+    );
+
+    const getStoredPreviewCode = useCallback((): string => {
+        if (!appId) return "";
+        try {
+            const raw = localStorage.getItem(`webcontainer_${appId}`);
+            if (!raw) return "";
+            const parsed = JSON.parse(raw);
+            const code = typeof parsed?.code === "string" ? parsed.code.trim() : "";
+            return code;
+        } catch {
+            return "";
+        }
+    }, [appId]);
+
+    const applyDiffToWebcontainerAndMaybeRestart = useCallback(
+        async (prevFiles: AppData["files"], nextFiles: AppData["files"], { interactive }: { interactive: boolean }) => {
+            if (!appId) return;
+
+            const prev = prevFiles || ({} as any);
+            const next = nextFiles || ({} as any);
+
+            const allPaths = new Set<string>([...Object.keys(prev), ...Object.keys(next)]);
+            const edits: Array<{ path: string; content?: string; delete?: boolean }> = [];
+
+            for (const p of allPaths) {
+                const prevContent = typeof (prev as any)?.[p]?.content === "string" ? (prev as any)[p].content : undefined;
+                const nextContent = typeof (next as any)?.[p]?.content === "string" ? (next as any)[p].content : undefined;
+
+                if (nextContent === undefined && prevContent !== undefined) {
+                    edits.push({ path: p, delete: true });
+                    continue;
+                }
+
+                if (typeof nextContent === "string" && nextContent !== prevContent) {
+                    edits.push({ path: p, content: nextContent });
+                }
+            }
+
+            if (edits.length === 0) return;
+
+            const estimateBytes = (batch: Array<{ path: string; content?: string; delete?: boolean }>) => {
+                let bytes = 0;
+                for (const e of batch) {
+                    const p = String((e as any)?.path || "");
+                    bytes += p.length;
+                    if (!(e as any)?.delete && typeof (e as any)?.content === "string") {
+                        bytes += String((e as any).content).length;
+                    }
+                }
+                return bytes;
+            };
+
+            const buildBatches = (all: typeof edits) => {
+                // Server enforces 200 files and ~2MB. Keep headroom.
+                const maxFiles = 150;
+                const maxBytes = 1_500_000;
+                const batches: typeof edits[] = [];
+                let current: typeof edits = [];
+
+                for (const e of all) {
+                    const next = [...current, e];
+                    if (current.length >= maxFiles || estimateBytes(next) > maxBytes) {
+                        if (current.length > 0) batches.push(current);
+                        current = [e];
+                    } else {
+                        current = next;
+                    }
+                }
+                if (current.length > 0) batches.push(current);
+                return batches;
+            };
+
+            const batches = buildBatches(edits);
+
+            try {
+                const csrf = await fetchFreshCsrf();
+                let activeCode = getStoredPreviewCode();
+                let overallNeedsRebuild = false;
+
+                for (const batch of batches) {
+                    const res = await fetch("/api/v1/webcontainer/apply", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
+                        },
+                        credentials: "include",
+                        cache: "no-store",
+                        body: JSON.stringify({ appId, ...(activeCode ? { code: activeCode } : {}), files: batch }),
+                    });
+
+                    const data = await res.json().catch(() => ({} as any));
+                    const explicitOkFalse =
+                        data && typeof data === "object" && !Array.isArray(data) && "ok" in data && (data as any).ok === false;
+
+                    if (!res.ok || explicitOkFalse) {
+                        const msg = String((data as any)?.error || `Live update failed (HTTP ${res.status})`);
+                        if (interactive) void showAlert(msg, "Restore");
+                        return;
+                    }
+
+                    // Keep our local preview code fresh if the hub rotated it.
+                    const nextCode = String(
+                        (data as any)?.code ||
+                            (data as any)?.previewCode ||
+                            (data as any)?.preview_code ||
+                            activeCode ||
+                            "",
+                    ).trim();
+                    if (nextCode) {
+                        activeCode = nextCode;
+                        try {
+                            localStorage.setItem(
+                                `webcontainer_${appId}`,
+                                JSON.stringify({ code: nextCode, timestamp: Date.now() }),
+                            );
+                        } catch {
+                            // ignore
+                        }
+                    }
+
+                    // Update dedupe state for applied files.
+                    for (const e of batch) {
+                        const p = String((e as any)?.path || "").trim();
+                        if (!p) continue;
+                        if ((e as any)?.delete) {
+                            delete lastAppliedContentRef.current[p];
+                        } else if (typeof (e as any)?.content === "string") {
+                            lastAppliedContentRef.current[p] = String((e as any).content);
+                        }
+                    }
+
+                    const needsRebuild = Boolean(
+                        (data as any)?.needsRebuild ||
+                            (data as any)?.needs_rebuild ||
+                            (data as any)?.requiresRebuild ||
+                            (data as any)?.requires_rebuild ||
+                            (data as any)?.requiresRestart ||
+                            (data as any)?.requires_restart,
+                    );
+                    overallNeedsRebuild = overallNeedsRebuild || needsRebuild;
+                }
+
+                if (overallNeedsRebuild && activeCode) {
+                    const rres = await fetch(`/api/v1/preview/${encodeURIComponent(activeCode)}/restart`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
+                        },
+                        credentials: "include",
+                        cache: "no-store",
+                        body: JSON.stringify({ appId }),
+                    });
+                    const rdata = await rres.json().catch(() => ({} as any));
+                    const explicitOkFalse =
+                        rdata && typeof rdata === "object" && !Array.isArray(rdata) && "ok" in rdata && (rdata as any).ok === false;
+                    if (!rres.ok || explicitOkFalse) {
+                        const msg = String((rdata as any)?.error || `Restart failed (HTTP ${rres.status})`);
+                        if (interactive) void showAlert(msg, "Restart needed");
+                    }
+                }
+            } catch (err: any) {
+                if (interactive) void showAlert(String(err?.message || "Restore apply failed."), "Restore");
+            }
+        },
+        [appId, fetchFreshCsrf, getStoredPreviewCode, showAlert]
     );
 
     const runDevApplyTest = useCallback(async () => {
@@ -1463,6 +1633,18 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
 
     const handleFilesReplaceFromServer = useCallback(
         (nextFiles: { [path: string]: { content: string; lastModified: number } }) => {
+            if (suppressNextFilesReplaceApplyRef.current) {
+                suppressNextFilesReplaceApplyRef.current = false;
+                setApp((prev) => (prev ? { ...prev, files: nextFiles } : null));
+                buildFileTree(nextFiles as any);
+                if (currentFile) {
+                    const next = nextFiles[currentFile]?.content;
+                    if (typeof next === "string") setCode(next);
+                    else setCode("");
+                }
+                return;
+            }
+
             // Live-apply the diff so the running preview reflects server-driven file updates
             // (restore points, server sync) without requiring a manual Save.
             try {
@@ -1494,6 +1676,14 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
             }
         },
         [currentFile, queuePreviewApply]
+    );
+
+    const handleRestoreApplied = useCallback(
+        async ({ previousFiles, restoredFiles }: { previousFiles: AppData["files"]; restoredFiles: AppData["files"] }) => {
+            suppressNextFilesReplaceApplyRef.current = true;
+            await applyDiffToWebcontainerAndMaybeRestart(previousFiles, restoredFiles, { interactive: true });
+        },
+        [applyDiffToWebcontainerAndMaybeRestart]
     );
 
     function canonicalizeEditPath(
@@ -2222,6 +2412,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                     files={app.files}
                                     onFileEdit={handleFileEditFromAI}
                                     onFilesReplace={handleFilesReplaceFromServer}
+                                    onRestoreApplied={handleRestoreApplied}
                                     creditError={agentCreditError}
                                 />
                             ) : (

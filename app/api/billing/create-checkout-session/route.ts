@@ -93,6 +93,9 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         return NextResponse.json({ error: "Missing plan" }, { status: 400 });
     }
 
+    // Only Pro gets a free trial. Agency starts paid immediately.
+    const includeTrial = plan === "pro";
+
     const isProd = process.env.NODE_ENV === "production";
 
     const priceId =
@@ -260,7 +263,7 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         ...(discounts?.length ? { discounts } : { allow_promotion_codes: true }),
 
         subscription_data: {
-            trial_period_days: TRIAL_DAYS,
+            ...(includeTrial ? { trial_period_days: TRIAL_DAYS } : {}),
             metadata: baseMeta,
         },
     });

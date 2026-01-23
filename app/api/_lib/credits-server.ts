@@ -14,6 +14,42 @@ type PeekResult = {
     monthlyLimit: number | null;
 };
 
+function toDateFromFirestoreTimestampLike(v: any): Date | null {
+    if (!v) return null;
+    if (v instanceof Date) return v;
+    if (typeof v?.toDate === "function") {
+        try {
+            return v.toDate();
+        } catch {
+            return null;
+        }
+    }
+    return null;
+}
+
+function toFirestoreTsOrDate(date: Date): any {
+    const ts = (admin as any)?.firestore?.Timestamp;
+    if (ts && typeof ts.fromDate === "function") return ts.fromDate(date);
+    return date;
+}
+
+function getActiveCreditsOverride(data: any, now: Date): { tier: UserTier; until: Date } | null {
+    if (!data || typeof data !== "object") return null;
+    const rawTier = typeof data.creditsOverrideTier === "string" ? data.creditsOverrideTier : null;
+    const until = toDateFromFirestoreTimestampLike(data.creditsOverrideUntil);
+
+    if (!rawTier || !until) return null;
+    if (!(now < until)) return null;
+
+    const t = rawTier.toLowerCase();
+    const tier: UserTier =
+        t === "free" || t === "pro" || t === "agency" || t === "enterprise" || t === "unknown"
+            ? (t as UserTier)
+            : "free";
+
+    return { tier, until };
+}
+
 /**
  * Map server terminology to core credit kinds:
  *  - "preview"  => "preview"
@@ -97,8 +133,13 @@ export async function peekUserCredit(
     const userRef = db.collection("kloner_users").doc(uid);
     const snap = await userRef.get();
 
+    const now = new Date();
+    const data = snap.exists ? ((snap.data() as any) || {}) : {};
+    const override = getActiveCreditsOverride(data, now);
+    const effectiveTier = override?.tier || tier;
+
     const coreKind = toCoreKind(kind);
-    const defaultLimit = monthlyLimitFor(tier, coreKind);
+    const defaultLimit = monthlyLimitFor(effectiveTier, coreKind);
     const cost = creditCost(kind);
 
     // Unlimited tier
@@ -127,7 +168,6 @@ export async function peekUserCredit(
         bucket,
     });
 
-    const now = new Date();
     const periodEndTs = bucket.periodEnd;
     const periodEndDate: Date | null =
         periodEndTs && typeof periodEndTs.toDate === "function"
@@ -152,7 +192,8 @@ export async function peekUserCredit(
             remaining,
         });
     } else {
-        remaining = bucket.remaining;
+        // Cap existing remaining to the effective tier limit (important when downgrading mid-period).
+        remaining = Math.min(bucket.remaining, defaultLimit);
         console.log("[credits] peekUserCredit use existing", {
             uid,
             kind,
@@ -188,21 +229,10 @@ export async function consumeUserCredit(
     const userRef = db.collection("kloner_users").doc(uid);
 
     const coreKind = toCoreKind(kind);
-    const limitForTier = monthlyLimitFor(tier, coreKind);
     const cost = creditCost(kind);
-
-    // Unlimited tier: no writes, always ok
-    if (limitForTier === 0) {
-        return {
-            ok: true,
-            remaining: null,
-            monthlyLimit: null,
-        };
-    }
 
     const now = new Date();
     const periodEnd = currentPeriodEnd();
-    const periodEndTs = admin.firestore.Timestamp.fromDate(periodEnd);
 
     const fieldName = getCreditsFieldName(kind);
 
@@ -211,6 +241,20 @@ export async function consumeUserCredit(
 
     await db.runTransaction(async (tx) => {
         const snap = await tx.get(userRef);
+        const data = snap.exists ? ((snap.data() as any) || {}) : {};
+        const override = getActiveCreditsOverride(data, now);
+        const effectiveTier = override?.tier || tier;
+        const limitForTier = monthlyLimitFor(effectiveTier, coreKind);
+
+        // Unlimited tier: no writes, always ok
+        if (limitForTier === 0) {
+            finalRemaining = 0;
+            success = true;
+            return;
+        }
+
+        const effectivePeriodEndDate = override?.until && override.until < periodEnd ? override.until : periodEnd;
+        const periodEndTs = toFirestoreTsOrDate(effectivePeriodEndDate);
         const bucket = getCreditsBucket(snap, kind);
 
         console.log("[credits] consumeUserCredit txn bucket", {
@@ -243,7 +287,8 @@ export async function consumeUserCredit(
                 resetTo: remaining,
             });
         } else {
-            remaining = bucket.remaining;
+            // Cap existing remaining to the effective tier limit (important when downgrading mid-period).
+            remaining = Math.min(bucket.remaining, limitForTier);
             console.log("[credits] consumeUserCredit existing in txn", {
                 uid,
                 kind,

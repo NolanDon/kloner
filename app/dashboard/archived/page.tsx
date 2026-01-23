@@ -410,11 +410,7 @@ export default function ArchivedPage() {
                     )}
 
                     <div className="mt-10">
-                        <h2 className="text-lg font-semibold text-neutral-900">Archived Apps</h2>
-                        <p className="mt-1 max-w-2xl text-sm text-neutral-600">
-                            Archived apps are hidden from your dashboard. Unarchive anytime to resume editing.
-                        </p>
-
+                        <h2 className="text-lg font-semibold text-neutral-900">Apps</h2>
                         {appsLoading ? (
                             <div className="mt-4 text-sm text-neutral-500">Loading…</div>
                         ) : apps.length === 0 ? (

@@ -5,12 +5,57 @@ import {
     refreshTierFromStripeForUid,
     type UserTier,
 } from "../../_lib/billing";
+import { monthlyLimitFor } from "@/src/lib/credits";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const db = admin.firestore();
+
+function toFirestoreTsOrDate(date: Date): any {
+    const ts = (admin as any)?.firestore?.Timestamp;
+    if (ts && typeof ts.fromDate === "function") return ts.fromDate(date);
+    return date;
+}
+
+function endOfCurrentMonthUtc(): Date {
+    const now = new Date();
+    const year = now.getUTCFullYear();
+    const month = now.getUTCMonth();
+    const firstNextMonth = new Date(Date.UTC(year, month + 1, 1, 0, 0, 0, 0));
+    return new Date(firstNextMonth.getTime() - 1);
+}
+
+function aiEditsBucketFromUserData(data: any): any {
+    if (!data || typeof data !== "object") return {};
+    return data["credits.aiEdits"] || (data.credits && data.credits.aiEdits) || {};
+}
+
+function toDateFromFirestoreTimestampLike(v: any): Date | null {
+    if (!v) return null;
+    if (v instanceof Date) return v;
+    if (typeof v?.toDate === "function") {
+        try {
+            return v.toDate();
+        } catch {
+            return null;
+        }
+    }
+    return null;
+}
+
+function getActiveTierOverride(data: any, now: Date): UserTier | null {
+    if (!data || typeof data !== "object") return null;
+    const rawTier = typeof data.tierOverrideTier === "string" ? data.tierOverrideTier : "";
+    const until = toDateFromFirestoreTimestampLike(data.tierOverrideUntil);
+    if (!rawTier || !until) return null;
+    if (!(now < until)) return null;
+
+    const t = rawTier.toLowerCase();
+    if (t === "free" || t === "pro" || t === "agency") return t as UserTier;
+    return "free";
+}
 
 export async function GET(req: NextRequest) {
     return requireSessionAndMaybeCsrf(
@@ -27,6 +72,22 @@ export async function GET(req: NextRequest) {
                 const snap = await userRef.get();
                 if (snap.exists) {
                     userData = snap.data();
+                }
+
+                const now = new Date();
+                const overrideTier = getActiveTierOverride(userData, now);
+                if (overrideTier) {
+                    return NextResponse.json(
+                        {
+                            uid,
+                            tier: overrideTier,
+                            stripeStatus: userData.stripeStatus ?? null,
+                            currentPeriodEnd: userData.stripeCurrentPeriodEnd ?? null,
+                            cancelAtPeriodEnd: userData.stripeCancelAtPeriodEnd ?? null,
+                            source: userData.tierSource ?? "override",
+                        },
+                        { status: 200 },
+                    );
                 }
 
                 const source: string | undefined = userData.tierSource;
@@ -55,6 +116,45 @@ export async function GET(req: NextRequest) {
                     userData = freshSnap.exists ? freshSnap.data() : {};
                 } else {
                     tier = (userData.tier as UserTier) || "free";
+                }
+
+                // Self-heal: keep credits.aiEdits in sync with the tier.
+                // This fixes cases where preview/snapshot look correct (due to usage) but aiEdits stayed at free-tier.
+                try {
+                    const expected = monthlyLimitFor(tier, "edit");
+                    const bucket = aiEditsBucketFromUserData(userData);
+                    const currentMonthly =
+                        bucket && typeof bucket.monthlyLimit === "number" && bucket.monthlyLimit >= 0
+                            ? bucket.monthlyLimit
+                            : null;
+
+                    if (currentMonthly !== expected) {
+                        const stripePeriodEndSec =
+                            typeof userData?.stripeCurrentPeriodEnd === "number" ? userData.stripeCurrentPeriodEnd : null;
+                        const periodEndDate =
+                            stripePeriodEndSec && stripePeriodEndSec > 0
+                                ? new Date(stripePeriodEndSec * 1000)
+                                : endOfCurrentMonthUtc();
+
+                        await userRef.set(
+                            {
+                                "credits.aiEdits":
+                                    expected === 0
+                                        ? { monthlyLimit: 0, remaining: null, periodEnd: toFirestoreTsOrDate(periodEndDate) }
+                                        : {
+                                            monthlyLimit: expected,
+                                            remaining: expected,
+                                            periodEnd: toFirestoreTsOrDate(periodEndDate),
+                                        },
+                            },
+                            { merge: true },
+                        );
+
+                        const after = await userRef.get();
+                        userData = after.exists ? after.data() : userData;
+                    }
+                } catch (e) {
+                    console.error("billing/tier aiEdits self-heal failed", e);
                 }
 
                 return NextResponse.json(

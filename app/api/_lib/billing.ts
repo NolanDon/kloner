@@ -172,6 +172,7 @@ export async function setUserTierFromStripe(
         // Compute new limits for this tier from central credit config
         const previewLimit = monthlyLimitFor(tier, "preview" as CoreCreditKind);
         const screenshotLimit = monthlyLimitFor(tier, "screenshot" as CoreCreditKind);
+        const editLimit = monthlyLimitFor(tier, "edit" as CoreCreditKind);
 
         // Decide what period end to attach to reset credits
         const periodEndDate = computeCreditPeriodEnd(stripeData);
@@ -189,6 +190,37 @@ export async function setUserTierFromStripe(
                 screenshotLimit === 0
                     ? { monthlyLimit: 0, remaining: null, periodEnd: periodEndTs }
                     : { monthlyLimit: screenshotLimit, remaining: screenshotLimit, periodEnd: periodEndTs };
+        }
+
+        if (editLimit !== undefined && editLimit !== null) {
+            update["credits.aiEdits"] =
+                editLimit === 0
+                    ? { monthlyLimit: 0, remaining: null, periodEnd: periodEndTs }
+                    : { monthlyLimit: editLimit, remaining: editLimit, periodEnd: periodEndTs };
+        }
+    } else {
+        // Self-heal: if aiEdits bucket is out of sync with the tier, fix it without forcing
+        // a full credit reset for other buckets.
+        const editLimit = monthlyLimitFor(tier, "edit" as CoreCreditKind);
+        if (editLimit !== undefined && editLimit !== null) {
+            const rawBucket =
+                existingData["credits.aiEdits"] ||
+                (existingData.credits && (existingData.credits as any).aiEdits) ||
+                null;
+
+            const currentMonthly =
+                rawBucket && typeof rawBucket.monthlyLimit === "number" && rawBucket.monthlyLimit >= 0
+                    ? rawBucket.monthlyLimit
+                    : null;
+
+            if (currentMonthly !== editLimit) {
+                const periodEndDate = computeCreditPeriodEnd(stripeData);
+                const periodEndTs = admin.firestore.Timestamp.fromDate(periodEndDate);
+                update["credits.aiEdits"] =
+                    editLimit === 0
+                        ? { monthlyLimit: 0, remaining: null, periodEnd: periodEndTs }
+                        : { monthlyLimit: editLimit, remaining: editLimit, periodEnd: periodEndTs };
+            }
         }
     }
 
@@ -259,6 +291,26 @@ export async function refreshTierFromStripeForUid(uid: string): Promise<Tier> {
     const userRef = db.collection("kloner_users").doc(uid);
     const snap = await userRef.get();
     const data = snap.exists ? (snap.data() as any) : {};
+
+    // Manual override (e.g., cancel during trial) wins over Stripe status.
+    // This prevents trial cancel → refresh → trialing (paid) from re-enabling access.
+    try {
+        const rawTier = typeof data?.tierOverrideTier === "string" ? data.tierOverrideTier : "";
+        const until = data?.tierOverrideUntil;
+        const untilDate: Date | null =
+            until && typeof until.toDate === "function"
+                ? (until.toDate() as Date)
+                : until instanceof Date
+                    ? until
+                    : null;
+        if (rawTier && untilDate && new Date() < untilDate) {
+            const t = rawTier.toLowerCase();
+            const overrideTier: Tier = t === "pro" || t === "agency" ? (t as Tier) : "free";
+            return overrideTier;
+        }
+    } catch {
+        // ignore
+    }
     const customerId: string | undefined = data.stripeCustomerId;
 
     if (!customerId) {

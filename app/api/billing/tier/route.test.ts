@@ -80,6 +80,7 @@ describe("GET /api/billing/tier", () => {
                             getCount += 1;
                             return getCount === 1 ? first : second;
                         },
+                        set: async () => {},
                     }),
                 }),
             }),
@@ -109,6 +110,7 @@ describe("GET /api/billing/tier", () => {
                 collection: () => ({
                     doc: () => ({
                         get: async () => only,
+                        set: async () => {},
                     }),
                 }),
             }),
@@ -122,6 +124,55 @@ describe("GET /api/billing/tier", () => {
 
         expect(refreshTierFromStripeForUid).toHaveBeenCalledTimes(0);
         expect(body.tier).toBe("pro");
+    });
+
+    it("self-heals credits.aiEdits when tier is pro but aiEdits is still free-tier", async () => {
+        const stored = {
+            tierSource: "stripe",
+            tier: "pro",
+            stripeStatus: "active",
+            stripeSubscriptionId: "sub_123",
+            stripeCurrentPeriodEnd: 1_700_000_000,
+            credits: {
+                preview: { monthlyLimit: 450, remaining: 450, periodEnd: new Date() },
+                snapshot: { monthlyLimit: 100, remaining: 100, periodEnd: new Date() },
+                aiEdits: { monthlyLimit: 15, remaining: 15, periodEnd: new Date() },
+            },
+        };
+
+        const store = { ...stored } as any;
+        let setCalls = 0;
+
+        const adminMock: any = {
+            apps: [{}],
+            firestore: () => ({
+                collection: () => ({
+                    doc: () => ({
+                        get: async () => snap(store),
+                        set: async (data: any, _opts?: { merge?: boolean }) => {
+                            setCalls += 1;
+                            // emulate dot-path merge for the one field we care about
+                            if (data && data["credits.aiEdits"]) {
+                                store.credits = store.credits || {};
+                                store.credits.aiEdits = { ...data["credits.aiEdits"] };
+                            }
+                        },
+                    }),
+                }),
+            }),
+        };
+
+        jest.doMock("firebase-admin", () => ({ __esModule: true, default: adminMock }));
+
+        const { GET } = await import("./route");
+        const res: any = await GET({ url: "https://example.com/api/billing/tier" } as any);
+        const body = await res.json();
+
+        expect(refreshTierFromStripeForUid).toHaveBeenCalledTimes(0);
+        expect(body.tier).toBe("pro");
+        expect(setCalls).toBe(1);
+        expect(store.credits.aiEdits.monthlyLimit).toBe(300);
+        expect(store.credits.aiEdits.remaining).toBe(300);
     });
 
     it("refresh=1 forces refresh", async () => {
@@ -149,6 +200,7 @@ describe("GET /api/billing/tier", () => {
                             getCount += 1;
                             return getCount === 1 ? first : second;
                         },
+                        set: async () => {},
                     }),
                 }),
             }),

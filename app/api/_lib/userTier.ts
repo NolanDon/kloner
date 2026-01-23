@@ -2,6 +2,31 @@
 import { getAdminDb } from "./auth";
 import { refreshTierFromStripeForUid, type UserTier } from "./billing";
 
+function toDateFromFirestoreTimestampLike(v: any): Date | null {
+    if (!v) return null;
+    if (v instanceof Date) return v;
+    if (typeof v?.toDate === "function") {
+        try {
+            return v.toDate();
+        } catch {
+            return null;
+        }
+    }
+    return null;
+}
+
+function getActiveTierOverride(data: any, now: Date): UserTier | null {
+    if (!data || typeof data !== "object") return null;
+    const rawTier = typeof data.tierOverrideTier === "string" ? data.tierOverrideTier : "";
+    const until = toDateFromFirestoreTimestampLike(data.tierOverrideUntil);
+    if (!rawTier || !until) return null;
+    if (!(now < until)) return null;
+
+    const t = rawTier.toLowerCase();
+    if (t === "free" || t === "pro" || t === "agency") return t as UserTier;
+    return "free";
+}
+
 /**
  * Authoritative tier lookup.
  *
@@ -18,6 +43,12 @@ export async function getAuthoritativeUserTier(uid: string): Promise<UserTier> {
     const snap = await userRef.get();
 
     let userData: any = snap.exists ? snap.data() : {};
+
+    // Fraud prevention / manual overrides (e.g., cancel during trial) win.
+    const now = new Date();
+    const overrideTier = getActiveTierOverride(userData, now);
+    if (overrideTier) return overrideTier;
+
     const source: string | undefined = userData.tierSource;
 
     if (!source || source !== "stripe") {

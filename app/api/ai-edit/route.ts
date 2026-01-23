@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../_lib/route-guard";
 import { monthlyLimitFor, type UserTier } from "@/src/lib/credits";
+import { getAuthoritativeUserTier } from "../_lib/userTier";
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
 import { randomUUID, createHash } from "crypto";
 import { Resend } from "resend";
@@ -107,6 +108,35 @@ function hashIp(ip: string) {
 
 function nowMs() {
     return Date.now();
+}
+
+function toDateFromFirestoreTimestampLike(v: any): Date | null {
+    if (!v) return null;
+    if (v instanceof Date) return v;
+    if (typeof v?.toDate === "function") {
+        try {
+            return v.toDate();
+        } catch {
+            return null;
+        }
+    }
+    return null;
+}
+
+function getActiveCreditsOverride(data: any, now: Date): { tier: UserTier; until: Date } | null {
+    if (!data || typeof data !== "object") return null;
+    const rawTier = typeof data.creditsOverrideTier === "string" ? data.creditsOverrideTier : null;
+    const until = toDateFromFirestoreTimestampLike(data.creditsOverrideUntil);
+    if (!rawTier || !until) return null;
+    if (!(now < until)) return null;
+
+    const t = rawTier.toLowerCase();
+    const tier: UserTier =
+        t === "free" || t === "pro" || t === "agency" || t === "enterprise" || t === "unknown"
+            ? (t as UserTier)
+            : "free";
+
+    return { tier, until };
 }
 
 function buildAbuseAlertHtml(payload: {
@@ -455,7 +485,7 @@ async function reserveAiEditCreditsInline(opts: {
     const { db, uid, tier, cost, now, requestId, debug } = opts;
 
     const limit = monthlyLimitFor(tier, "edit");
-    if (!limit) {
+    if (limit === 0 || limit === null || limit === undefined) {
         return { ok: true, remaining: null, limit: 0, periodEnd: null };
     }
 
@@ -492,9 +522,13 @@ async function reserveAiEditCreditsInline(opts: {
 
                 const active = periodEndDate !== null && now < periodEndDate;
                 const existingRemaining = typeof bucket.remaining === "number" && bucket.remaining >= 0 ? bucket.remaining : null;
+                const existingMonthlyLimit =
+                    typeof bucket.monthlyLimit === "number" && bucket.monthlyLimit >= 0 ? bucket.monthlyLimit : null;
+                const limitChanged = existingMonthlyLimit !== null && existingMonthlyLimit !== limit;
 
                 const endDate = active ? (periodEndDate as Date) : nextPeriodEndUtc(now);
-                const startRemaining = active && existingRemaining !== null ? existingRemaining : limit;
+                const startRemaining =
+                    active && existingRemaining !== null && !limitChanged ? existingRemaining : limit;
 
                 if (debugPayload) {
                     tx.set(evtRef, { debug: debugPayload, updatedAt: now }, { merge: true });
@@ -515,9 +549,12 @@ async function reserveAiEditCreditsInline(opts: {
 
         const active = periodEndDate !== null && now < periodEndDate;
         const existingRemaining = typeof bucket.remaining === "number" && bucket.remaining >= 0 ? bucket.remaining : null;
+        const existingMonthlyLimit =
+            typeof bucket.monthlyLimit === "number" && bucket.monthlyLimit >= 0 ? bucket.monthlyLimit : null;
+        const limitChanged = existingMonthlyLimit !== null && existingMonthlyLimit !== limit;
 
         const endDate = active ? (periodEndDate as Date) : nextPeriodEndUtc(now);
-        const startRemaining = active && existingRemaining !== null ? existingRemaining : limit;
+        const startRemaining = active && existingRemaining !== null && !limitChanged ? existingRemaining : limit;
 
         if (startRemaining < cost) {
             tx.set(
@@ -599,7 +636,7 @@ async function refundAiEditCreditsInline(opts: {
     const { db, uid, tier, cost, now, requestId, reason, errorCode, errorStatus } = opts;
 
     const limit = monthlyLimitFor(tier, "edit");
-    if (!limit) return;
+    if (limit === 0 || limit === null || limit === undefined) return;
 
     const userRef = db.collection("kloner_users").doc(uid);
     const evtRef = creditEventRef(db, uid, requestId);
@@ -694,7 +731,7 @@ async function ensureAiEditBucketInline(opts: {
     const { db, uid, tier, now } = opts;
 
     const limit = monthlyLimitFor(tier, "edit");
-    if (!limit) return { remaining: null, limit: 0, periodEnd: null };
+    if (limit === 0 || limit === null || limit === undefined) return { remaining: null, limit: 0, periodEnd: null };
 
     const userRef = db.collection("kloner_users").doc(uid);
 
@@ -710,10 +747,13 @@ async function ensureAiEditBucketInline(opts: {
 
         const active = periodEndDate !== null && now < periodEndDate;
         const existingRemaining = typeof bucket.remaining === "number" && bucket.remaining >= 0 ? bucket.remaining : null;
+        const existingMonthlyLimit =
+            typeof bucket.monthlyLimit === "number" && bucket.monthlyLimit >= 0 ? bucket.monthlyLimit : null;
+        const limitChanged = existingMonthlyLimit !== null && existingMonthlyLimit !== limit;
 
         const endDate = active ? (periodEndDate as Date) : nextPeriodEndUtc(now);
 
-        if (active && existingRemaining !== null) {
+        if (active && existingRemaining !== null && !limitChanged) {
             return { remaining: existingRemaining, limit, periodEnd: endDate };
         }
 
@@ -1265,24 +1305,22 @@ async function handlePost(req: NextRequest) {
         let tier: UserTier = "free";
         let userEmail: string | null = null;
 
+        const now = new Date();
+
         try {
             userRef = db.collection("kloner_users").doc(uid);
             const userSnap = await userRef.get();
             if (userSnap.exists) {
                 const data = userSnap.data() as any;
-                const rawTierValue = (data.userTier ?? data.tier) as string | undefined;
-                const rawTier = rawTierValue?.toLowerCase();
-                if (rawTier === "pro" || rawTier === "agency" || rawTier === "enterprise" || rawTier === "free") {
-                    tier = rawTier as UserTier;
-                }
+                const baseTier = await getAuthoritativeUserTier(uid);
+                const override = getActiveCreditsOverride(data, now);
+                tier = (override?.tier || baseTier) as UserTier;
                 userEmail = (data.email || data.userEmail || null) as any;
             }
         } catch (e) {
             console.error("[ai-edit] failed to read userTier/email; defaulting to free", e);
             tier = "free";
         }
-
-        const now = new Date();
 
         // Reserve credits (Gemini safety may block; we refund on block)
         let creditsRemaining: number | null = null;
@@ -1612,11 +1650,10 @@ async function handleGet(req: NextRequest) {
                 const userSnap = await userRef.get();
                 if (userSnap.exists) {
                     const data = userSnap.data() as any;
-                    const rawTierValue = (data.userTier ?? data.tier) as string | undefined;
-                    const rawTier = rawTierValue?.toLowerCase();
-                    if (rawTier === "pro" || rawTier === "agency" || rawTier === "enterprise" || rawTier === "free") {
-                        tier = rawTier as UserTier;
-                    }
+                    const now = new Date();
+                    const baseTier = await getAuthoritativeUserTier(uid);
+                    const override = getActiveCreditsOverride(data, now);
+                    tier = (override?.tier || baseTier) as UserTier;
                 }
             } catch (e) {
                 console.error("[ai-edit][GET] failed to read userTier/tier; defaulting to free", e);

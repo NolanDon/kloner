@@ -40,6 +40,10 @@ type AIAgentChatProps = {
     files: { [path: string]: { content: string; lastModified: number } };
     onFileEdit: (path: string, content: string, creditRequestId?: string) => void;
     onFilesReplace?: (files: { [path: string]: { content: string; lastModified: number } }) => void;
+    onRestoreApplied?: (args: {
+        previousFiles: { [path: string]: { content: string; lastModified: number } };
+        restoredFiles: { [path: string]: { content: string; lastModified: number } };
+    }) => void | Promise<void>;
     creditError?: string | null;
 };
 
@@ -53,9 +57,10 @@ type RestorePointItem = {
     undoOf?: string | null;
 };
 
-export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, creditError }: AIAgentChatProps) {
+export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, onRestoreApplied, creditError }: AIAgentChatProps) {
     const { user } = useAuth();
     const AI_EDIT_COST = 5;
+    const allowDatabaseSetupUi = process.env.NODE_ENV !== "production";
     const [aiCreditsRemaining, setAiCreditsRemaining] = useState<number | null>(null);
    const [messages, setMessages] = useState<Message[]>([
         {
@@ -77,6 +82,13 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     const [lastRestorePointId, setLastRestorePointId] = useState<string | null>(null);
     const [showDatabaseSetup, setShowDatabaseSetup] = useState(false);
     const [showSupabaseSetup, setShowSupabaseSetup] = useState(false);
+
+    useEffect(() => {
+        if (allowDatabaseSetupUi) return;
+        // Hard-disable any DB setup UI in production.
+        setShowDatabaseSetup(false);
+        setShowSupabaseSetup(false);
+    }, [allowDatabaseSetupUi]);
 
     useEffect(() => {
         setIsHydrated(true);
@@ -168,6 +180,52 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         if (csrf) headers["x-csrf"] = String(csrf);
         return headers;
     }, []);
+
+    const bootstrapAppScope = useCallback(async (): Promise<boolean> => {
+        // The app-scope cookie is issued by /api/app-builder/:appId/files.
+        // It expires (30 min) and can be missing on fresh sessions, so we re-issue it here.
+        try {
+            await ensureSessionAndCsrf().catch(() => null);
+            const res = await fetch(`/api/app-builder/${appId}/files`, {
+                method: "GET",
+                credentials: "include",
+                cache: "no-store",
+            });
+            return res.ok;
+        } catch {
+            return false;
+        }
+    }, [appId]);
+
+    const fetchWithScopeRetry = useCallback(
+        async (url: string, init: RequestInit, { retryLabel }: { retryLabel: string }): Promise<Response> => {
+            const doFetch = () =>
+                fetch(url, {
+                    ...init,
+                    credentials: "include",
+                    cache: "no-store",
+                });
+
+            const res = await doFetch();
+            if (res.status !== 403) return res;
+
+            // If scope is missing/expired, re-issue and retry once.
+            const data = await res.clone().json().catch(() => null);
+            const code = String(data?.code || "").toUpperCase();
+            const isScope = code === "MISSING_APP_SCOPE" || code === "INVALID_APP_SCOPE";
+            if (!isScope) return res;
+
+            const ok = await bootstrapAppScope();
+            if (!ok) return res;
+
+            const retryRes = await doFetch();
+            if (retryRes.status === 403) {
+                console.warn(`[AIAgentChat] ${retryLabel} still forbidden after scope bootstrap`);
+            }
+            return retryRes;
+        },
+        [bootstrapAppScope]
+    );
 
     // Load chat history from server (firebase-admin) and migrate any legacy localStorage once.
     useEffect(() => {
@@ -298,7 +356,11 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     const fetchRestorePoints = useCallback(async () => {
         try {
             await ensureSessionAndCsrf().catch(() => null);
-            const res = await fetch(`/api/app-builder/${appId}/restore-points`, { method: "GET" });
+            const res = await fetchWithScopeRetry(
+                `/api/app-builder/${appId}/restore-points`,
+                { method: "GET" },
+                { retryLabel: "fetch restore points" }
+            );
             if (!res.ok) return;
             const data = await res.json().catch(() => null);
             if (data?.ok && Array.isArray(data.restorePoints)) {
@@ -307,22 +369,27 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         } catch {
             // ignore
         }
-    }, [appId]);
+    }, [appId, fetchWithScopeRetry]);
 
-    const syncFilesFromServer = useCallback(async () => {
-        if (!onFilesReplace) return;
+    const syncFilesFromServer = useCallback(async ({ applyToState = true }: { applyToState?: boolean } = {}) => {
         try {
             await ensureSessionAndCsrf().catch(() => null);
-            const res = await fetch(`/api/app-builder/${appId}/files`, { method: "GET" });
-            if (!res.ok) return;
+            const res = await fetchWithScopeRetry(
+                `/api/app-builder/${appId}/files`,
+                { method: "GET" },
+                { retryLabel: "sync files" }
+            );
+            if (!res.ok) return null;
             const data = await res.json().catch(() => null);
             if (data?.files && typeof data.files === "object") {
-                onFilesReplace(data.files);
+                if (applyToState && onFilesReplace) onFilesReplace(data.files);
+                return data.files as { [path: string]: { content: string; lastModified: number } };
             }
         } catch {
             // ignore
         }
-    }, [appId, onFilesReplace]);
+        return null;
+    }, [appId, fetchWithScopeRetry, onFilesReplace]);
 
     useEffect(() => {
         fetchRestorePoints();
@@ -510,11 +577,20 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     const applyRestorePoint = useCallback(async (restoreId: string, statusMessage?: string) => {
         if (!restoreId || isRestoreBusy) return;
         setIsRestoreBusy(true);
+
+        const previousFiles: { [path: string]: { content: string; lastModified: number } } = {};
+        for (const [p, v] of Object.entries(files || {})) {
+            if (v && typeof v.content === "string" && typeof v.lastModified === "number") {
+                previousFiles[p] = { content: v.content, lastModified: v.lastModified };
+            }
+        }
+
         try {
             const headers = await withCsrfHeaders();
-            const res = await fetch(
+            const res = await fetchWithScopeRetry(
                 `/api/app-builder/${appId}/restore-points/${restoreId}/apply`,
-                { method: "POST", headers, body: JSON.stringify({}) }
+                { method: "POST", headers, body: JSON.stringify({}) },
+                { retryLabel: "apply restore point" }
             );
             const data = await res.json().catch(() => null);
             if (!res.ok || !data?.ok) {
@@ -537,7 +613,24 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 },
             ]);
 
-            await Promise.all([fetchRestorePoints(), syncFilesFromServer()]);
+            const restoredFiles = await syncFilesFromServer({ applyToState: false });
+            if (!restoredFiles) {
+                throw new Error("Restore applied, but failed to fetch restored files.");
+            }
+
+            // Important ordering:
+            // 1) Let the editor suppress its normal onFilesReplace auto-apply.
+            // 2) Apply an explicit diff to the running webcontainer.
+            // 3) Then replace editor state with restored files.
+            try {
+                await onRestoreApplied?.({ previousFiles, restoredFiles });
+            } catch (e) {
+                console.error("onRestoreApplied failed", e);
+            }
+
+            if (onFilesReplace) onFilesReplace(restoredFiles);
+
+            await fetchRestorePoints();
         } catch (err) {
             console.error("Apply restore point failed", err);
             setMessages(prev => [
@@ -553,7 +646,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         } finally {
             setIsRestoreBusy(false);
         }
-    }, [appId, fetchRestorePoints, isRestoreBusy, syncFilesFromServer, withCsrfHeaders]);
+    }, [appId, fetchRestorePoints, fetchWithScopeRetry, files, isRestoreBusy, onFilesReplace, onRestoreApplied, syncFilesFromServer, withCsrfHeaders]);
 
     const getStatusMessageForAction = useCallback((label?: string) => {
         const v = (label || "").toLowerCase();
@@ -567,9 +660,10 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         setIsRestoreBusy(true);
         try {
             const headers = await withCsrfHeaders();
-            const res = await fetch(
+            const res = await fetchWithScopeRetry(
                 `/api/app-builder/${appId}/restore-points/${restoreId}/keep`,
-                { method: "POST", headers, body: JSON.stringify({}) }
+                { method: "POST", headers, body: JSON.stringify({}) },
+                { retryLabel: "keep restore point" }
             );
             if (!res.ok) throw new Error("Failed to keep restore point");
             await fetchRestorePoints();
@@ -578,16 +672,17 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         } finally {
             setIsRestoreBusy(false);
         }
-    }, [appId, fetchRestorePoints, isRestoreBusy, withCsrfHeaders]);
+    }, [appId, fetchRestorePoints, fetchWithScopeRetry, isRestoreBusy, withCsrfHeaders]);
 
     const createManualRestorePoint = useCallback(async () => {
         if (isRestoreBusy) return;
         setIsRestoreBusy(true);
         try {
             const headers = await withCsrfHeaders();
-            const res = await fetch(
+            const res = await fetchWithScopeRetry(
                 `/api/app-builder/${appId}/restore-points`,
-                { method: "POST", headers, body: JSON.stringify({ label: "Manual restore point" }) }
+                { method: "POST", headers, body: JSON.stringify({ label: "Manual restore point" }) },
+                { retryLabel: "create restore point" }
             );
             const data = await res.json().catch(() => null);
             if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to create restore point");
@@ -613,7 +708,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         } finally {
             setIsRestoreBusy(false);
         }
-    }, [appId, fetchRestorePoints, isRestoreBusy, withCsrfHeaders]);
+    }, [appId, fetchRestorePoints, fetchWithScopeRetry, isRestoreBusy, withCsrfHeaders]);
 
     const undoLastChange = useCallback(() => {
         if (lastRestorePointId) {
@@ -685,8 +780,8 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
             setMessages(prev => [...prev, aiMessage]);
 
-            // Handle database setup request
-            if (data.setupDatabase) {
+            // Handle database setup request (dev-only)
+            if (allowDatabaseSetupUi && data.setupDatabase) {
                 setTimeout(() => {
                     setShowDatabaseSetup(true);
                 }, 1000); // Small delay for better UX
@@ -906,7 +1001,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             )}
 
             {/* Database Setup */}
-            {showDatabaseSetup && (
+            {allowDatabaseSetupUi && showDatabaseSetup && (
                 <div className="px-4 py-3 border-t bg-blue-50 rounded-lg flex-shrink-0">
                     <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
@@ -941,7 +1036,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             )}
 
             {/* Supabase Setup Modal */}
-            {showSupabaseSetup && (
+            {allowDatabaseSetupUi && showSupabaseSetup && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                     <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
                         <div className="flex items-center justify-between mb-4">

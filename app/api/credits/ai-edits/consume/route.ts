@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertCsrf, verifySession, getAdminDb } from "@/app/api/_lib/auth";
-import { monthlyLimitFor, tierFromClaims } from "@/src/lib/credits";
+import { monthlyLimitFor, type UserTier } from "@/src/lib/credits";
+import { getAuthoritativeUserTier } from "@/app/api/_lib/userTier";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +20,40 @@ function getAiEditsBucket(data: any): any {
     return data["credits.aiEdits"] || (data.credits && data.credits.aiEdits) || {};
 }
 
+function toDateFromFirestoreTimestampLike(v: any): Date | null {
+    if (!v) return null;
+    if (v instanceof Date) return v;
+    if (typeof v?.toDate === "function") {
+        try {
+            return v.toDate();
+        } catch {
+            return null;
+        }
+    }
+    return null;
+}
+
+function getActiveCreditsOverride(data: any, now: Date): { tier: any; until: Date } | null {
+    if (!data || typeof data !== "object") return null;
+    const rawTier = typeof data.creditsOverrideTier === "string" ? data.creditsOverrideTier : null;
+    const until = toDateFromFirestoreTimestampLike(data.creditsOverrideUntil);
+    if (!rawTier || !until) return null;
+    if (!(now < until)) return null;
+    return { tier: rawTier, until };
+}
+
+function normalizeUserTier(raw: unknown): UserTier {
+    const t = typeof raw === "string" ? raw.toLowerCase().trim() : "";
+    if (t === "free" || t === "pro" || t === "agency" || t === "enterprise" || t === "unknown") {
+        return t as UserTier;
+    }
+    return "free";
+}
+
+function minDate(a: Date, b: Date): Date {
+    return a.getTime() <= b.getTime() ? a : b;
+}
+
 function creditEventRef(db: any, uid: string, requestId: string) {
     return db.collection("kloner_users").doc(uid).collection("credit_events").doc(requestId);
 }
@@ -28,7 +63,6 @@ export async function POST(req: NextRequest) {
         assertCsrf(req);
         const session = await verifySession(req);
         const uid = session.uid;
-        const tier = tierFromClaims(session as any);
 
         const body = await req.json().catch(() => ({} as any));
         const requestIdRaw = typeof body?.requestId === "string" ? body.requestId.trim() : "";
@@ -39,7 +73,23 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ ok: false, error: "Missing requestId" }, { status: 400 });
         }
 
-        const limit = monthlyLimitFor(tier, "edit");
+        const db = getAdminDb();
+        const userRef = db.collection("kloner_users").doc(uid);
+        const evtRef = creditEventRef(db, uid, requestId);
+
+        const now = new Date();
+        const periodEnd = nextPeriodEndUtc(now);
+
+        // Determine authoritative tier for credits (supports tier overrides via getAuthoritativeUserTier).
+        const baseTier = await getAuthoritativeUserTier(uid);
+
+        // Apply credits override (e.g., cancel during trial caps credits to free).
+        const userSnapForTier = await userRef.get();
+        const userDataForTier = userSnapForTier.exists ? (userSnapForTier.data() as any) : {};
+        const override = getActiveCreditsOverride(userDataForTier, now);
+        const effectiveTier = override ? normalizeUserTier(override.tier) : baseTier;
+        const limit = monthlyLimitFor(effectiveTier, "edit");
+
         if (!limit) {
             return NextResponse.json(
                 { ok: true, remaining: null, monthlyLimit: null, periodEnd: null, alreadyCommitted: false },
@@ -47,12 +97,7 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const db = getAdminDb();
-        const userRef = db.collection("kloner_users").doc(uid);
-        const evtRef = creditEventRef(db, uid, requestId);
-
-        const now = new Date();
-        const periodEnd = nextPeriodEndUtc(now);
+        const overrideEnd = override?.until || null;
 
         let finalRemaining = 0;
         let alreadyCommitted = false;
@@ -90,8 +135,10 @@ export async function POST(req: NextRequest) {
             const active = endDate !== null && now < endDate;
             const existingRemaining = typeof bucket.remaining === "number" && bucket.remaining >= 0 ? bucket.remaining : null;
 
-            const usePeriodEnd = active ? (endDate as Date) : periodEnd;
-            const startRemaining = active && existingRemaining !== null ? existingRemaining : limit;
+            const rawUseEnd = active ? (endDate as Date) : periodEnd;
+            const usePeriodEnd = overrideEnd ? minDate(rawUseEnd, overrideEnd) : rawUseEnd;
+            const startRemaining =
+                active && existingRemaining !== null ? Math.min(existingRemaining, limit) : limit;
 
             if (startRemaining < cost) {
                 finalRemaining = Math.max(startRemaining, 0);
@@ -116,7 +163,7 @@ export async function POST(req: NextRequest) {
                         status: "blocked",
                         reason: "insufficient_credits",
                         cost,
-                        tier,
+                        tier: effectiveTier,
                         createdAt: now,
                         createdAtMs: now.getTime(),
                     },
@@ -147,7 +194,7 @@ export async function POST(req: NextRequest) {
                     feature: "ai_agent_edit",
                     status: "committed",
                     cost,
-                    tier,
+                    tier: effectiveTier,
                     createdAt: now,
                     createdAtMs: now.getTime(),
                 },

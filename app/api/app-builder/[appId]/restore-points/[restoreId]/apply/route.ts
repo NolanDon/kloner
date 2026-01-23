@@ -10,6 +10,27 @@ function safeString(v: unknown, max = 200): string {
     return typeof v === "string" ? v.trim().slice(0, max) : "";
 }
 
+function captureSnapshot(files: Record<string, { content: string; lastModified: number }>): {
+    before: Record<string, string | null>;
+    paths: string[];
+} {
+    // Guardrails: cap file count and total stored bytes.
+    const MAX_FILES = 200;
+    const MAX_TOTAL = 1_500_000; // ~1.5MB
+
+    const before: Record<string, string | null> = {};
+    let total = 0;
+
+    for (const [path, file] of Object.entries(files).slice(0, MAX_FILES)) {
+        const content = typeof (file as any)?.content === "string" ? (file as any).content : "";
+        total += content.length;
+        if (total > MAX_TOTAL) break;
+        before[path] = content;
+    }
+
+    return { before, paths: Object.keys(before) };
+}
+
 export async function POST(
     req: NextRequest,
     { params }: { params: { appId: string; restoreId: string } }
@@ -45,30 +66,49 @@ export async function POST(
                 return NextResponse.json({ ok: false, error: "Restore point is empty" }, { status: 400 });
             }
 
+            // Manual restore points are full snapshots (best-effort within guardrails).
+            // Apply them by replacing the entire files map, so files created after the snapshot are removed.
+            const isSnapshot = String(rp?.source || "").toLowerCase() === "manual" || rp?.snapshot === true;
+
             const app = appSnap.data() as any;
             const files = (app?.files || {}) as Record<string, { content: string; lastModified: number }>;
 
-            // Create an automatic "undo-of-undo" restore point so the user can re-apply.
+            // Create an automatic inverse restore point so the user can redo.
+            // For snapshot restores, capture the full current state (within limits) for predictable redo.
+            const inverseCapture = isSnapshot ? captureSnapshot(files) : null;
             const inverse: Record<string, string | null> = {};
-            for (const p of paths) {
-                if (Object.prototype.hasOwnProperty.call(files, p)) {
-                    inverse[p] = typeof files[p]?.content === "string" ? files[p].content : "";
-                } else {
-                    inverse[p] = null;
+            const inversePaths: string[] = [];
+            if (inverseCapture) {
+                Object.assign(inverse, inverseCapture.before);
+                inversePaths.push(...inverseCapture.paths);
+            } else {
+                for (const p of paths) {
+                    if (Object.prototype.hasOwnProperty.call(files, p)) {
+                        inverse[p] = typeof files[p]?.content === "string" ? files[p].content : "";
+                    } else {
+                        inverse[p] = null;
+                    }
                 }
+                inversePaths.push(...paths);
             }
 
             // Apply restore
+            let nextFiles: Record<string, { content: string; lastModified: number }> = files;
+            if (isSnapshot) {
+                nextFiles = {};
+            }
+
             for (const p of paths) {
                 const v = before[p];
                 if (v === null) {
-                    delete files[p];
+                    if (!isSnapshot) delete nextFiles[p];
+                    // In snapshot mode, absence is represented by not being present.
                 } else {
-                    files[p] = { content: v, lastModified: Date.now() };
+                    nextFiles[p] = { content: v, lastModified: Date.now() };
                 }
             }
 
-            await appRef.update({ files, updatedAt: new Date() });
+            await appRef.update({ files: nextFiles, updatedAt: new Date() });
 
             const inverseRef = appRef.collection("restore_points").doc();
             await inverseRef.set({
@@ -76,7 +116,8 @@ export async function POST(
                 source: "undo",
                 kept: false,
                 createdAt: new Date(),
-                paths,
+                snapshot: Boolean(isSnapshot),
+                paths: inversePaths,
                 before: inverse,
                 undoOf: restoreId,
             });

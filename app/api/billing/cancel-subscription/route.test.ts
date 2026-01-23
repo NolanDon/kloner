@@ -143,5 +143,11 @@ describe("POST /api/billing/cancel-subscription", () => {
         expect(userDoc.stripeCurrentPeriodEnd).toBe(123);
         expect(userDoc.stripeTrialEnd).toBe(456);
         expect(userDoc.stripeStatus).toBe("trialing");
+
+        // Fraud prevention: cancel during trial immediately downgrades tier + sets override.
+        expect(userDoc.tier).toBe("free");
+        expect(userDoc.tierSource).toBe("override");
+        expect(userDoc.tierOverrideTier).toBe("free");
+        expect(userDoc.tierOverrideUntil).toBeTruthy();
     });
 });

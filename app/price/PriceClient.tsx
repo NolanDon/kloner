@@ -115,8 +115,8 @@ const tiers: Tier[] = [
             "Priority to new design tools",
             "Priority support",
         ],
-        cta: "Start 7-day free trial",
-        fineprint: "Then $99/month. Cancel anytime. Secure checkout via Stripe.",
+        cta: "Subscribe to Agency",
+        fineprint: "Starts immediately. Cancel anytime. Secure checkout via Stripe.",
     },
 ];
 
@@ -137,7 +137,7 @@ export default function PriceClient(): JSX.Element {
     const { showAlert } = useModal();
 
     const trustPoints = useMemo(
-        () => ["7-day free trial on paid plans", "Cancel anytime", "Secure Stripe checkout"],
+        () => ["7-day free trial on Pro", "Cancel anytime", "Secure Stripe checkout"],
         []
     );
 
@@ -266,7 +266,7 @@ export default function PriceClient(): JSX.Element {
                                             <span className="text-xs text-neutral-500">{tier.period}</span>
                                         </div>
 
-                                        {tier.name !== "Free" ? (
+                                        {isPro ? (
                                             <span className="text-[11px] font-semibold text-neutral-900">
                                                 7-day free trial
                                             </span>
@@ -316,9 +316,13 @@ export default function PriceClient(): JSX.Element {
                                         {isLoading ? "Redirecting to Stripe…" : tier.cta}
                                     </button>
 
-                                    {tier.name !== "Free" ? (
+                                    {isPro ? (
                                         <p className="mt-2 text-[11px] text-neutral-500">
                                             Trial starts today. Billing begins after 7 days unless canceled.
+                                        </p>
+                                    ) : isAgency ? (
+                                        <p className="mt-2 text-[11px] text-neutral-500">
+                                            Starts immediately. Cancel anytime.
                                         </p>
                                     ) : (
                                         <p className="mt-2 text-[11px] text-neutral-500">
