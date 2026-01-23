@@ -10,14 +10,17 @@ async function fetchFlyMachineState(app: string, machineId: string) {
         const raw = (process.env.FLY_API_TOKEN || "").trim();
         if (!raw) return "";
 
-        // Some local envs accidentally include multiple tokens separated by commas.
-        // Fly expects a single bearer token.
-        const first = raw
-            .split(",")
+        // IMPORTANT:
+        // FlyV1 tokens can include a comma-separated third-party discharge token.
+        // Do NOT split on commas, or Fly will reject the macaroon as incomplete.
+        // If someone pastes multiple tokens accidentally, they should be separated
+        // by newlines; in that case, prefer the first non-empty line.
+        const firstLine = raw
+            .split(/\r?\n/)
             .map((s) => s.trim())
             .filter(Boolean)[0];
 
-        return (first || raw).trim().replace(/^"|"$/g, "");
+        return (firstLine || raw).trim().replace(/^"|"$/g, "");
     })();
     if (!token) {
         return { ok: false as const, status: 500, error: "FLY_API_TOKEN not set" };

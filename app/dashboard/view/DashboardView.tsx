@@ -87,6 +87,7 @@ import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 import { UrlDoc } from "../page";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 import { archiveRender, resolveStorageUrl, useResolvedImg } from "@/src/lib/renders";
+import { archiveApp } from "@/src/lib/apps";
 import { AnimatePresence, motion } from "framer-motion";
 import { extractArchivedPageIdsFromRender, fetchRenderForDeployment, getArchivedRoutesForRender, persistArchivedPageIds, scrubArchivedRoutes, secureHtmlForPreviewIframe, withArchivedPageIds } from "@/components/helpers";
 import { recordDeployAnalytics } from "@/components/analytics";
@@ -1065,12 +1066,16 @@ const CenterSpinner = memo(function CenterSpinner({
 function AppCard({
     app,
     isDeleting,
+    isArchiving,
     onCustomize,
+    onArchive,
     onDelete,
 }: {
     app: { id: string; name: string; createdAt: any; updatedAt: any };
     isDeleting: boolean;
+    isArchiving: boolean;
     onCustomize: (appId: string) => void;
+    onArchive: (appId: string) => void;
     onDelete: (appId: string) => void;
 }) {
     const router = useRouter();
@@ -1138,6 +1143,17 @@ function AppCard({
                         >
                             <span>Customize App</span>
                             <BrushIcon className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => onArchive(app.id)}
+                            disabled={isDeleting || isArchiving}
+                            className="mt-2 inline-flex items-center justify-center gap-1.5 rounded-full border border-neutral-300 bg-white/60 px-3 py-2 text-xs font-medium text-neutral-700 shadow-sm hover:border-neutral-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Move this app into your archive"
+                        >
+                            <span>{isArchiving ? "Archiving…" : "Archive"}</span>
+                            <Archive className="h-3.5 w-3.5" />
                         </button>
                     </div>
                 </div>
@@ -1579,6 +1595,7 @@ export default function PreviewPage(): JSX.Element {
         useState(false);
 
     const [archivingRender, setArchivingRender] = useState<Record<string, boolean>>({});
+    const [archivingApp, setArchivingApp] = useState<Record<string, boolean>>({});
 
     async function handleArchiveRender(id: string) {
         setArchivingRender((prev) => ({ ...prev, [id]: true }));
@@ -1630,6 +1647,33 @@ export default function PreviewPage(): JSX.Element {
             push("Failed to delete app. Please try again.", "err");
         } finally {
             setDeletingApp((prev) => {
+                const next = { ...prev };
+                delete next[appId];
+                return next;
+            });
+        }
+    }
+
+    async function handleArchiveApp(appId: string) {
+        if (!user) return;
+
+        const ok = await showConfirm(
+            "Move this app into your archive? It will be hidden from your main dashboard.",
+            "Archive App"
+        );
+        if (!ok) return;
+
+        setArchivingApp((prev) => ({ ...prev, [appId]: true }));
+        try {
+            await archiveApp(appId);
+            // hide from active list once archived
+            setApps((prev) => prev.filter((a) => a.id !== appId));
+            push("App archived", "ok");
+        } catch (e) {
+            console.error("Failed to archive app:", e);
+            push("Failed to archive app. Please try again.", "err");
+        } finally {
+            setArchivingApp((prev) => {
                 const next = { ...prev };
                 delete next[appId];
                 return next;
@@ -1749,7 +1793,9 @@ export default function PreviewPage(): JSX.Element {
                 id: doc.id,
                 ...(doc.data() as any),
             }));
-            setApps(appList);
+            // Keep archived apps off the main dashboard without requiring a Firestore index
+            // (and so legacy docs missing the `archived` field still show up).
+            setApps(appList.filter((a: any) => !a?.archived));
         });
 
         return () => unsub();
@@ -5243,10 +5289,12 @@ export default function PreviewPage(): JSX.Element {
                                         key={app.id}
                                         app={app}
                                         isDeleting={!!deletingApp[app.id]}
+                                        isArchiving={!!archivingApp[app.id]}
                                         onCustomize={(appId) => {
                                             setCurrentAppId(appId);
                                             setAppBuilderOpen(true);
                                         }}
+                                        onArchive={handleArchiveApp}
                                         onDelete={handleDeleteApp}
                                     />
                                 ))}

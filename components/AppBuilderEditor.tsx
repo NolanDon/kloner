@@ -80,6 +80,20 @@ function mergeFilesPreferNewest(
     return merged;
 }
 
+function ensureCompilerOptionsObject(jsonText: string): { ok: true; normalized: string } | { ok: false } {
+    try {
+        const parsed: any = JSON.parse(jsonText);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { ok: false };
+        if (!parsed.compilerOptions || typeof parsed.compilerOptions !== "object" || Array.isArray(parsed.compilerOptions)) {
+            parsed.compilerOptions = {};
+            return { ok: true, normalized: JSON.stringify(parsed, null, 2) + "\n" };
+        }
+        return { ok: true, normalized: JSON.stringify(parsed, null, 2) + "\n" };
+    } catch {
+        return { ok: false };
+    }
+}
+
 function filesShallowEqualByContentAndTimestamp(
     a: AppData["files"],
     b: AppData["files"],
@@ -180,8 +194,8 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     const [refreshKey, setRefreshKey] = useState(0);
     const [localRestartKey, setLocalRestartKey] = useState(0);
     const [reconnectKey, setReconnectKey] = useState(0);
-    const [uiUpdatingToken, setUiUpdatingToken] = useState(0);
-    const [uiUpdatingCancelToken, setUiUpdatingCancelToken] = useState(0);
+    const [agentCreditError, setAgentCreditError] = useState<string | null>(null);
+    const lastConsumedAiCreditRequestIdRef = useRef<string | null>(null);
     const [forceFreshStart, setForceFreshStart] = useState(false);
     const forceFreshStartRef = useRef(false);
     const forceFreshStartKey = useRef(0);
@@ -190,8 +204,6 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     const [tempName, setTempName] = useState("");
     const [isSaving, setIsSaving] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
-    const [isPreviewRestarting, setIsPreviewRestarting] = useState(false);
-    const [previewRestartError, setPreviewRestartError] = useState<string | null>(null);
     const [isDevApplyTesting, setIsDevApplyTesting] = useState(false);
     const [devHmrLastRunFailed, setDevHmrLastRunFailed] = useState(false);
     const [devHmrDebug, setDevHmrDebug] = useState<
@@ -235,6 +247,8 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     const restartQueuedRef = useRef(false);
     const restartQueuedInteractiveRef = useRef(false);
 
+    const didAutoRepairConfigRef = useRef(false);
+
     const applyDebounceRef = useRef<NodeJS.Timeout | null>(null);
     const applyInFlightRef = useRef(false);
     const applyQueuedRef = useRef<Record<string, string>>({});
@@ -247,6 +261,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     const firebasePreviewReloadTimerRef = useRef<NodeJS.Timeout | null>(null);
     const lastFirebasePreviewReloadAtRef = useRef<number>(0);
     const currentFileRef = useRef<string | null>(null);
+    const lastAppliedContentRef = useRef<Record<string, string>>({});
 
     useEffect(() => {
         currentFileRef.current = currentFile;
@@ -335,7 +350,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
         }
     }
 
-    const rebuildLocalPreview = useCallback(async (forceFresh: boolean = false) => {
+    const restartLocalPreview = useCallback(async (forceFresh: boolean = false) => {
         if (isPreviewBuilding) return;
         setIsPreviewBuilding(true);
         try {
@@ -358,142 +373,43 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
         }
     }, [isPreviewBuilding]);
 
-    const triggerPreviewRebuild = useCallback(
-        async ({ silent }: { silent: boolean }) => {
-            if (!appId) return;
-
-            if (restartInFlightRef.current) {
-                restartQueuedRef.current = true;
-                if (!silent) restartQueuedInteractiveRef.current = true;
-                return;
-            }
-
-            restartInFlightRef.current = true;
-            if (!silent) {
-                setIsPreviewRestarting(true);
-                setPreviewRestartError(null);
-            }
+    const consumeAiEditCredit = useCallback(
+        async (creditRequestId: string) => {
+            const rid = String(creditRequestId || "").trim();
+            if (!rid) return;
 
             try {
-                // Prefer sending the locally stored container code when available.
-                // If absent, the backend/hub can resolve the latest preview by appId.
-                let storedCode = "";
-                try {
-                    const raw = localStorage.getItem(`webcontainer_${appId}`);
-                    if (raw) {
-                        const parsed = JSON.parse(raw);
-                        if (parsed?.code) storedCode = String(parsed.code).trim();
-                    }
-                } catch {
-                    // ignore
-                }
-
                 const csrf = await fetchFreshCsrf();
-                const payload: any = { appId };
-                if (storedCode) payload.code = storedCode;
-
-                // Switch the preview into the "UI updating" state as the rebuild request goes out.
-                setUiUpdatingToken((k) => k + 1);
-
-                const res = await fetch(`/api/app-builder/${appId}/preview/rebuild`, {
+                const res = await fetch("/api/credits/ai-edits/consume", {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
                         ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
                     },
                     credentials: "include",
-                    body: JSON.stringify(payload),
+                    cache: "no-store",
+                    body: JSON.stringify({ requestId: rid, cost: 5 }),
                 });
 
                 const data = await res.json().catch(() => ({} as any));
                 if (!res.ok || !(data as any)?.ok) {
-                    // If there is no active preview yet, fall back to creating/starting.
-                    if (res.status === 404 || res.status === 409) {
-                        if (!silent) setPreviewRestartError(null);
-                        setUiUpdatingCancelToken((k) => k + 1);
-                        await rebuildLocalPreview(true);
-                        return;
-                    }
-
-                    const msg = String((data as any)?.error || `Rebuild failed (HTTP ${res.status})`);
-                    if (!silent) throw Object.assign(new Error(msg), { status: res.status });
-                    setUiUpdatingCancelToken((k) => k + 1);
+                    const msg = String((data as any)?.error || `Credit consume failed (HTTP ${res.status})`);
+                    setAgentCreditError(msg);
                     return;
                 }
-
-                // Persist returned code so WebContainerRunner can poll status reliably.
-                const code = String((data as any)?.code || storedCode || "");
-                if (!code) {
-                    if (!silent) throw new Error("Rebuild succeeded but no preview code was returned.");
-                    setUiUpdatingCancelToken((k) => k + 1);
-                    return;
-                }
-
-                try {
-                    localStorage.setItem(
-                        `webcontainer_${appId}`,
-                        JSON.stringify({ code, timestamp: Date.now() })
-                    );
-                } catch {
-                    // ignore
-                }
-
-                // No extra polling here: WebContainerRunner will poll /api/webcontainer-status
-                // and reload the iframe when the machine becomes reachable.
             } catch (err: any) {
-                if (!silent) {
-                    const msg = String(err?.message || "Failed to rebuild preview.");
-                    setPreviewRestartError(msg);
-                    setUiUpdatingCancelToken((k) => k + 1);
-                } else {
-                    // Silent (AI-triggered) rebuild failed; stop the "UI updating" loader.
-                    setUiUpdatingCancelToken((k) => k + 1);
-                }
-            } finally {
-                if (!silent) setIsPreviewRestarting(false);
-                restartInFlightRef.current = false;
-
-                if (restartQueuedRef.current) {
-                    const nextInteractive = restartQueuedInteractiveRef.current;
-                    restartQueuedRef.current = false;
-                    restartQueuedInteractiveRef.current = false;
-                    void triggerPreviewRebuild({ silent: !nextInteractive });
-                }
+                setAgentCreditError(String(err?.message || "Failed to consume AI edit credit"));
             }
         },
-        [appId, rebuildLocalPreview]
+        []
     );
 
-    const restartPreviewNow = useCallback(async () => {
-        await triggerPreviewRebuild({ silent: false });
-    }, [triggerPreviewRebuild]);
 
-    const rebuildPreviewInPlaceSilently = useCallback(async () => {
-        await triggerPreviewRebuild({ silent: true });
-    }, [triggerPreviewRebuild]);
-
-    const schedulePreviewRestart = useCallback(() => {
-        if (!appId) return;
-        if (restartDebounceRef.current) {
-            clearTimeout(restartDebounceRef.current);
-            restartDebounceRef.current = null;
-        }
-
-        // Debounce rebuilds so rapid saves collapse into one.
-        // Use the same WebContainerRunner logic that runs when the user opens
-        // "Customize App": it will connect to an existing container when possible
-        // and otherwise spin up a fresh one with the latest file snapshot.
-        restartDebounceRef.current = setTimeout(() => {
-            restartDebounceRef.current = null;
-            void rebuildPreviewInPlaceSilently();
-        }, 900);
-    }, [appId, rebuildPreviewInPlaceSilently]);
-
-    const changeRequiresRebuild = useCallback((path: string) => {
+    const changeIsNotHotUpdatable = useCallback((path: string) => {
         const p = String(path || "").trim().toLowerCase();
         if (!p) return false;
 
-        // Dependency / build config files typically require a full rebuild.
+        // Dependency / build config files typically cannot be hot-updated.
         return (
             p === "package.json" ||
             p.endsWith("/package.json") ||
@@ -588,7 +504,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                         }
 
                         // Non-destructive kick: WebContainerRunner should attach to existing machine when possible.
-                        await rebuildLocalPreview(false);
+                        await restartLocalPreview(false);
 
                         if (!applyRetryTimerRef.current) {
                             applyRetryTimerRef.current = setTimeout(() => {
@@ -630,6 +546,13 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                     return;
                 }
 
+                // Mark these contents as applied so we can safely dedupe future queues.
+                for (const p of paths) {
+                    if (queued[p] !== undefined) {
+                        lastAppliedContentRef.current[p] = queued[p];
+                    }
+                }
+
                 const nextCode = String((data as any)?.code || storedCode || "").trim();
                 if (nextCode) {
                     try {
@@ -642,14 +565,16 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                     }
                 }
 
-                const requiresRebuild = Boolean((data as any)?.requiresRebuild || (data as any)?.requires_rebuild);
-                if (requiresRebuild) {
+                const requiresRestart = Boolean(
+                    (data as any)?.requiresRestart || (data as any)?.requiresRebuild || (data as any)?.requires_rebuild,
+                );
+                if (requiresRestart) {
                     const now = Date.now();
                     if (interactive || now - lastApplyAlertAtRef.current > 15000) {
                         lastApplyAlertAtRef.current = now;
                         void showAlert(
-                            "This change needs a full rebuild to take effect. Click Rebuild when you’re ready.",
-                            "Rebuild needed",
+                            "This change can’t be hot-updated. Your files are saved, but you may need to restart the preview to see it.",
+                            "Restart needed",
                         );
                     }
                 }
@@ -668,7 +593,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                 }
             }
         },
-        [appId, rebuildLocalPreview, showAlert]
+        [appId, restartLocalPreview, showAlert]
     );
 
     const runDevApplyTest = useCallback(async () => {
@@ -780,7 +705,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                         "Test HMR",
                     );
                     if (confirmed) {
-                        await rebuildLocalPreview(false);
+                        await restartLocalPreview(false);
                         void showAlert(
                             "Preview start/reconnect triggered. Re-run Test HMR once the preview is up.",
                             "Test HMR",
@@ -925,7 +850,12 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                     ok: res.ok,
                     code: (data as any)?.code,
                     reason: (data as any)?.reason,
-                    needsRebuild: (data as any)?.needsRebuild ?? (data as any)?.requiresRebuild ?? (data as any)?.requires_rebuild,
+                    needsRestart:
+                        (data as any)?.needsRestart ??
+                        (data as any)?.needsRebuild ??
+                        (data as any)?.requiresRestart ??
+                        (data as any)?.requiresRebuild ??
+                        (data as any)?.requires_rebuild,
                     debug: (data as any)?.__debug,
                 });
 
@@ -945,7 +875,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                         "Apply test",
                     );
                     if (confirmed) {
-                        await rebuildLocalPreview(false);
+                        await restartLocalPreview(false);
                         void showAlert(
                             "Preview start/reconnect triggered. Click the test button again once the preview is running.",
                             "Apply test",
@@ -982,10 +912,12 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                 }
             }
 
-            const requiresRebuild = Boolean((data as any)?.requiresRebuild || (data as any)?.requires_rebuild);
-            if (requiresRebuild) {
+            const requiresRestart = Boolean(
+                (data as any)?.requiresRestart || (data as any)?.requiresRebuild || (data as any)?.requires_rebuild,
+            );
+            if (requiresRestart) {
                 void showAlert(
-                    "Apply succeeded, but the backend says this needs a full rebuild to take effect.",
+                    "Apply succeeded, but the backend says this needs a full restart to take effect.",
                     "Test HMR",
                 );
             } else {
@@ -1047,7 +979,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
         } finally {
             setIsDevApplyTesting(false);
         }
-    }, [appId, app?.files, isDevEnv, isDevApplyTesting, rebuildLocalPreview, showAlert, showConfirm]);
+    }, [appId, app?.files, isDevEnv, isDevApplyTesting, restartLocalPreview, showAlert, showConfirm]);
 
     const queuePreviewApply = useCallback(
         (changes: Array<{ path: string; content: string }>, { interactive }: { interactive: boolean }) => {
@@ -1057,18 +989,24 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
             for (const c of changes) {
                 const p = String(c?.path || "").trim();
                 if (!p) continue;
-                if (changeRequiresRebuild(p)) {
+                if (changeIsNotHotUpdatable(p)) {
                     const now = Date.now();
                     if (interactive || now - lastApplyAlertAtRef.current > 15000) {
                         lastApplyAlertAtRef.current = now;
                         void showAlert(
-                            "That file affects dependencies/build settings, so it needs a full rebuild. Click Rebuild when you’re ready.",
-                            "Rebuild needed",
+                            "That file affects dependencies/build settings, so it can’t be hot-updated. Your change is saved; restart the preview to see it.",
+                            "Restart needed",
                         );
                     }
                     continue;
                 }
-                applyQueuedRef.current[p] = String(c?.content ?? "");
+
+                const nextContent = String(c?.content ?? "");
+                // Dedupe: avoid re-applying identical content repeatedly (e.g. Firebase snapshot echoes).
+                if (applyQueuedRef.current[p] === nextContent) continue;
+                if (lastAppliedContentRef.current[p] === nextContent) continue;
+
+                applyQueuedRef.current[p] = nextContent;
             }
 
             if (applyDebounceRef.current) {
@@ -1082,7 +1020,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                 void flushPreviewApply({ interactive });
             }, 250);
         },
-        [appId, changeRequiresRebuild, flushPreviewApply, showAlert]
+        [appId, changeIsNotHotUpdatable, flushPreviewApply, showAlert]
     );
 
     useEffect(() => {
@@ -1183,7 +1121,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
             setAutoPreviewBypassUnsupported(false);
             setPreviewMode("webcontainer");
 
-            // If a preview URL exists already and we're not forcing a rebuild, just try to load it.
+            // If a preview URL exists already and we're not forcing a fresh start, just try to load it.
             if (!opts?.force) {
                 const existing = (appRef.current?.previewUrl || "").trim();
                 if (existing) {
@@ -1383,10 +1321,32 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                     setCode((mergedFiles as any)[openPath].content);
                                 }
 
-                                // Trigger preview refresh ONLY when file content changed.
-                                // (Generation status changes shouldn't spam iframe reloads.)
-                                if (filesChanged) {
+                                // For non-webcontainer previews (e.g. embedded deployment), we still need
+                                // an iframe refresh when file content changes.
+                                // For webcontainer previews, rely on live-apply/HMR to avoid double reloads.
+                                if (filesChanged && previewMode !== "webcontainer") {
                                     queuePreviewReloadFromFirebase();
+
+                                    // Also live-apply the changed files so the running preview reflects remote edits.
+                                    // This covers cases where files were updated server-side (agent/restore points)
+                                    // and only arrived via Firestore snapshots.
+                                    try {
+                                        const changes: Array<{ path: string; content: string }> = [];
+                                        const prevFiles = prevApp.files || ({} as any);
+                                        const nextFiles = mergedFiles || ({} as any);
+                                        for (const p of Object.keys(nextFiles)) {
+                                            const nextContent = (nextFiles as any)?.[p]?.content;
+                                            if (typeof nextContent !== "string") continue;
+                                            const prevContent = (prevFiles as any)?.[p]?.content;
+                                            if (typeof prevContent === "string" && prevContent === nextContent) continue;
+                                            changes.push({ path: p, content: nextContent });
+                                        }
+                                        if (changes.length) {
+                                            queuePreviewApply(changes, { interactive: false });
+                                        }
+                                    } catch {
+                                        // ignore
+                                    }
                                 }
                                 
                                 return updatedApp;
@@ -1403,7 +1363,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
         );
 
         return () => unsubscribe();
-    }, [appId, user?.uid, queuePreviewReloadFromFirebase]);
+    }, [appId, previewMode, user?.uid, queuePreviewApply, queuePreviewReloadFromFirebase]);
 
     // Load panel width from localStorage on mount
     useEffect(() => {
@@ -1503,7 +1463,29 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
 
     const handleFilesReplaceFromServer = useCallback(
         (nextFiles: { [path: string]: { content: string; lastModified: number } }) => {
+            // Live-apply the diff so the running preview reflects server-driven file updates
+            // (restore points, server sync) without requiring a manual Save.
+            try {
+                const prevFiles = appRef.current?.files || ({} as any);
+                const changes: Array<{ path: string; content: string }> = [];
+                for (const p of Object.keys(nextFiles || {})) {
+                    const nextContent = (nextFiles as any)?.[p]?.content;
+                    if (typeof nextContent !== "string") continue;
+                    const prevContent = (prevFiles as any)?.[p]?.content;
+                    if (typeof prevContent === "string" && prevContent === nextContent) continue;
+                    changes.push({ path: p, content: nextContent });
+                }
+                if (changes.length) {
+                    queuePreviewApply(changes, { interactive: false });
+                }
+            } catch {
+                // ignore
+            }
+
             setApp((prev) => (prev ? { ...prev, files: nextFiles } : null));
+
+            // Keep file tree in sync (e.g. newly created files).
+            buildFileTree(nextFiles as any);
 
             if (currentFile) {
                 const next = nextFiles[currentFile]?.content;
@@ -1511,13 +1493,96 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                 else setCode("");
             }
         },
-        [currentFile]
+        [currentFile, queuePreviewApply]
     );
+
+    function canonicalizeEditPath(
+        rawPath: string,
+        files: AppData["files"] | null | undefined,
+    ): string {
+        const trimmed = String(rawPath || "").trim();
+        if (!trimmed) return "";
+
+        // Normalize leading slashes to avoid creating duplicate keys.
+        let p = trimmed.replace(/^\/+/, "");
+
+        const hasFiles = !!files && typeof files === "object";
+        if (hasFiles && (files as any)[p]) return p;
+
+        const keys = hasFiles ? Object.keys(files as any) : [];
+        const hasAnyPrefix = (prefix: string) => keys.some((k) => String(k).startsWith(prefix));
+
+        // Prefer src/* roots if present (Next.js convention).
+        if (p.startsWith("app/") && hasAnyPrefix("src/app/")) {
+            const mapped = `src/${p}`;
+            if ((files as any)?.[mapped]) return mapped;
+            p = mapped;
+        } else if (p.startsWith("src/app/") && hasAnyPrefix("app/")) {
+            const mapped = p.replace(/^src\//, "");
+            if ((files as any)?.[mapped]) return mapped;
+        }
+
+        if (p.startsWith("pages/") && hasAnyPrefix("src/pages/")) {
+            const mapped = `src/${p}`;
+            if ((files as any)?.[mapped]) return mapped;
+            p = mapped;
+        } else if (p.startsWith("src/pages/") && hasAnyPrefix("pages/")) {
+            const mapped = p.replace(/^src\//, "");
+            if ((files as any)?.[mapped]) return mapped;
+        }
+
+        // If the agent targets a common entrypoint but uses the "wrong" extension,
+        // prefer whichever sibling file already exists.
+        const candidatesForSameBase = (base: string) => [
+            `${base}.tsx`,
+            `${base}.ts`,
+            `${base}.jsx`,
+            `${base}.js`,
+            base,
+        ];
+
+        const extMatch = p.match(/^(.*)\.(tsx|ts|jsx|js)$/i);
+        if (extMatch && hasFiles) {
+            const base = extMatch[1];
+            for (const c of candidatesForSameBase(base)) {
+                if ((files as any)[c]) return c;
+            }
+        }
+
+        // Router-specific entrypoint mapping:
+        // - If the agent edits pages/index.* but we only have app/page.* (or vice versa),
+        //   map to the existing router's entrypoint to ensure the preview reflects changes.
+        if (hasFiles) {
+            const pagesIndex = p.match(/^(src\/)?pages\/index\.(tsx|ts|jsx|js)$/i);
+            const appPage = p.match(/^(src\/)?app\/page\.(tsx|ts|jsx|js)$/i);
+
+            if (pagesIndex) {
+                // Prefer src/app/page.* if present, then app/page.*
+                for (const c of candidatesForSameBase("src/app/page")) {
+                    if ((files as any)[c]) return c;
+                }
+                for (const c of candidatesForSameBase("app/page")) {
+                    if ((files as any)[c]) return c;
+                }
+            }
+
+            if (appPage) {
+                for (const c of candidatesForSameBase("src/pages/index")) {
+                    if ((files as any)[c]) return c;
+                }
+                for (const c of candidatesForSameBase("pages/index")) {
+                    if ((files as any)[c]) return c;
+                }
+            }
+        }
+
+        return p;
+    }
 
     const saveFileToServer = useCallback(async (
         path: string,
         content: string,
-        opts?: { afterSave?: "apply" | "rebuild" | "none"; interactive?: boolean }
+        opts?: { afterSave?: "apply" | "none"; interactive?: boolean }
     ): Promise<boolean> => {
         try {
             // Always fetch a fresh CSRF token so the header matches the cookie.
@@ -1552,8 +1617,6 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
             const afterSave = opts?.afterSave || "apply";
             if (afterSave === "apply") {
                 queuePreviewApply([{ path, content }], { interactive: false });
-            } else if (afterSave === "rebuild") {
-                schedulePreviewRestart();
             }
             return true;
         } catch (err) {
@@ -1563,7 +1626,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
             }
             return false;
         }
-    }, [appId, queuePreviewApply, schedulePreviewRestart, showAlert]);
+    }, [appId, queuePreviewApply, showAlert]);
 
     const handleFileChangeFromContainer = useCallback((path: string, content: string) => {
         // Update local state
@@ -1580,28 +1643,93 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
             setCode(content);
         }
 
-        // Persist container-origin changes, but do not re-apply/rebuild (avoids loops).
+        // Persist container-origin changes, but do not re-apply/restart (avoids loops).
         saveFileToServer(path, content, { afterSave: "none" });
     }, [currentFile, saveFileToServer]);
 
-    const handleFileEditFromAI = useCallback((path: string, content: string) => {
+    const handleFileEditFromAI = useCallback((path: string, content: string, creditRequestId?: string) => {
+        const files = appRef.current?.files;
+        const canonicalPath = canonicalizeEditPath(path, files);
+        if (!canonicalPath) return;
+
+        // Guardrail: a broken tsconfig/jsconfig can crash Next dev bundler (e.g. baseUrl errors).
+        const lower = canonicalPath.toLowerCase();
+        if (lower.endsWith("tsconfig.json") || lower.endsWith("jsconfig.json")) {
+            try {
+                JSON.parse(String(content || ""));
+            } catch {
+                void showAlert(
+                    `The agent produced invalid JSON for ${canonicalPath}. Not applying this change to avoid breaking the preview.`,
+                    "Invalid config",
+                );
+                return;
+            }
+        }
+
         // Update local state
         setApp((prev) => prev ? {
             ...prev,
             files: {
                 ...prev.files,
-                [path]: { content, lastModified: Date.now() },
+                [canonicalPath]: { content, lastModified: Date.now() },
             },
         } : null);
 
         // If this is the currently open file, update the editor
-        if (path === currentFile) {
+        if (canonicalPath === currentFile) {
             setCode(content);
         }
 
-        // Save to server, then live-apply (no rebuild).
-        saveFileToServer(path, content, { afterSave: "apply" });
-    }, [currentFile, saveFileToServer]);
+        // Save to Firebase first (source of truth), then live-apply via /api/previews/apply.
+        void saveFileToServer(canonicalPath, content, { afterSave: "apply" }).then((ok) => {
+            const rid = String(creditRequestId || "").trim();
+            if (!ok || !rid) return;
+            if (lastConsumedAiCreditRequestIdRef.current === rid) return;
+            lastConsumedAiCreditRequestIdRef.current = rid;
+            void consumeAiEditCredit(rid);
+        });
+    }, [consumeAiEditCredit, currentFile, saveFileToServer, showAlert]);
+
+    // If an app has a jsconfig/tsconfig with missing compilerOptions (e.g. `{}`), Next's
+    // dev bundler can crash reading `baseUrl`. Repair once and restart the local preview.
+    useEffect(() => {
+        if (didAutoRepairConfigRef.current) return;
+        if (!appId) return;
+        const files = app?.files;
+        if (!files) return;
+
+        const candidates = ["tsconfig.json", "jsconfig.json"];
+        const fixes: Array<{ path: string; content: string }> = [];
+
+        for (const p of candidates) {
+            const raw = (files as any)?.[p]?.content;
+            if (typeof raw !== "string" || !raw.trim()) continue;
+            const normalized = ensureCompilerOptionsObject(raw);
+            if (!normalized.ok) continue;
+            if (normalized.normalized !== raw) {
+                fixes.push({ path: p, content: normalized.normalized });
+            }
+        }
+
+        if (fixes.length === 0) {
+            didAutoRepairConfigRef.current = true;
+            return;
+        }
+
+        didAutoRepairConfigRef.current = true;
+
+        (async () => {
+            try {
+                for (const f of fixes) {
+                    await saveFileToServer(f.path, f.content, { afterSave: "none" });
+                }
+                // Restart to ensure the preview machine reloads config without crashing.
+                await restartLocalPreview(false);
+            } catch {
+                // ignore; user can manually restart
+            }
+        })();
+    }, [appId, app?.files, restartLocalPreview, saveFileToServer]);
 
     const handleSave = async (interactive: boolean = true) => {
         if (!currentFile || !app || isSaving) return;
@@ -1800,17 +1928,17 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
         
         setIsRefreshing(true);
         if (forceFresh) {
-            void rebuildLocalPreview(true).finally(() => {
+            void restartLocalPreview(true).finally(() => {
                 setTimeout(() => setIsRefreshing(false), 500);
             });
             return;
         }
 
-        // Default refresh: rebuild in-place inside the existing machine.
-        // Falls back to starting a fresh machine if no active preview exists.
-        void restartPreviewNow().finally(() => {
-            setTimeout(() => setIsRefreshing(false), 500);
-        });
+        // Default refresh: reconnect/reload without hitting any legacy endpoints.
+        setPreviewMode("webcontainer");
+        setReconnectKey((k) => k + 1);
+        setRefreshKey((k) => k + 1);
+        setTimeout(() => setIsRefreshing(false), 500);
     };
 
     const handleReconnect = () => {
@@ -1969,17 +2097,17 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                     <div className="flex gap-2 items-center">
                         <button
                             onClick={() => void handleSave(true)}
-                            disabled={isSaving || isPreviewRestarting}
+                            disabled={isSaving}
                             className="px-4 py-2 bg-[#F55F2A] text-xs font-semibold text-white rounded hover:bg-[#E04E1B] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all  rounded-full"
                         >
                             <Upload className="w-4 h-4" />
-                            {isSaving ? "Saving..." : isPreviewRestarting ? "Restarting…" : "Save"}
+                            {isSaving ? "Saving..." : "Save"}
                         </button>
                         {isDevEnv ? (
                             <div className="flex items-center gap-3">
                                 <button
                                     onClick={() => void runDevApplyTest()}
-                                    disabled={isDevApplyTesting || isSaving || isPreviewRestarting}
+                                    disabled={isDevApplyTesting || isSaving}
                                     className="px-4 py-2 bg-gray-900 text-xs font-semibold text-white rounded flex items-center gap-2 rounded-full hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed"
                                     title="Dev only: inspect Next.js layout, apply exactly one route file, and verify HMR websocket + lastApply"
                                 >
@@ -2015,21 +2143,21 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                         ) : null}
                         <button
                             onClick={handleReconnect}
-                            disabled={isRefreshing || isPreviewRestarting || isPreviewBuilding}
+                            disabled={isRefreshing || isPreviewBuilding}
                             className="px-4 py-2 bg-[#F55F2A] text-xs font-semibold text-white rounded flex items-center gap-2 rounded-full hover:bg-[#E04E1B] disabled:opacity-50 disabled:cursor-not-allowed"
-                            title="Reconnect to the existing machine without rebuilding"
+                            title="Reconnect to the existing machine without restarting"
                         >
                             <RotateCcw className="w-4 h-4" />
                             Reconnect
                         </button>
                         <button
                             onClick={() => handleRefresh(true)}
-                            disabled={isPreviewBuilding || isRefreshing || isPreviewRestarting}
+                            disabled={isPreviewBuilding || isRefreshing}
                             className="px-4 py-2 bg-[#F55F2A] text-xs font-semibold text-white rounded flex items-center gap-2 rounded-full hover:bg-[#E04E1B]"
                             title="Delete current machine and start fresh"
                         >
                             <RefreshCw className="w-4 h-4" />
-                            {isPreviewBuilding ? "Rebuilding…" : "Rebuild"}
+                            {isPreviewBuilding ? "Starting…" : "Start fresh"}
                         </button>
                         <button
                             onClick={handleDeploy}
@@ -2048,14 +2176,6 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                         </button>
                     </div>
                 </div>
-
-                {previewRestartError ? (
-                    <div className="px-4 py-2 border-b bg-red-50 text-xs text-red-700">
-                        <div className="max-w-[900px] truncate" title={previewRestartError}>
-                            {previewRestartError}
-                        </div>
-                    </div>
-                ) : null}
 
                 <div className="flex flex-1 min-h-0" data-app-builder-container>
                     {/* Left Panel - AI Chat and Controls */}
@@ -2101,8 +2221,8 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                     appId={appId}
                                     files={app.files}
                                     onFileEdit={handleFileEditFromAI}
-                                    onServerRefresh={handleRefresh}
                                     onFilesReplace={handleFilesReplaceFromServer}
+                                    creditError={agentCreditError}
                                 />
                             ) : (
                                 // Code View - File Tree and Editor
@@ -2188,8 +2308,6 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                         restartToken={localRestartKey}
                                         reconnectToken={reconnectKey}
                                         forceFreshStart={forceFreshStartKey.current}
-                                        uiUpdatingToken={uiUpdatingToken}
-                                        uiUpdatingCancelToken={uiUpdatingCancelToken}
                                     />
                                 </div>
                             ) : previewSrc ? (

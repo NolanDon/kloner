@@ -8,6 +8,11 @@ export const dynamic = "force-dynamic";
 
 // Fallback template in case Firebase template is missing
 const fallbackTemplate = {
+  "jsconfig.json": {
+    content: `{
+  "compilerOptions": {}
+}`,
+  },
   "package.json": {
     content: JSON.stringify({
       name: "kloner-app",

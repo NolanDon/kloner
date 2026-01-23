@@ -4,21 +4,66 @@ import { callBackend } from '../../../src/lib/callBackend';
 import { requireSessionAndMaybeCsrf } from '../_lib/route-guard';
 import { assertAppBuilderScope } from '../_lib/appBuilderScope';
 
+function normalizeConfigJson(raw: string): string {
+  try {
+    const parsed: any = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return JSON.stringify({ compilerOptions: {} }, null, 2) + '\n';
+    }
+    if (!parsed.compilerOptions || typeof parsed.compilerOptions !== 'object' || Array.isArray(parsed.compilerOptions)) {
+      parsed.compilerOptions = {};
+    }
+    return JSON.stringify(parsed, null, 2) + '\n';
+  } catch {
+    return JSON.stringify({ compilerOptions: {} }, null, 2) + '\n';
+  }
+}
+
+function ensureNextConfigFiles(files: Record<string, any>): Record<string, any> {
+  const out: Record<string, any> = { ...(files || {}) };
+
+  const hasTs = typeof out['tsconfig.json']?.content === 'string';
+  const hasJs = typeof out['jsconfig.json']?.content === 'string';
+
+  if (hasTs) {
+    out['tsconfig.json'] = {
+      ...(out['tsconfig.json'] || {}),
+      content: normalizeConfigJson(String(out['tsconfig.json']?.content || '')),
+    };
+  }
+  if (hasJs) {
+    out['jsconfig.json'] = {
+      ...(out['jsconfig.json'] || {}),
+      content: normalizeConfigJson(String(out['jsconfig.json']?.content || '')),
+    };
+  }
+
+  // If neither exists, inject a minimal jsconfig.json so Next's dev bundler doesn't
+  // crash reading compilerOptions/baseUrl.
+  if (!hasTs && !hasJs) {
+    out['jsconfig.json'] = { content: normalizeConfigJson('{"compilerOptions":{}}') };
+  }
+
+  return out;
+}
+
 async function handleWebcontainerPost(body: any, uid?: string) {
   const { appId, files, mode } = body || {};
   if (!appId || typeof appId !== 'string' || !files || typeof files !== 'object') {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
   }
 
+  const safeFiles = ensureNextConfigFiles(files as Record<string, any>);
+
   // Basic payload limits to reduce abuse.
-  const paths = Object.keys(files);
+  const paths = Object.keys(safeFiles);
   if (paths.length > 500) {
     return NextResponse.json({ error: 'Too many files' }, { status: 400 });
   }
 
   let totalBytes = 0;
   for (const p of paths) {
-    const content = (files as any)[p]?.content;
+    const content = (safeFiles as any)[p]?.content;
     if (typeof content !== 'string') {
       return NextResponse.json({ error: 'Invalid file content' }, { status: 400 });
     }
@@ -32,7 +77,7 @@ async function handleWebcontainerPost(body: any, uid?: string) {
     const response = await callBackend({ headers: {} } as any, {
       path: "/api/v1/webcontainer",
       method: "POST",
-      body: { appId, files, mode },
+      body: { appId, files: safeFiles, mode },
       userCtx: uid ? { uid } : undefined,
       noPrefix: true,
     });

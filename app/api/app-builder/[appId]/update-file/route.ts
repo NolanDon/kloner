@@ -7,6 +7,45 @@ import { assertAppBuilderScope } from "../../../_lib/appBuilderScope";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function sanitizeRelativePath(input: unknown): string | null {
+    const raw = typeof input === "string" ? input.trim() : "";
+    if (!raw) return null;
+    if (raw.startsWith("/")) return null;
+    if (raw.includes("\\")) return null;
+
+    const parts = raw.split("/");
+    for (const part of parts) {
+        if (!part) return null;
+        if (part === "." || part === "..") return null;
+    }
+
+    return raw;
+}
+
+function normalizeJsTsConfig(path: string, content: string): { ok: true; content: string } | { ok: false; error: string } {
+    const lower = path.toLowerCase();
+    const isConfig = lower === "tsconfig.json" || lower.endsWith("/tsconfig.json") || lower === "jsconfig.json" || lower.endsWith("/jsconfig.json");
+    if (!isConfig) return { ok: true, content };
+
+    let parsed: any;
+    try {
+        parsed = JSON.parse(content);
+    } catch {
+        return { ok: false, error: "Invalid JSON in tsconfig/jsconfig." };
+    }
+
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return { ok: false, error: "tsconfig/jsconfig must be a JSON object." };
+    }
+
+    // Next's dev bundler can crash if compilerOptions is missing (it reads baseUrl without null checks).
+    if (!parsed.compilerOptions || typeof parsed.compilerOptions !== "object" || Array.isArray(parsed.compilerOptions)) {
+        parsed.compilerOptions = {};
+    }
+
+    return { ok: true, content: JSON.stringify(parsed, null, 2) + "\n" };
+}
+
 export async function POST(
     req: NextRequest,
     { params }: { params: { appId: string } }
@@ -23,8 +62,14 @@ export async function POST(
         const body = await req.json();
         const { path, content } = body;
 
-        if (!path || typeof content !== "string") {
+        const sanitizedPath = sanitizeRelativePath(path);
+        if (!sanitizedPath || typeof content !== "string") {
             return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+        }
+
+        const normalized = normalizeJsTsConfig(sanitizedPath, content);
+        if (!normalized.ok) {
+            return NextResponse.json({ error: normalized.error }, { status: 400 });
         }
 
         const docRef = db.collection("kloner_users").doc(uid).collection("kloner_apps").doc(appId);
@@ -39,7 +84,7 @@ export async function POST(
         }
 
         const files = data?.files || {};
-        files[path] = { content, lastModified: Date.now() };
+        files[sanitizedPath] = { content: normalized.content, lastModified: Date.now() };
 
         await docRef.update({
             files,

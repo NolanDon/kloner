@@ -47,6 +47,96 @@ function safeString(val: unknown, maxLen: number): string {
     return val.length > maxLen ? val.slice(0, maxLen) : val;
 }
 
+function normalizeLeadingSlash(rawPath: string): string {
+    return String(rawPath || "").trim().replace(/^\/+/, "");
+}
+
+function canonicalizeEditPath(rawPath: string, files: Record<string, { content: string; lastModified: number }>): string {
+    const p0 = normalizeLeadingSlash(rawPath);
+    if (!p0) return "";
+    if (Object.prototype.hasOwnProperty.call(files, p0)) return p0;
+
+    const hasAnyPrefix = (prefix: string) => Object.keys(files).some((k) => k.startsWith(prefix));
+
+    // Prefer src/* roots if present (Next.js convention).
+    let p = p0;
+    if (p.startsWith("app/") && hasAnyPrefix("src/app/")) {
+        p = `src/${p}`;
+        if (Object.prototype.hasOwnProperty.call(files, p)) return p;
+    } else if (p.startsWith("src/app/") && hasAnyPrefix("app/")) {
+        const without = p.replace(/^src\//, "");
+        if (Object.prototype.hasOwnProperty.call(files, without)) return without;
+    }
+    if (p.startsWith("pages/") && hasAnyPrefix("src/pages/")) {
+        p = `src/${p}`;
+        if (Object.prototype.hasOwnProperty.call(files, p)) return p;
+    } else if (p.startsWith("src/pages/") && hasAnyPrefix("pages/")) {
+        const without = p.replace(/^src\//, "");
+        if (Object.prototype.hasOwnProperty.call(files, without)) return without;
+    }
+
+    // If the agent targets a file with the "wrong" extension, prefer an existing sibling.
+    const extMatch = p.match(/^(.*)\.(tsx|ts|jsx|js)$/i);
+    if (extMatch) {
+        const base = extMatch[1];
+        const candidates = [`${base}.tsx`, `${base}.ts`, `${base}.jsx`, `${base}.js`, base];
+        for (const c of candidates) {
+            if (Object.prototype.hasOwnProperty.call(files, c)) return c;
+        }
+    }
+
+    // Router-specific entrypoint mapping (pages<->app), including src/*.
+    const candidatesForBase = (base: string) => [`${base}.tsx`, `${base}.ts`, `${base}.jsx`, `${base}.js`];
+    const swapIfExists = (from: string, to: string) => {
+        for (const c of candidatesForBase(to)) {
+            if (Object.prototype.hasOwnProperty.call(files, c)) return c;
+        }
+        for (const c of candidatesForBase(from)) {
+            if (Object.prototype.hasOwnProperty.call(files, c)) return c;
+        }
+        return "";
+    };
+
+    if (/^(src\/)?pages\/index\.(tsx|ts|jsx|js)$/i.test(p0)) {
+        const match = swapIfExists(p0.replace(/\.(tsx|ts|jsx|js)$/i, ""), p0.replace(/^(src\/)?pages\/index\.(tsx|ts|jsx|js)$/i, "src/app/page"));
+        if (match) return match;
+        const match2 = swapIfExists(p0.replace(/\.(tsx|ts|jsx|js)$/i, ""), p0.replace(/^(src\/)?pages\/index\.(tsx|ts|jsx|js)$/i, "app/page"));
+        if (match2) return match2;
+    }
+
+    if (/^(src\/)?app\/page\.(tsx|ts|jsx|js)$/i.test(p0)) {
+        const match = swapIfExists(p0.replace(/\.(tsx|ts|jsx|js)$/i, ""), p0.replace(/^(src\/)?app\/page\.(tsx|ts|jsx|js)$/i, "src/pages/index"));
+        if (match) return match;
+        const match2 = swapIfExists(p0.replace(/\.(tsx|ts|jsx|js)$/i, ""), p0.replace(/^(src\/)?app\/page\.(tsx|ts|jsx|js)$/i, "pages/index"));
+        if (match2) return match2;
+    }
+
+    return p;
+}
+
+function normalizeJsTsConfig(path: string, content: string): { ok: true; content: string } | { ok: false; error: string } {
+    const lower = path.toLowerCase();
+    const isConfig = lower === "tsconfig.json" || lower.endsWith("/tsconfig.json") || lower === "jsconfig.json" || lower.endsWith("/jsconfig.json");
+    if (!isConfig) return { ok: true, content };
+
+    let parsed: any;
+    try {
+        parsed = JSON.parse(content);
+    } catch {
+        return { ok: false, error: "Invalid JSON in tsconfig/jsconfig." };
+    }
+
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return { ok: false, error: "tsconfig/jsconfig must be a JSON object." };
+    }
+
+    if (!parsed.compilerOptions || typeof parsed.compilerOptions !== "object" || Array.isArray(parsed.compilerOptions)) {
+        parsed.compilerOptions = {};
+    }
+
+    return { ok: true, content: JSON.stringify(parsed, null, 2) + "\n" };
+}
+
 function buildFileContext(files: Record<string, { content: string; lastModified: number }>): string {
     // Soft limit to avoid runaway prompts
     const MAX_TOTAL = 140_000;
@@ -245,12 +335,17 @@ ${buildContext}`;
 
                 const appliedEdits: FileEdit[] = [];
                 for (const edit of fileEdits) {
-                    const path = safeString(edit?.path, 500);
-                    const content = typeof edit?.content === "string" ? edit.content : "";
-                    if (!isSafeAppFilePath(path)) continue;
+                    const rawPath = safeString(edit?.path, 500);
+                    const rawContent = typeof edit?.content === "string" ? edit.content : "";
+                    const canonicalPath = canonicalizeEditPath(rawPath, files);
+                    if (!isSafeAppFilePath(canonicalPath)) continue;
+
+                    const normalized = normalizeJsTsConfig(canonicalPath, rawContent);
+                    if (!normalized.ok) continue;
+
                     // Update in-memory files
-                    files[path] = { content, lastModified: Date.now() };
-                    appliedEdits.push({ path, content });
+                    files[canonicalPath] = { content: normalized.content, lastModified: Date.now() };
+                    appliedEdits.push({ path: canonicalPath, content: normalized.content });
                 }
 
                 // Automatically refresh server if there are file edits

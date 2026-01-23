@@ -5,6 +5,8 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Send, Bot, RotateCcw, Database, FileText, RefreshCw, X } from "lucide-react";
 import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 import { useAuth } from "@/src/hooks/useAuth";
+import { db } from "@/lib/firebase";
+import { doc, onSnapshot } from "firebase/firestore";
 
 type Message = {
     id: string;
@@ -36,9 +38,9 @@ type DatabaseConnection = {
 type AIAgentChatProps = {
     appId: string;
     files: { [path: string]: { content: string; lastModified: number } };
-    onFileEdit: (path: string, content: string) => void;
-    onServerRefresh: () => void;
+    onFileEdit: (path: string, content: string, creditRequestId?: string) => void;
     onFilesReplace?: (files: { [path: string]: { content: string; lastModified: number } }) => void;
+    creditError?: string | null;
 };
 
 type RestorePointItem = {
@@ -51,13 +53,15 @@ type RestorePointItem = {
     undoOf?: string | null;
 };
 
-export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh, onFilesReplace }: AIAgentChatProps) {
+export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, creditError }: AIAgentChatProps) {
     const { user } = useAuth();
-    const [messages, setMessages] = useState<Message[]>([
+    const AI_EDIT_COST = 5;
+    const [aiCreditsRemaining, setAiCreditsRemaining] = useState<number | null>(null);
+   const [messages, setMessages] = useState<Message[]>([
         {
             id: "welcome",
             role: "assistant",
-            content: "Welcome to your app builder! I'm here to help you create amazing applications. 🚀\n\nI can help you with:\n• Adding new features and pages\n• Styling and customizing your design\n• **One-click Supabase database creation** with full MCP integration\n• Connecting to databases for data persistence with built-in auth & real-time features\n• Integrating APIs and external services\n• Fixing bugs and optimizing performance\n• Adding user authentication\n\nWould you like to start by creating a Supabase database? It's the easiest way to add authentication, real-time data, and powerful database features to your app!",
+            content: "Welcome to your app builder! I'm here to help you create amazing applications. 🚀\n\nI can help you with:\n• Adding new features and pages\n• Styling and customizing your design\n• Moving and repositioning elements\n• Adding or removing images and visual assets\n• Updating colors, fonts, and layouts\n• Integrating APIs and external services\n• Fixing bugs and optimizing performance\n\nWhat would you like to build or improve today?",
             timestamp: new Date(),
             type: "text"
         }
@@ -77,6 +81,25 @@ export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh,
     useEffect(() => {
         setIsHydrated(true);
     }, []);
+
+    useEffect(() => {
+        if (!user?.uid) return;
+        const userRef = doc(db, "kloner_users", user.uid);
+        const unsub = onSnapshot(
+            userRef,
+            (snap) => {
+                const data = snap.exists() ? (snap.data() as any) : null;
+                const bucket = data?.["credits.aiEdits"] || data?.credits?.aiEdits || null;
+                const remaining = typeof bucket?.remaining === "number" ? bucket.remaining : null;
+                setAiCreditsRemaining(Number.isFinite(remaining) ? remaining : null);
+            },
+            () => {
+                // If Firestore read fails (rules/offline), don't block usage.
+                setAiCreditsRemaining(null);
+            }
+        );
+        return () => unsub();
+    }, [user?.uid]);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -461,8 +484,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh,
                                 timestamp: new Date(),
                                 type: "text"
                             }]);
-                            // Refresh database connections
-                            onServerRefresh();
+                            // Preview refresh is handled via HMR/apply; no rebuild refresh here.
                         }
                     }
                 } catch (error) {
@@ -483,7 +505,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh,
                 type: "text"
             }]);
         }
-    }, [onServerRefresh]);
+    }, []);
 
     const applyRestorePoint = useCallback(async (restoreId: string, statusMessage?: string) => {
         if (!restoreId || isRestoreBusy) return;
@@ -516,7 +538,6 @@ export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh,
             ]);
 
             await Promise.all([fetchRestorePoints(), syncFilesFromServer()]);
-            onServerRefresh();
         } catch (err) {
             console.error("Apply restore point failed", err);
             setMessages(prev => [
@@ -532,7 +553,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh,
         } finally {
             setIsRestoreBusy(false);
         }
-    }, [appId, fetchRestorePoints, isRestoreBusy, onServerRefresh, syncFilesFromServer, withCsrfHeaders]);
+    }, [appId, fetchRestorePoints, isRestoreBusy, syncFilesFromServer, withCsrfHeaders]);
 
     const getStatusMessageForAction = useCallback((label?: string) => {
         const v = (label || "").toLowerCase();
@@ -612,6 +633,19 @@ export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh,
     const sendMessage = async () => {
         if (!input.trim() || isLoading) return;
 
+        // If we can see the remaining balance and it's insufficient, block early.
+        if (typeof aiCreditsRemaining === "number" && aiCreditsRemaining < AI_EDIT_COST) {
+            const errorMessage: Message = {
+                id: `error_${Date.now()}`,
+                role: "assistant",
+                content: "You have used all AI edit credits for this month.",
+                timestamp: new Date(),
+                type: "text",
+            };
+            setMessages((prev) => [...prev, errorMessage]);
+            return;
+        }
+
         const userMessage: Message = {
             id: `user_${Date.now()}`,
             role: "user",
@@ -661,8 +695,12 @@ export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh,
             // Handle file edits if any
             if (data.fileEdits && data.fileEdits.length > 0) {
                 createCheckpoint(`AI edit: ${input.slice(0, 50)}...`);
+                const creditRequestId =
+                    (typeof data?.restorePointId === "string" && data.restorePointId) ||
+                    `ai_agent_${appId}_${userMessage.id}`;
+
                 data.fileEdits.forEach((edit: { path: string; content: string }) => {
-                    onFileEdit(edit.path, edit.content);
+                    onFileEdit(edit.path, edit.content, creditRequestId);
                 });
 
                 const rid = typeof data?.restorePointId === "string" ? data.restorePointId : null;
@@ -682,11 +720,6 @@ export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh,
                     ]);
                     fetchRestorePoints();
                 }
-            }
-
-            // Handle server refresh if requested
-            if (data.refreshServer) {
-                onServerRefresh();
             }
         } catch (err) {
             console.error("AI chat error:", err);
@@ -717,6 +750,11 @@ export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh,
                 <div className="flex items-center gap-2">
                     <Bot className="w-5 h-6 text-accent" />
                     <h3 className="font-medium text-sm">Agent</h3>
+                    {creditError ? (
+                        <div className="ml-2 text-[11px] text-red-600 max-w-[220px] truncate" title={creditError}>
+                            {creditError}
+                        </div>
+                    ) : null}
                 </div>
                 <div className="flex items-center gap-2">
                     <button
@@ -1009,6 +1047,19 @@ export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh,
 
             {/* Input */}
             <div className="p-4 border-t bg-white rounded-lg flex-shrink-0">
+                <div className="mb-2 flex items-center justify-between">
+                    <div className="text-[12px] text-gray-700">
+                        {aiCreditsRemaining == null
+                            ? "Credits remaining: —"
+                            : `Credits remaining: ${aiCreditsRemaining}`}
+                    </div>
+                    <button
+                        type="button"
+                        className="px-3 py-1 text-xs font-semibold bg-accent text-white rounded-full hover:bg-accent-dark"
+                    >
+                        Add credits
+                    </button>
+                </div>
                 <div className="flex gap-2 border border-gray-300">
                     <textarea
                         ref={inputRef}
@@ -1016,7 +1067,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onServerRefresh,
                         onChange={(e) => setInput(e.target.value)}
                         onKeyPress={handleKeyPress}
                         placeholder="Ask me to build something..."
-                        className="flex-1 p-3 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="flex-1 p-3 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-accent"
                         rows={3}
                         disabled={isLoading}
                     />

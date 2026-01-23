@@ -15,6 +15,9 @@ const defaultTemplate = {
       name: "kloner-app",
       version: "0.1.0",
       private: true,
+      engines: {
+        node: ">=20.9.0"
+      },
       scripts: {
         dev: "next dev",
         build: "next build",
@@ -22,13 +25,13 @@ const defaultTemplate = {
         lint: "next lint"
       },
       dependencies: {
-        next: "14.2.0",
-        react: "^18",
-        "react-dom": "^18"
+        next: "^16.1.4",
+        react: "^19.2.3",
+        "react-dom": "^19.2.3"
       },
       devDependencies: {
         eslint: "^8",
-        "eslint-config-next": "14.2.0"
+        "eslint-config-next": "^16.1.4"
       }
     }, null, 2),
   },
@@ -46,6 +49,11 @@ const nextConfig = {
 
 module.exports = nextConfig`,
   },
+  "jsconfig.json": {
+    content: `{
+  "compilerOptions": {}
+}`,
+  },
   "app/globals.css": {
     content: `:root {
   --bg0: #0b1020;
@@ -61,7 +69,6 @@ module.exports = nextConfig`,
   --shadow: 0 18px 55px rgba(0,0,0,0.45);
   --radius: 18px;
 }
-
 * { box-sizing: border-box; }
 
 html, body { height: 100%; }
