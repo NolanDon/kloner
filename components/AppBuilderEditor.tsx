@@ -2182,7 +2182,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                         <div className="text-gray-600 text-sm mb-4">{error}</div>
                         <button
                             onClick={() => window.location.reload()}
-                            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                            className="px-4 py-2 bg-accent text-white rounded hover:bg-accent-dark transition-colors"
                         >
                             Retry
                         </button>
@@ -2344,7 +2344,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                             onClick={() => handleRefresh(true)}
                             disabled={isPreviewBuilding || isRefreshing}
                             className="px-4 py-2 bg-[#F55F2A] text-xs font-semibold text-white rounded flex items-center gap-2 rounded-full hover:bg-[#E04E1B]"
-                            title="Delete current machine and start fresh"
+                            title="Delete current machine and start fresh (this will not delete your website)"
                         >
                             <RefreshCw className="w-4 h-4" />
                             {isPreviewBuilding ? "Starting…" : "Start fresh"}

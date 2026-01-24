@@ -238,6 +238,7 @@ export async function consumeUserCredit(
 
     let finalRemaining = 0;
     let success = false;
+    let finalMonthlyLimit: number | null = null;
 
     await db.runTransaction(async (tx) => {
         const snap = await tx.get(userRef);
@@ -245,6 +246,9 @@ export async function consumeUserCredit(
         const override = getActiveCreditsOverride(data, now);
         const effectiveTier = override?.tier || tier;
         const limitForTier = monthlyLimitFor(effectiveTier, coreKind);
+
+        // Capture for return payload (0 => unlimited, represented as null)
+        finalMonthlyLimit = limitForTier === 0 ? null : limitForTier;
 
         // Unlimited tier: no writes, always ok
         if (limitForTier === 0) {
@@ -352,6 +356,6 @@ export async function consumeUserCredit(
     return {
         ok: success,
         remaining: finalRemaining,
-        monthlyLimit: limitForTier,
+        monthlyLimit: finalMonthlyLimit,
     };
 }

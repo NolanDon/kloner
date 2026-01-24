@@ -2,7 +2,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/app/api/_lib/auth";
 import { requireSessionAndMaybeCsrf } from "@/app/api/_lib/route-guard";
-import { assertAppBuilderScope } from "@/app/api/_lib/appBuilderScope";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,9 +16,7 @@ export async function POST(
             const db = getAdminDb();
             const appId = params.appId;
 
-            assertAppBuilderScope(authedReq, uid, appId);
-
-            const body = await request.json().catch(() => ({}));
+            const body = await authedReq.json().catch(() => ({}));
             const archived = (body as any)?.archived;
 
             if (typeof archived !== "boolean") {
