@@ -1,15 +1,14 @@
 // app/api/supabase/create-project/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSessionAndMaybeCsrf } from '../../_lib/route-guard';
+import { getAdminDb } from '../../_lib/auth';
+import crypto from "crypto";
 
 const SUPABASE_CLIENT_ID = process.env.SUPABASE_CLIENT_ID;
 const SUPABASE_CLIENT_SECRET = process.env.SUPABASE_CLIENT_SECRET;
 const SUPABASE_REDIRECT_URI = process.env.SUPABASE_REDIRECT_URI || `${process.env.NEXTAUTH_URL}/api/supabase/oauth/callback`;
 
-// Extend global type for OAuth states
-declare global {
-  var supabaseOAuthStates: Map<string, { userId: string; timestamp: number }> | undefined;
-}
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
 export async function POST(request: NextRequest) {
   return requireSessionAndMaybeCsrf(
@@ -23,19 +22,19 @@ export async function POST(request: NextRequest) {
           }, { status: 500 });
         }
 
-        // Generate state parameter for security
-        const state = Buffer.from(JSON.stringify({
-          userId: uid,
-          timestamp: Date.now()
-        })).toString('base64');
+        const state = crypto.randomBytes(24).toString("base64url");
 
-        // Store state in session/database for verification
-        // For now, we'll use a simple in-memory store (in production, use Redis/database)
-        global.supabaseOAuthStates = global.supabaseOAuthStates || new Map();
-        global.supabaseOAuthStates.set(state, {
-          userId: uid,
-          timestamp: Date.now()
-        });
+        // Store state in Firestore for verification (avoids in-memory state issues on serverless)
+        const db = getAdminDb();
+        await db
+          .collection("oauth_states")
+          .doc(`supabase_${state}`)
+          .set({
+            provider: "supabase",
+            uid,
+            createdAt: new Date(),
+            expiresAt: new Date(Date.now() + OAUTH_STATE_TTL_MS),
+          });
 
         // Supabase OAuth authorization URL
         const authUrl = new URL('https://supabase.com/oauth/authorize');

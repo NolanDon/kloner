@@ -1,0 +1,121 @@
+import { NextRequest, NextResponse } from "next/server";
+import { requireSessionAndMaybeCsrf } from "../../../_lib/route-guard";
+import { getAdminDb } from "../../../_lib/auth";
+import { getSupabaseIntegration, getSupabaseAccessToken, isLikelyDestructiveSql } from "../_lib";
+
+export const runtime = "nodejs";
+
+async function runSupabaseSql(params: {
+    accessToken: string;
+    projectId: string;
+    sql: string;
+}): Promise<{ ok: boolean; result?: any; error?: string }> {
+    const res = await fetch(`https://api.supabase.com/v1/projects/${params.projectId}/database/query`, {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${params.accessToken}`,
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ query: params.sql }),
+        signal: AbortSignal.timeout(60_000),
+    });
+
+    const json = await res.json().catch(() => ({} as any));
+    if (!res.ok) {
+        const message = (json as any)?.message || (json as any)?.error || `Supabase query failed (${res.status})`;
+        return { ok: false, error: message };
+    }
+
+    return { ok: true, result: json };
+}
+
+export async function POST(req: NextRequest) {
+    return requireSessionAndMaybeCsrf(
+        req,
+        async ({ uid, req: authedReq }) => {
+            const body = await authedReq.json().catch(() => ({} as any));
+            const proposalId = typeof body?.proposalId === "string" ? body.proposalId : "";
+            const confirm = typeof body?.confirm === "string" ? body.confirm : "";
+
+            if (!proposalId) {
+                return NextResponse.json({ ok: false, error: "Missing proposalId" }, { status: 400 });
+            }
+
+            const db = getAdminDb();
+            const proposalRef = db
+                .collection("kloner_users")
+                .doc(uid)
+                .collection("integrations")
+                .doc("supabase")
+                .collection("migration_proposals")
+                .doc(proposalId);
+
+            const proposalSnap = await proposalRef.get();
+            if (!proposalSnap.exists) {
+                return NextResponse.json({ ok: false, error: "Proposal not found" }, { status: 404 });
+            }
+
+            const proposal = proposalSnap.data() as any;
+            if (proposal?.status === "APPLIED") {
+                return NextResponse.json({ ok: true, alreadyApplied: true });
+            }
+
+            const sql = typeof proposal?.sql === "string" ? proposal.sql : "";
+            const destructive = Boolean(proposal?.destructive) || isLikelyDestructiveSql(sql);
+
+            const expectedConfirm = `APPLY ${proposalId}`;
+            if (confirm !== expectedConfirm) {
+                return NextResponse.json(
+                    {
+                        ok: false,
+                        error: destructive
+                            ? `Destructive migration. Set confirm to exactly: ${expectedConfirm}`
+                            : `Set confirm to exactly: ${expectedConfirm}`,
+                    },
+                    { status: 400 }
+                );
+            }
+
+            const integration = await getSupabaseIntegration(uid);
+            if (!integration?.projectId) {
+                return NextResponse.json({ ok: false, error: "Supabase is not connected" }, { status: 400 });
+            }
+
+            let accessToken: string;
+            try {
+                accessToken = getSupabaseAccessToken(integration);
+            } catch {
+                return NextResponse.json(
+                    {
+                        ok: false,
+                        error:
+                            "Supabase is connected without an OAuth access token. To apply migrations, connect via \"Create New Supabase Project\" (OAuth).",
+                    },
+                    { status: 400 }
+                );
+            }
+
+            await proposalRef.update({ status: "APPLYING", applyingAt: new Date() });
+
+            const result = await runSupabaseSql({
+                accessToken,
+                projectId: integration.projectId,
+                sql,
+            });
+
+            if (!result.ok) {
+                await proposalRef.update({ status: "FAILED", failedAt: new Date(), error: result.error || "Unknown error" });
+                return NextResponse.json({ ok: false, error: result.error || "Migration failed" }, { status: 502 });
+            }
+
+            await proposalRef.update({
+                status: "APPLIED",
+                appliedAt: new Date(),
+                supabaseResult: result.result ?? null,
+            });
+
+            return NextResponse.json({ ok: true });
+        },
+        { csrf: true, methods: ["POST"] }
+    );
+}

@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import Editor from "@monaco-editor/react";
-import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Edit3, Check, RotateCcw } from "lucide-react";
+import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Edit3, Check, RotateCcw, Database } from "lucide-react";
 import AIAgentChat from "./AIAgentChat";
 import KlonerLoader from "./KlonerLoader";
 import WebContainerRunner from "./WebContainerRunner";
@@ -185,6 +185,76 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     const isDevEnv = process.env.NODE_ENV === "development";
     const { user } = useAuth();
     const { showConfirm, showAlert } = useModal();
+    const [supabaseConnected, setSupabaseConnected] = useState<boolean | null>(null);
+    const [supabaseProjectName, setSupabaseProjectName] = useState<string | null>(null);
+    const [supabaseProjectRef, setSupabaseProjectRef] = useState<string | null>(null);
+
+        useEffect(() => {
+            if (!user?.uid) {
+                setSupabaseConnected(null);
+                setSupabaseProjectName(null);
+                setSupabaseProjectRef(null);
+                return;
+            }
+
+            setSupabaseConnected(null);
+            const integrationRef = doc(db, "kloner_users", user.uid, "integrations", "supabase");
+            const unsub = onSnapshot(
+                integrationRef,
+                (snap) => {
+                    if (!snap.exists()) {
+                        setSupabaseConnected(false);
+                        setSupabaseProjectName(null);
+                        setSupabaseProjectRef(null);
+                        return;
+                    }
+                    const data = snap.data() as any;
+                    setSupabaseConnected(true);
+                    setSupabaseProjectName(
+                        typeof data?.projectName === "string" && data.projectName.trim() ? data.projectName.trim() : null,
+                    );
+                    const ref =
+                        (typeof data?.projectRef === "string" && data.projectRef.trim() ? data.projectRef.trim() : null) ||
+                        (typeof data?.projectId === "string" && data.projectId.trim() ? data.projectId.trim() : null);
+                    setSupabaseProjectRef(ref);
+                },
+                () => {
+                    // If Firestore read fails (rules/offline), keep UX usable but treat as not connected.
+                    setSupabaseConnected(false);
+                    setSupabaseProjectName(null);
+                    setSupabaseProjectRef(null);
+                },
+            );
+
+            return () => unsub();
+        }, [user?.uid]);
+
+        const openDatabaseConnect = useCallback(async () => {
+            if (!user?.uid) {
+                void showAlert("Please sign in to connect a database.", "Database");
+                return;
+            }
+
+            if (supabaseConnected) {
+                const label = supabaseProjectName ? `Supabase is connected (\"${supabaseProjectName}\").` : "Supabase is connected.";
+                const confirmed = await showConfirm(
+                    `${label}\n\nOpen the Supabase dashboard in a new tab?`,
+                    "Database",
+                );
+                if (confirmed) {
+                    const ref = (supabaseProjectRef || "").trim();
+                    if (ref) {
+                        window.open(`https://supabase.com/dashboard/project/${encodeURIComponent(ref)}`, "_blank", "noopener,noreferrer");
+                    } else {
+                        window.open("https://supabase.com/dashboard", "_blank", "noopener,noreferrer");
+                    }
+                }
+                return;
+            }
+
+            setViewMode("ai");
+            window.dispatchEvent(new CustomEvent("kloner:open-db-connect", { detail: { provider: "supabase" } }));
+        }, [showAlert, showConfirm, supabaseConnected, supabaseProjectName, supabaseProjectRef, user?.uid]);
     const [app, setApp] = useState<AppData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -2293,6 +2363,32 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                             <Upload className="w-4 h-4" />
                             {isSaving ? "Saving..." : "Save"}
                         </button>
+
+                        <button
+                            onClick={() => void openDatabaseConnect()}
+                            className={`px-4 py-2 text-xs font-semibold rounded-full flex items-center gap-2 transition-colors ${
+                                supabaseConnected === null
+                                    ? "bg-white text-gray-500 border border-gray-200"
+                                    : supabaseConnected
+                                      ? "bg-green-100 text-green-900 hover:bg-green-200"
+                                      : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-100"
+                            }`}
+                            title={
+                                supabaseConnected
+                                    ? `Database connected${supabaseProjectName ? `: ${supabaseProjectName}` : ""}`
+                                    : "Connect your database"
+                            }
+                        >
+                            <Database className="w-4 h-4" />
+                            {supabaseConnected === null ? (
+                                <span>Database…</span>
+                            ) : supabaseConnected ? (
+                                <span>Database: Connected</span>
+                            ) : (
+                                <span>Connect database</span>
+                            )}
+                        </button>
+
                         {isDevEnv ? (
                             <div className="flex items-center gap-3">
                                 <button

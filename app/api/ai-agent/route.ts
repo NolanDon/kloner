@@ -251,6 +251,7 @@ export async function POST(req: NextRequest) {
             let refreshServer = false;
             let setupDatabase = false;
             let lastRestorePointId: string | null = null;
+            let dbMigrations: Array<{ sql: string; message?: string; destructive?: boolean }> = [];
 
             for (let attempt = 1; attempt <= maxIterations; attempt++) {
                 const fileContext = buildFileContext(files);
@@ -270,11 +271,13 @@ Return ONLY valid JSON (no markdown, no backticks) matching this TypeScript shap
   "response": string,
   "refreshServer": boolean,
   "fileEdits": Array<{ "path": string, "content": string }>,
-  "setupDatabase": boolean
+    "setupDatabase": boolean,
+    "dbMigrations"?: Array<{ "sql": string, "message"?: string, "destructive"?: boolean }>
 }
 
 Rules:
 - response should be a simple, user-friendly summary of what you did (e.g., "Added a login button to the header" or "Fixed the styling on the contact form"). NEVER include code, file paths, or technical details in the response field.
+- If you need to change the database schema, NEVER include SQL in response. Instead, put SQL statements into dbMigrations and describe the intent in response.
 - Only include file edits for the user's app files.
 - Each fileEdits entry MUST include the full, final content of the file.
 - Keep changes minimal and ensure npm run build passes.
@@ -297,7 +300,13 @@ ${buildContext}`;
                 const result = await model.generateContent(systemPrompt);
                 const raw = result.response.text().trim();
 
-                let parsed: { response?: string; refreshServer?: boolean; fileEdits?: FileEdit[]; setupDatabase?: boolean } = {
+                let parsed: {
+                    response?: string;
+                    refreshServer?: boolean;
+                    fileEdits?: FileEdit[];
+                    setupDatabase?: boolean;
+                    dbMigrations?: Array<{ sql?: string; message?: string; destructive?: boolean }>;
+                } = {
                     response: "",
                     refreshServer: false,
                     fileEdits: [],
@@ -332,6 +341,18 @@ ${buildContext}`;
                 assistantSummary = response;
                 setupDatabase = Boolean(parsed.setupDatabase);
                 refreshServer = Boolean(parsed.refreshServer);
+
+                // Database migrations are handled client-side via propose -> explicit confirm -> apply.
+                // We just pass through the desired SQL + description.
+                dbMigrations = Array.isArray(parsed.dbMigrations)
+                    ? parsed.dbMigrations
+                          .map((m) => ({
+                              sql: safeString(m?.sql || "", 100_000),
+                              message: safeString(m?.message || "", 2_000),
+                              destructive: Boolean(m?.destructive),
+                          }))
+                          .filter((m) => Boolean(m.sql.trim()))
+                    : [];
 
                 const appliedEdits: FileEdit[] = [];
                 for (const edit of fileEdits) {
@@ -447,6 +468,7 @@ ${buildContext}`;
                 fileEdits: aggregatedEdits,
                 refreshServer,
                 setupDatabase,
+                dbMigrations,
                 build: lastBuild,
                 restorePointId: lastRestorePointId,
             });

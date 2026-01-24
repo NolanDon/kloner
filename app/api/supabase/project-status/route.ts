@@ -8,22 +8,22 @@ export async function GET(request: NextRequest) {
     request,
     async ({ uid, req: authedReq }) => {
       try {
-        // Check if user has any recently created Supabase projects
+        // Check if user has a recently created Supabase integration
         const db = getAdminDb();
-        const projectsRef = db.collection('users').doc(uid).collection('supabase_projects');
-        const recentProjects = await projectsRef
-          .where('createdAt', '>', new Date(Date.now() - 10 * 60 * 1000)) // Last 10 minutes
-          .orderBy('createdAt', 'desc')
-          .limit(1)
+        const integrationSnap = await db
+          .collection("kloner_users")
+          .doc(uid)
+          .collection("integrations")
+          .doc("supabase")
           .get();
 
-        if (!recentProjects.empty) {
-          const project = recentProjects.docs[0].data();
+        if (integrationSnap.exists) {
+          const project = integrationSnap.data() as any;
           return NextResponse.json({
             completed: true,
             project: {
               id: project.projectId,
-              name: project.name,
+              name: project.projectName,
               status: project.status,
             }
           });

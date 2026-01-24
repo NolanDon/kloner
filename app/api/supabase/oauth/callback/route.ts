@@ -1,15 +1,13 @@
 // app/api/supabase/oauth/callback/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminDb } from '../../../_lib/auth';
+import { encryptString } from "../../../_lib/crypto";
 
 const SUPABASE_CLIENT_ID = process.env.SUPABASE_CLIENT_ID;
 const SUPABASE_CLIENT_SECRET = process.env.SUPABASE_CLIENT_SECRET;
 const SUPABASE_REDIRECT_URI = process.env.SUPABASE_REDIRECT_URI || `${process.env.NEXTAUTH_URL}/api/supabase/oauth/callback`;
 
-// Extend global type for OAuth states
-declare global {
-  var supabaseOAuthStates: Map<string, { userId: string; timestamp: number }> | undefined;
-}
+const STATE_MAX_AGE_MS = 10 * 60 * 1000;
 
 interface SupabaseTokenResponse {
   access_token: string;
@@ -48,25 +46,32 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Verify state parameter
-    const storedState = global.supabaseOAuthStates?.get(state);
-    if (!storedState) {
+    // Verify state parameter (Firestore-backed)
+    const db = getAdminDb();
+    const stateRef = db.collection("oauth_states").doc(`supabase_${state}`);
+    const stateSnap = await stateRef.get();
+    if (!stateSnap.exists) {
       return NextResponse.redirect(
         new URL('/dashboard?supabase_error=invalid_state', request.url)
       );
     }
 
-    // Check if state is expired (5 minutes)
-    if (Date.now() - storedState.timestamp > 5 * 60 * 1000) {
+    const stateData = stateSnap.data() as any;
+    const uid = stateData?.uid as string | undefined;
+    const createdAtMs = stateData?.createdAt?.toDate?.()?.getTime?.() ?? 0;
+    const expiresAtMs = stateData?.expiresAt?.toDate?.()?.getTime?.() ?? 0;
+    const now = Date.now();
+    const expired = (expiresAtMs && now > expiresAtMs) || (createdAtMs && now - createdAtMs > STATE_MAX_AGE_MS);
+
+    if (!uid || expired) {
+      await stateRef.delete().catch(() => undefined);
       return NextResponse.redirect(
         new URL('/dashboard?supabase_error=state_expired', request.url)
       );
     }
 
-    const { userId } = storedState;
-
     // Clean up used state
-    global.supabaseOAuthStates?.delete(state);
+    await stateRef.delete().catch(() => undefined);
 
     // Exchange authorization code for access token
     const tokenResponse = await fetch('https://supabase.com/oauth/token', {
@@ -97,7 +102,7 @@ export async function GET(request: NextRequest) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        name: `kloner-${userId}-${Date.now()}`,
+        name: `kloner-${uid}-${Date.now()}`,
         database_password: generateSecurePassword(),
         organization_id: await getOrCreateOrganization(tokens.access_token),
         plan: 'free', // Start with free plan
@@ -126,20 +131,33 @@ export async function GET(request: NextRequest) {
 
     const finalProject: SupabaseProject = await finalProjectResponse.json();
 
-    // Store project credentials securely in Firestore
-    const db = getAdminDb();
-    await db.collection('users').doc(userId).collection('supabase_projects').add({
-      projectId: finalProject.id,
-      name: finalProject.name,
-      databaseUrl: finalProject.database_url,
-      anonKey: finalProject.anon_key,
-      serviceRoleKey: finalProject.service_role_key,
-      status: finalProject.status,
-      createdAt: new Date(),
-      accessToken: tokens.access_token, // Store for future API calls
-      refreshToken: tokens.refresh_token,
-      tokenExpiresAt: new Date(Date.now() + tokens.expires_in * 1000),
-    });
+    // Store project credentials in Firestore under kloner_users (encrypted)
+    // NOTE: Requires KLONER_ENCRYPTION_KEY to be set.
+    const integrationRef = db
+      .collection("kloner_users")
+      .doc(uid)
+      .collection("integrations")
+      .doc("supabase");
+
+    await integrationRef.set(
+      {
+        provider: "supabase",
+        status: finalProject.status,
+        projectId: finalProject.id,
+        projectRef: finalProject.id,
+        projectName: finalProject.name,
+        supabaseUrl: `https://${finalProject.id}.supabase.co`,
+        databaseUrl: finalProject.database_url || null,
+        anonKey: finalProject.anon_key ? encryptString(finalProject.anon_key) : null,
+        serviceRoleKey: finalProject.service_role_key ? encryptString(finalProject.service_role_key) : null,
+        accessToken: encryptString(tokens.access_token),
+        refreshToken: tokens.refresh_token ? encryptString(tokens.refresh_token) : null,
+        tokenExpiresAt: new Date(Date.now() + tokens.expires_in * 1000),
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      },
+      { merge: true }
+    );
 
     // Redirect back to dashboard with success
     return NextResponse.redirect(

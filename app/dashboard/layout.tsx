@@ -66,13 +66,13 @@ const BASE_NAV_SECTIONS: NavSectionConfig[] = [
                 icon: Sparkles,
             },
 
-            // external links
-            {
-                href: "https://www.youtube.com/@klonerapp",
-                label: "Youtube",
-                icon: Sparkles,
-                external: true,
-            },
+            // // external links
+            // {
+            //     href: "https://www.youtube.com/@klonerapp",
+            //     label: "Youtube",
+            //     icon: Sparkles,
+            //     external: true,
+            // },
         ],
     },
     {

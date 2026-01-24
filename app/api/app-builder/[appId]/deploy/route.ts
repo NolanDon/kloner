@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "../../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../../../_lib/route-guard";
 import { assertAppBuilderScope } from "../../../_lib/appBuilderScope";
+import { upsertVercelProjectEnvVar } from "../../../_lib/vercel-env";
+import { decryptString, type EncryptedBlobV1 } from "../../../_lib/crypto";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -145,6 +147,70 @@ export async function POST(
                 vercelProjectName,
                 updatedAt: new Date(),
             });
+        }
+
+        // ───────────────── Supabase env sync (best-effort) ─────────────────
+        // If the user connected Supabase, ensure the deployed app has env vars.
+        try {
+            const supabaseSnap = await db
+                .collection("kloner_users")
+                .doc(uid)
+                .collection("integrations")
+                .doc("supabase")
+                .get();
+
+            if (supabaseSnap.exists && vercelProjectId) {
+                const supabase = supabaseSnap.data() as any;
+                const supabaseUrl = typeof supabase?.supabaseUrl === "string" ? supabase.supabaseUrl : "";
+                const anonKeyEnc = supabase?.anonKey as EncryptedBlobV1 | null | undefined;
+                const serviceRoleEnc = supabase?.serviceRoleKey as EncryptedBlobV1 | null | undefined;
+
+                if (supabaseUrl) {
+                    await upsertVercelProjectEnvVar({
+                        accessToken,
+                        teamId: vercelTeamId,
+                        projectId: vercelProjectId,
+                        key: "NEXT_PUBLIC_SUPABASE_URL",
+                        value: supabaseUrl,
+                        type: "encrypted",
+                    });
+                    await upsertVercelProjectEnvVar({
+                        accessToken,
+                        teamId: vercelTeamId,
+                        projectId: vercelProjectId,
+                        key: "SUPABASE_URL",
+                        value: supabaseUrl,
+                        type: "encrypted",
+                    });
+                }
+
+                if (anonKeyEnc) {
+                    const anonKey = decryptString(anonKeyEnc);
+                    await upsertVercelProjectEnvVar({
+                        accessToken,
+                        teamId: vercelTeamId,
+                        projectId: vercelProjectId,
+                        key: "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+                        value: anonKey,
+                        type: "encrypted",
+                    });
+                }
+
+                if (serviceRoleEnc) {
+                    const serviceRoleKey = decryptString(serviceRoleEnc);
+                    await upsertVercelProjectEnvVar({
+                        accessToken,
+                        teamId: vercelTeamId,
+                        projectId: vercelProjectId,
+                        key: "SUPABASE_SERVICE_ROLE_KEY",
+                        value: serviceRoleKey,
+                        type: "encrypted",
+                    });
+                }
+            }
+        } catch (e) {
+            // Do not block deploy on env sync.
+            console.warn("Supabase env sync skipped:", e);
         }
 
         // ───────────────── prepare files for deployment ─────────────────

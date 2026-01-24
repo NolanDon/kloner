@@ -5587,7 +5587,7 @@ export default function PreviewPage(): JSX.Element {
                                                             }`}
                                                     >
                                                         <div className="text-sm font-semibold text-neutral-900">Quick start</div>
-                                                        <div className="mt-1 text-xs text-neutral-600">Start from a Kloner sample app. You'll still be able to customize it</div>
+                                                        <div className="mt-1 text-xs text-neutral-600">Start from a Kloner sample app. You&apos;ll still be able to customize it</div>
                                                     </button>
                                                     <button
                                                         type="button"
