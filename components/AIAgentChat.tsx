@@ -601,7 +601,44 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             }
 
             // Listen for the OAuth callback via window message or polling
-            // For now, we'll poll for completion (in production, use postMessage)
+            // We poll for completion and also listen for postMessage from the popup.
+            let isDone = false;
+
+            const onMessage = (event: MessageEvent) => {
+                try {
+                    if (event.origin !== window.location.origin) return;
+                    const data: any = event.data;
+                    if (!data || data.type !== "kloner:supabase-oauth-result") return;
+
+                    isDone = true;
+                    clearInterval(checkCompletion);
+                    window.removeEventListener("message", onMessage);
+
+                    if (data.ok) {
+                        setMessages(prev => [...prev, {
+                            id: `project_created_${Date.now()}`,
+                            role: "assistant",
+                            content: "✅ **Supabase project created successfully!**\n\nYour new database is ready. I’ve connected it and you can start asking for schema changes safely (propose → confirm → apply).",
+                            timestamp: new Date(),
+                            type: "text"
+                        }]);
+                    } else {
+                        const details = typeof data.details === "string" ? data.details : "Supabase setup failed";
+                        setMessages(prev => [...prev, {
+                            id: `create_error_${Date.now()}`,
+                            role: "assistant",
+                            content: `❌ **Supabase setup failed**\n\n${details}`,
+                            timestamp: new Date(),
+                            type: "text"
+                        }]);
+                    }
+                } catch {
+                    // ignore
+                }
+            };
+
+            window.addEventListener("message", onMessage);
+
             const checkCompletion = setInterval(async () => {
                 try {
                     const statusResponse = await fetch('/api/supabase/project-status', {
@@ -610,8 +647,23 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
                     if (statusResponse.ok) {
                         const status = await statusResponse.json();
-                        if (status.completed) {
+                        if (status.completed && status.ok === false) {
+                            isDone = true;
                             clearInterval(checkCompletion);
+                            window.removeEventListener("message", onMessage);
+                            setMessages(prev => [...prev, {
+                                id: `create_error_${Date.now()}`,
+                                role: "assistant",
+                                content: `❌ **Supabase setup failed**\n\n${typeof status.error === "string" ? status.error : "Unknown error"}`,
+                                timestamp: new Date(),
+                                type: "text"
+                            }]);
+                            return;
+                        }
+                        if (status.completed) {
+                            isDone = true;
+                            clearInterval(checkCompletion);
+                            window.removeEventListener("message", onMessage);
                             setMessages(prev => [...prev, {
                                 id: `project_created_${Date.now()}`,
                                 role: "assistant",
@@ -628,7 +680,11 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             }, 5000); // Check every 5 seconds
 
             // Stop polling after 5 minutes
-            setTimeout(() => clearInterval(checkCompletion), 5 * 60 * 1000);
+            setTimeout(() => {
+                if (isDone) return;
+                clearInterval(checkCompletion);
+                window.removeEventListener("message", onMessage);
+            }, 5 * 60 * 1000);
 
         } catch (error) {
             if (popup && !popup.closed) {

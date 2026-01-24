@@ -18,6 +18,78 @@ export type RenderRecord = {
     archivedAt?: string | number | null;
 };
 
+export type RenderForBuilder = {
+    id: string;
+    url?: string | null;
+    urlHash?: string | null;
+    key?: string | null;
+    source?: string | null;
+    archived?: boolean;
+};
+
+function normalizeUrlForMatch(raw: string): string {
+    const s = (raw || "").trim();
+    if (!s) return "";
+    try {
+        const u = new URL(s);
+        u.hash = "";
+        // Avoid treating trailing slash differences as different URLs.
+        const normalized = u.toString();
+        return normalized.endsWith("/") ? normalized.slice(0, -1) : normalized;
+    } catch {
+        return s.endsWith("/") ? s.slice(0, -1) : s;
+    }
+}
+
+/**
+ * Filters a set of renders to those relevant to the current /dashboard/view target.
+ *
+ * Why this exists: Firestore fields can be missing/normalized differently over time
+ * (e.g. url variants, urlHash missing, key formats). We still want the UI to show
+ * *something* instead of hiding a user's only render.
+ */
+export function filterRendersForBuilder<T extends RenderForBuilder>(params: {
+    all: T[];
+    targetUrl: string;
+    targetHash?: string | null;
+    optimisticKeys?: string[];
+    extractHashFromKey?: (key: string) => string | null;
+}): T[] {
+    const allNonArchived = (params.all || []).filter((r) => !r?.archived);
+    const targetUrlNorm = normalizeUrlForMatch(params.targetUrl || "");
+    const targetHash = (params.targetHash || "").trim();
+    const optimistic = new Set(params.optimisticKeys || []);
+
+    const filtered = allNonArchived.filter((r) => {
+        const rUrl = typeof r.url === "string" ? r.url : "";
+        const byUrl = !!rUrl && normalizeUrlForMatch(rUrl) === targetUrlNorm;
+
+        const byHash = !!targetHash && typeof r.urlHash === "string" && r.urlHash === targetHash;
+
+        const byKeyHash =
+            !!targetHash &&
+            typeof r.key === "string" &&
+            typeof params.extractHashFromKey === "function" &&
+            params.extractHashFromKey(r.key) === targetHash;
+
+        const byOptimisticKey = typeof r.key === "string" && optimistic.has(r.key);
+
+        // Community remixes don't have url/urlHash; show them regardless.
+        const byCommunityRemix = r.source === "community_remix";
+
+        return byUrl || byHash || byKeyHash || byOptimisticKey || byCommunityRemix;
+    });
+
+    // Severity-1 guardrail: if the user only has one render, never hide it.
+    // This catches cases where the stored render fields don't match the current
+    // targetUrl (http/https, trailing slash, missing urlHash, etc.).
+    if (filtered.length === 0 && allNonArchived.length === 1) {
+        return allNonArchived;
+    }
+
+    return filtered;
+}
+
 // Fetch all renders for the current user
 export async function getUserRenders(): Promise<RenderRecord[]> {
     const res = await fetch("/api/user-renders", {

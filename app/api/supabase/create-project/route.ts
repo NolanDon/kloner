@@ -36,12 +36,35 @@ export async function POST(request: NextRequest) {
             expiresAt: new Date(Date.now() + OAUTH_STATE_TTL_MS),
           });
 
-        // Supabase OAuth authorization URL
-        const authUrl = new URL('https://supabase.com/oauth/authorize');
+        // Also record progress under the user's nested integrations collection
+        // so Supabase-related setup state is discoverable at:
+        // /kloner_users/{uid}/integrations/supabase_setup
+        await db
+          .collection("kloner_users")
+          .doc(uid)
+          .collection("integrations")
+          .doc("supabase_setup")
+          .set(
+            {
+              provider: "supabase",
+              status: "IN_PROGRESS",
+              step: "OAUTH",
+              oauthState: state,
+              oauthStartedAt: new Date(),
+              oauthExpiresAt: new Date(Date.now() + OAUTH_STATE_TTL_MS),
+              updatedAt: new Date(),
+            },
+            { merge: true }
+          );
+
+        // Supabase Platform OAuth authorization URL
+        // (The supabase.com hostname serves the marketing site and returns 404 for /oauth/*.)
+        const authUrl = new URL('https://api.supabase.com/v1/oauth/authorize');
         authUrl.searchParams.set('client_id', SUPABASE_CLIENT_ID);
         authUrl.searchParams.set('redirect_uri', SUPABASE_REDIRECT_URI);
         authUrl.searchParams.set('response_type', 'code');
-        authUrl.searchParams.set('scope', 'projects:create projects:read projects:update projects:delete');
+        // We need org access to pick/create an organization, and project access to create/read the project.
+        authUrl.searchParams.set('scope', 'organizations:read organizations:create projects:create projects:read');
         authUrl.searchParams.set('state', state);
 
         return NextResponse.json({

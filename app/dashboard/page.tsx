@@ -710,6 +710,7 @@ export default function DashboardPage() {
     >(null);
 
     const addOnceRef = useRef(false);
+    const supabasePollRef = useRef(false);
 
     useEffect(() => {
         const off = onAuthStateChanged(auth, (u) => {
@@ -785,27 +786,97 @@ export default function DashboardPage() {
         const supabaseError = search.get("supabase_error");
         const projectCreated = search.get("project_created");
 
+        const cleanupUrlParams = () => {
+            if (typeof window === "undefined") return;
+            const url = new URL(window.location.href);
+            url.searchParams.delete("supabase_connected");
+            url.searchParams.delete("supabase_error");
+            url.searchParams.delete("project_created");
+            router.replace(url.pathname + url.search);
+        };
+
+        if (supabaseError) {
+            setBillingMsg({
+                type: "cancelled",
+                text: `Supabase setup failed: ${decodeURIComponent(supabaseError)}`,
+            });
+            cleanupUrlParams();
+            return;
+        }
+
         if (supabaseConnected === "true" && projectCreated === "true") {
             setBillingMsg({
                 type: "success",
                 text: "Supabase project created successfully! Your database is ready for AI-powered development.",
             });
-        } else if (supabaseError) {
-            setBillingMsg({
-                type: "cancelled",
-                text: `Supabase setup failed: ${decodeURIComponent(supabaseError)}`,
-            });
+            cleanupUrlParams();
+            return;
         }
 
-        if (supabaseConnected || supabaseError) {
-            if (typeof window !== "undefined") {
-                const url = new URL(window.location.href);
-                url.searchParams.delete("supabase_connected");
-                url.searchParams.delete("supabase_error");
-                url.searchParams.delete("project_created");
-                router.replace(url.pathname + url.search);
-            }
+        // If OAuth succeeded but project creation is still provisioning, poll our
+        // status endpoint here as well (so the user can close the popup and still
+        // complete setup by simply landing on /dashboard).
+        if (supabaseConnected === "true" && projectCreated === "pending") {
+            if (supabasePollRef.current) return;
+            supabasePollRef.current = true;
+
+            setBillingMsg({
+                type: "cancelled",
+                text: "Connecting Supabase… Creating your project now. You can keep using Kloner while this finishes.",
+            });
+
+            let cancelled = false;
+            const started = Date.now();
+            const maxMs = 12 * 60 * 1000;
+
+            const poll = async () => {
+                if (cancelled) return;
+                if (Date.now() - started > maxMs) {
+                    setBillingMsg({
+                        type: "cancelled",
+                        text: "Supabase is still provisioning. You can refresh this page in a bit to re-check status.",
+                    });
+                    supabasePollRef.current = false;
+                    cleanupUrlParams();
+                    return;
+                }
+
+                try {
+                    const res = await fetch("/api/supabase/project-status", { method: "GET" });
+                    const json = await res.json().catch(() => ({} as any));
+
+                    if (json?.completed) {
+                        if (json?.ok) {
+                            setBillingMsg({
+                                type: "success",
+                                text: "Supabase project created successfully! Your database is ready for AI-powered development.",
+                            });
+                        } else {
+                            setBillingMsg({
+                                type: "cancelled",
+                                text: `Supabase setup failed: ${String(json?.error || "unknown_error")}`,
+                            });
+                        }
+                        supabasePollRef.current = false;
+                        cleanupUrlParams();
+                        return;
+                    }
+                } catch {
+                    // ignore; we'll try again
+                }
+
+                setTimeout(poll, 2500);
+            };
+
+            void poll();
+
+            return () => {
+                cancelled = true;
+            };
         }
+
+        // If we have Supabase params but no pending provisioning, just clean them up.
+        if (supabaseConnected) cleanupUrlParams();
     }, [search, router]);
 
     useEffect(() => {

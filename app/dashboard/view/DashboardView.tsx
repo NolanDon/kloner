@@ -86,7 +86,7 @@ import { CREDIT_LIMITS, UserTier } from "@/src/lib/credits";
 import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 import { UrlDoc } from "../page";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
-import { archiveRender, resolveStorageUrl, useResolvedImg } from "@/src/lib/renders";
+import { archiveRender, filterRendersForBuilder, resolveStorageUrl, useResolvedImg } from "@/src/lib/renders";
 import { archiveApp } from "@/src/lib/apps";
 import { AnimatePresence, motion } from "framer-motion";
 import { extractArchivedPageIdsFromRender, fetchRenderForDeployment, getArchivedRoutesForRender, persistArchivedPageIds, scrubArchivedRoutes, secureHtmlForPreviewIframe, withArchivedPageIds } from "@/components/helpers";
@@ -1280,29 +1280,27 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
 
     return (
         <>
-            <div className="relative flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm hover:shadow-md transition-shadow">
-                <div className="relative aspect-[3/3] w-full overflow-hidden rounded-xl">
-                    <button
-                        type="button"
-                        onClick={handleClick}
-                        disabled={effectiveLocked}
-                        className={`group flex h-full w-full flex-col items-center justify-center rounded-xl border-2 border-dashed bg-white text-center transition ${effectiveLocked ? "opacity-70 cursor-wait" : "hover:border-neutral-400 cursor-pointer"} border-neutral-300`}
-                        aria-label="Generate a new website or app"
+            <div className="relative w-full overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm hover:shadow-md transition-shadow">
+                <button
+                    type="button"
+                    onClick={handleClick}
+                    disabled={effectiveLocked}
+                    className={`group flex aspect-square w-full flex-col items-center justify-center rounded-lg border-2 border-dashed bg-white px-5 py-6 text-center transition ${effectiveLocked ? "opacity-70 cursor-wait" : "hover:border-neutral-400 cursor-pointer"} border-neutral-300`}
+                    aria-label="Generate a new website or app"
+                >
+                    <div
+                        className={`grid ${iconWrapperSize} place-items-center rounded-full border border-neutral-200 bg-neutral-50 transition group-hover:scale-105`}
+                        aria-hidden
                     >
-                        <div
-                            className={`grid ${iconWrapperSize} place-items-center rounded-full border border-neutral-200 bg-neutral-50 transition group-hover:scale-105`}
-                            aria-hidden
-                        >
                             {effectiveLocked ? (
                                 <Hammer className="h-7 w-7 text-neutral-600 ghost-hammer-swing" />
                             ) : (
                                 <Plus className="h-7 w-7 text-neutral-600" />
                             )}
-                        </div>
-                        <div className="mt-3 text-sm font-semibold text-neutral-800">{title}</div>
-                        <div className="mt-1 text-sm text-neutral-500">{subtitle}</div>
-                    </button>
-                </div>
+                    </div>
+                    <div className="mt-4 px-2 text-sm font-semibold text-neutral-800">{title}</div>
+                    <div className="mt-1 px-2 text-sm text-neutral-500">{subtitle}</div>
+                </button>
             </div>
 
             {/* Generation Type Selection Modal */}
@@ -1767,7 +1765,8 @@ export default function PreviewPage(): JSX.Element {
             }));
             // Keep archived apps off the main dashboard without requiring a Firestore index
             // (and so legacy docs missing the `archived` field still show up).
-            setApps(appList.filter((a: any) => !a?.archived));
+            // IMPORTANT: only treat boolean true as archived.
+            setApps(appList.filter((a: any) => a?.archived !== true));
         });
 
         return () => unsub();
@@ -2907,22 +2906,18 @@ export default function PreviewPage(): JSX.Element {
                 );
                 const qs = query(
                     base,
-                    where("archived", "in", [false, null]),
                     orderBy("createdAt", "desc"),
                     limit(100)
                 );
                 const snap = await getDocs(qs);
 
                 const all = snap.docs.map(mapRenderDoc);
-
-                const filtered = all.filter((r) => {
-                    const byUrl = (r.url || "") === targetUrl;
-                    const byHash =
-                        !!targetHash && r.urlHash === targetHash;
-                    const byKeyHash =
-                        !!targetHash &&
-                        extractHashFromKey(r.key) === targetHash;
-                    return byUrl || byHash || byKeyHash;
+                const filtered = filterRendersForBuilder({
+                    all,
+                    targetUrl,
+                    targetHash,
+                    optimisticKeys: Object.keys(optimisticByKey),
+                    extractHashFromKey,
                 });
 
                 const now = Date.now();
@@ -3069,35 +3064,21 @@ export default function PreviewPage(): JSX.Element {
         );
         const qs = query(
             base,
-            where("archived", "in", [false, null]),
             orderBy("createdAt", "desc"),
             limit(100)
         )
 
         const unsub = onSnapshot(qs, (snap) => {
+            // Important: don't filter `archived` at the query level.
+            // Many older render docs may have no `archived` field at all,
+            // and Firestore queries won't match missing fields.
             const all = snap.docs.map(mapRenderDoc);
-
-            const filtered = all.filter((r) => {
-
-                const byUrl = (r.url || "") === targetUrl;
-
-                const byHash = !!targetHash && r.urlHash === targetHash;
-
-                const byKeyHash =
-                    !!targetHash && extractHashFromKey(r.key) === targetHash;
-
-                const byOptimisticKey =
-                    !!r.key && Object.keys(optimisticByKey).includes(r.key);
-
-                const byCommunityRemix = r.source === "community_remix";
-
-                return (
-                    byUrl ||
-                    byHash ||
-                    byKeyHash ||
-                    byOptimisticKey ||
-                    byCommunityRemix
-                );
+            const filtered = filterRendersForBuilder({
+                all,
+                targetUrl,
+                targetHash,
+                optimisticKeys: Object.keys(optimisticByKey),
+                extractHashFromKey,
             });
 
             const now = Date.now();
@@ -5100,41 +5081,107 @@ export default function PreviewPage(): JSX.Element {
                                     </span>
                                 </div>
                             </div> */}
-                            <div className="mt-4 flex flex-wrap gap-4 text-sm text-neutral-500">
-                                {groupedShots.map((group, groupIndex) => {
-                                    if (groupIndex > 0) return null;
 
-                                    const first = group.items[0];
-                                    if (!first) return null;
+                            <div
+                                className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                                aria-label="Editable previews list"
+                            >
+                                {groupedShots.length === 0 ? (
+                                    <GhostGeneratePreviewCard
+                                        locked={false}
+                                        onClick={() => {
+                                            if (groupedShots.length > 0) {
+                                                const firstGroup = groupedShots[0];
+                                                const collectionKeys = firstGroup.items.map((s) => s.path);
+                                                buildFromCollection(collectionKeys);
+                                            } else {
+                                                // Start with blank website
+                                                setEditorMode("website");
+                                                setEditorOpen(true);
+                                                setEditorHtml(`<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Website</title>
+</head>
+<body>
+    <h1>Welcome to your new website</h1>
+    <p>Start editing to customize it.</p>
+</body>
+</html>`);
+                                                setEditorRefImg("");
+                                                setActiveRenderId(undefined);
+                                                setActiveSeoMetaByPage(null);
+                                                setActiveArchivedPageIds([]);
+                                            }
+                                        }}
+                                        onAppClick={() => {
+                                            if (!isAdmin) return;
+                                            setEditorMode("app");
+                                            setEditorOpen(true);
+                                            setEditorHtml("");
+                                            setEditorRefImg("");
+                                            setActiveRenderId(undefined);
+                                            setActiveSeoMetaByPage(null);
+                                            setActiveArchivedPageIds([]);
+                                        }}
+                                        isAdmin={isAdmin}
+                                        onStartFromTemplate={handleCreateTemplateApp}
+                                        onStartFromCommunityBuild={() => router.push("/community-builds")}
+                                        user={user}
+                                    />
+                                ) : (
+                                    groupedShots.map((group, groupIndex) => {
+                                        if (groupIndex > 0) return null;
 
-                                    const collectionKeys = group.items.map((s) => s.path);
+                                        const first = group.items[0];
+                                        if (!first) return null;
 
-                                    const locked = group.items.some((s) => {
-                                        if (pendingByKey[s.path]) return true;
-                                        return renders.some(
-                                            (r) =>
-                                                r.key === s.path &&
-                                                (r.status === "queued" || r.status === "processing") &&
-                                                !r.archived,
+                                        const collectionKeys = group.items.map((s) => s.path);
+
+                                        const locked = group.items.some((s) => {
+                                            if (pendingByKey[s.path]) return true;
+                                            return renders.some(
+                                                (r) =>
+                                                    r.key === s.path &&
+                                                    (r.status === "queued" || r.status === "processing") &&
+                                                    !r.archived,
+                                            );
+                                        });
+
+                                        return (
+                                            <GhostGeneratePreviewCard
+                                                key={`ghost-${group.snapshotId || first.path}`}
+                                                locked={locked}
+                                                onClick={() => buildFromCollection(collectionKeys)}
+                                                onAppClick={() => {
+                                                    if (!isAdmin) return;
+                                                    startWebAppWizard({ seedRenderId: null, url: targetUrl || "" });
+                                                }}
+                                                isAdmin={isAdmin}
+                                                onStartFromTemplate={handleCreateTemplateApp}
+                                                onStartFromCommunityBuild={() => router.push("/community-builds")}
+                                                user={user}
+                                            />
                                         );
-                                    });
+                                    })
+                                )}
 
-                                    return (
-                                        <GhostGeneratePreviewCard
-                                            key={`ghost-${group.snapshotId || first.path}`}
-                                            locked={locked}
-                                            onClick={() => buildFromCollection(collectionKeys)}
-                                            onAppClick={() => {
-                                                if (!isAdmin) return;
-                                                startWebAppWizard({ seedRenderId: null, url: targetUrl || "" });
-                                            }}
-                                            isAdmin={isAdmin}
-                                            onStartFromTemplate={handleCreateTemplateApp}
-                                            onStartFromCommunityBuild={() => router.push("/community-builds")}
-                                            user={user}
-                                        />
-                                    );
-                                })}
+                                {apps.map((app) => (
+                                    <AppCard
+                                        key={app.id}
+                                        app={app}
+                                        isDeleting={!!deletingApp[app.id]}
+                                        isArchiving={!!archivingApp[app.id]}
+                                        onCustomize={(appId) => {
+                                            setCurrentAppId(appId);
+                                            setAppBuilderOpen(true);
+                                        }}
+                                        onArchive={handleArchiveApp}
+                                        onDelete={handleDeleteApp}
+                                    />
+                                ))}
                             </div>
                         </>
 
