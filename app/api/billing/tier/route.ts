@@ -32,6 +32,32 @@ function aiEditsBucketFromUserData(data: any): any {
     return data["credits.aiEdits"] || (data.credits && data.credits.aiEdits) || {};
 }
 
+function serializeAiEditsCredits(data: any): {
+    remaining: number | null;
+    monthlyLimit: number | null;
+    bonusRemaining: number | null;
+    periodEndMs: number | null;
+} {
+    const bucket = aiEditsBucketFromUserData(data);
+    const remaining = typeof bucket?.remaining === "number" && Number.isFinite(bucket.remaining) ? bucket.remaining : null;
+    const monthlyLimit =
+        typeof bucket?.monthlyLimit === "number" && Number.isFinite(bucket.monthlyLimit) ? bucket.monthlyLimit : null;
+    const bonusRemaining =
+        typeof bucket?.bonusRemaining === "number" && Number.isFinite(bucket.bonusRemaining)
+            ? bucket.bonusRemaining
+            : null;
+
+    const end = toDateFromFirestoreTimestampLike(bucket?.periodEnd);
+    const periodEndMs = end ? end.getTime() : null;
+
+    return {
+        remaining,
+        monthlyLimit,
+        bonusRemaining,
+        periodEndMs,
+    };
+}
+
 function toDateFromFirestoreTimestampLike(v: any): Date | null {
     if (!v) return null;
     if (v instanceof Date) return v;
@@ -91,6 +117,9 @@ export async function GET(req: NextRequest) {
                             currentPeriodEnd: userData.stripeCurrentPeriodEnd ?? null,
                             cancelAtPeriodEnd: userData.stripeCancelAtPeriodEnd ?? null,
                             source: userData.tierSource ?? "override",
+                            credits: {
+                                aiEdits: serializeAiEditsCredits(userData),
+                            },
                         },
                         { status: 200 },
                     );
@@ -184,6 +213,9 @@ export async function GET(req: NextRequest) {
                         currentPeriodEnd: userData.stripeCurrentPeriodEnd ?? null,
                         cancelAtPeriodEnd: userData.stripeCancelAtPeriodEnd ?? null,
                         source: userData.tierSource ?? "stripe",
+                        credits: {
+                            aiEdits: serializeAiEditsCredits(userData),
+                        },
                     },
                     { status: 200 }
                 );

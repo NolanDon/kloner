@@ -6,6 +6,7 @@ import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import { useModal } from "@/components/ui/ModalContext";
 import { useAuth } from "@/src/hooks/useAuth";
+import { Check } from "lucide-react";
 
 const ACCENT = "#f55f2a";
 
@@ -125,12 +126,20 @@ function Bullet({ children }: { children: React.ReactNode }) {
     return (
         <li className="flex gap-2">
             <span
-                className="mt-[6px] h-1.5 w-1.5 rounded-full"
-                style={{ backgroundColor: ACCENT }}
-            />
-            <span>{children}</span>
+                className="mt-0.5 inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full"
+                style={{ backgroundColor: "rgba(245,95,42,0.10)" }}
+                aria-hidden="true"
+            >
+                <Check className="h-3.5 w-3.5" style={{ color: ACCENT }} />
+            </span>
+            <span className="leading-5">{children}</span>
         </li>
     );
+}
+
+function clampPct(v: number): number {
+    if (!Number.isFinite(v)) return 0;
+    return Math.max(0, Math.min(100, v));
 }
 
 export default function PriceClient(): JSX.Element {
@@ -149,6 +158,15 @@ export default function PriceClient(): JSX.Element {
     >(null);
     const { showAlert } = useModal();
     const { user, userTier, loading: authLoading } = useAuth();
+
+    const [aiCredits, setAiCredits] = useState<
+        null | {
+            remaining: number | null;
+            monthlyLimit: number | null;
+            bonusRemaining: number | null;
+            periodEndMs: number | null;
+        }
+    >(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -203,10 +221,87 @@ export default function PriceClient(): JSX.Element {
         };
     }, [authLoading, showAlert]);
 
-    const trustPoints = useMemo(
-        () => ["7-day free trial on Pro", "Cancel anytime", "Secure Stripe checkout"],
-        []
-    );
+    useEffect(() => {
+        let cancelled = false;
+        if (authLoading) return;
+
+        void (async () => {
+            try {
+                const res = await fetch("/api/billing/tier", {
+                    method: "GET",
+                    credentials: "include",
+                    cache: "no-store",
+                });
+                const data = res.ok ? ((await res.json().catch(() => ({}))) as any) : null;
+                if (cancelled) return;
+                const bucket = data?.credits?.aiEdits ?? null;
+                if (!bucket || typeof bucket !== "object") {
+                    setAiCredits(null);
+                    return;
+                }
+                setAiCredits({
+                    remaining: typeof bucket.remaining === "number" ? bucket.remaining : null,
+                    monthlyLimit: typeof bucket.monthlyLimit === "number" ? bucket.monthlyLimit : null,
+                    bonusRemaining: typeof bucket.bonusRemaining === "number" ? bucket.bonusRemaining : null,
+                    periodEndMs: typeof bucket.periodEndMs === "number" ? bucket.periodEndMs : null,
+                });
+            } catch {
+                if (!cancelled) setAiCredits(null);
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [authLoading]);
+
+    const creditsDisplay = useMemo(() => {
+        const remaining = aiCredits?.remaining ?? null;
+        const monthlyLimit = aiCredits?.monthlyLimit ?? null;
+        const bonusRemaining = aiCredits?.bonusRemaining ?? null;
+
+        if (remaining === null || monthlyLimit === null) {
+            return {
+                remainingLabel: remaining !== null ? remaining.toLocaleString() : "—",
+                totalLabel: monthlyLimit !== null ? monthlyLimit.toLocaleString() : "—",
+                pct: 0,
+                showBar: false,
+                hasBonus: false,
+            };
+        }
+
+        const inferredBonus = remaining > monthlyLimit ? remaining - monthlyLimit : 0;
+        const bonus = bonusRemaining !== null ? Math.max(0, bonusRemaining) : inferredBonus;
+        const total = Math.max(1, monthlyLimit + bonus);
+        const pct = clampPct((remaining / total) * 100);
+
+        return {
+            remainingLabel: remaining.toLocaleString(),
+            totalLabel: total.toLocaleString(),
+            pct,
+            showBar: true,
+            hasBonus: bonus > 0,
+        };
+    }, [aiCredits]);
+
+    const periodEndLabel = useMemo(() => {
+        const ms = aiCredits?.periodEndMs ?? null;
+        if (!ms || !Number.isFinite(ms)) return null;
+        const d = new Date(ms);
+        if (Number.isNaN(d.getTime())) return null;
+        return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    }, [aiCredits]);
+
+    const planLabel = useMemo(() => {
+        if (userTier === "pro") return "Pro";
+        if (userTier === "agency") return "Agency";
+        return "Free";
+    }, [userTier]);
+
+    const manageHref = useMemo(() => {
+        if (!user) return "/login?next=%2Fprice";
+        return "/dashboard/settings";
+    }, [user]);
 
     const topupOptions = useMemo(() => {
         const cfg = topupConfig;
@@ -381,37 +476,108 @@ export default function PriceClient(): JSX.Element {
     }
 
     return (
-        <main className="min-h-screen bg-white text-neutral-900">
+        <main className="min-h-screen bg-neutral-50 text-neutral-900">
             <NavBar />
 
             <div className="pt-28 pb-20 px-4">
-                <section className="mx-auto max-w-5xl">
-                    <header className="max-w-3xl">
-                        <h1 className="mt-4 text-3xl sm:text-4xl font-semibold tracking-tight">
-                            Pick a plan, clone fast, ship cleaner sites.
-                        </h1>
+                <section className="mx-auto max-w-6xl">
+                    <header className="mb-10 max-w-3xl">
+                        <div className="inline-flex items-center gap-2 rounded-full bg-accent text-neutral-50 px-3 py-1 text-[11px] mb-4">
+                            <span>Kloner · Pricing</span>
+                        </div>
 
-                        <p className="mt-3 text-sm sm:text-base text-neutral-600">
-                            Start free. Upgrade when you need AI editing, SEO tooling, higher limits, and
-                            priority capture.
-                        </p>
-
-                        <ul className="mt-4 flex flex-wrap gap-2 text-[11px] text-neutral-600">
-                            {trustPoints.map((t) => (
-                                <li
-                                    key={t}
-                                    className="inline-flex items-center rounded-full border border-black/10 bg-white px-3 py-1"
-                                >
-                                    <span
-                                        className="mr-2 inline-block h-1.5 w-1.5 rounded-full"
-                                        style={{ backgroundColor: ACCENT }}
-                                        aria-hidden="true"
-                                    />
-                                    {t}
-                                </li>
-                            ))}
-                        </ul>
+                        <div className="rounded-3xl border border-neutral-200 bg-gradient-to-br from-white via-neutral-50 to-neutral-100 px-6 py-7 sm:px-8 sm:py-9 shadow-sm">
+                            <h1 className="text-3xl sm:text-4xl tracking-tight text-neutral-900">
+                                Plans & credits
+                            </h1>
+                            <p className="mt-1 max-w-2xl text-sm text-neutral-600">
+                                Choose a plan, then top up AI credits any time you need extra runway.
+                            </p>
+                        </div>
                     </header>
+
+                    <div className="mt-8 grid gap-4 md:grid-cols-2">
+                        <div className="rounded-2xl border border-black/10 bg-white p-5 shadow-sm">
+                            <div className="flex items-start justify-between gap-4">
+                                <div className="min-w-0">
+                                    <p className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
+                                        Your plan
+                                    </p>
+                                    <p className="mt-1 text-lg font-semibold text-neutral-900">
+                                        You’re on {planLabel}
+                                    </p>
+                                    <p className="mt-1 text-[12px] text-neutral-600">
+                                        Upgrade anytime. Cancel anytime.
+                                    </p>
+                                </div>
+
+                                <a
+                                    href={manageHref}
+                                    className="inline-flex items-center justify-center rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 hover:bg-neutral-50"
+                                >
+                                    Manage
+                                </a>
+                            </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-black/10 bg-white p-5 shadow-sm">
+                            <div className="flex items-start justify-between gap-4">
+                                <div className="min-w-0">
+                                    <p className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
+                                        AI credits
+                                    </p>
+                                    <p className="mt-1 text-lg font-semibold text-neutral-900">
+                                        {creditsDisplay.remainingLabel} <span className="text-neutral-400">/</span>{" "}
+                                        {creditsDisplay.totalLabel}
+                                    </p>
+                                    <p className="mt-1 text-[12px] text-neutral-600">
+                                        Used for AI edits inside the builder.
+                                    </p>
+                                </div>
+
+                                <a
+                                    href="#topup"
+                                    className="inline-flex items-center justify-center rounded-full px-3 py-1.5 text-xs font-semibold text-white hover:brightness-95"
+                                    style={{ backgroundColor: ACCENT }}
+                                >
+                                    Top up
+                                </a>
+                            </div>
+
+                            {creditsDisplay.showBar ? (
+                                <div className="mt-4">
+                                    <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-100">
+                                        <div
+                                            className="h-full rounded-full"
+                                            style={{ width: `${creditsDisplay.pct}%`, backgroundColor: ACCENT }}
+                                        />
+                                    </div>
+
+                                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-neutral-600">
+                                        {periodEndLabel ? (
+                                            <span className="inline-flex items-center gap-2">
+                                                <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: ACCENT }} />
+                                                Resets {periodEndLabel}
+                                            </span>
+                                        ) : null}
+                                        {creditsDisplay.hasBonus ? (
+                                            <span className="inline-flex items-center gap-2">
+                                                <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: ACCENT }} />
+                                                Includes top-ups
+                                            </span>
+                                        ) : (
+                                            <span className="inline-flex items-center gap-2">
+                                                <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: ACCENT }} />
+                                                No rollover
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="mt-4 h-2 w-full rounded-full bg-neutral-100" />
+                            )}
+                        </div>
+                    </div>
 
                     <div className="mt-10 grid gap-6 md:grid-cols-3">
                         {tiers.map((tier) => {
@@ -427,7 +593,7 @@ export default function PriceClient(): JSX.Element {
                                     className={
                                         "flex flex-col rounded-2xl border bg-white p-6 shadow-sm " +
                                         (tier.highlight
-                                            ? "border-[rgba(245,95,42,0.6)] shadow-md"
+                                            ? "border-[rgba(245,95,42,0.45)] shadow-md"
                                             : "border-black/10")
                                     }
                                 >
@@ -523,18 +689,12 @@ export default function PriceClient(): JSX.Element {
                         })}
                     </div>
 
-                    <div className="mx-auto mt-10 max-w-3xl rounded-2xl border border-black/10 bg-neutral-50 p-5">
+                    <div className="mx-auto mt-10 max-w-5xl rounded-2xl border border-black/10 bg-white p-5 shadow-sm">
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                                <p className="text-sm font-semibold text-neutral-900">
-                                    Need to validate the workflow before paying?
-                                </p>
-                                <p className="mt-1 text-[12px] text-neutral-600">
-                                    Start with Free. When you’re ready, Pro unlocks AI editing and SEO tools with a
-                                    7-day trial.
-                                </p>
-                            </div>
-                            <div className="flex items-center gap-2">
+                            <p className="text-sm font-semibold text-neutral-900">
+                                Minimal billing, secure checkout.
+                            </p>
+                            <div className="flex flex-wrap items-center gap-2">
                                 <span className="inline-flex items-center rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-neutral-700 border border-black/10">
                                     Cancel anytime
                                 </span>
@@ -547,17 +707,12 @@ export default function PriceClient(): JSX.Element {
 
                     <section
                         id="topup"
-                        className="mx-auto mt-10 max-w-3xl rounded-2xl border border-[rgba(245,95,42,0.35)] bg-white p-6 shadow-sm"
+                        className="mx-auto mt-10 max-w-5xl rounded-2xl border border-black/10 bg-white p-6 shadow-sm"
                     >
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                             <div>
                                 <h2 className="text-lg font-semibold tracking-tight">Top up AI credits</h2>
-                                <p className="mt-1 text-[12px] text-neutral-600">
-                                    Pro/Agency can buy extra AI credits when you run out.
-                                </p>
-                                <p className="mt-1 text-[11px] text-neutral-500">
-                                    1 AI edit typically costs 5 credits.
-                                </p>
+                                <p className="mt-1 text-[12px] text-neutral-600">One-time checkout. Credits apply after Stripe confirms.</p>
                             </div>
 
                             {userTier === "pro" || userTier === "agency" ? (
@@ -568,14 +723,17 @@ export default function PriceClient(): JSX.Element {
                         </div>
 
                         <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                            <div className="rounded-xl border border-black/10 bg-white p-4">
-                                <label className="block text-[11px] font-semibold text-neutral-700">Credits</label>
+                            <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-5">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+                                    Amount
+                                </p>
 
-                                <div className="mt-2">
+                                <div className="mt-3">
+                                    <label className="block text-[11px] font-semibold text-neutral-700">Credits</label>
                                     <select
                                         value={topupCredits}
                                         onChange={(e) => setTopupCredits(Number(e.target.value))}
-                                        className="w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm font-semibold text-neutral-900"
+                                        className="mt-2 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm font-semibold text-neutral-900 focus:outline-none focus:ring-2 focus:ring-black/5"
                                     >
                                         {topupOptions.map((n) => (
                                             <option key={n} value={n}>
@@ -583,16 +741,25 @@ export default function PriceClient(): JSX.Element {
                                             </option>
                                         ))}
                                     </select>
+
+                                    <p className="mt-2 text-[11px] text-neutral-600">
+                                        ≈ {Math.max(1, Math.floor(topupCredits / 5)).toLocaleString()} AI edits
+                                    </p>
                                 </div>
 
-                                <div className="mt-2 text-[11px] text-neutral-500">
-                                    ≈ {Math.max(1, Math.floor(topupCredits / 5)).toLocaleString()} AI edits
+                                <div className="mt-4">
+                                    <ul className="space-y-2 text-[12px] text-neutral-700">
+                                        <Bullet>Top-ups never expire</Bullet>
+                                        <Bullet>Applied to your account immediately after Stripe confirms</Bullet>
+                                    </ul>
                                 </div>
                             </div>
 
-                            <div className="rounded-xl border border-black/10 bg-white p-4">
-                                <p className="text-[11px] font-semibold text-neutral-700">Estimated total</p>
-                                <p className="mt-1 text-2xl font-semibold text-neutral-900">
+                            <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+                                    Total
+                                </p>
+                                <p className="mt-2 text-3xl font-semibold text-neutral-900">
                                     {topupConfig
                                         ? `$${((topupCredits * topupConfig.unitPriceCents) / 100).toFixed(2)}`
                                         : "—"}{" "}
@@ -600,11 +767,8 @@ export default function PriceClient(): JSX.Element {
                                         {topupConfig ? topupConfig.currency.toUpperCase() : ""}
                                     </span>
                                 </p>
-                                <p className="mt-1 text-[11px] text-neutral-500">
-                                    Checkout is a one-time payment. Credits apply immediately after Stripe confirms.
-                                </p>
 
-                                <div className="mt-4">
+                                <div className="mt-5">
                                     <button
                                         type="button"
                                         disabled={
@@ -614,8 +778,7 @@ export default function PriceClient(): JSX.Element {
                                         }
                                         onClick={() => void startTopup()}
                                         className={
-                                            "w-full rounded-full px-4 py-2.5 text-sm font-semibold text-white transition " +
-                                            (loadingTopup ? "opacity-70 cursor-wait" : "")
+                                            "w-full rounded-full px-4 py-3 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-70 disabled:cursor-wait"
                                         }
                                         style={{ backgroundColor: ACCENT }}
                                     >
@@ -623,9 +786,7 @@ export default function PriceClient(): JSX.Element {
                                     </button>
 
                                     {user ? null : (
-                                        <p className="mt-2 text-[11px] text-neutral-500">
-                                            Sign in to purchase a top-up.
-                                        </p>
+                                        <p className="mt-2 text-[11px] text-neutral-500">Sign in to purchase a top-up.</p>
                                     )}
 
                                     {user && !(userTier === "pro" || userTier === "agency") ? (
