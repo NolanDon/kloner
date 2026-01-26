@@ -1168,10 +1168,10 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     locked,
     onClick,
     onAppClick,
-    isAdmin,
+    isAdmin: _isAdmin,
     onStartFromTemplate,
     onStartFromCommunityBuild,
-    user,
+    user: _user,
 }: {
     locked: boolean;
     onClick: () => void;
@@ -1185,12 +1185,6 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     const router = useRouter();
     const [localDisabled, setLocalDisabled] = useState(false);
     const [showGenerationModal, setShowGenerationModal] = useState(false);
-    const [selectedGenerationType, setSelectedGenerationType] = useState<"template" | "webapp" | null>(null);
-    const [showWebAppNewBadge, setShowWebAppNewBadge] = useState(false);
-
-    // ───────── notification states ─────────
-    const [isNotifying, setIsNotifying] = useState(false);
-    const [isSubscribed, setIsSubscribed] = useState(false);
 
     // Consider the card disabled if either the parent says so or we've just been clicked.
     const effectiveLocked = locked || localDisabled;
@@ -1200,19 +1194,6 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
 
         // Show modal for all users to choose between website and web app
         setShowGenerationModal(true);
-
-        try {
-            const key = "kloner_webapp_new_badge_seen";
-            const seen = window.localStorage.getItem(key);
-            if (!seen) {
-                setShowWebAppNewBadge(true);
-                window.localStorage.setItem(key, "1");
-            } else {
-                setShowWebAppNewBadge(false);
-            }
-        } catch {
-            // ignore
-        }
     };
 
     const handleWebsiteGeneration = () => {
@@ -1250,24 +1231,6 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                 // otherwise we clear the optimistic guard after the timeout above.
                 // We don't clear the timeout here to allow it to expire naturally.
             }
-        }
-    };
-
-    const handleNotifyMe = async () => {
-        if (!user?.uid) return;
-
-        setIsNotifying(true);
-        try {
-            await updateDoc(doc(db, "kloner_users", user.uid), {
-                webAppNotifyInterest: true,
-                webAppNotifyTimestamp: serverTimestamp(),
-            });
-            setIsSubscribed(true);
-            // Could add a toast notification here if desired
-        } catch (error) {
-            console.error("Failed to save notification preference:", error);
-        } finally {
-            setIsNotifying(false);
         }
     };
 
@@ -1358,18 +1321,20 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                 {/* 1) Website (Next.js) */}
                                 <div className="space-y-3">
                                     <div className="relative">
+                                        <span
+                                            className="pointer-events-none absolute right-3 top-3 z-10 inline-flex items-center rounded-full border border-neutral-200 bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-neutral-700 shadow-sm backdrop-blur"
+                                            aria-hidden
+                                        >
+                                            New
+                                        </span>
                                         <button
                                             type="button"
                                             onClick={handleAppGeneration}
-                                            disabled={!isAdmin}
-                                            className={`w-full rounded-xl border p-4 text-left transition ${!isAdmin
-                                                ? "border-neutral-200 bg-neutral-50 cursor-not-allowed opacity-60"
-                                                : "border-neutral-200 bg-white hover:bg-neutral-50 hover:border-neutral-300"
-                                                }`}
+                                            className="w-full rounded-xl border border-neutral-200 bg-white p-4 text-left transition hover:bg-neutral-50 hover:border-neutral-300"
                                         >
                                             <div className="flex items-start gap-3">
                                                 <div
-                                                    className={`flex h-10 w-10 items-center justify-center rounded-lg ${!isAdmin ? "bg-neutral-100" : "bg-neutral-900"}`}
+                                                    className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-900"
                                                     aria-hidden
                                                 >
                                                     <Image
@@ -1377,7 +1342,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                         alt=""
                                                         width={24}
                                                         height={24}
-                                                        className={`${!isAdmin ? "opacity-40 grayscale" : "opacity-95"} object-contain`}
+                                                        className="object-contain opacity-95"
                                                         priority={false}
                                                     />
                                                 </div>
@@ -1390,16 +1355,6 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                         <span className="inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800">
                                                             15 preview credits
                                                         </span>
-                                                        {showWebAppNewBadge ? (
-                                                            <span className="inline-flex items-center rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800">
-                                                                New
-                                                            </span>
-                                                        ) : null}
-                                                        {!isAdmin && (
-                                                            <span className="whitespace-nowrap inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-                                                                Coming Soon
-                                                            </span>
-                                                        )}
                                                     </div>
 
                                                     <div className="text-xs text-neutral-600">
@@ -1409,40 +1364,9 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                         Best for: user accounts, AI features, dashboards, CRUD apps, paid tools.
                                                     </div>
                                                 </div>
-
-                                                {!isAdmin && (
-                                                    <div className="flex items-center text-xs text-neutral-400">
-                                                        <Crown className="h-3 w-3" />
-                                                    </div>
-                                                )}
                                             </div>
                                         </button>
                                     </div>
-
-                                    {!isAdmin && user && (
-                                        <div className="space-y-2">
-                                            <button
-                                                type="button"
-                                                onClick={handleNotifyMe}
-                                                disabled={isNotifying || isSubscribed}
-                                                className={`w-full rounded-xl px-4 py-2 text-sm font-semibold text-white transition ${isSubscribed
-                                                    ? "border border-green-500 bg-green-500 cursor-not-allowed"
-                                                    : "border border-[#f55f2a] bg-[#f55f2a] hover:bg-[#ff8a4c] disabled:opacity-60"
-                                                    }`}
-                                            >
-                                                {isNotifying
-                                                    ? "Subscribing…"
-                                                    : isSubscribed
-                                                        ? "✓ Subscribed"
-                                                        : "Notify me when available"}
-                                            </button>
-                                            {isSubscribed && (
-                                                <p className="text-xs text-neutral-600 text-center">
-                                                    We&apos;ll notify you via email as soon as this feature is ready!
-                                                </p>
-                                            )}
-                                        </div>
-                                    )}
                                 </div>
 
                                 {/* 2) Website (HTML) */}
@@ -1738,6 +1662,7 @@ export default function PreviewPage(): JSX.Element {
     const [appWizardBusy, setAppWizardBusy] = useState(false);
     const [appWizardError, setAppWizardError] = useState<string | null>(null);
     const [appWizardUrl, setAppWizardUrl] = useState<string>("");
+    const [appWizardShotsUrl, setAppWizardShotsUrl] = useState<string>("");
     const [appWizardSource, setAppWizardSource] = useState<"website" | "prompt" | "sample">("website");
     const [appWizardPrompt, setAppWizardPrompt] = useState<string>("");
     const [appWizardSeedRenderId, setAppWizardSeedRenderId] = useState<string | null>(null);
@@ -2089,10 +2014,31 @@ export default function PreviewPage(): JSX.Element {
         [user],
     );
 
-    const handleCreateApp = useCallback(async (mode: "clone" | "url" | "prompt", prompt?: string, renderId?: string, url?: string) => {
+    const handleCreateApp = useCallback(async (
+        mode: "clone" | "url" | "prompt",
+        prompt?: string,
+        renderId?: string,
+        url?: string,
+        opts?: { screenshotKeys?: string[] },
+    ) => {
         if (!user) return;
 
+        if (!isAdmin && (mode === "url" || mode === "prompt")) {
+            push("Coming soon.", "err");
+            return null;
+        }
+
         try {
+            function appNameFromUrl(raw: string): string {
+                try {
+                    const u = new URL(raw);
+                    const host = u.hostname.replace(/^www\./, "");
+                    return `Clone of ${host}`;
+                } catch {
+                    return "Clone from URL";
+                }
+            }
+
             let appName = "My New App";
             let finalRenderId = renderId;
 
@@ -2100,8 +2046,10 @@ export default function PreviewPage(): JSX.Element {
                 appName = "Starter Template";
                 finalRenderId = renderId; // Can be undefined for template
             } else if (mode === "url") {
+                appName = url ? appNameFromUrl(url) : "Clone from URL";
                 finalRenderId = undefined; // No render for URL mode
             } else if (mode === "prompt") {
+                appName = "App from Prompt";
                 finalRenderId = undefined; // No render for prompt mode
             }
 
@@ -2109,31 +2057,48 @@ export default function PreviewPage(): JSX.Element {
 
             if (mode === "url" && url) {
                 // Use the new URL generation endpoint
+                const csrf = await ensureSessionAndCsrf().catch(() => null);
+
+                const screenshotKeysToSend = Array.isArray(opts?.screenshotKeys)
+                    ? opts!.screenshotKeys!.filter((p) => typeof p === "string" && p.trim()).slice(0, 6)
+                    : [];
+
                 const res = await fetch("/api/generate-app-from-url", {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ url, name: appName }),
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...(csrf ? { "x-csrf": csrf } : {}),
+                    },
+                    body: JSON.stringify({ url, name: appName, screenshotKeys: screenshotKeysToSend }),
+                    credentials: "include",
                 });
 
                 if (res.status === 202) {
                     const { appId: generatedAppId } = await res.json();
                     appId = generatedAppId;
                 } else {
-                    throw new Error("Failed to generate app from URL");
+                    const data = await res.json().catch(() => ({} as any));
+                    throw new Error(data?.error || "Failed to generate app from URL");
                 }
             } else if (mode === "prompt" && prompt) {
                 // Use the new prompt generation endpoint
+                const csrf = await ensureSessionAndCsrf().catch(() => null);
                 const res = await fetch("/api/generate-app-from-prompt", {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...(csrf ? { "x-csrf": csrf } : {}),
+                    },
                     body: JSON.stringify({ prompt, name: appName }),
+                    credentials: "include",
                 });
 
                 if (res.status === 202) {
                     const { appId: generatedAppId } = await res.json();
                     appId = generatedAppId;
                 } else {
-                    throw new Error("Failed to generate app from prompt");
+                    const data = await res.json().catch(() => ({} as any));
+                    throw new Error(data?.error || "Failed to generate app from prompt");
                 }
             } else {
                 // Use the existing create endpoint for clone mode
@@ -2173,7 +2138,7 @@ export default function PreviewPage(): JSX.Element {
             push("Failed to create app. Please try again.", "err");
             return null;
         }
-    }, [user, router, push, activeRenderId]);
+    }, [user, router, push, activeRenderId, isAdmin]);
 
     const startWebAppWizard = useCallback(
         (opts?: { seedRenderId?: string | null; url?: string | null }) => {
@@ -2182,6 +2147,7 @@ export default function PreviewPage(): JSX.Element {
             void refreshVercelStatus();
             const url = typeof opts?.url === "string" ? opts.url : "";
             setAppWizardUrl(url);
+            setAppWizardShotsUrl(url);
             setAppWizardSeedRenderId(opts?.seedRenderId ?? null);
             setAppWizardSource("sample");
             setAppWizardPrompt("");
@@ -2213,24 +2179,29 @@ export default function PreviewPage(): JSX.Element {
 
     const submitAppWizardWebsite = useCallback(async () => {
         if (appWizardBusy) return;
+        if (!isAdmin) {
+            setAppWizardError("Coming soon.");
+            return;
+        }
         setAppWizardBusy(true);
         setAppWizardError(null);
 
         try {
             const url = (appWizardUrl || "").trim();
-
-            const seedId = appWizardSeedRenderId;
-            let renderIdToUse: string | undefined = seedId || undefined;
-
-            if (!renderIdToUse && url) {
-                const candidates = renders
-                    .filter((r) => !r.archived && typeof r.url === "string" && normUrl(r.url) === normUrl(url))
-                    .sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
-
-                renderIdToUse = candidates[0]?.id;
+            if (!url) {
+                setAppWizardError("Enter a URL to continue.");
+                return;
             }
 
-            const created = await handleCreateApp("url", undefined, undefined, url);
+            const canAttachShots = !!(appWizardShotsUrl && normUrl(appWizardShotsUrl) === normUrl(url));
+            const screenshotKeys = user && canAttachShots
+                ? shots
+                    .map((s) => s.path)
+                    .filter((p) => typeof p === "string" && p.startsWith(`kloner-screenshots/${user.uid}/`))
+                    .slice(0, 6)
+                : [];
+
+            const created = await handleCreateApp("url", undefined, undefined, url, { screenshotKeys });
             if (created === null) {
                 // Async processing started
                 setAppWizardBusy(false);
@@ -2244,7 +2215,7 @@ export default function PreviewPage(): JSX.Element {
         } finally {
             setAppWizardBusy(false);
         }
-    }, [appWizardBusy, appWizardUrl, appWizardSeedRenderId, renders, handleCreateApp]);
+    }, [appWizardBusy, appWizardUrl, appWizardShotsUrl, user, shots, handleCreateApp, isAdmin]);
 
     const submitAppWizardSample = useCallback(async () => {
         if (appWizardBusy) return;
@@ -2265,6 +2236,10 @@ export default function PreviewPage(): JSX.Element {
 
     const submitAppWizardPrompt = useCallback(async () => {
         if (appWizardBusy) return;
+        if (!isAdmin) {
+            setAppWizardError("Coming soon.");
+            return;
+        }
         const prompt = (appWizardPrompt || "").trim();
         if (!prompt) {
             setAppWizardError("Enter a prompt to continue.");
@@ -2289,7 +2264,7 @@ export default function PreviewPage(): JSX.Element {
         } finally {
             setAppWizardBusy(false);
         }
-    }, [appWizardBusy, appWizardPrompt, handleCreateApp]);
+    }, [appWizardBusy, appWizardPrompt, handleCreateApp, isAdmin]);
 
     // New: create an app from the starter template (free)
     const handleCreateTemplateApp = useCallback(async () => {
@@ -5155,7 +5130,6 @@ export default function PreviewPage(): JSX.Element {
                                             }
                                         }}
                                         onAppClick={() => {
-                                            if (!isAdmin) return;
                                             setEditorMode("app");
                                             setEditorOpen(true);
                                             setEditorHtml("");
@@ -5194,7 +5168,6 @@ export default function PreviewPage(): JSX.Element {
                                                 locked={locked}
                                                 onClick={() => buildFromCollection(collectionKeys)}
                                                 onAppClick={() => {
-                                                    if (!isAdmin) return;
                                                     startWebAppWizard({ seedRenderId: null, url: targetUrl || "" });
                                                 }}
                                                 isAdmin={isAdmin}
@@ -5380,7 +5353,6 @@ export default function PreviewPage(): JSX.Element {
                                             locked={locked}
                                             onClick={() => buildFromCollection(collectionKeys)}
                                             onAppClick={() => {
-                                                if (!isAdmin) return;
                                                 // Find the most recent render from this group (optional seed)
                                                 const groupRenders = renders
                                                     .filter((r) =>
@@ -5677,18 +5649,30 @@ export default function PreviewPage(): JSX.Element {
                                                     <button
                                                         type="button"
                                                         onClick={() => {
-                                                            // Disabled (coming soon)
+                                                            if (!isAdmin) return;
+                                                            setAppWizardSource("website");
+                                                            setAppWizardPrompt("");
+                                                            setAppWizardUrl((prev) => (prev || targetUrl || ""));
+                                                            setAppWizardShotsUrl((prev) => (prev || targetUrl || ""));
                                                         }}
-                                                        disabled
-                                                        className="w-full rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-left opacity-60 cursor-not-allowed"
+                                                        disabled={!isAdmin}
+                                                        className={`relative w-full rounded-xl border p-4 text-left transition ${!isAdmin
+                                                            ? "cursor-not-allowed border-neutral-200 bg-neutral-50 opacity-60"
+                                                            : appWizardSource === "website"
+                                                                ? "border-[#f55f2a] bg-[#f55f2a]/5"
+                                                                : "border-neutral-200 bg-white hover:bg-neutral-50"
+                                                            }`}
                                                     >
-                                                        <div className="flex items-center justify-between gap-2">
-                                                            <div className="text-sm font-semibold text-neutral-900">Build from this URL</div>
-                                                            <span className="whitespace-nowrap inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                                                        {!isAdmin ? (
+                                                            <span className="absolute right-3 top-3 rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-neutral-700">
                                                                 Coming soon
                                                             </span>
-                                                        </div>
+                                                        ) : null}
+                                                        <div className="text-sm font-semibold text-neutral-900">Build from this URL</div>
                                                         <div className="mt-1 text-xs text-neutral-600 break-all">
+                                                            High-fidelity clone using your saved screenshots when available.
+                                                        </div>
+                                                        <div className="mt-1 text-xs text-neutral-500 break-all">
                                                             {appWizardUrl || targetUrl || "(no URL selected)"}
                                                         </div>
                                                     </button>
@@ -5696,29 +5680,83 @@ export default function PreviewPage(): JSX.Element {
                                                     <button
                                                         type="button"
                                                         onClick={() => {
-                                                            // Disabled (coming soon)
+                                                            if (!isAdmin) return;
+                                                            setAppWizardSource("prompt");
                                                         }}
-                                                        disabled
-                                                        className="w-full rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-left opacity-60 cursor-not-allowed"
+                                                        disabled={!isAdmin}
+                                                        className={`relative w-full rounded-xl border p-4 text-left transition ${!isAdmin
+                                                            ? "cursor-not-allowed border-neutral-200 bg-neutral-50 opacity-60"
+                                                            : appWizardSource === "prompt"
+                                                                ? "border-[#f55f2a] bg-[#f55f2a]/5"
+                                                                : "border-neutral-200 bg-white hover:bg-neutral-50"
+                                                            }`}
                                                     >
-                                                        <div className="flex items-center justify-between gap-2">
-                                                            <div className="text-sm font-semibold text-neutral-900">Build from a prompt</div>
-                                                            <span className="whitespace-nowrap inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                                                        {!isAdmin ? (
+                                                            <span className="absolute right-3 top-3 rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-neutral-700">
                                                                 Coming soon
                                                             </span>
-                                                        </div>
+                                                        ) : null}
+                                                        <div className="text-sm font-semibold text-neutral-900">Build from a prompt</div>
                                                         <div className="mt-1 text-xs text-neutral-600">Describe the app and we’ll generate the first version.</div>
                                                     </button>
                                                 </div>
 
+                                                {appWizardSource === "website" && isAdmin ? (
+                                                    <div className="mt-2 space-y-2">
+                                                        <label className="text-xs font-semibold text-neutral-700">
+                                                            URL
+                                                        </label>
+                                                        <input
+                                                            value={appWizardUrl}
+                                                            onChange={(e) => setAppWizardUrl(e.target.value)}
+                                                            placeholder={targetUrl || "https://example.com"}
+                                                            className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-[#f55f2a]/20"
+                                                        />
+                                                        <div className="text-[11px] leading-4 text-neutral-500">
+                                                            Tip: for best fidelity, we’ll use your stored full-page screenshots for the selected URL.
+                                                        </div>
+                                                    </div>
+                                                ) : null}
+
+                                                {appWizardSource === "prompt" && isAdmin ? (
+                                                    <div className="mt-2 space-y-2">
+                                                        <label className="text-xs font-semibold text-neutral-700">
+                                                            Prompt
+                                                        </label>
+                                                        <textarea
+                                                            value={appWizardPrompt}
+                                                            onChange={(e) => setAppWizardPrompt(e.target.value)}
+                                                            rows={5}
+                                                            className="w-full resize-none rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-[#f55f2a]/20"
+                                                            placeholder="Describe what you want to build…"
+                                                        />
+                                                    </div>
+                                                ) : null}
+
                                                 <button
                                                     type="button"
-                                                    onClick={submitAppWizardSample}
+                                                    onClick={() => {
+                                                        if (appWizardSource !== "sample" && !isAdmin) {
+                                                            setAppWizardError("Coming soon for non-admins.");
+                                                            setAppWizardSource("sample");
+                                                            return;
+                                                        }
+
+                                                        if (appWizardSource === "sample") return void submitAppWizardSample();
+                                                        if (appWizardSource === "website") return void submitAppWizardWebsite();
+                                                        return void submitAppWizardPrompt();
+                                                    }}
                                                     disabled={appWizardBusy}
                                                     className="w-full rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
                                                     style={{ backgroundColor: ACCENT }}
                                                 >
-                                                    {appWizardBusy ? "Creating…" : "Create app"}
+                                                    {appWizardBusy
+                                                        ? "Creating…"
+                                                        : appWizardSource === "sample"
+                                                            ? "Create app"
+                                                            : appWizardSource === "website"
+                                                                ? "Create from URL"
+                                                                : "Create from prompt"}
                                                 </button>
                                             </div>
                                         )}

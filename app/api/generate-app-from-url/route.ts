@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { url, name } = body;
+    const { url, name, screenshotKey, screenshotKeys } = body;
 
     if (!url || typeof url !== "string") {
       return NextResponse.json({ error: "URL required" }, { status: 400 });
@@ -47,6 +47,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
     }
 
+    const ownedPrefix = `kloner-screenshots/${decoded.uid}/`;
+    const providedScreenshotKey = typeof screenshotKey === "string" && screenshotKey.trim() ? screenshotKey.trim() : null;
+    const providedScreenshotKeys = Array.isArray(screenshotKeys)
+      ? (screenshotKeys.filter((k: any) => typeof k === "string" && k.trim()).map((k: string) => k.trim()))
+      : [];
+
+    if (providedScreenshotKey && !providedScreenshotKey.startsWith(ownedPrefix)) {
+      return NextResponse.json({ error: "Invalid screenshotKey" }, { status: 400 });
+    }
+    if (providedScreenshotKeys.some((k) => !k.startsWith(ownedPrefix))) {
+      return NextResponse.json({ error: "Invalid screenshotKeys" }, { status: 400 });
+    }
+
+    const preferredScreenshotKey = providedScreenshotKey || (providedScreenshotKeys.length ? providedScreenshotKeys[0] : null);
+
     let tier: UserTier;
     try {
       tier = await getAuthoritativeUserTier(decoded.uid);
@@ -59,109 +74,127 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check snapshot credit before proceeding
-    try {
-      const peek = await peekUserCredit(decoded.uid, tier, "snapshot");
-      if (!peek.ok || (peek.remaining !== null && peek.remaining <= 0)) {
+    // Check snapshot credit only if we need to capture screenshots.
+    if (!preferredScreenshotKey) {
+      try {
+        const peek = await peekUserCredit(decoded.uid, tier, "snapshot");
+        if (!peek.ok || (peek.remaining !== null && peek.remaining <= 0)) {
+          return NextResponse.json(
+            {
+              error: "Monthly snapshot limit reached for your plan.",
+              remaining: peek.remaining,
+            },
+            { status: 429 }
+          );
+        }
+      } catch {
         return NextResponse.json(
-          {
-            error: "Monthly snapshot limit reached for your plan.",
-            remaining: peek.remaining,
-          },
-          { status: 429 }
+          { error: "Unable to check credits. Try again shortly." },
+          { status: 503 }
         );
       }
-    } catch {
-      return NextResponse.json(
-        { error: "Unable to check credits. Try again shortly." },
-        { status: 503 }
-      );
     }
 
     try {
-      // First, generate screenshots
-      const screenshotResponse = await callBackend(req, {
-        path: "/generate-screenshots",
-        method: "POST",
-        body: { url },
-        userCtx: { uid: decoded.uid, email: decoded?.email || "", tier },
-        timeoutMs: 60000,
-        acceptOnTimeout: true,
-      });
+      let finalScreenshotKey = preferredScreenshotKey;
 
-      const screenshotPayload = screenshotResponse.json && Object.keys(screenshotResponse.json).length
-        ? screenshotResponse.json
-        : { ok: true, queued: screenshotResponse.status === 202 || screenshotResponse.status === 204 };
+      if (!finalScreenshotKey) {
+        // First, generate screenshots
+        const screenshotResponse = await callBackend(req, {
+          path: "/generate-screenshots",
+          method: "POST",
+          body: { url },
+          userCtx: { uid: decoded.uid, email: decoded?.email || "", tier },
+          timeoutMs: 60000,
+          acceptOnTimeout: true,
+        });
 
-      const hasErrorFlag = Boolean((screenshotPayload as any).error);
-      const okField = (screenshotPayload as any).ok;
-      const totalPlanned = typeof (screenshotPayload as any).totalPlanned === "number"
-        ? (screenshotPayload as any).totalPlanned
-        : null;
+        const screenshotPayload = screenshotResponse.json && Object.keys(screenshotResponse.json).length
+          ? screenshotResponse.json
+          : { ok: true, queued: screenshotResponse.status === 202 || screenshotResponse.status === 204 };
 
-      const logicalOk = screenshotResponse.upstream.ok &&
-        !hasErrorFlag &&
-        okField !== false &&
-        (totalPlanned === null || totalPlanned > 0);
+        const hasErrorFlag = Boolean((screenshotPayload as any).error);
+        const okField = (screenshotPayload as any).ok;
+        const totalPlanned = typeof (screenshotPayload as any).totalPlanned === "number"
+          ? (screenshotPayload as any).totalPlanned
+          : null;
 
-      if (!logicalOk) {
-        const status = screenshotResponse.status && screenshotResponse.status >= 400
-          ? screenshotResponse.status
-          : 502;
+        const logicalOk = screenshotResponse.upstream.ok &&
+          !hasErrorFlag &&
+          okField !== false &&
+          (totalPlanned === null || totalPlanned > 0);
 
-        return NextResponse.json(
-          {
-            error: (screenshotPayload as any).error ||
-              (screenshotPayload as any).message ||
-              "Screenshot capture failed.",
-            ...(totalPlanned === 0 ? { reason: "no_captures" } : {}),
-          },
-          { status }
-        );
+        if (!logicalOk) {
+          const status = screenshotResponse.status && screenshotResponse.status >= 400
+            ? screenshotResponse.status
+            : 502;
+
+          return NextResponse.json(
+            {
+              error: (screenshotPayload as any).error ||
+                (screenshotPayload as any).message ||
+                "Screenshot capture failed.",
+              ...(totalPlanned === 0 ? { reason: "no_captures" } : {}),
+            },
+            { status }
+          );
+        }
+
+        // Consume snapshot credit
+        try {
+          await consumeUserCredit(decoded.uid, tier, "snapshot");
+        } catch {
+          // If this fails, continue anyway
+        }
+
+        // Get the best screenshot key
+        const items = (screenshotPayload as any).items || [];
+        if (!items.length) {
+          return NextResponse.json(
+            { error: "No screenshots captured" },
+            { status: 500 }
+          );
+        }
+
+        finalScreenshotKey = items[0].key;
       }
-
-      // Consume snapshot credit
-      try {
-        await consumeUserCredit(decoded.uid, tier, "snapshot");
-      } catch {
-        // If this fails, continue anyway
-      }
-
-      // Get the best screenshot key
-      const items = (screenshotPayload as any).items || [];
-      if (!items.length) {
-        return NextResponse.json(
-          { error: "No screenshots captured" },
-          { status: 500 }
-        );
-      }
-
-      const screenshotKey = items[0].key;
 
       // Now generate the app using the screenshot
       const appResponse = await callBackend(req, {
         path: "/generate-app-from-url",
         method: "POST",
-        body: { url, name, screenshotKey, createPreview: true },
+        body: { url, name, screenshotKey: finalScreenshotKey, createPreview: true },
         userCtx: { uid: decoded.uid, email: decoded?.email || "", tier },
         timeoutMs: 300000, // 5 minutes
         acceptOnTimeout: true,
       });
 
-      // Backend always returns 202 for app generation
-      if (appResponse.status === 202) {
-        const appData = appResponse.json || {};
-        return NextResponse.json({
-          message: appData.message || "App generation started. Check back later.",
-          status: appData.status || "processing",
-          appId: appData.appId
-        }, { status: 202 });
+      // Treat any 2xx as a successful "job accepted".
+      if (appResponse.status >= 200 && appResponse.status < 300) {
+        const appData = (appResponse.json || {}) as any;
+        return NextResponse.json(
+          {
+            message: appData.message || "App generation started. Check back later.",
+            status: appData.status || "processing",
+            appId: appData.appId,
+            reqId: appResponse.reqId,
+          },
+          { status: 202 },
+        );
       }
 
-      // If not 202, something went wrong
+      const appData = (appResponse.json || {}) as any;
+      const upstreamStatus = appResponse.status || 502;
       return NextResponse.json(
-        { error: "Failed to start app generation" },
-        { status: 500 }
+        {
+          error:
+            appData.error ||
+            appData.message ||
+            `Backend refused app generation (HTTP ${upstreamStatus})`,
+          upstreamStatus,
+          reqId: appResponse.reqId,
+        },
+        { status: upstreamStatus >= 400 ? upstreamStatus : 502 },
       );
 
     } catch (e: any) {

@@ -59,20 +59,32 @@ export async function POST(req: NextRequest) {
         acceptOnTimeout: true, // Return 202 if it times out
       });
 
-      // Backend always returns 202 for app generation
-      if (backendResponse.status === 202) {
-        const appData = backendResponse.json || {};
-        return NextResponse.json({
-          message: appData.message || "App generation started. Check back later.",
-          status: appData.status || "processing",
-          appId: appData.appId
-        }, { status: 202 });
+      // Treat any 2xx as a successful "job accepted".
+      if (backendResponse.status >= 200 && backendResponse.status < 300) {
+        const appData = (backendResponse.json || {}) as any;
+        return NextResponse.json(
+          {
+            message: appData.message || "App generation started. Check back later.",
+            status: appData.status || "processing",
+            appId: appData.appId,
+            reqId: backendResponse.reqId,
+          },
+          { status: 202 },
+        );
       }
 
-      // If not 202, something went wrong
+      const appData = (backendResponse.json || {}) as any;
+      const upstreamStatus = backendResponse.status || 502;
       return NextResponse.json(
-        { error: "Failed to start app generation" },
-        { status: 500 }
+        {
+          error:
+            appData.error ||
+            appData.message ||
+            `Backend refused app generation (HTTP ${upstreamStatus})`,
+          upstreamStatus,
+          reqId: backendResponse.reqId,
+        },
+        { status: upstreamStatus >= 400 ? upstreamStatus : 502 },
       );
 
     } catch (error) {
