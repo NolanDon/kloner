@@ -72,11 +72,6 @@ function inferReturnPathFromLocalStorage(): string | null {
             return "/dashboard/view?vercel=connected";
         }
 
-        const pendingAppWizard = window.localStorage.getItem("kloner_vercel_pending_app_wizard");
-        if (pendingAppWizard) {
-            return "/dashboard/view?appVercel=connected";
-        }
-
         const pendingDeploy = window.localStorage.getItem("kloner_vercel_pending_deploy");
         if (pendingDeploy) {
             return "/dashboard/view?vercel=connected";
