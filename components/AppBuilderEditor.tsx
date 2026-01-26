@@ -2659,7 +2659,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                             await refreshVercelStatus();
                                             setVercelConnectOpening(false);
                                         }}
-                                        className="px-4 py-2 rounded-full border border-neutral-200 hover:bg-neutral-50"
+                                        className="px-4 py-2 rounded-full text-sm border border-neutral-200 hover:bg-neutral-50"
                                         title="Re-check connection"
                                     >
                                         I already connected

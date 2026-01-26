@@ -4837,10 +4837,16 @@ export default function PreviewPage(): JSX.Element {
     const startProCheckoutForAppDeploy = useCallback(
         async (opts?: { exitOffer?: boolean; exitOfferReason?: "close" | "back" | "nav" | "outside" | "esc" }) => {
             if (checkoutBusy) return;
-            if (!appDeployWizardAppId) return;
             setCheckoutBusy(true);
 
             try {
+                if (!appDeployWizardAppId) {
+                    await showAlert(
+                        "We couldn’t determine which app you’re deploying. Close this modal and click Deploy again, then retry.",
+                        "Checkout",
+                    );
+                }
+
                 const csrfRes = await fetch("/api/auth/csrf", {
                     method: "POST",
                     headers: { "content-type": "application/json" },
@@ -4873,7 +4879,7 @@ export default function PreviewPage(): JSX.Element {
                     credentials: "include",
                     body: JSON.stringify({
                         plan: "pro",
-                        returnAppId: appDeployWizardAppId,
+                        ...(appDeployWizardAppId ? { returnAppId: appDeployWizardAppId } : {}),
                         returnStep: 3,
                         ...offerPayload,
                     }),
@@ -5758,26 +5764,29 @@ export default function PreviewPage(): JSX.Element {
 
                                         {appDeployWizardStep === 1 ? (
                                             <div className="space-y-4">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="h-10 w-10 rounded-xl bg-black flex items-center justify-center overflow-hidden">
-                                                        <img
-                                                            src="/images/vercel.webp"
-                                                            alt="Vercel"
-                                                            className="h-6 w-6 object-contain"
-                                                            onError={(e) => {
-                                                                // If the asset isn't present, fall back to the inline mark below.
-                                                                (e.currentTarget as HTMLImageElement).style.display = "none";
-                                                            }}
-                                                        />
+                                                <div className="flex items-start gap-3">
+                                                    <div className="mt-0.5 relative h-10 w-10 rounded-xl bg-black overflow-hidden">
                                                         <svg
                                                             viewBox="0 0 24 24"
-                                                            className="h-5 w-5 text-white"
+                                                            className="absolute inset-0 m-auto h-5 w-5 text-white"
                                                             aria-hidden="true"
                                                         >
                                                             <path fill="currentColor" d="M12 4l9 16H3l9-16z" />
                                                         </svg>
+                                                        <img
+                                                            src="/images/vercel.png"
+                                                            alt="Vercel"
+                                                            className="absolute inset-0 m-auto h-6 w-6 object-contain"
+                                                            onError={(e) => {
+                                                                // If the asset isn't present, the SVG fallback stays visible.
+                                                                (e.currentTarget as HTMLImageElement).style.display = "none";
+                                                            }}
+                                                        />
                                                     </div>
                                                     <div className="min-w-0">
+                                                        <div className="text-[11px] font-semibold tracking-[0.16em] uppercase text-neutral-500">
+                                                            Vercel
+                                                        </div>
                                                         <div className="text-sm font-semibold text-neutral-900">Vercel connection</div>
                                                         <div className="text-xs text-neutral-600">
                                                             Required to deploy your app live.
