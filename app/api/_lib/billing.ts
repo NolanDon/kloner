@@ -292,10 +292,13 @@ export async function refreshTierFromStripeForUid(uid: string): Promise<Tier> {
     const snap = await userRef.get();
     const data = snap.exists ? (snap.data() as any) : {};
 
-    // Manual override (e.g., cancel during trial) wins over Stripe status.
-    // This prevents trial cancel → refresh → trialing (paid) from re-enabling access.
+    // Manual overrides (fraud/support/admin) can win over Stripe status.
+    // NOTE: We do NOT treat `trial_cancelled` as a tier downgrade; users keep access
+    // through the end of their active/trialing period. Use credits overrides for limits.
     try {
         const rawTier = typeof data?.tierOverrideTier === "string" ? data.tierOverrideTier : "";
+        const rawReason = typeof data?.tierOverrideReason === "string" ? data.tierOverrideReason : "";
+        const reason = rawReason.trim().toLowerCase();
         const until = data?.tierOverrideUntil;
         const untilDate: Date | null =
             until && typeof until.toDate === "function"
@@ -303,7 +306,7 @@ export async function refreshTierFromStripeForUid(uid: string): Promise<Tier> {
                 : until instanceof Date
                     ? until
                     : null;
-        if (rawTier && untilDate && new Date() < untilDate) {
+        if (rawTier && untilDate && new Date() < untilDate && reason !== "trial_cancelled") {
             const t = rawTier.toLowerCase();
             const overrideTier: Tier = t === "pro" || t === "agency" ? (t as Tier) : "free";
             return overrideTier;

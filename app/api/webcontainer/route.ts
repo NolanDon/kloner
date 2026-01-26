@@ -3,19 +3,38 @@ import { NextRequest, NextResponse } from 'next/server';
 import { callBackend } from '../../../src/lib/callBackend';
 import { requireSessionAndMaybeCsrf } from '../_lib/route-guard';
 import { assertAppBuilderScope } from '../_lib/appBuilderScope';
+import { getAdminDb } from '../_lib/auth';
+import { FieldValue } from 'firebase-admin/firestore';
+import crypto from 'node:crypto';
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 function normalizeConfigJson(raw: string): string {
   try {
     const parsed: any = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return JSON.stringify({ compilerOptions: {} }, null, 2) + '\n';
+      return JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "@/*": ["./*"] } } }, null, 2) + '\n';
     }
     if (!parsed.compilerOptions || typeof parsed.compilerOptions !== 'object' || Array.isArray(parsed.compilerOptions)) {
       parsed.compilerOptions = {};
     }
+
+    // Ensure the common @/* alias works in user apps.
+    if (!parsed.compilerOptions.baseUrl || typeof parsed.compilerOptions.baseUrl !== 'string') {
+      parsed.compilerOptions.baseUrl = ".";
+    }
+    if (!parsed.compilerOptions.paths || typeof parsed.compilerOptions.paths !== 'object' || Array.isArray(parsed.compilerOptions.paths)) {
+      parsed.compilerOptions.paths = {};
+    }
+    if (!Array.isArray(parsed.compilerOptions.paths["@/*"])) {
+      parsed.compilerOptions.paths["@/*"] = ["./*"];
+    }
+
     return JSON.stringify(parsed, null, 2) + '\n';
   } catch {
-    return JSON.stringify({ compilerOptions: {} }, null, 2) + '\n';
+    return JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "@/*": ["./*"] } } }, null, 2) + '\n';
   }
 }
 
@@ -93,6 +112,109 @@ async function handleWebcontainerPost(body: any, uid?: string) {
   }
 }
 
+async function handleWebcontainerPostAuthed(body: any, uid: string) {
+  const appId = String(body?.appId || '').trim();
+  if (!appId) return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
+
+  const db = getAdminDb();
+  const appRef = db.collection('kloner_users').doc(uid).collection('kloner_apps').doc(appId);
+
+  const now = Date.now();
+  const lockMs = 90_000;
+  const lockToken = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
+
+  let txResult:
+    | { action: 'reuse'; code: string }
+    | { action: 'wait'; existingCode: string }
+    | { action: 'start' };
+
+  try {
+    txResult = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(appRef);
+      if (!snap.exists) {
+        throw Object.assign(new Error('App not found'), { status: 404 });
+      }
+
+      const data: any = snap.data() || {};
+      const existingCode = typeof data?.containerCode === 'string' ? String(data.containerCode).trim() : '';
+      const existingTs = typeof data?.containerCodeTimestamp === 'number' ? data.containerCodeTimestamp : 0;
+
+      // If we already have a recently-issued code, reuse it.
+      if (existingCode && existingTs && now - existingTs < 60_000) {
+        return { action: 'reuse' as const, code: existingCode };
+      }
+
+      const lock = data?.containerStartLock;
+      const expiresAt = typeof lock?.expiresAt === 'number' ? lock.expiresAt : 0;
+      if (expiresAt && expiresAt > now) {
+        return { action: 'wait' as const, existingCode };
+      }
+
+      tx.update(appRef, {
+        containerStartLock: {
+          token: lockToken,
+          startedAt: now,
+          expiresAt: now + lockMs,
+        },
+        updatedAt: new Date(),
+      });
+
+      return { action: 'start' as const };
+    });
+  } catch (e: any) {
+    const status = typeof e?.status === 'number' ? e.status : 500;
+    const msg = e instanceof Error ? e.message : 'Failed to start webcontainer';
+    return NextResponse.json({ error: msg }, { status });
+  }
+
+  if (txResult.action === 'reuse') {
+    return NextResponse.json({ code: txResult.code });
+  }
+
+  if (txResult.action === 'wait') {
+    // Another request is already starting the preview. Wait briefly for it to persist a code.
+    for (let i = 0; i < 6; i++) {
+      await sleep(500);
+      const snap = await appRef.get();
+      const data: any = snap.data() || {};
+      const code = typeof data?.containerCode === 'string' ? String(data.containerCode).trim() : '';
+      if (code) return NextResponse.json({ code });
+    }
+    return NextResponse.json(
+      { error: 'Preview is already starting. Please retry in a few seconds.' },
+      { status: 409 },
+    );
+  }
+
+  // Start a new preview.
+  const resp = await handleWebcontainerPost(body, uid);
+
+  // Best-effort: persist the code for reconnection and clear the lock.
+  try {
+    const cloned = resp.clone();
+    const json: any = await cloned.json().catch(() => ({} as any));
+    const code = typeof json?.code === 'string' ? json.code.trim() : '';
+
+    if (resp.ok && code) {
+      await appRef.update({
+        containerCode: code,
+        containerCodeTimestamp: Date.now(),
+        containerStartLock: FieldValue.delete(),
+        updatedAt: new Date(),
+      });
+    } else {
+      await appRef.update({
+        containerStartLock: FieldValue.delete(),
+        updatedAt: new Date(),
+      });
+    }
+  } catch {
+    // Ignore lock persistence failures; the preview may still start.
+  }
+
+  return resp;
+}
+
 async function handleWebcontainerStatus(code: string, uid?: string) {
   try {
     const response = await callBackend({ headers: {} } as any, {
@@ -150,7 +272,7 @@ export async function POST(request: NextRequest) {
         const appId = String(body?.appId || '');
         console.log('App ID:', appId);
         assertAppBuilderScope(authedReq, uid, appId);
-        return handleWebcontainerPost(body, uid);
+        return handleWebcontainerPostAuthed(body, uid);
       },
       { csrf: true, methods: ['POST'] }
     );

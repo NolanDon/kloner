@@ -1,10 +1,11 @@
 // app/price/PriceClient.tsx (CLIENT)
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import { useModal } from "@/components/ui/ModalContext";
+import { useAuth } from "@/src/hooks/useAuth";
 
 const ACCENT = "#f55f2a";
 
@@ -134,12 +135,164 @@ function Bullet({ children }: { children: React.ReactNode }) {
 
 export default function PriceClient(): JSX.Element {
     const [loadingPlan, setLoadingPlan] = useState<null | "pro" | "agency">(null);
+    const [loadingTopup, setLoadingTopup] = useState(false);
+    const [topupCredits, setTopupCredits] = useState<number>(500);
+    const [topupConfig, setTopupConfig] = useState<
+        | {
+              currency: string;
+              unitPriceCents: number;
+              minCredits: number;
+              maxCredits: number;
+              stepCredits: number;
+          }
+        | null
+    >(null);
     const { showAlert } = useModal();
+    const { user, userTier, loading: authLoading } = useAuth();
+
+    useEffect(() => {
+        let cancelled = false;
+
+        (async () => {
+            try {
+                if (typeof window === "undefined") return;
+
+                const url = new URL(window.location.href);
+                const topup = url.searchParams.get("topup");
+                const sessionId = url.searchParams.get("session_id");
+
+                if (topup !== "success" || !sessionId) return;
+                if (authLoading) return;
+
+                const csrf = await ensureCsrf();
+
+                const res = await fetch("/api/billing/confirm-credit-topup", {
+                    method: "POST",
+                    headers: {
+                        "content-type": "application/json",
+                        ...(csrf ? { "x-csrf": csrf } : {}),
+                    },
+                    credentials: "include",
+                    body: JSON.stringify({ sessionId }),
+                });
+
+                const data = (await res.json().catch(() => ({}))) as any;
+                if (cancelled) return;
+
+                if (res.ok) {
+                    const credits = typeof data?.credits === "number" ? data.credits : null;
+                    await showAlert(
+                        credits ? `Added ${credits.toLocaleString()} AI credits to your account.` : "Top-up confirmed.",
+                        "Credits added",
+                    );
+                } else {
+                    console.warn("confirm-credit-topup failed", data);
+                }
+
+                // Clean up query params so refresh doesn't re-confirm.
+                url.searchParams.delete("topup");
+                url.searchParams.delete("session_id");
+                window.history.replaceState({}, "", url.toString());
+            } catch (e) {
+                // ignore
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [authLoading, showAlert]);
 
     const trustPoints = useMemo(
         () => ["7-day free trial on Pro", "Cancel anytime", "Secure Stripe checkout"],
         []
     );
+
+    const topupOptions = useMemo(() => {
+        const cfg = topupConfig;
+        const min = cfg?.minCredits ?? 50;
+        const max = cfg?.maxCredits ?? 5000;
+
+        // Curated options (wide range, simple dropdown). Filter to config bounds.
+        const base = [
+            50,
+            100,
+            200,
+            400,
+            800,
+            1200,
+            2000,
+            3000,
+            4000,
+            5000,
+            7500,
+            10000,
+        ];
+
+        const filtered = base.filter((n) => n >= min && n <= max);
+        if (filtered.length) return filtered;
+
+        // Fallback: generate a handful of stepped values.
+        const step = cfg?.stepCredits ?? 50;
+        const values: number[] = [];
+        for (let v = min; v <= max && values.length < 20; v += Math.max(1, step)) values.push(v);
+        return values.length ? values : [min];
+    }, [topupConfig]);
+
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const res = await fetch("/api/billing/credit-topup-config", { cache: "no-store" });
+                if (!res.ok) return;
+                const data = (await res.json().catch(() => null)) as any;
+                if (!data || cancelled) return;
+                const unitPriceCents =
+                    typeof data.unitPriceCents === "number" && Number.isFinite(data.unitPriceCents)
+                        ? Math.max(1, Math.floor(data.unitPriceCents))
+                        : 3;
+                const minCredits =
+                    typeof data.minCredits === "number" && Number.isFinite(data.minCredits)
+                        ? Math.max(1, Math.floor(data.minCredits))
+                        : 50;
+                const maxCredits =
+                    typeof data.maxCredits === "number" && Number.isFinite(data.maxCredits)
+                        ? Math.max(minCredits, Math.floor(data.maxCredits))
+                        : 5000;
+                const stepCredits =
+                    typeof data.stepCredits === "number" && Number.isFinite(data.stepCredits)
+                        ? Math.max(1, Math.floor(data.stepCredits))
+                        : 50;
+                const currency = typeof data.currency === "string" ? data.currency : "usd";
+
+                setTopupConfig({ currency, unitPriceCents, minCredits, maxCredits, stepCredits });
+
+                setTopupCredits((prev) => {
+                    const base = [50, 100, 200, 400, 800, 1200, 2000, 3000, 4000, 5000, 7500, 10000]
+                        .filter((n) => n >= minCredits && n <= maxCredits);
+                    const options = base.length ? base : [minCredits];
+
+                    const clamped = Math.min(Math.max(prev, minCredits), maxCredits);
+                    // Snap to the nearest available option.
+                    let best = options[0]!;
+                    let bestDist = Math.abs(best - clamped);
+                    for (const n of options) {
+                        const d = Math.abs(n - clamped);
+                        if (d < bestDist) {
+                            best = n;
+                            bestDist = d;
+                        }
+                    }
+                    return best;
+                });
+            } catch {
+                // ignore
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     async function startCheckout(plan: "pro" | "agency") {
         if (loadingPlan) return;
@@ -178,6 +331,42 @@ export default function PriceClient(): JSX.Element {
             window.location.href = data.url;
         } finally {
             setLoadingPlan(null);
+        }
+    }
+
+    async function startTopup() {
+        if (loadingTopup) return;
+        setLoadingTopup(true);
+
+        try {
+            const csrf = await ensureCsrf();
+
+            const res = await fetch("/api/billing/create-credit-topup-session", {
+                method: "POST",
+                headers: {
+                    "content-type": "application/json",
+                    ...(csrf ? { "x-csrf": csrf } : {}),
+                },
+                credentials: "include",
+                body: JSON.stringify({ credits: topupCredits }),
+            });
+
+            if (res.status === 401) {
+                const next = encodeURIComponent("/price#topup");
+                window.location.href = `/login?next=${next}`;
+                return;
+            }
+
+            const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
+
+            if (!res.ok || !data.url) {
+                await showAlert(data?.error || "Unable to start top-up checkout. Please try again.", "Top Up Error");
+                return;
+            }
+
+            window.location.href = data.url;
+        } finally {
+            setLoadingTopup(false);
         }
     }
 
@@ -355,10 +544,103 @@ export default function PriceClient(): JSX.Element {
                             </div>
                         </div>
                     </div>
+
+                    <section
+                        id="topup"
+                        className="mx-auto mt-10 max-w-3xl rounded-2xl border border-[rgba(245,95,42,0.35)] bg-white p-6 shadow-sm"
+                    >
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                                <h2 className="text-lg font-semibold tracking-tight">Top up AI credits</h2>
+                                <p className="mt-1 text-[12px] text-neutral-600">
+                                    Pro/Agency can buy extra AI credits when you run out.
+                                </p>
+                                <p className="mt-1 text-[11px] text-neutral-500">
+                                    1 AI edit typically costs 5 credits.
+                                </p>
+                            </div>
+
+                            {userTier === "pro" || userTier === "agency" ? (
+                                <span className="inline-flex items-center rounded-full border border-[rgba(245,95,42,0.35)] bg-white px-3 py-1 text-[11px] font-semibold text-[rgba(245,95,42,1)]">
+                                    {userTier === "pro" ? "Pro" : "Agency"} detected
+                                </span>
+                            ) : null}
+                        </div>
+
+                        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                            <div className="rounded-xl border border-black/10 bg-white p-4">
+                                <label className="block text-[11px] font-semibold text-neutral-700">Credits</label>
+
+                                <div className="mt-2">
+                                    <select
+                                        value={topupCredits}
+                                        onChange={(e) => setTopupCredits(Number(e.target.value))}
+                                        className="w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm font-semibold text-neutral-900"
+                                    >
+                                        {topupOptions.map((n) => (
+                                            <option key={n} value={n}>
+                                                {n.toLocaleString()} credits
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="mt-2 text-[11px] text-neutral-500">
+                                    ≈ {Math.max(1, Math.floor(topupCredits / 5)).toLocaleString()} AI edits
+                                </div>
+                            </div>
+
+                            <div className="rounded-xl border border-black/10 bg-white p-4">
+                                <p className="text-[11px] font-semibold text-neutral-700">Estimated total</p>
+                                <p className="mt-1 text-2xl font-semibold text-neutral-900">
+                                    {topupConfig
+                                        ? `$${((topupCredits * topupConfig.unitPriceCents) / 100).toFixed(2)}`
+                                        : "—"}{" "}
+                                    <span className="text-xs font-medium text-neutral-500">
+                                        {topupConfig ? topupConfig.currency.toUpperCase() : ""}
+                                    </span>
+                                </p>
+                                <p className="mt-1 text-[11px] text-neutral-500">
+                                    Checkout is a one-time payment. Credits apply immediately after Stripe confirms.
+                                </p>
+
+                                <div className="mt-4">
+                                    <button
+                                        type="button"
+                                        disabled={
+                                            loadingTopup ||
+                                            authLoading ||
+                                            (!!user && !(userTier === "pro" || userTier === "agency"))
+                                        }
+                                        onClick={() => void startTopup()}
+                                        className={
+                                            "w-full rounded-full px-4 py-2.5 text-sm font-semibold text-white transition " +
+                                            (loadingTopup ? "opacity-70 cursor-wait" : "")
+                                        }
+                                        style={{ backgroundColor: ACCENT }}
+                                    >
+                                        {loadingTopup ? "Redirecting to Stripe…" : "Top up credits"}
+                                    </button>
+
+                                    {user ? null : (
+                                        <p className="mt-2 text-[11px] text-neutral-500">
+                                            Sign in to purchase a top-up.
+                                        </p>
+                                    )}
+
+                                    {user && !(userTier === "pro" || userTier === "agency") ? (
+                                        <p className="mt-2 text-[11px] text-neutral-500">
+                                            Upgrade to Pro or Agency to enable top-ups.
+                                        </p>
+                                    ) : null}
+                                </div>
+                            </div>
+                        </div>
+                    </section>
                 </section>
             </div>
 
-            <Footer />
+            {/* <Footer /> */}
         </main>
     );
 }

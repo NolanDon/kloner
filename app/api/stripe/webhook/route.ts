@@ -85,6 +85,110 @@ function cleanStr(v: unknown, max = 128): string {
     return typeof v === "string" ? v.trim().slice(0, max) : "";
 }
 
+function cleanInt(v: unknown): number | null {
+    const n = typeof v === "number" ? v : typeof v === "string" ? Number.parseInt(v, 10) : NaN;
+    if (!Number.isFinite(n)) return null;
+    return Math.max(0, Math.floor(n));
+}
+
+async function applyAiCreditTopupFromCheckoutSession(session: Stripe.Checkout.Session) {
+    const meta = (session.metadata || {}) as Record<string, any>;
+    if (cleanStr(meta.type) !== "ai_credit_topup") return;
+
+    // Only credit after Stripe confirms payment.
+    // For async methods, use checkout.session.async_payment_succeeded.
+    const paymentStatus = typeof (session as any).payment_status === "string" ? (session as any).payment_status : "";
+    if (paymentStatus && paymentStatus !== "paid" && paymentStatus !== "no_payment_required") {
+        return;
+    }
+
+    const uid = cleanStr(meta.firebaseUid || meta.uid, 256);
+    const credits = cleanInt(meta.aiEditCredits);
+
+    if (!uid || !credits) {
+        console.warn("[stripe-webhook] topup missing uid/credits", {
+            sessionId: session.id,
+            uid,
+            credits,
+        });
+        return;
+    }
+
+    const topupRef = db.collection("stripe_credit_topups").doc(session.id);
+    const userRef = db.collection("kloner_users").doc(uid);
+
+    await db.runTransaction(async (tx: any) => {
+        const topupSnap = await tx.get(topupRef);
+        if (topupSnap.exists) return;
+
+        const userSnap = await tx.get(userRef);
+        const data = userSnap.exists ? (userSnap.data() as any) : {};
+        const bucket = data["credits.aiEdits"] || (data.credits && data.credits.aiEdits) || {};
+
+        // If remaining is null, treat as unlimited and skip crediting.
+        const remainingRaw = bucket?.remaining;
+        if (remainingRaw === null) {
+            tx.set(
+                topupRef,
+                {
+                    uid,
+                    credits,
+                    skipped: true,
+                    reason: "unlimited_remaining_null",
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                    livemode: !!session.livemode,
+                    customerId:
+                        typeof session.customer === "string" ? session.customer : session.customer?.id || null,
+                    paymentIntentId:
+                        typeof session.payment_intent === "string"
+                            ? session.payment_intent
+                            : session.payment_intent?.id || null,
+                },
+                { merge: true },
+            );
+            return;
+        }
+
+        const remaining =
+            typeof remainingRaw === "number" && Number.isFinite(remainingRaw) && remainingRaw >= 0
+                ? remainingRaw
+                : 0;
+
+        const newRemaining = remaining + credits;
+
+        const nextBucket: Record<string, any> = {
+            ...(bucket && typeof bucket === "object" ? bucket : {}),
+            remaining: newRemaining,
+            lastTopUpAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        // Avoid writing undefined fields.
+        for (const k of Object.keys(nextBucket)) {
+            if (nextBucket[k] === undefined) delete nextBucket[k];
+        }
+
+        tx.set(userRef, { "credits.aiEdits": nextBucket }, { merge: true });
+
+        tx.set(
+            topupRef,
+            {
+                uid,
+                credits,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                livemode: !!session.livemode,
+                customerId:
+                    typeof session.customer === "string" ? session.customer : session.customer?.id || null,
+                paymentIntentId:
+                    typeof session.payment_intent === "string"
+                        ? session.payment_intent
+                        : session.payment_intent?.id || null,
+                paymentStatus: paymentStatus || null,
+            },
+            { merge: true },
+        );
+    });
+}
+
 function monthKeyFromUnix(tsSec: number): string {
     const d = new Date(tsSec * 1000);
     const y = d.getUTCFullYear();
@@ -582,6 +686,19 @@ export async function POST(req: NextRequest) {
                 if (firebaseUid && customerId) {
                     await linkCustomerToUid(customerId, firebaseUid);
                 }
+
+                await applyAiCreditTopupFromCheckoutSession(session);
+                break;
+            }
+
+            case "checkout.session.async_payment_succeeded": {
+                const session = event.data.object as Stripe.Checkout.Session;
+                await applyAiCreditTopupFromCheckoutSession(session);
+                break;
+            }
+
+            case "checkout.session.async_payment_failed": {
+                // No-op for top-ups; user can retry.
                 break;
             }
 

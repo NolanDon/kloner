@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../_lib/route-guard";
+import { refreshTierFromStripeForUid } from "../_lib/billing";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,7 +31,33 @@ export async function POST(req: NextRequest) {
             // Server-side tier guard (never trust client)
             const userSnap = await db.doc(`kloner_users/${uid}`).get();
             const userData = userSnap.exists ? (userSnap.data() as any) : {};
-            const userTier = userData?.tier ?? "free";
+
+            const normalizeTier = (raw: unknown): "free" | "pro" | "agency" | "enterprise" => {
+                const t = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+                if (t === "pro" || t === "agency" || t === "enterprise") return t;
+                return "free";
+            };
+
+            let userTier = normalizeTier(userData?.tier);
+
+            // Self-heal: if Stripe shows paid but tier is still free, force-refresh from Stripe.
+            const stripeStatus = typeof userData?.stripeStatus === "string" ? userData.stripeStatus : null;
+            const stripeSubId = typeof userData?.stripeSubscriptionId === "string" ? userData.stripeSubscriptionId.trim() : "";
+            const tierSource = typeof userData?.tierSource === "string" ? userData.tierSource : "";
+
+            const looksPaidButTierFree =
+                userTier === "free" &&
+                !!stripeSubId &&
+                (stripeStatus === "active" || stripeStatus === "trialing");
+
+            if (userTier === "free" && (looksPaidButTierFree || (tierSource && tierSource !== "stripe"))) {
+                try {
+                    const refreshed = await refreshTierFromStripeForUid(uid);
+                    userTier = refreshed === "pro" || refreshed === "agency" ? refreshed : "free";
+                } catch {
+                    // ignore
+                }
+            }
 
             if (userTier === "free") {
                 return NextResponse.json(

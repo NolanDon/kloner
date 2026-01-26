@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
-import { assertAppBuilderScope } from "../../_lib/appBuilderScope";
 import { callBackend } from "@/src/lib/callBackend";
+import { requireSessionAndMaybeCsrf } from "@/app/api/_lib/route-guard";
+import { assertAppBuilderScope } from "@/app/api/_lib/appBuilderScope";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

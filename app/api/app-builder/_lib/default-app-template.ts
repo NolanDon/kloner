@@ -1,43 +1,44 @@
-// scripts/setup-default-template.js
-const admin = require('firebase-admin');
+// app/api/app-builder/_lib/default-app-template.ts
+// Single source of truth for the default app template.
+// This is used to self-heal Firestore (system/default_app_template) if it is missing.
 
-// Initialize Firebase Admin
-const serviceAccount = require('../serviceAccount.json');
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
+export type TemplateFiles = Record<string, { content: string }>;
 
-const db = admin.firestore();
+export const DEFAULT_APP_TEMPLATE_VERSION = "1.0.1";
 
-const defaultTemplate = {
-  "package.json": {
-    content: JSON.stringify({
-      name: "kloner-app",
-      version: "0.1.0",
-      private: true,
-      engines: {
-        node: ">=18.17.0"
-      },
-      scripts: {
-        dev: "next dev",
-        build: "next build",
-        start: "next start",
-        lint: "next lint"
-      },
-      dependencies: {
-        next: "^14.2.35",
-        react: "18.3.1",
-        "react-dom": "18.3.1",
-        "@supabase/supabase-js": "^2.49.0"
-      },
-      devDependencies: {
-        eslint: "^8.57.0",
-        "eslint-config-next": "^14.2.35"
-      }
-    }, null, 2),
-  },
-  "next.config.js": {
-    content: `/** @type {import('next').NextConfig} */
+export const DEFAULT_APP_TEMPLATE_FILES: TemplateFiles = {
+    "package.json": {
+        content: JSON.stringify(
+            {
+                name: "kloner-app",
+                version: "0.1.0",
+                private: true,
+                engines: {
+          node: ">=18.17.0",
+                },
+                scripts: {
+                    dev: "next dev",
+                    build: "next build",
+                    start: "next start",
+                    lint: "next lint",
+                },
+                dependencies: {
+          next: "^14.2.35",
+          react: "18.3.1",
+          "react-dom": "18.3.1",
+                    "@supabase/supabase-js": "^2.49.0",
+                },
+                devDependencies: {
+          eslint: "^8.57.0",
+          "eslint-config-next": "^14.2.35",
+                },
+            },
+            null,
+            2,
+        ),
+    },
+    "next.config.js": {
+        content: `/** @type {import('next').NextConfig} */
 const nextConfig = {
   basePath: '',
   assetPrefix: '',
@@ -49,14 +50,14 @@ const nextConfig = {
 }
 
 module.exports = nextConfig`,
-  },
-  "jsconfig.json": {
-    content: `{
+    },
+    "jsconfig.json": {
+        content: `{
   "compilerOptions": {}
 }`,
-  },
-  "lib/supabaseClient.js": {
-    content: `import { createClient } from "@supabase/supabase-js";
+    },
+    "lib/supabaseClient.js": {
+        content: `import { createClient } from "@supabase/supabase-js";
 
 let cached;
 
@@ -72,9 +73,9 @@ export function getSupabaseBrowserClient() {
   return cached;
 }
 `,
-  },
-  "app/globals.css": {
-    content: `:root {
+    },
+    "app/globals.css": {
+        content: `:root {
   --bg0: #0b1020;
   --bg1: #0f172a;
   --card: rgba(255, 255, 255, 0.06);
@@ -287,9 +288,9 @@ a { color: inherit; }
   background: rgba(255,255,255,0.05);
 }
 `,
-  },
-  "app/page.js": {
-    content: `'use client';
+    },
+    "app/page.js": {
+        content: `'use client';
 
 import { useEffect, useState } from 'react';
 
@@ -368,9 +369,9 @@ export default function Home() {
     </main>
   );
 }`,
-  },
-  "app/layout.js": {
-    content: `import './globals.css';
+    },
+    "app/layout.js": {
+        content: `import './globals.css';
 
 export const metadata = {
   title: 'Kloner App',
@@ -384,9 +385,9 @@ export default function RootLayout({ children }) {
     </html>
   );
 }`,
-  },
-  "app/error.js": {
-    content: `'use client';
+    },
+    "app/error.js": {
+        content: `'use client';
 
 export default function Error({ error, reset }) {
   return (
@@ -412,24 +413,5 @@ export default function Error({ error, reset }) {
     </main>
   );
 }`,
-  },
+    },
 };
-
-async function setupDefaultTemplate() {
-  try {
-    await db.collection("system").doc("default_app_template").set({
-      files: defaultTemplate,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      version: "1.0.1"
-    });
-
-    console.log("✅ Default app template set up successfully!");
-    console.log("📍 Location: system/default_app_template");
-  } catch (error) {
-    console.error("❌ Failed to set up default template:", error);
-  } finally {
-    process.exit(0);
-  }
-}
-
-setupDefaultTemplate();

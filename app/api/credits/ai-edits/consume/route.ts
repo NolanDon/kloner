@@ -54,6 +54,12 @@ function minDate(a: Date, b: Date): Date {
     return a.getTime() <= b.getTime() ? a : b;
 }
 
+function normalizeNonNegativeInt(v: any): number | null {
+    if (typeof v !== "number" || !Number.isFinite(v)) return null;
+    if (v < 0) return null;
+    return Math.floor(v);
+}
+
 function creditEventRef(db: any, uid: string, requestId: string) {
     return db.collection("kloner_users").doc(uid).collection("credit_events").doc(requestId);
 }
@@ -118,9 +124,20 @@ export async function POST(req: NextRequest) {
                     const rawEnd = bucket.periodEnd;
                     const endDate: Date | null = rawEnd && typeof rawEnd.toDate === "function" ? (rawEnd.toDate() as Date) : rawEnd instanceof Date ? rawEnd : null;
                     const active = endDate !== null && now < endDate;
-                    const existingRemaining = typeof bucket.remaining === "number" && bucket.remaining >= 0 ? bucket.remaining : null;
+                    const existingRemaining = normalizeNonNegativeInt(bucket.remaining);
+                    const bonusRemaining = normalizeNonNegativeInt((bucket as any)?.bonusRemaining);
+                    const inferredBonus =
+                        bonusRemaining !== null
+                            ? bonusRemaining
+                            : existingRemaining !== null
+                                ? Math.max(0, existingRemaining - limit)
+                                : 0;
 
-                    finalRemaining = active && existingRemaining !== null ? existingRemaining : limit;
+                    // If the period is inactive/expired, monthly credits reset but top-ups remain.
+                    finalRemaining =
+                        active && existingRemaining !== null
+                            ? existingRemaining
+                            : limit + inferredBonus;
                     ok = true;
                     return;
                 }
@@ -133,17 +150,30 @@ export async function POST(req: NextRequest) {
             const rawEnd = bucket.periodEnd;
             const endDate: Date | null = rawEnd && typeof rawEnd.toDate === "function" ? (rawEnd.toDate() as Date) : rawEnd instanceof Date ? rawEnd : null;
             const active = endDate !== null && now < endDate;
-            const existingRemaining = typeof bucket.remaining === "number" && bucket.remaining >= 0 ? bucket.remaining : null;
+            const existingRemaining = normalizeNonNegativeInt(bucket.remaining);
+            const bonusRemaining = normalizeNonNegativeInt((bucket as any)?.bonusRemaining);
+            const inferredBonus =
+                bonusRemaining !== null
+                    ? bonusRemaining
+                    : existingRemaining !== null
+                        ? Math.max(0, existingRemaining - limit)
+                        : 0;
 
             const rawUseEnd = active ? (endDate as Date) : periodEnd;
             const usePeriodEnd = overrideEnd ? minDate(rawUseEnd, overrideEnd) : rawUseEnd;
+
+            // IMPORTANT: remaining may be greater than the monthlyLimit due to paid credit top-ups.
+            // Never cap it down to the tier limit here, otherwise top-ups appear to "reset" after a spend.
             const startRemaining =
-                active && existingRemaining !== null ? Math.min(existingRemaining, limit) : limit;
+                active && existingRemaining !== null
+                    ? existingRemaining
+                    : limit + inferredBonus;
 
             if (startRemaining < cost) {
                 finalRemaining = Math.max(startRemaining, 0);
                 ok = false;
 
+                const newBonus = inferredBonus;
                 tx.set(
                     userRef,
                     {
@@ -151,6 +181,7 @@ export async function POST(req: NextRequest) {
                             remaining: finalRemaining,
                             monthlyLimit: limit,
                             periodEnd: usePeriodEnd,
+                            bonusRemaining: newBonus,
                         },
                     },
                     { merge: true }
@@ -176,6 +207,9 @@ export async function POST(req: NextRequest) {
             finalRemaining = Math.max(startRemaining - cost, 0);
             ok = true;
 
+            const bonusSpent = Math.min(inferredBonus, cost);
+            const newBonus = Math.max(inferredBonus - bonusSpent, 0);
+
             tx.set(
                 userRef,
                 {
@@ -183,6 +217,7 @@ export async function POST(req: NextRequest) {
                         remaining: finalRemaining,
                         monthlyLimit: limit,
                         periodEnd: usePeriodEnd,
+                        bonusRemaining: newBonus,
                     },
                 },
                 { merge: true }
@@ -203,10 +238,17 @@ export async function POST(req: NextRequest) {
         });
 
         if (!ok) {
+            const origin = new URL(req.url).origin;
+            const upgradeUrl = new URL("/price", origin).toString();
+            const topupUrl = new URL("/price#topup", origin).toString();
+
             return NextResponse.json(
                 {
                     ok: false,
-                    error: "You have used all AI edit credits for this month.",
+                    error:
+                        effectiveTier === "free"
+                            ? `You have used all AI edit credits for this month. Upgrade to get more credits: ${upgradeUrl}`
+                            : `You have used all AI edit credits for this month. Top up credits: ${topupUrl} (or upgrade: ${upgradeUrl})`,
                     remaining: finalRemaining,
                     monthlyLimit: limit,
                     periodEnd: periodEnd.toISOString(),

@@ -7,6 +7,7 @@ import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
 import { useAuth } from "@/src/hooks/useAuth";
 import { db } from "@/lib/firebase";
 import { doc, onSnapshot } from "firebase/firestore";
+import { useModal } from "@/components/ui/ModalContext";
 
 type Message = {
     id: string;
@@ -49,6 +50,7 @@ type AIAgentChatProps = {
         restoredFiles: { [path: string]: { content: string; lastModified: number } };
     }) => void | Promise<void>;
     creditError?: string | null;
+    previewReady?: boolean;
 };
 
 type RestorePointItem = {
@@ -61,13 +63,71 @@ type RestorePointItem = {
     undoOf?: string | null;
 };
 
-export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, onRestoreApplied, creditError }: AIAgentChatProps) {
-    const { user } = useAuth();
+function stripMarkdownBold(text: string): string {
+    // Chat renders content as plain text (not markdown), so remove bold markers.
+    return (text || "")
+        .replace(/\*\*(.+?)\*\*/g, "$1")
+        .replace(/\*\*/g, "");
+}
+
+function renderTextWithLinks(text: string): React.ReactNode {
+    const cleaned = stripMarkdownBold(text || "");
+
+    // Linkify full URLs + the key in-app routes we intentionally surface.
+    const linkRe = /(https?:\/\/[^\s)\]]+|\/price(?:#topup)?)/g;
+    const parts = cleaned.split(linkRe);
+
+    return parts.map((part, idx) => {
+        const isUrl = /^https?:\/\//i.test(part);
+        const isPricePath = part === "/price" || part === "/price#topup";
+
+        if (!isUrl && !isPricePath) {
+            return <span key={idx}>{part}</span>;
+        }
+
+        const href = part;
+
+        // Make in-app pricing links look like CTAs (not raw URLs).
+        if (isPricePath) {
+            const isTopup = part === "/price#topup";
+            const label = isTopup ? "Top up credits" : "View pricing";
+            const classes = isTopup
+                ? "inline-flex items-center justify-center rounded-full bg-[#F55F2A] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#e35625]"
+                : "inline-flex items-center justify-center rounded-full border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-900 hover:bg-neutral-50";
+
+            return (
+                <span key={idx} className="block mt-2">
+                    <a href={href} className={classes}>
+                        {label}
+                    </a>
+                </span>
+            );
+        }
+
+        // External URLs remain normal link styling.
+        return (
+            <a
+                key={idx}
+                href={href}
+                className="inline-flex items-center gap-1 underline text-blue-700 hover:text-blue-800"
+                target="_blank"
+                rel="noopener noreferrer"
+            >
+                <span>{href}</span>
+                <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+        );
+    });
+}
+
+export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady }: AIAgentChatProps) {
+    const { user, userTier } = useAuth();
+    const { showConfirm, showAlert } = useModal();
     const AI_EDIT_COST = 5;
     // Supabase OAuth setup is safe to expose in production (still requires session + CSRF on the server).
     const allowDatabaseSetupUi = true;
     const [aiCreditsRemaining, setAiCreditsRemaining] = useState<number | null>(null);
-   const [messages, setMessages] = useState<Message[]>([
+    const [messages, setMessages] = useState<Message[]>([
         {
             id: "welcome",
             role: "assistant",
@@ -88,6 +148,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     const [showDatabaseSetup, setShowDatabaseSetup] = useState(false);
     const [showSupabaseSetup, setShowSupabaseSetup] = useState(false);
     const [showSupabaseAdvanced, setShowSupabaseAdvanced] = useState(false);
+    const [isSupabaseConnected, setIsSupabaseConnected] = useState(false);
     const [existingSupabaseProjectRef, setExistingSupabaseProjectRef] = useState("");
     const [existingSupabaseAnonKey, setExistingSupabaseAnonKey] = useState("");
     const [existingSupabaseServiceRoleKey, setExistingSupabaseServiceRoleKey] = useState("");
@@ -97,6 +158,12 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     const [migrationAcknowledge, setMigrationAcknowledge] = useState(false);
     const [migrationConfirmText, setMigrationConfirmText] = useState("");
     const [migrationShowSqlInModal, setMigrationShowSqlInModal] = useState(false);
+
+    const isSupabaseConnectedRef = useRef(false);
+
+    const chatDisabled = previewReady === false;
+
+    const didSyncSupabasePreviewEnvRef = useRef(false);
 
     useEffect(() => {
         if (allowDatabaseSetupUi) return;
@@ -111,6 +178,14 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             const detail = (ev as CustomEvent<any>)?.detail || {};
             const provider = String(detail?.provider || "supabase").toLowerCase();
             if (provider !== "supabase") return;
+
+            // If Supabase is already connected, do NOT show the connect modal or database setup modal.
+            if (isSupabaseConnected) {
+                setShowDatabaseSetup(false);
+                setShowSupabaseAdvanced(false);
+                setShowSupabaseSetup(false);
+                return;
+            }
             setShowDatabaseSetup(false);
             setShowSupabaseAdvanced(false);
             setShowSupabaseSetup(true);
@@ -118,7 +193,49 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
         window.addEventListener("kloner:open-db-connect", onOpen as EventListener);
         return () => window.removeEventListener("kloner:open-db-connect", onOpen as EventListener);
-    }, [allowDatabaseSetupUi]);
+    }, [allowDatabaseSetupUi, isSupabaseConnected]);
+
+    useEffect(() => {
+        if (!user?.uid) {
+            setIsSupabaseConnected(false);
+            return;
+        }
+
+        const supabaseRef = doc(db, "kloner_users", user.uid, "integrations", "supabase");
+        const unsub = onSnapshot(
+            supabaseRef,
+            (snap) => {
+                if (!snap.exists()) {
+                    setIsSupabaseConnected(false);
+                    return;
+                }
+
+                const data = snap.data() as any;
+                const projectRef = typeof data?.projectRef === "string" ? data.projectRef.trim() : "";
+                const connected = !!projectRef || snap.exists();
+                setIsSupabaseConnected(connected);
+            },
+            () => {
+                // If we can't read the integration doc (offline/rules), don't force the popup open.
+                // Default to false so the user can still choose to connect.
+                setIsSupabaseConnected(false);
+            },
+        );
+
+        return () => unsub();
+    }, [user?.uid]);
+
+    useEffect(() => {
+        isSupabaseConnectedRef.current = isSupabaseConnected;
+    }, [isSupabaseConnected]);
+
+    useEffect(() => {
+        // Self-heal: if the user becomes connected while the modal is open, close it.
+        if (!isSupabaseConnected) return;
+        setShowDatabaseSetup(false);
+        setShowSupabaseSetup(false);
+        setShowSupabaseAdvanced(false);
+    }, [isSupabaseConnected]);
 
     useEffect(() => {
         setIsHydrated(true);
@@ -149,14 +266,14 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         // Use scrollIntoView as primary method
         setTimeout(() => {
             if (messagesEndRef.current) {
-                messagesEndRef.current.scrollIntoView({ 
-                    behavior: 'smooth', 
+                messagesEndRef.current.scrollIntoView({
+                    behavior: 'smooth',
                     block: 'end',
-                    inline: 'nearest' 
+                    inline: 'nearest'
                 });
             }
         }, 0);
-        
+
         // Fallback: also try setting scrollTop on the container
         setTimeout(() => {
             if (messagesEndRef.current) {
@@ -164,11 +281,11 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 if (container) {
                     container.scrollTop = container.scrollHeight;
                 }
-                
+
                 // Also try scrollIntoView again as backup
-                messagesEndRef.current.scrollIntoView({ 
-                    behavior: 'auto', 
-                    block: 'end' 
+                messagesEndRef.current.scrollIntoView({
+                    behavior: 'auto',
+                    block: 'end'
                 });
             }
         }, 50);
@@ -211,12 +328,21 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         return headers;
     }, []);
 
+    useEffect(() => {
+        // Only sync envs after preview is ready
+        if (!appId) return;
+        if (!isSupabaseConnected) return;
+        if (didSyncSupabasePreviewEnvRef.current) return;
+        didSyncSupabasePreviewEnvRef.current = true;
+
+    }, [appId, isSupabaseConnected, previewReady, withCsrfHeaders]);
+
     const bootstrapAppScope = useCallback(async (): Promise<boolean> => {
-        // The app-scope cookie is issued by /api/app-builder/:appId/files.
-        // It expires (30 min) and can be missing on fresh sessions, so we re-issue it here.
+        // The app-scope cookie can be missing on fresh sessions (or expire ~30 min),
+        // so we (re-)issue it before calling app-scoped routes.
         try {
             await ensureSessionAndCsrf().catch(() => null);
-            const res = await fetch(`/api/app-builder/${appId}/files`, {
+            const res = await fetch(`/api/app-builder/${appId}/scope`, {
                 method: "GET",
                 credentials: "include",
                 cache: "no-store",
@@ -257,6 +383,16 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         [bootstrapAppScope]
     );
 
+    const scopeBootstrappedForAppIdRef = useRef<string | null>(null);
+
+    // Proactively issue the scope cookie once per appId to avoid noisy 403s.
+    useEffect(() => {
+        if (!user?.uid || !appId) return;
+        if (scopeBootstrappedForAppIdRef.current === appId) return;
+        scopeBootstrappedForAppIdRef.current = appId;
+        void bootstrapAppScope();
+    }, [appId, bootstrapAppScope, user?.uid]);
+
     // Load chat history from server (firebase-admin) and migrate any legacy localStorage once.
     useEffect(() => {
         if (loadedFromRemoteRef.current) return;
@@ -266,11 +402,11 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         (async () => {
             try {
                 await ensureSessionAndCsrf().catch(() => null);
-                const res = await fetch(`/api/app-builder/${appId}/ai-chat`, {
-                    method: "GET",
-                    credentials: "include",
-                    cache: "no-store",
-                });
+                const res = await fetchWithScopeRetry(
+                    `/api/app-builder/${appId}/ai-chat`,
+                    { method: "GET" },
+                    { retryLabel: "load ai chat" },
+                );
                 if (cancelled) return;
 
                 const data = res.ok ? await res.json().catch(() => null) : null;
@@ -328,23 +464,25 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                 if (loaded.length) {
                                     setMessages(loaded);
                                     const headers = await withCsrfHeaders();
-                                    await fetch(`/api/app-builder/${appId}/ai-chat`, {
-                                        method: "POST",
-                                        headers,
-                                        credentials: "include",
-                                        cache: "no-store",
-                                        body: JSON.stringify({
-                                            messages: loaded.map((m) => ({
-                                                id: m.id,
-                                                role: m.role,
-                                                content: m.content,
-                                                type: m.type,
-                                                timestampMs: m.timestamp.getTime(),
-                                                restorePointId: m.restorePointId ?? null,
-                                                restoreActionLabel: m.restoreActionLabel ?? null,
-                                            })),
-                                        }),
-                                    }).catch(() => null);
+                                    await fetchWithScopeRetry(
+                                        `/api/app-builder/${appId}/ai-chat`,
+                                        {
+                                            method: "POST",
+                                            headers,
+                                            body: JSON.stringify({
+                                                messages: loaded.map((m) => ({
+                                                    id: m.id,
+                                                    role: m.role,
+                                                    content: m.content,
+                                                    type: m.type,
+                                                    timestampMs: m.timestamp.getTime(),
+                                                    restorePointId: m.restorePointId ?? null,
+                                                    restoreActionLabel: m.restoreActionLabel ?? null,
+                                                })),
+                                            }),
+                                        },
+                                        { retryLabel: "migrate legacy chat" },
+                                    ).catch(() => null);
                                 }
                             }
                         }
@@ -381,7 +519,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         return () => {
             cancelled = true;
         };
-    }, [appId, debugChatIo, user?.uid, withCsrfHeaders]);
+    }, [appId, debugChatIo, fetchWithScopeRetry, user?.uid, withCsrfHeaders]);
 
     const fetchRestorePoints = useCallback(async () => {
         try {
@@ -431,6 +569,97 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     }, [messages, scrollToBottom]);
 
     const saveTimerRef = useRef<number | null>(null);
+
+    const buildChatPayload = useCallback((input: Message[]) => {
+        // Keep a reasonable tail to prevent doc bloat.
+        const tailMax = 120;
+        const base = input.slice(-tailMax).map((m) => ({
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            type: m.type,
+            timestampMs: m.timestamp.getTime(),
+            restorePointId: m.restorePointId ?? null,
+            restoreActionLabel: m.restoreActionLabel ?? null,
+        }));
+
+        const encoder = typeof TextEncoder !== "undefined" ? new TextEncoder() : null;
+        const sizeBytes = (payload: any) => {
+            const raw = JSON.stringify(payload);
+            return encoder ? encoder.encode(raw).length : raw.length;
+        };
+
+        let payload = base;
+        // Firestore doc limit is ~1MB. Keep a safe margin.
+        const MAX_BYTES = 800_000;
+        if (sizeBytes(payload) > MAX_BYTES) payload = base.slice(-60);
+        if (sizeBytes(payload) > MAX_BYTES) payload = base.slice(-30);
+
+        return payload;
+    }, []);
+
+    const saveChatNow = useCallback(
+        async (nextMessages: Message[]) => {
+            if (!isHydrated) return;
+            if (!initialLoadCompletedRef.current) return;
+            if (!user?.uid || !appId) return;
+
+            try {
+                const payload = buildChatPayload(nextMessages);
+                const raw = JSON.stringify(payload);
+
+                // Skip writes if nothing changed since last successful save.
+                if (lastSavedPayloadRef.current === raw) {
+                    if (debugChatIo()) console.log("[AIAgentChat] chat save skipped (unchanged)", { appId });
+                    return;
+                }
+
+                await ensureSessionAndCsrf().catch(() => null);
+                const headers = await withCsrfHeaders();
+                const res = await fetchWithScopeRetry(
+                    `/api/app-builder/${appId}/ai-chat`,
+                    { method: "POST", headers, body: JSON.stringify({ messages: payload }) },
+                    { retryLabel: "save ai chat now" },
+                );
+                if (!res.ok) {
+                    throw new Error(`Chat save failed: ${res.status}`);
+                }
+
+                lastSavedPayloadRef.current = raw;
+                if (debugChatIo()) console.log("[AIAgentChat] chat saved", { appId, messages: payload.length });
+            } catch (e) {
+                console.warn("Failed to save chat history", e);
+                if (debugChatIo()) {
+                    console.log("[AIAgentChat] chat save failed", {
+                        appId,
+                        uid: user?.uid || null,
+                        path: `kloner_users/${user?.uid || "<no-uid>"}/kloner_apps/${appId}/ai_chat/default`,
+                    });
+                }
+            }
+        },
+        [appId, buildChatPayload, debugChatIo, fetchWithScopeRetry, isHydrated, user?.uid, withCsrfHeaders],
+    );
+
+    const dismissMessage = useCallback(
+        (messageId: string) => {
+            if (!messageId) return;
+
+            // Cancel pending debounce and persist immediately.
+            if (saveTimerRef.current) {
+                window.clearTimeout(saveTimerRef.current);
+                saveTimerRef.current = null;
+            }
+
+            setMessages((prev) => {
+                const next = prev.filter((m) => m.id !== messageId);
+                void saveChatNow(next);
+                return next;
+            });
+        },
+        [saveChatNow],
+    );
+
     // Save chat history via server (debounced)
     useEffect(() => {
         if (!isHydrated) return;
@@ -443,29 +672,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
         saveTimerRef.current = window.setTimeout(async () => {
             try {
-                // Keep a reasonable tail to prevent doc bloat.
-                const tailMax = 120;
-                const base = messages.slice(-tailMax).map((m) => ({
-                    id: m.id,
-                    role: m.role,
-                    content: m.content,
-                    type: m.type,
-                    timestampMs: m.timestamp.getTime(),
-                    restorePointId: m.restorePointId ?? null,
-                    restoreActionLabel: m.restoreActionLabel ?? null,
-                }));
-
-                const encoder = typeof TextEncoder !== "undefined" ? new TextEncoder() : null;
-                const sizeBytes = (payload: any) => {
-                    const raw = JSON.stringify(payload);
-                    return encoder ? encoder.encode(raw).length : raw.length;
-                };
-
-                let payload = base;
-                // Firestore doc limit is ~1MB. Keep a safe margin.
-                const MAX_BYTES = 800_000;
-                if (sizeBytes(payload) > MAX_BYTES) payload = base.slice(-60);
-                if (sizeBytes(payload) > MAX_BYTES) payload = base.slice(-30);
+                const payload = buildChatPayload(messages);
 
                 // Skip writes if nothing changed since last successful save.
                 const raw = JSON.stringify(payload);
@@ -476,13 +683,11 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
                 await ensureSessionAndCsrf().catch(() => null);
                 const headers = await withCsrfHeaders();
-                const res = await fetch(`/api/app-builder/${appId}/ai-chat`, {
-                    method: "POST",
-                    headers,
-                    credentials: "include",
-                    cache: "no-store",
-                    body: JSON.stringify({ messages: payload }),
-                });
+                const res = await fetchWithScopeRetry(
+                    `/api/app-builder/${appId}/ai-chat`,
+                    { method: "POST", headers, body: JSON.stringify({ messages: payload }) },
+                    { retryLabel: "save ai chat debounced" },
+                );
                 if (!res.ok) {
                     throw new Error(`Chat save failed: ${res.status}`);
                 }
@@ -508,7 +713,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 saveTimerRef.current = null;
             }
         };
-    }, [appId, debugChatIo, isHydrated, messages, user?.uid, withCsrfHeaders]);
+    }, [appId, buildChatPayload, debugChatIo, fetchWithScopeRetry, isHydrated, messages, user?.uid, withCsrfHeaders]);
 
     const createCheckpoint = useCallback((description: string) => {
         const checkpointId = `checkpoint_${Date.now()}`;
@@ -562,7 +767,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 headers,
                 credentials: "include",
                 cache: "no-store",
-                body: JSON.stringify({}),
+                body: JSON.stringify({ appId }),
             });
 
             if (!response.ok) {
@@ -571,8 +776,8 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                     typeof error?.message === "string"
                         ? error.message
                         : response.status === 401 || response.status === 403
-                        ? "Your session expired. Please refresh the page, log in again, and retry."
-                        : "Supabase project creation isn’t configured yet. Ask the admin to set SUPABASE_CLIENT_ID + SUPABASE_CLIENT_SECRET, then retry.";
+                            ? "Your session expired. Please refresh the page, log in again, and retry."
+                            : "Supabase project creation isn’t configured yet. Ask the admin to set SUPABASE_CLIENT_ID + SUPABASE_CLIENT_SECRET, then retry.";
                 throw new Error(message);
             }
 
@@ -604,7 +809,94 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             // We poll for completion and also listen for postMessage from the popup.
             let isDone = false;
 
-            const onMessage = (event: MessageEvent) => {
+            const rebuildPreviewAfterSupabase = async (): Promise<{ ok: boolean; error?: string }> => {
+                try {
+                    await ensureSessionAndCsrf().catch(() => null);
+                    // Pull the latest files from Firestore so the rebuild starts with the updated `.env.local`.
+                    await syncFilesFromServer({ applyToState: true }).catch(() => null);
+
+                    if (typeof window !== "undefined") {
+                        window.dispatchEvent(
+                            new CustomEvent("kloner:preview-force-fresh", {
+                                detail: { appId, reason: "supabase" },
+                            }),
+                        );
+                    }
+
+                    return { ok: true };
+                } catch (e) {
+                    const msg = e instanceof Error ? e.message : "Failed to start preview rebuild";
+                    console.warn("Failed to start preview rebuild after Supabase connect", e);
+                    return { ok: false, error: msg };
+                }
+            };
+
+            const promptRestartAfterSupabase = async () => {
+                const confirmed = await showConfirm(
+                    "Supabase is connected.\n\nTo finish setup, we need to restart your environment. This can take a minute or two. Restart now?",
+                    "Restart preview to load Supabase?",
+                );
+
+                if (!confirmed) {
+                    setMessages((prev) => [
+                        ...prev,
+                        {
+                            id: `supabase_restart_skipped_${Date.now()}`,
+                            role: "assistant",
+                            content:
+                                "⚠️ **Supabase is connected, but your preview is still running with the old env vars.**\n\nWhen you’re ready, click **Rebuild app** so it restarts on a fresh machine and loads the new `.env.local` values.",
+                            timestamp: new Date(),
+                            type: "text",
+                        },
+                    ]);
+                    return;
+                }
+
+                setMessages((prev) => [
+                    ...prev,
+                    {
+                        id: `supabase_restart_start_${Date.now()}`,
+                        role: "assistant",
+                        content: "🧱 Rebuilding preview from scratch so your new database can take effect…",
+                        timestamp: new Date(),
+                        type: "text",
+                    },
+                ]);
+
+                const result = await rebuildPreviewAfterSupabase();
+                if (!result.ok) {
+                    await showAlert(
+                        `Supabase is connected, but starting a fresh rebuild failed.\n\n${result.error || "unknown_error"}\n\nTry clicking **Rebuild app** in the editor header.`,
+                        "Rebuild failed",
+                    );
+
+                    setMessages((prev) => [
+                        ...prev,
+                        {
+                            id: `supabase_restart_failed_${Date.now()}`,
+                            role: "assistant",
+                            content:
+                                `❌ **Couldn’t start a fresh rebuild automatically.**\n\n${result.error || "unknown_error"}\n\nClick **Rebuild app** to restart on a fresh machine and load the Supabase env vars.`,
+                            timestamp: new Date(),
+                            type: "text",
+                        },
+                    ]);
+                    return;
+                }
+
+                setMessages((prev) => [
+                    ...prev,
+                    {
+                        id: `supabase_restart_ok_${Date.now()}`,
+                        role: "assistant",
+                        content: "✅ Rebuild started. You should see the preview reload; once it’s back up, your database should be fully connected and receive for your next request.",
+                        timestamp: new Date(),
+                        type: "text",
+                    },
+                ]);
+            };
+
+            const onMessage = async (event: MessageEvent) => {
                 try {
                     if (event.origin !== window.location.origin) return;
                     const data: any = event.data;
@@ -622,6 +914,8 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                             timestamp: new Date(),
                             type: "text"
                         }]);
+
+                        await promptRestartAfterSupabase();
                     } else {
                         const details = typeof data.details === "string" ? data.details : "Supabase setup failed";
                         setMessages(prev => [...prev, {
@@ -641,8 +935,10 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
             const checkCompletion = setInterval(async () => {
                 try {
-                    const statusResponse = await fetch('/api/supabase/project-status', {
+                    const statusResponse = await fetch(`/api/supabase/project-status?appId=${encodeURIComponent(appId)}`, {
                         method: 'GET',
+                        credentials: "include",
+                        cache: "no-store",
                     });
 
                     if (statusResponse.ok) {
@@ -667,11 +963,12 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                             setMessages(prev => [...prev, {
                                 id: `project_created_${Date.now()}`,
                                 role: "assistant",
-                                content: "✅ **Supabase project created successfully!**\n\nYour new database is ready. I've automatically connected it to your MCP server for AI-powered database assistance.\n\n**What I set up for you:**\n- Database with secure credentials\n- Authentication configured\n- Ready for schema creation\n\nYou can now ask me to create tables, add data, or help with any database tasks!",
+                                content: "**Project created successfully!**\n\nEverything is ready to use. Your new system is set up and connected so I can help you manage it automatically.\n\n**What’s ready for you:**\n- A secure place to store your data\n- User access and sign-in support\n- Ready to start adding information\n\nYou can now ask me to add information, organize it, or help with anything you want to build!",
                                 timestamp: new Date(),
                                 type: "text"
                             }]);
-                            // Preview refresh is handled via HMR/apply; no rebuild refresh here.
+
+                            await promptRestartAfterSupabase();
                         }
                     }
                 } catch (error) {
@@ -703,7 +1000,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 type: "text"
             }]);
         }
-    }, []);
+    }, [appId, showAlert, showConfirm, withCsrfHeaders]);
 
     const handleConnectExistingSupabaseProject = useCallback(async () => {
         try {
@@ -919,6 +1216,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     }, [applyRestorePoint, checkpoints, lastRestorePointId, onFileEdit]);
 
     const sendMessage = async () => {
+        if (chatDisabled) return;
         if (!input.trim() || isLoading) return;
 
         // Special-case: applying a previously proposed migration.
@@ -1006,10 +1304,15 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
         // If we can see the remaining balance and it's insufficient, block early.
         if (typeof aiCreditsRemaining === "number" && aiCreditsRemaining < AI_EDIT_COST) {
+            const upgrade = "/price";
+            const topup = "/price#topup";
             const errorMessage: Message = {
                 id: `error_${Date.now()}`,
                 role: "assistant",
-                content: "You have used all AI edit credits for this month.",
+                content:
+                    userTier === "pro" || userTier === "agency"
+                        ? `You have used all AI edit credits for this month.\nTop up credits: ${topup}`
+                        : `You have used all AI edit credits for this month.\nUpgrade to get more credits: ${upgrade}`,
                 timestamp: new Date(),
                 type: "text",
             };
@@ -1046,10 +1349,17 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             if (!res.ok) throw new Error("Failed to get AI response");
 
             const data = await res.json();
+
+            // If the AI response or context indicates a restart is required, suggest the Rebuild app button
+            let aiContent = data.response;
+            if (typeof aiContent === "string" && /restart|server.*restart|refresh.*server|database credentials|should work in a moment/i.test(aiContent)) {
+                aiContent +=
+                    "\n\nIf you just updated your database credentials or made a major config change, you may need to click the **Rebuild app** button (formerly 'Start fresh') in the editor to fully restart your app server.";
+            }
             const aiMessage: Message = {
                 id: `ai_${Date.now()}`,
                 role: "assistant",
-                content: data.response,
+                content: aiContent,
                 timestamp: new Date(),
                 type: "text"
             };
@@ -1076,7 +1386,9 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                     if (!proposeRes.ok || proposeJson?.ok === false) {
                         const msg = typeof proposeJson?.error === "string" ? proposeJson.error : "Failed to create migration proposal.";
                         if (msg.toLowerCase().includes("supabase is not connected")) {
-                            setShowDatabaseSetup(true);
+                            if (!isSupabaseConnectedRef.current) {
+                                setShowDatabaseSetup(true);
+                            }
                             setMessages((prev) => [
                                 ...prev,
                                 {
@@ -1129,6 +1441,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             // Handle database setup request (dev-only)
             if (allowDatabaseSetupUi && data.setupDatabase) {
                 setTimeout(() => {
+                    if (isSupabaseConnectedRef.current) return;
                     setShowDatabaseSetup(true);
                 }, 1000); // Small delay for better UX
             }
@@ -1180,7 +1493,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     const handleKeyPress = (e: React.KeyboardEvent) => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
-            sendMessage();
+            if (!chatDisabled) sendMessage();
         }
     };
 
@@ -1271,19 +1584,47 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                         </div>
                     </div>
                 )}
+                {messages.length === 0 && !isLoading ? (
+                    <div className="text-center text-sm text-gray-500 py-10">
+                        No chat messages yet.
+                    </div>
+                ) : null}
+
                 {messages.map((message) => (
                     <div
                         key={message.id}
                         className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
                     >
                         <div
-                            className={`max-w-[80%] rounded-lg p-3 ${
-                                message.role === "user"
+                            className={`group relative max-w-[80%] rounded-lg p-3 ${message.role === "user"
                                     ? "bg-purple-50 border border-purple-200 text-gray-900"
                                     : "bg-orange-50 border border-orange-200"
-                            }`}
+                                }`}
                         >
-                            <div className="whitespace-pre-wrap break-words text-sm">{message.content}</div>
+                            <button
+                                type="button"
+                                onClick={() => dismissMessage(message.id)}
+                                className="absolute top-1.5 right-1.5 rounded p-1 text-gray-500 hover:text-gray-900 hover:bg-black/5 opacity-0 group-hover:opacity-100 focus:opacity-100"
+                                title="Dismiss message"
+                                aria-label="Dismiss message"
+                            >
+                                <X className="h-3.5 w-3.5" />
+                            </button>
+
+                            <div className="whitespace-pre-wrap break-words text-sm">{renderTextWithLinks(message.content)}</div>
+                            {/* Prominent warning/info for risky or pending migrations */}
+                            {message.migrationProposalId && message.migrationSql && (message.migrationStatus === "PENDING" || message.migrationStatus === "APPLYING") && (
+                                <div className={`mb-2 flex items-center gap-2 ${message.migrationDestructive ? "text-amber-700" : "text-blue-700"}`}>
+                                    {message.migrationDestructive ? (
+                                        <AlertTriangle className="h-5 w-5 animate-bounce" />
+                                    ) : (
+                                        <Database className="h-5 w-5 animate-bounce" />
+                                    )}
+                                    <span className="font-bold text-base">
+                                        Database update required
+                                    </span>
+                                </div>
+                            )}
 
                             {message.migrationProposalId && message.migrationSql ? (
                                 <div className="mt-3 space-y-2">
@@ -1295,7 +1636,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                                         <AlertTriangle className="h-4 w-4 text-amber-600" />
                                                     ) : null}
                                                     <span>
-                                                        Database update {message.migrationDestructive ? "(risky)" : "(safe)"}
+                                                        Database update
                                                     </span>
                                                 </div>
                                                 <div className="mt-0.5 text-[11px] text-gray-600">
@@ -1343,14 +1684,10 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                             </div>
                                         </div>
 
-                                        {showMigrationSqlByMessageId[message.id] ? (
+                                        {showMigrationSqlByMessageId[message.id] && (
                                             <pre className="mt-2 max-h-56 overflow-auto rounded bg-white border border-gray-200 p-2 text-[11px] leading-relaxed whitespace-pre-wrap">
                                                 {message.migrationSql}
                                             </pre>
-                                        ) : (
-                                            <div className="mt-2 text-[11px] text-gray-600">
-                                                SQL is hidden by default to keep this non-technical.
-                                            </div>
                                         )}
                                     </div>
                                 </div>
@@ -1439,9 +1776,11 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                     <div className="grid grid-cols-1 gap-2">
                         <button
                             onClick={() => {
+                                if (isSupabaseConnected) return;
                                 setShowSupabaseAdvanced(false);
                                 setShowSupabaseSetup(true);
                             }}
+                            disabled={isSupabaseConnected}
                             className="flex items-center gap-3 px-4 py-3 bg-white rounded-lg text-sm hover:bg-black/5 transition-colors"
                         >
                             <div className="w-8 h-8 rounded-lg overflow-hidden bg-white flex items-center justify-center">
@@ -1454,7 +1793,9 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                             </div>
                             <div className="text-left">
                                 <div className="font-semibold text-gray-900">Supabase</div>
-                                <div className="text-xs text-gray-600">PostgreSQL with auth & real-time</div>
+                                <div className="text-xs text-gray-600">
+                                    {isSupabaseConnected ? "Connected" : "PostgreSQL with auth & real-time"}
+                                </div>
                             </div>
                         </button>
                     </div>
@@ -1463,8 +1804,8 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
             {/* Supabase Setup Modal */}
             {allowDatabaseSetupUi && showSupabaseSetup && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+                <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-2xl border border-black/10 shadow-xl p-6 max-w-md w-full mx-4">
                         <div className="flex items-center justify-between mb-4">
                             <div className="flex items-center gap-3">
                                 <div className="w-8 h-8 rounded-lg overflow-hidden bg-white flex items-center justify-center">
@@ -1489,7 +1830,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                         </div>
 
                         <div className="space-y-4">
-                            <div className="rounded-lg border border-black/10 bg-black/5 p-3">
+                            <div className="rounded-xl border border-black/10 bg-white p-3">
                                 <div className="text-sm font-semibold text-gray-900">Recommended</div>
                                 <div className="text-sm text-gray-700 mt-1">
                                     Create a new Supabase project via OAuth. This is the safest setup and enables the guarded database migration flow.
@@ -1507,7 +1848,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                     href="https://supabase.com/dashboard"
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="shrink-0 px-3 py-2 rounded-full hover:bg-black/5 text-sm text-gray-700 flex items-center gap-2"
+                                    className="shrink-0 px-3 py-2 rounded-full border border-black/10 hover:bg-gray-50 text-sm text-gray-700 flex items-center gap-2"
                                 >
                                     Dashboard <ExternalLink className="w-4 h-4" />
                                 </a>
@@ -1515,14 +1856,14 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
                             <button
                                 onClick={() => setShowSupabaseAdvanced((v) => !v)}
-                                className="w-full text-left px-3 py-2 rounded-md border border-black/10 hover:bg-black/5 text-sm text-gray-800 flex items-center justify-between"
+                                className="w-full text-left px-3 py-2 rounded-xl border border-black/10 hover:bg-gray-50 text-sm text-gray-800 flex items-center justify-between"
                             >
                                 <span className="font-semibold">Advanced options</span>
                                 {showSupabaseAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                             </button>
 
                             {showSupabaseAdvanced ? (
-                                <div className="space-y-3 rounded-lg border border-black/10 p-3">
+                                <div className="space-y-3 rounded-xl border border-black/10 bg-white p-3">
                                     <div className="text-xs text-gray-600">
                                         Manual connections require pasting keys. Use only if you already have a Supabase project.
                                     </div>
@@ -1612,9 +1953,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                                     Review database update
                                                 </h3>
                                                 <div className="text-sm text-gray-600">
-                                                    {destructive
-                                                        ? "This may delete or rewrite data. Proceed carefully."
-                                                        : "This should be a safe schema change (e.g. adding tables/columns)."}
+                                                    This may change your database schema or data. Proceed carefully.
                                                 </div>
                                                 {proposalId ? (
                                                     <div className="mt-1 text-xs text-gray-500">ID: {proposalId}</div>
@@ -1747,11 +2086,10 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                                     });
                                                 }
                                             }}
-                                            className={`flex-1 text-white py-2 px-4 rounded-md transition-colors disabled:opacity-50 ${
-                                                destructive ? "bg-amber-600 hover:bg-amber-700" : "bg-green-600 hover:bg-green-700"
-                                            }`}
+                                            className={`flex-1 text-white py-2 px-4 rounded-md transition-colors disabled:opacity-50 ${destructive ? "bg-amber-600 hover:bg-amber-700" : "bg-green-600 hover:bg-green-700"
+                                                }`}
                                         >
-                                            {isApplying ? "Applying…" : destructive ? "Apply (risky)" : "Apply"}
+                                            {isApplying ? "Applying…" : "Apply"}
                                         </button>
                                     </div>
                                 </>
@@ -1772,10 +2110,20 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                     <button
                         type="button"
                         className="px-3 py-1 text-xs font-semibold bg-accent text-white rounded-full hover:bg-accent-dark"
+                        onClick={() => {
+                            window.location.href = "/price#topup";
+                        }}
                     >
                         Add credits
                     </button>
                 </div>
+
+                {chatDisabled ? (
+                    <div className="mb-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
+                        Preview is still loading. Chat will unlock once the preview renders.
+                    </div>
+                ) : null}
+
                 <div className="flex gap-2 border border-gray-300">
                     <textarea
                         ref={inputRef}
@@ -1785,11 +2133,11 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                         placeholder="Ask me to build something..."
                         className="flex-1 p-3 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-accent"
                         rows={3}
-                        disabled={isLoading}
+                        disabled={isLoading || chatDisabled}
                     />
                     <button
                         onClick={sendMessage}
-                        disabled={!input.trim() || isLoading}
+                        disabled={!input.trim() || isLoading || chatDisabled}
                         className="px-3 py-2 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                     >
                         <Send className="w-6 h-6 text-accent" />

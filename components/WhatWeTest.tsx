@@ -195,7 +195,7 @@ export default function WhatWeTest() {
                       </span>
                     )}
                     {isBeta && (
-                      <span className="ml-3 shrink-0 rounded-full  px-2.5 py-1 text-[11px] leading-none bg-emerald-50 ring-emerald-200/80 text-emerald-700">
+                      <span className="whitespace-nowrap ml-3 shrink-0 rounded-full  px-2.5 py-1 text-[11px] leading-none bg-emerald-50 ring-emerald-200/80 text-emerald-700">
                         Coming Soon
                       </span>
                     )}

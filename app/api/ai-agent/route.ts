@@ -30,6 +30,81 @@ type RestorePointPayload = {
     buildOk?: boolean;
 };
 
+function requestLikelyNeedsDatabase(userMessage: string): boolean {
+    const m = String(userMessage || "").toLowerCase();
+    if (!m.trim()) return false;
+
+    // High-signal: auth/accounts/persistence.
+    const keywords = [
+        "auth",
+        "authentication",
+        "login",
+        "log in",
+        "logout",
+        "log out",
+        "signup",
+        "sign up",
+        "register",
+        "password",
+        "reset password",
+        "user account",
+        "user accounts",
+        "profile",
+        "roles",
+        "admin",
+        "rbac",
+        "permissions",
+        "database",
+        "postgres",
+        "supabase",
+        "persist",
+        "persistence",
+        "store in db",
+        "save to db",
+        "crud",
+        "create a record",
+        "save to database",
+        "comments",
+        "orders",
+        "subscriptions",
+        "checkout history",
+    ];
+
+    return keywords.some((k) => m.includes(k));
+}
+
+function fileEditsLookLikeInsecureLocalAuth(edits: FileEdit[]): boolean {
+    const joined = edits.map((e) => `${e.path}\n${e.content}`).join("\n\n").toLowerCase();
+
+    // Disallow obvious non-persistent / insecure user storage patterns.
+    const redFlags: Array<(s: string) => boolean> = [
+        (s) => s.includes("localstorage") && (s.includes("password") || s.includes("users") || s.includes("user")),
+        (s) => s.includes("sessionstorage") && (s.includes("password") || s.includes("users") || s.includes("user")),
+        (s) => s.includes("users.json"),
+        (s) => s.includes("fs.writefile") && (s.includes("user") || s.includes("password")),
+        (s) => s.includes("writefileSync") && (s.includes("user") || s.includes("password")),
+        (s) => s.includes("const users = [") && s.includes("password"),
+        (s) => s.includes("let users = [") && s.includes("password"),
+        (s) => s.includes("inmemory") && s.includes("user"),
+    ];
+
+    return redFlags.some((fn) => fn(joined));
+}
+
+async function getSupabaseIntegrationStatus(params: { db: any; uid: string }): Promise<{ connected: boolean; projectRef: string | null }> {
+    const { db, uid } = params;
+    try {
+        const ref = db.collection("kloner_users").doc(uid).collection("integrations").doc("supabase");
+        const snap = await ref.get();
+        if (!snap.exists) return { connected: false, projectRef: null };
+        const data = snap.data() as any;
+        const projectRef = typeof data?.projectRef === "string" ? data.projectRef.trim() : "";
+        return { connected: true, projectRef: projectRef || null };
+    } catch {
+        return { connected: false, projectRef: null };
+    }
+}
+
 function isSafeAppFilePath(path: string): boolean {
     if (!path) return false;
     if (path.startsWith("/") || path.startsWith("\\")) return false;
@@ -219,6 +294,27 @@ export async function POST(req: NextRequest) {
             assertAppBuilderScope(authedReq, uid, appId);
 
             const db = getAdminDb();
+
+            // Determine whether Supabase is actually connected (source of truth used elsewhere in the product).
+            const supabase = await getSupabaseIntegrationStatus({ db, uid });
+            const hasAnyDb = supabase.connected || databaseConnections.length > 0;
+
+            // Security-first guard: if a request likely needs persistence/auth and no DB is connected,
+            // do not implement fake/local auth. Instead, push the user to connect Supabase.
+            if (requestLikelyNeedsDatabase(message) && !hasAnyDb) {
+                return NextResponse.json(
+                    {
+                        response:
+                            "This feature needs secure, persistent storage (database) to be safe. Right now no database is connected, so I won’t create local/in-memory users or store passwords on the client.\n\nDo you want to connect Supabase now and have me set up authentication + the required schema (e.g. a profiles table + RLS) for you?",
+                        refreshServer: false,
+                        fileEdits: [],
+                        setupDatabase: true,
+                        dbMigrations: [],
+                    },
+                    { status: 200 },
+                );
+            }
+
             const appRef = db
                 .collection("kloner_users")
                 .doc(uid)
@@ -259,11 +355,31 @@ export async function POST(req: NextRequest) {
                     ? `\n\nLast build failed. Here are the build logs (most recent):\n${lastBuild.logs}`
                     : "";
 
-                const dbContext = databaseConnections.length > 0
-                    ? `\n\nConnected databases with MCP integration:\n${databaseConnections.map(db => `- ${db.name} (${db.type}): Full MCP access to database operations, schema exploration, query generation, and real-time development tools`).join('\n')}`
-                    : "\n\nNo databases connected yet. Strongly recommend Supabase with MCP integration for the best AI-assisted development experience.";
+                const dbContext = hasAnyDb
+                    ? `\n\nDatabase status:\n- Supabase integration: ${supabase.connected ? `connected${supabase.projectRef ? ` (${supabase.projectRef})` : ""}` : "not connected"}\n${databaseConnections.length > 0
+                        ? `\nConnected databases with MCP integration:\n${databaseConnections
+                            .map((db) => `- ${db.name} (${db.type}): Full MCP access to database operations, schema exploration, query generation, and real-time development tools`)
+                            .join("\n")}`
+                        : ""}`
+                    : "\n\nNo databases connected yet.";
 
-                const systemPrompt = `You are an expert Next.js developer working inside an app builder. Be conversational and helpful!
+                                const systemPrompt = `You are an expert Next.js developer working inside an app builder. Be conversational and helpful!
+
+SECURITY + PERSISTENCE (TOP PRIORITY):
+- NEVER implement "fake" auth or user storage using localStorage/sessionStorage/in-memory arrays/JSON files.
+- NEVER store passwords client-side, never store plaintext passwords anywhere.
+- If the user requests authentication, user accounts, or any persistent data feature and a database is not connected, DO NOT implement workarounds. Instead:
+    - ask the user to connect Supabase,
+    - set setupDatabase: true,
+    - return zero fileEdits.
+- If Supabase is connected, use Supabase Auth for authentication and propose any needed schema via dbMigrations (e.g. profiles table + RLS).
+
+SUPABASE ENV SAFETY (DO NOT BREAK INITIAL RENDER):
+- NEVER write '.env', '.env.local', or any '.env.*' file.
+- NEVER call createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) at module scope.
+- When you need a Supabase browser client, scaffold a helper (e.g. lib/supabaseClient.ts) that lazily creates the client ONLY after checking env vars at runtime.
+- If env vars are missing, return null and show a friendly UI message instead of throwing or failing the TypeScript build.
+- Only use NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY for browser code.
 
 CRITICAL OUTPUT FORMAT:
 Return ONLY valid JSON (no markdown, no backticks) matching this TypeScript shape:
@@ -283,7 +399,7 @@ Rules:
 - Keep changes minimal and ensure npm run build passes.
 - If you need no file changes, return an empty fileEdits array.
 - Be conversational! If the user might benefit from database connectivity, strongly recommend Supabase with MCP integration for AI-powered database operations.
-- If no databases are connected and the user is building something that would benefit from data persistence (like a blog, e-commerce, user management, etc.), suggest connecting Supabase specifically.
+- If no databases are connected and the user is building something that needs data persistence (like auth, user management, blog comments, e-commerce, etc.), you MUST suggest connecting Supabase specifically and set setupDatabase: true.
 - With MCP integration, you have access to: database schema exploration, query generation, migration assistance, authentication setup, RLS policy creation, edge function development, and real-time feature implementation.
 - Set setupDatabase: true if you want to offer Supabase MCP connection setup to the user.
 
@@ -330,7 +446,22 @@ ${buildContext}`;
                     }
                 }
 
-                const fileEdits = Array.isArray(parsed.fileEdits) ? parsed.fileEdits : [];
+                // Post-parse guard: never allow insecure local user storage/auth to land in app files.
+                const fileEdits = Array.isArray(parsed.fileEdits) ? (parsed.fileEdits as FileEdit[]) : [];
+                if (fileEdits.length > 0 && fileEditsLookLikeInsecureLocalAuth(fileEdits)) {
+                    return NextResponse.json(
+                        {
+                            response:
+                                "I’m not going to implement authentication by storing users locally (it’s insecure and won’t persist). The secure path is to connect Supabase and use Supabase Auth, then I can create the required schema (profiles/RLS) for you.",
+                            refreshServer: false,
+                            fileEdits: [],
+                            setupDatabase: true,
+                            dbMigrations: [],
+                        },
+                        { status: 200 },
+                    );
+                }
+
                 let response = safeString(parsed.response || "I've made the requested changes to your app.", 20_000);
                 
                 // Ensure response doesn't contain code

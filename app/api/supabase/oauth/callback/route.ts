@@ -77,11 +77,6 @@ function renderOauthResultHtml(params: {
       .icon { width: 56px; height: 56px; border-radius: 9999px; display: inline-flex; align-items: center; justify-content: center; background: ${iconBg}; box-shadow: 0 12px 30px ${iconShadow}; }
       .title { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; text-align: center; }
       .sub { margin: 10px 0 0; color: rgba(228,228,231,0.92); font-size: 14px; line-height: 1.55; text-align: center; }
-      .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: center; margin-top: 18px; }
-      .btn { appearance: none; border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.92); padding: 10px 16px; border-radius: 9999px; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; min-width: 160px; transition: transform 120ms ease, background 120ms ease; }
-      .btn:hover { transform: translateY(-1px); background: rgba(255,255,255,0.10); }
-      .btnPrimary { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 12px 30px rgba(245,95,42,0.35); }
-      .btnPrimary:hover { background: var(--accent); }
       details { margin-top: 16px; }
       summary { cursor: pointer; user-select: none; text-align: center; font-size: 13px; font-weight: 600; color: rgba(228,228,231,0.88); }
       .mono { margin-top: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; white-space: pre-wrap; word-break: break-word; background: rgba(0,0,0,0.45); color: rgba(244,244,245,0.92); padding: 12px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.10); }
@@ -114,10 +109,6 @@ function renderOauthResultHtml(params: {
             </details>`
           : ""}
 
-        <div class="actions">
-          <button class="btn btnPrimary" id="closeBtn" type="button">Close window</button>
-          <a class="btn" href="${safe(params.dashboardUrl)}" target="_self">Return to Kloner</a>
-        </div>
         <div class="hint">You can safely close this tab when you’re done.</div>
       </div>
     </div>
@@ -137,13 +128,6 @@ function renderOauthResultHtml(params: {
             window.opener.postMessage(payload, ${JSON.stringify(params.origin)});
           }
         } catch (e) {}
-
-        function closeWindow() {
-          try { window.close(); } catch (e) {}
-        }
-
-        var btn = document.getElementById('closeBtn');
-        if (btn) btn.addEventListener('click', closeWindow);
       })();
     </script>
   </body>
@@ -166,6 +150,7 @@ function renderOauthProvisioningHtml(params: {
   dashboardUrl: string;
   uid: string;
   finalizeToken: string;
+  statusToken: string;
 }): string {
   const jsonForScript = (value: unknown) =>
     JSON.stringify(value)
@@ -197,15 +182,9 @@ function renderOauthProvisioningHtml(params: {
       @media (min-width: 640px) { .card { padding: 30px; } }
       .kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.25em; text-transform: uppercase; color: rgba(161,161,170,0.95); margin: 0 0 12px; }
       .iconRow { display: flex; justify-content: center; margin-bottom: 14px; }
-      .spinner { width: 56px; height: 56px; border-radius: 9999px; border: 3px solid rgba(255,255,255,0.18); border-top-color: var(--accent); animation: spin 900ms linear infinite; box-shadow: 0 12px 30px rgba(245,95,42,0.25); }
-      @keyframes spin { to { transform: rotate(360deg); } }
+      .logo { width: 56px; height: 56px; border-radius: 9999px; box-shadow: 0 12px 30px rgba(245,95,42,0.25); object-fit: contain; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.10); padding: 10px; }
       .title { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; text-align: center; }
       .sub { margin: 10px 0 0; color: rgba(228,228,231,0.92); font-size: 14px; line-height: 1.55; text-align: center; }
-      .actions { display: none; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: center; margin-top: 18px; }
-      .btn { appearance: none; border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.92); padding: 10px 16px; border-radius: 9999px; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; min-width: 160px; transition: transform 120ms ease, background 120ms ease; }
-      .btn:hover { transform: translateY(-1px); background: rgba(255,255,255,0.10); }
-      .btnPrimary { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 12px 30px rgba(245,95,42,0.35); }
-      .btnPrimary:hover { background: var(--accent); }
       details { display: none; margin-top: 16px; }
       summary { cursor: pointer; user-select: none; text-align: center; font-size: 13px; font-weight: 600; color: rgba(228,228,231,0.88); }
       .mono { margin-top: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; white-space: pre-wrap; word-break: break-word; background: rgba(0,0,0,0.45); color: rgba(244,244,245,0.92); padding: 12px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.10); }
@@ -217,21 +196,17 @@ function renderOauthProvisioningHtml(params: {
       <div class="card">
         <p class="kicker">Supabase integration</p>
 
-        <div class="iconRow"><div class="spinner" aria-hidden="true"></div></div>
+  <div class="iconRow"><img class="logo" src="/images/orange_logo.png" alt="Kloner" /></div>
 
-        <h1 class="title" id="title">Connecting Supabase...</h1>
-        <p class="sub" id="msg">Creating your Supabase project. This can take a minute.</p>
+        <h1 class="title" id="title">Connecting Supabase</h1>
+        <p class="sub" id="msg">You can close this popout — we’re connecting Supabase in the background.</p>
 
         <details id="detailsWrap">
           <summary>Show details</summary>
           <div class="mono" id="details"></div>
         </details>
 
-        <div class="actions" id="actions">
-          <button class="btn btnPrimary" id="closeBtn" type="button">Close window</button>
-          <a class="btn" href="${safe(params.dashboardUrl)}" target="_self">Return to Kloner</a>
-        </div>
-        <div class="hint" id="hint">Please keep this tab open.</div>
+        <div class="hint" id="hint">Keep Kloner App open until setup completes.</div>
       </div>
     </div>
 
@@ -241,18 +216,17 @@ function renderOauthProvisioningHtml(params: {
         var origin = ${jsonForScript(params.origin)};
         var uid = ${jsonForScript(params.uid)};
         var finalizeToken = ${jsonForScript(params.finalizeToken)};
+        var statusToken = ${jsonForScript(params.statusToken)};
         var titleEl = document.getElementById('title');
         var msgEl = document.getElementById('msg');
         var hintEl = document.getElementById('hint');
-        var actionsEl = document.getElementById('actions');
         var detailsWrap = document.getElementById('detailsWrap');
         var detailsEl = document.getElementById('details');
 
         function setDone(ok, title, message, details, extraPayload) {
           if (titleEl) titleEl.textContent = title;
           if (msgEl) msgEl.textContent = message;
-          if (hintEl) hintEl.textContent = "You can safely close this tab when you're done.";
-          if (actionsEl) actionsEl.style.display = 'flex';
+          if (hintEl) hintEl.textContent = "All set — you can close this popout. Keep Kloner open.";
 
           if (details && detailsWrap && detailsEl) {
             detailsEl.textContent = details;
@@ -272,11 +246,14 @@ function renderOauthProvisioningHtml(params: {
           } catch (e) {}
         }
 
-        function closeWindow() {
-          try { window.close(); } catch (e) {}
+        function showDebug(detailsText) {
+          try {
+            if (!detailsWrap || !detailsEl) return;
+            if (!detailsText) return;
+            detailsEl.textContent = String(detailsText).slice(0, 4000);
+            detailsWrap.style.display = 'block';
+          } catch (e) {}
         }
-        var btn = document.getElementById('closeBtn');
-        if (btn) btn.addEventListener('click', closeWindow);
 
         function readJsonSafe(response) {
           return response.text().then(function (t) {
@@ -298,20 +275,25 @@ function renderOauthProvisioningHtml(params: {
         .then(function (data) {
           if (!(data && data.ok)) {
             var err = (data && (data.error || data.message)) ? String(data.error || data.message) : 'unknown_error';
-            if (data && data.raw) err += '\n\nResponse (truncated):\n' + String(data.raw);
+            if (data && data.raw) err += '\\n\\nResponse (truncated):\\n' + String(data.raw);
             setDone(false, 'Supabase setup failed', 'Something went wrong while starting Supabase setup.', err, {});
             return;
           }
 
           // Now poll our status endpoint; it will finalize once Supabase reports ACTIVE.
           var started = Date.now();
-          var maxMs = 12 * 60 * 1000; // 12 minutes
+          var maxMs = 5 * 60 * 1000; // 5 minutes (hard stop; avoid infinite hangs)
+          var notFoundFirstAt = 0;
+          var notFoundCount = 0;
+          var lastStep = '';
+          var lastStepChangedAt = Date.now();
 
           function poll() {
-            fetch('/api/supabase/project-status', { credentials: 'same-origin', cache: 'no-store' })
+            var statusUrl = '/api/supabase/project-status?uid=' + encodeURIComponent(uid) + '&statusToken=' + encodeURIComponent(statusToken);
+            fetch(statusUrl, { credentials: 'same-origin', cache: 'no-store' })
               .then(function (r) {
                 return r.text().then(function (t) {
-                  try { return JSON.parse(t); } catch { return { completed: false, parseError: true, raw: (t || '').slice(0, 800) }; }
+                  try { return JSON.parse(t); } catch (e) { return { completed: false, parseError: true, raw: (t || '').slice(0, 800) }; }
                 });
               })
               .then(function (s) {
@@ -321,16 +303,30 @@ function renderOauthProvisioningHtml(params: {
                     var statusLine = (s.project && s.project.status) ? String(s.project.status) : '';
                     var details = '';
                     if (name) details += 'Project: ' + name;
-                    if (statusLine) details += (details ? '\n' : '') + 'Status: ' + statusLine;
+                    if (statusLine) details += (details ? '\\n' : '') + 'Status: ' + statusLine;
                     setDone(true, 'Supabase connected', 'All set. You can return to Kloner.', details || null, { project: s.project || null });
                   } else {
-                    setDone(false, 'Supabase setup failed', 'Something went wrong while creating your Supabase project.', String(s.error || 'unknown_error'), {});
+                    var errText = String(s.error || 'unknown_error');
+                    var extra = '';
+                    try {
+                      if (s.step) extra += (extra ? '\\n' : '') + 'Step: ' + String(s.step);
+                      if (s.projectId) extra += (extra ? '\\n' : '') + 'Project id: ' + String(s.projectId);
+                      if (s.projectRef) extra += (extra ? '\\n' : '') + 'Project ref: ' + String(s.projectRef);
+                      if (s.lastSupabasePollError) extra += (extra ? '\\n\\n' : '\\n\\n') + 'Last poll error: ' + JSON.stringify(s.lastSupabasePollError);
+                    } catch (e) {}
+                    setDone(false, 'Supabase setup failed', 'Something went wrong while creating your Supabase project.', [errText, extra].filter(Boolean).join('\\n'), {});
                   }
                   return;
                 }
 
                 if (Date.now() - started > maxMs) {
-                  setDone(false, 'Still working...', 'Supabase is taking longer than expected. You can close this window and check again in Kloner.', 'timeout_waiting_for_project', {});
+                  setDone(
+                    false,
+                    'Supabase setup timed out',
+                    'This is taking too long. The setup will not keep hanging forever—please return to Kloner and retry Supabase setup.',
+                    'timeout_waiting_for_project',
+                    {}
+                  );
                   return;
                 }
 
@@ -339,9 +335,75 @@ function renderOauthProvisioningHtml(params: {
                   detailsWrap.style.display = 'block';
                 }
 
+                // Surface backend debug info if present (helps diagnose "silent" Supabase failures).
+                try {
+                  if (s && s.lastSupabasePollError) {
+                    var dbg = '';
+                    if (s.step) dbg += 'Step: ' + String(s.step);
+                    if (s.projectId) dbg += (dbg ? '\\n' : '') + 'Project id: ' + String(s.projectId);
+                    if (s.projectRef) dbg += (dbg ? '\\n' : '') + 'Project ref: ' + String(s.projectRef);
+                    dbg += (dbg ? '\\n' : '') + 'Last poll error: ' + JSON.stringify(s.lastSupabasePollError);
+                    showDebug(dbg);
+                  }
+                } catch (e) {}
+
+                // If Supabase says "Project not found" for long enough, stop polling and show a clear error.
+                try {
+                  var stepNow = (s && s.step) ? String(s.step) : '';
+                  if (stepNow && stepNow !== lastStep) {
+                    lastStep = stepNow;
+                    lastStepChangedAt = Date.now();
+                  }
+
+                  var pe = (s && s.lastSupabasePollError) ? s.lastSupabasePollError : null;
+                  var httpStatus = pe && typeof pe.httpStatus === 'number' ? pe.httpStatus : 0;
+                  var body = pe && typeof pe.body === 'string' ? pe.body : '';
+                  var isNotFound = httpStatus === 404 && body && body.indexOf('Project not found') !== -1;
+
+                  if (isNotFound) {
+                    notFoundCount += 1;
+                    if (!notFoundFirstAt) notFoundFirstAt = Date.now();
+                  }
+
+                  var stuckMs = Date.now() - lastStepChangedAt;
+                  var notFoundMs = notFoundFirstAt ? (Date.now() - notFoundFirstAt) : 0;
+
+                  // Fail fast on sustained 404s: waiting longer is extremely unlikely to fix it.
+                  if (isNotFound && (notFoundMs > 60 * 1000 || notFoundCount >= 8)) {
+                    var extra2 = '';
+                    try {
+                      if (s.step) extra2 += (extra2 ? '\\n' : '') + 'Step: ' + String(s.step);
+                      if (s.projectId) extra2 += (extra2 ? '\\n' : '') + 'Project id: ' + String(s.projectId);
+                      if (s.projectRef) extra2 += (extra2 ? '\\n' : '') + 'Project ref: ' + String(s.projectRef);
+                      if (s.lastSupabasePollError) extra2 += (extra2 ? '\\n\\n' : '\\n\\n') + 'Last poll error: ' + JSON.stringify(s.lastSupabasePollError);
+                    } catch (e) {}
+
+                    setDone(
+                      false,
+                      'Supabase project not found',
+                      'Supabase is responding "Project not found" (404). This usually means the token cannot access the organization/project, or the project creation never succeeded. Please return to Kloner and retry Supabase setup.',
+                      extra2 || 'project_not_found',
+                      {}
+                    );
+                    return;
+                  }
+
+                  // If we stop making progress (step never changes), also stop after a while.
+                  if (stuckMs > 3 * 60 * 1000) {
+                    setDone(
+                      false,
+                      'Supabase setup stalled',
+                      'Setup seems stuck (no progress for several minutes). Please return to Kloner and retry Supabase setup.',
+                      (lastStep ? ('Last step: ' + lastStep) : 'stalled') + (pe ? ('\\n\\nLast poll error: ' + JSON.stringify(pe)) : ''),
+                      {}
+                    );
+                    return;
+                  }
+                } catch (e) {}
+
                 var remoteStatus = (s && s.remoteStatus) ? String(s.remoteStatus) : '';
                 if (remoteStatus) {
-                  if (msgEl) msgEl.textContent = 'Creating your Supabase project (' + remoteStatus + '). This can take a minute.';
+                  if (msgEl) msgEl.textContent = 'Creating your Supabase project (' + remoteStatus + '). This can take a few minutes.';
                 } else {
                   var step = (s && s.step) ? String(s.step) : '';
                   if (step && msgEl) {
@@ -470,6 +532,22 @@ export async function GET(request: NextRequest) {
         step: "TOKEN_EXCHANGE",
         oauthState: null,
         oauthExpiresAt: null,
+        // Clear stale attempt state so a new authorization doesn't immediately surface
+        // a previous "Project not found" failure in chat.
+        error: null,
+        projectId: null,
+        projectRef: null,
+        projectName: null,
+        organizationSlug: null,
+        regionSelection: null,
+        waitActiveStartedAt: null,
+        provisioningStartedAt: null,
+        lastSupabasePollError: null,
+        lastPollErrorPersistedAtMs: null,
+        notFoundFirstAtMs: null,
+        notFoundCount: 0,
+        lastProjectListLookupAt: null,
+        createProjectRequestId: null,
         updatedAt: new Date(),
       },
       { merge: true }
@@ -498,12 +576,14 @@ export async function GET(request: NextRequest) {
     const tokens: SupabaseTokenResponse = await tokenResponse.json();
 
     const finalizeToken = crypto.randomBytes(24).toString("base64url");
+    const statusToken = crypto.randomBytes(24).toString("base64url");
     await setupRef.set(
       {
         provider: "supabase",
         status: "IN_PROGRESS" satisfies SupabaseSetupStatus,
         step: "FINALIZE_READY",
         finalizeToken,
+        statusToken,
         accessToken: encryptString(tokens.access_token),
         refreshToken: tokens.refresh_token ? encryptString(tokens.refresh_token) : null,
         tokenExpiresAt: new Date(Date.now() + tokens.expires_in * 1000),
@@ -519,6 +599,7 @@ export async function GET(request: NextRequest) {
         dashboardUrl: `${dashboardUrl}?supabase_connected=true&project_created=pending`,
         uid,
         finalizeToken,
+        statusToken,
       }),
       { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } }
     );

@@ -15,6 +15,9 @@ export async function POST(request: NextRequest) {
     request,
     async ({ uid, req: authedReq }) => {
       try {
+        const body = await authedReq.json().catch(() => ({} as any));
+        const appId = typeof body?.appId === "string" ? body.appId.trim() : "";
+
         if (!SUPABASE_CLIENT_ID || !SUPABASE_CLIENT_SECRET) {
           return NextResponse.json({
             error: 'Supabase OAuth not configured',
@@ -49,9 +52,26 @@ export async function POST(request: NextRequest) {
               provider: "supabase",
               status: "IN_PROGRESS",
               step: "OAUTH",
+              ...(appId ? { appId } : {}),
               oauthState: state,
               oauthStartedAt: new Date(),
               oauthExpiresAt: new Date(Date.now() + OAUTH_STATE_TTL_MS),
+              // Clear stale attempt data so a new authorization can't instantly fail
+              // due to previous projectRef/notFound timers.
+              error: null,
+              projectId: null,
+              projectRef: null,
+              projectName: null,
+              organizationSlug: null,
+              regionSelection: null,
+              waitActiveStartedAt: null,
+              provisioningStartedAt: null,
+              lastSupabasePollError: null,
+              lastPollErrorPersistedAtMs: null,
+              notFoundFirstAtMs: null,
+              notFoundCount: 0,
+              lastProjectListLookupAt: null,
+              createProjectRequestId: null,
               updatedAt: new Date(),
             },
             { merge: true }
@@ -63,8 +83,12 @@ export async function POST(request: NextRequest) {
         authUrl.searchParams.set('client_id', SUPABASE_CLIENT_ID);
         authUrl.searchParams.set('redirect_uri', SUPABASE_REDIRECT_URI);
         authUrl.searchParams.set('response_type', 'code');
-        // We need org access to pick/create an organization, and project access to create/read the project.
-        authUrl.searchParams.set('scope', 'organizations:read organizations:create projects:create projects:read');
+        // We need org access to pick/create an organization, project access to create/read the project,
+        // and secrets access to fetch project API keys for preview env injection.
+        authUrl.searchParams.set(
+          'scope',
+          'organizations:read organizations:create projects:create projects:read secrets:read'
+        );
         authUrl.searchParams.set('state', state);
 
         return NextResponse.json({

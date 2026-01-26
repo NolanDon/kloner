@@ -468,6 +468,8 @@ async function reserveAiEditCreditsInline(opts: {
     cost: number;
     now: Date;
     requestId: string;
+    upgradeUrl?: string;
+    topupUrl?: string;
     debug?: {
         renderId?: string;
         action?: "edit_block" | "create_page";
@@ -482,7 +484,7 @@ async function reserveAiEditCreditsInline(opts: {
     | { ok: true; remaining: number | null; limit: number | null; periodEnd: Date | null; alreadyReservedOrCommitted?: boolean }
     | { ok: false; status: number; message: string; remaining: number; limit: number; periodEnd: Date | null }
 > {
-    const { db, uid, tier, cost, now, requestId, debug } = opts;
+    const { db, uid, tier, cost, now, requestId, debug, upgradeUrl, topupUrl } = opts;
 
     const limit = monthlyLimitFor(tier, "edit");
     if (limit === 0 || limit === null || limit === undefined) {
@@ -527,8 +529,10 @@ async function reserveAiEditCreditsInline(opts: {
                 const limitChanged = existingMonthlyLimit !== null && existingMonthlyLimit !== limit;
 
                 const endDate = active ? (periodEndDate as Date) : nextPeriodEndUtc(now);
+                // IMPORTANT: remaining may include paid top-ups. Do not reset remaining just because
+                // the tier limit changed; preserve the user's existing remaining.
                 const startRemaining =
-                    active && existingRemaining !== null && !limitChanged ? existingRemaining : limit;
+                    active && existingRemaining !== null ? existingRemaining : limit;
 
                 if (debugPayload) {
                     tx.set(evtRef, { debug: debugPayload, updatedAt: now }, { merge: true });
@@ -554,7 +558,8 @@ async function reserveAiEditCreditsInline(opts: {
         const limitChanged = existingMonthlyLimit !== null && existingMonthlyLimit !== limit;
 
         const endDate = active ? (periodEndDate as Date) : nextPeriodEndUtc(now);
-        const startRemaining = active && existingRemaining !== null && !limitChanged ? existingRemaining : limit;
+        // Preserve top-ups / existing remaining even if limit changed.
+        const startRemaining = active && existingRemaining !== null ? existingRemaining : limit;
 
         if (startRemaining < cost) {
             tx.set(
@@ -587,7 +592,10 @@ async function reserveAiEditCreditsInline(opts: {
             return {
                 ok: false,
                 status: 402,
-                message: "You have used all AI edit credits for this month.",
+                message:
+                    tier === "free"
+                        ? `You have used all AI edit credits for this month. Upgrade to get more credits: ${upgradeUrl || "/price"}`
+                        : `You have used all AI edit credits for this month. Top up credits: ${topupUrl || "/price#topup"} (or upgrade: ${upgradeUrl || "/price"})`,
                 remaining: Math.max(startRemaining, 0),
                 limit,
                 periodEnd: endDate,
@@ -664,7 +672,7 @@ async function refundAiEditCreditsInline(opts: {
         const existingRemaining = typeof bucket.remaining === "number" && bucket.remaining >= 0 ? bucket.remaining : null;
 
         const startRemaining = active && existingRemaining !== null ? existingRemaining : limit;
-        const newRemaining = Math.min(startRemaining + cost, limit);
+        const newRemaining = startRemaining + cost;
 
         tx.set(
             userRef,
@@ -753,7 +761,21 @@ async function ensureAiEditBucketInline(opts: {
 
         const endDate = active ? (periodEndDate as Date) : nextPeriodEndUtc(now);
 
-        if (active && existingRemaining !== null && !limitChanged) {
+        if (active && existingRemaining !== null) {
+            // If the limit changed, keep remaining and just update the limit metadata.
+            if (limitChanged) {
+                tx.set(
+                    userRef,
+                    {
+                        "credits.aiEdits": {
+                            remaining: existingRemaining,
+                            monthlyLimit: limit,
+                            periodEnd: endDate,
+                        },
+                    },
+                    { merge: true }
+                );
+            }
             return { remaining: existingRemaining, limit, periodEnd: endDate };
         }
 
@@ -1339,6 +1361,10 @@ async function handlePost(req: NextRequest) {
         };
 
         try {
+            const origin = new URL(req.url).origin;
+            const upgradeUrl = new URL("/price", origin).toString();
+            const topupUrl = new URL("/price#topup", origin).toString();
+
             const r = await reserveAiEditCreditsInline({
                 db,
                 uid,
@@ -1346,6 +1372,8 @@ async function handlePost(req: NextRequest) {
                 cost: 5,
                 now,
                 requestId,
+                upgradeUrl,
+                topupUrl,
                 debug: debugForCreditEvent,
             });
 

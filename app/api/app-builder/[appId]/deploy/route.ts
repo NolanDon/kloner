@@ -5,9 +5,41 @@ import { requireSessionAndMaybeCsrf } from "../../../_lib/route-guard";
 import { assertAppBuilderScope } from "../../../_lib/appBuilderScope";
 import { upsertVercelProjectEnvVar } from "../../../_lib/vercel-env";
 import { decryptString, type EncryptedBlobV1 } from "../../../_lib/crypto";
+import { refreshTierFromStripeForUid } from "../../../_lib/billing";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+function parseDotEnv(raw: string): Record<string, string> {
+    const out: Record<string, string> = {};
+    const lines = String(raw || "").split(/\r?\n/);
+
+    for (const lineRaw of lines) {
+        const line = lineRaw.trim();
+        if (!line || line.startsWith("#")) continue;
+
+        const cleaned = line.startsWith("export ") ? line.slice("export ".length).trim() : line;
+        const eq = cleaned.indexOf("=");
+        if (eq <= 0) continue;
+
+        const key = cleaned.slice(0, eq).trim();
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+
+        let value = cleaned.slice(eq + 1).trim();
+        if (
+            (value.startsWith('"') && value.endsWith('"')) ||
+            (value.startsWith("'") && value.endsWith("'"))
+        ) {
+            value = value.slice(1, -1);
+        }
+
+        // Basic unescaping for common .env usage
+        value = value.replace(/\\n/g, "\n").replace(/\\r/g, "\r");
+        out[key] = value;
+    }
+
+    return out;
+}
 
 function normalizeDeploymentUrl(v: unknown): string {
     const raw = typeof v === "string" ? v.trim() : "";
@@ -42,7 +74,33 @@ export async function POST(
         // Server-side tier guard (never trust client)
         const userSnap = await db.doc(`kloner_users/${uid}`).get();
         const userData = userSnap.exists ? (userSnap.data() as any) : {};
-        const userTier = userData?.tier ?? "free";
+
+        const normalizeTier = (raw: unknown): "free" | "pro" | "agency" | "enterprise" => {
+            const t = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+            if (t === "pro" || t === "agency" || t === "enterprise") return t;
+            return "free";
+        };
+
+        let userTier = normalizeTier(userData?.tier);
+
+        // Self-heal: if Stripe shows paid but tier is still free, force-refresh from Stripe.
+        const stripeStatus = typeof userData?.stripeStatus === "string" ? userData.stripeStatus : null;
+        const stripeSubId = typeof userData?.stripeSubscriptionId === "string" ? userData.stripeSubscriptionId.trim() : "";
+        const tierSource = typeof userData?.tierSource === "string" ? userData.tierSource : "";
+
+        const looksPaidButTierFree =
+            userTier === "free" &&
+            !!stripeSubId &&
+            (stripeStatus === "active" || stripeStatus === "trialing");
+
+        if (userTier === "free" && (looksPaidButTierFree || (tierSource && tierSource !== "stripe"))) {
+            try {
+                const refreshed = await refreshTierFromStripeForUid(uid);
+                userTier = refreshed === "pro" || refreshed === "agency" ? refreshed : "free";
+            } catch {
+                // ignore; fall back to stored tier
+            }
+        }
 
         if (userTier === "free") {
             return NextResponse.json(
@@ -149,6 +207,45 @@ export async function POST(
             });
         }
 
+        // ───────────────── .env.local -> Vercel env sync (best-effort) ─────────────────
+        // Never deploy env files; instead, if the app includes a `.env.local`, push those
+        // key/value pairs into the user's Vercel project environment variables.
+        try {
+            if (vercelProjectId) {
+                let envLocalContent: string | null = null;
+                for (const [filePath, fileData] of Object.entries(files)) {
+                    const lower = String(filePath || "").toLowerCase();
+                    const base = lower.split("/").pop() || lower;
+                    if (base === ".env.local") {
+                        const fileInfo = fileData as { content?: string };
+                        envLocalContent = typeof fileInfo?.content === "string" ? fileInfo.content : null;
+                        break;
+                    }
+                }
+
+                if (envLocalContent) {
+                    const envVars = parseDotEnv(envLocalContent);
+                    for (const [key, value] of Object.entries(envVars)) {
+                        // Avoid clobbering Vercel-managed environment variables.
+                        if (key === "NODE_ENV") continue;
+                        if (key.startsWith("VERCEL_")) continue;
+
+                        await upsertVercelProjectEnvVar({
+                            accessToken,
+                            teamId: vercelTeamId,
+                            projectId: vercelProjectId,
+                            key,
+                            value,
+                            type: "encrypted",
+                        });
+                    }
+                }
+            }
+        } catch (e) {
+            // Do not block deploy on env sync.
+            console.warn(".env.local env sync skipped:", e);
+        }
+
         // ───────────────── Supabase env sync (best-effort) ─────────────────
         // If the user connected Supabase, ensure the deployed app has env vars.
         try {
@@ -248,6 +345,14 @@ export async function POST(
 
         // Convert app files to deployment format
         for (const [filePath, fileData] of Object.entries(files)) {
+            // Security: never deploy env files.
+            // These may exist locally for dev/preview, but must not be shipped.
+            const lower = String(filePath || "").toLowerCase();
+            const base = lower.split("/").pop() || lower;
+            if (base === ".env" || base.startsWith(".env.")) {
+                continue;
+            }
+
             const fileInfo = fileData as { content: string; lastModified: number };
             deploymentFiles.push({
                 file: filePath,

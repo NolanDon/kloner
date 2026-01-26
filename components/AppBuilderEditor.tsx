@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import Editor from "@monaco-editor/react";
-import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Edit3, Check, RotateCcw, Database } from "lucide-react";
+import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database } from "lucide-react";
 import AIAgentChat from "./AIAgentChat";
 import KlonerLoader from "./KlonerLoader";
 import WebContainerRunner from "./WebContainerRunner";
@@ -182,12 +182,114 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     onClose: () => void;
     onDeploy?: (app: { id: string; name: string }) => void;
 }) {
-    const isDevEnv = process.env.NODE_ENV === "development";
     const { user } = useAuth();
     const { showConfirm, showAlert } = useModal();
     const [supabaseConnected, setSupabaseConnected] = useState<boolean | null>(null);
     const [supabaseProjectName, setSupabaseProjectName] = useState<string | null>(null);
     const [supabaseProjectRef, setSupabaseProjectRef] = useState<string | null>(null);
+    const supabaseVerifyInFlightRef = useRef(false);
+    const lastSupabaseVerifyAtRef = useRef(0);
+
+        const refreshSupabaseStatusFromApi = useCallback(async (): Promise<boolean> => {
+            try {
+                const res = await fetch("/api/supabase/project-status", { cache: "no-store" });
+                if (!res.ok) return false;
+                const data: any = await res.json().catch(() => null);
+                if (data && data.completed && data.ok) {
+                    const name = typeof data?.project?.name === "string" && data.project.name.trim() ? data.project.name.trim() : null;
+                    const ref =
+                        (typeof data?.project?.ref === "string" && data.project.ref.trim() ? data.project.ref.trim() : null) ||
+                        (typeof data?.project?.id === "string" && data.project.id.trim() ? data.project.id.trim() : null);
+
+                    setSupabaseConnected(true);
+                    setSupabaseProjectName(name);
+                    setSupabaseProjectRef(ref);
+                    return true;
+                }
+                if (data && data.completed && data.ok === false) {
+                    setSupabaseConnected(false);
+                    setSupabaseProjectName(null);
+                    setSupabaseProjectRef(null);
+                }
+                return false;
+            } catch {
+                return false;
+            }
+        }, []);
+
+        const verifySupabaseConnection = useCallback(async (opts?: { silent?: boolean }): Promise<boolean> => {
+            if (!user?.uid) return false;
+            if (supabaseVerifyInFlightRef.current) return supabaseConnected === true;
+
+            const now = Date.now();
+            if (now - lastSupabaseVerifyAtRef.current < 10_000) {
+                return supabaseConnected === true;
+            }
+            lastSupabaseVerifyAtRef.current = now;
+            supabaseVerifyInFlightRef.current = true;
+
+            try {
+                const csrf = await ensureSessionAndCsrf().catch(() => null);
+                const res = await fetch("/api/supabase/verify", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
+                    },
+                    body: JSON.stringify({ cleanupIfDeleted: true }),
+                });
+                const data: any = await res.json().catch(() => null);
+
+                if (!res.ok || !data?.ok) {
+                    // If we're in a neutral/"verifying" state, don't get stuck.
+                    // Fall back to the session-protected status endpoint (GET; no CSRF).
+                    if (supabaseConnected === null) {
+                        const ok = await refreshSupabaseStatusFromApi();
+                        if (ok) return true;
+                        setSupabaseConnected(false);
+                        setSupabaseProjectName(null);
+                        setSupabaseProjectRef(null);
+                        return false;
+                    }
+                    // Don’t flap the UI on transient failures.
+                    return supabaseConnected === true;
+                }
+
+                if (data.connected) {
+                    setSupabaseConnected(true);
+                    return true;
+                }
+
+                // Not connected; clear locally.
+                setSupabaseConnected(false);
+                setSupabaseProjectName(null);
+                setSupabaseProjectRef(null);
+
+                if (!opts?.silent) {
+                    const reason = typeof data?.reason === "string" ? data.reason : "disconnected";
+                    const msg =
+                        reason === "project_deleted"
+                            ? "Your Supabase project no longer exists (it looks like it was deleted). Kloner removed the stale connection."
+                            : reason === "unauthorized"
+                              ? "Kloner can’t access your Supabase project anymore. Please reconnect Supabase."
+                              : "Supabase is no longer connected. Please reconnect.";
+                    void showAlert(msg, "Database");
+                }
+                return false;
+            } catch {
+                if (supabaseConnected === null) {
+                    const ok = await refreshSupabaseStatusFromApi();
+                    if (ok) return true;
+                    setSupabaseConnected(false);
+                    setSupabaseProjectName(null);
+                    setSupabaseProjectRef(null);
+                    return false;
+                }
+                return supabaseConnected === true;
+            } finally {
+                supabaseVerifyInFlightRef.current = false;
+            }
+        }, [showAlert, supabaseConnected, user?.uid]);
 
         useEffect(() => {
             if (!user?.uid) {
@@ -209,6 +311,8 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                         return;
                     }
                     const data = snap.data() as any;
+                    // Optimistically show connected if the integration doc exists.
+                    // Background verification will flip it back to disconnected if the project was deleted.
                     setSupabaseConnected(true);
                     setSupabaseProjectName(
                         typeof data?.projectName === "string" && data.projectName.trim() ? data.projectName.trim() : null,
@@ -217,17 +321,58 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                         (typeof data?.projectRef === "string" && data.projectRef.trim() ? data.projectRef.trim() : null) ||
                         (typeof data?.projectId === "string" && data.projectId.trim() ? data.projectId.trim() : null);
                     setSupabaseProjectRef(ref);
+
+                    void verifySupabaseConnection({ silent: true });
                 },
                 () => {
-                    // If Firestore read fails (rules/offline), keep UX usable but treat as not connected.
-                    setSupabaseConnected(false);
-                    setSupabaseProjectName(null);
-                    setSupabaseProjectRef(null);
+                    // If Firestore read fails (rules/offline), fall back to the session-protected status endpoint.
+                    void refreshSupabaseStatusFromApi().then((ok) => {
+                        if (!ok) {
+                            setSupabaseConnected(false);
+                            setSupabaseProjectName(null);
+                            setSupabaseProjectRef(null);
+                        }
+                    });
                 },
             );
 
             return () => unsub();
-        }, [user?.uid]);
+        }, [refreshSupabaseStatusFromApi, user?.uid, verifySupabaseConnection]);
+
+        const disconnectSupabase = useCallback(async () => {
+            if (!user?.uid) {
+                void showAlert("Please sign in to disconnect your database.", "Database");
+                return;
+            }
+
+            const confirmed = await showConfirm(
+                "Disconnect Supabase from Kloner?\n\nThis does NOT delete your Supabase project — it only removes Kloner’s stored connection so you can connect a different project.",
+                "Database",
+            );
+            if (!confirmed) return;
+
+            const csrf = await ensureSessionAndCsrf().catch(() => null);
+            const res = await fetch("/api/supabase/disconnect", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
+                },
+                body: JSON.stringify({ confirm: "DISCONNECT" }),
+            });
+
+            const data: any = await res.json().catch(() => null);
+            if (!res.ok || !data?.ok) {
+                const msg = (data && (data.error || data.message)) ? String(data.error || data.message) : "Failed to disconnect.";
+                void showAlert(msg, "Database");
+                return;
+            }
+
+            setSupabaseConnected(false);
+            setSupabaseProjectName(null);
+            setSupabaseProjectRef(null);
+            void showAlert("Disconnected. Your Supabase project was not deleted.", "Database");
+        }, [showAlert, showConfirm, user?.uid]);
 
         const openDatabaseConnect = useCallback(async () => {
             if (!user?.uid) {
@@ -236,6 +381,11 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
             }
 
             if (supabaseConnected) {
+                // Re-verify before claiming connected/opening external links.
+                // If the Supabase project was deleted, this will flip the UI to disconnected.
+                // (silent=false so the user gets a clear message.)
+                const stillConnected = await verifySupabaseConnection({ silent: false });
+                if (!stillConnected) return;
                 const label = supabaseProjectName ? `Supabase is connected (\"${supabaseProjectName}\").` : "Supabase is connected.";
                 const confirmed = await showConfirm(
                     `${label}\n\nOpen the Supabase dashboard in a new tab?`,
@@ -254,7 +404,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
 
             setViewMode("ai");
             window.dispatchEvent(new CustomEvent("kloner:open-db-connect", { detail: { provider: "supabase" } }));
-        }, [showAlert, showConfirm, supabaseConnected, supabaseProjectName, supabaseProjectRef, user?.uid]);
+        }, [showAlert, showConfirm, supabaseConnected, supabaseProjectName, supabaseProjectRef, user?.uid, verifySupabaseConnection]);
     const [app, setApp] = useState<AppData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -264,6 +414,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     const [refreshKey, setRefreshKey] = useState(0);
     const [localRestartKey, setLocalRestartKey] = useState(0);
     const [reconnectKey, setReconnectKey] = useState(0);
+    const [isWebPreviewReady, setIsWebPreviewReady] = useState(false);
     const [agentCreditError, setAgentCreditError] = useState<string | null>(null);
     const lastConsumedAiCreditRequestIdRef = useRef<string | null>(null);
     const [forceFreshStart, setForceFreshStart] = useState(false);
@@ -274,22 +425,6 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     const [tempName, setTempName] = useState("");
     const [isSaving, setIsSaving] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
-    const [isDevApplyTesting, setIsDevApplyTesting] = useState(false);
-    const [devHmrLastRunFailed, setDevHmrLastRunFailed] = useState(false);
-    const [devHmrDebug, setDevHmrDebug] = useState<
-        | null
-        | {
-              chosenRoot: string;
-              routerType: "app" | "pages" | "unknown";
-              appliedPath: string;
-              inspectWsUpgrades: number | null;
-              inspectLastWsUrl: string | null;
-              lastApplyRequestId: string | null;
-              lastApplyWrote: number | null;
-              lastApplyPaths: string[];
-              notes: string[];
-          }
-    >(null);
     const [isDeploying, setIsDeploying] = useState(false);
     const [isPreviewBuilding, setIsPreviewBuilding] = useState(false);
     const [previewError, setPreviewError] = useState<string | null>(null);
@@ -306,7 +441,146 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     const [previewMode, setPreviewMode] = useState<PreviewMode>("webcontainer");
     const [vercelConnectOpen, setVercelConnectOpen] = useState(false);
     const [vercelConnectOpening, setVercelConnectOpening] = useState(false);
+
+    // Guard against losing in-editor changes on refresh/navigation.
+    // - For full-page navigations (refresh/close/url change), browsers require a synchronous beforeunload prompt.
+    // - For in-app navigations (links/back), we can use the global confirm modal.
+    const codeRef = useRef<string>("");
+    useEffect(() => {
+        codeRef.current = code;
+    }, [code]);
+
+    const allowNextNavigationRef = useRef(false);
+    const leaveGuardArmedRef = useRef(false);
+    const getHasUnsavedChanges = useCallback((): boolean => {
+        if (!appId) return false;
+
+        // If an autosave is pending, treat as unsaved.
+        if (autoSaveTimeoutRef.current) return true;
+        if (isSaving) return true;
+
+        const cur = currentFileRef.current;
+        if (!cur) return false;
+        const files = appRef.current?.files as any;
+        const saved = files?.[cur]?.content;
+        if (typeof saved !== "string") return false;
+        return codeRef.current !== saved;
+    }, [appId, isSaving]);
+
+    useEffect(() => {
+        const onBeforeUnload = (e: BeforeUnloadEvent) => {
+            if (allowNextNavigationRef.current) return;
+            if (!getHasUnsavedChanges()) return;
+            // Required for Chrome/Safari to show a confirmation dialog.
+            e.preventDefault();
+            e.returnValue = "";
+        };
+
+        window.addEventListener("beforeunload", onBeforeUnload);
+        return () => window.removeEventListener("beforeunload", onBeforeUnload);
+    }, [getHasUnsavedChanges]);
+
+    useEffect(() => {
+        // In-app navigation guard for anchor clicks and back/forward.
+        // This catches Next.js client-side navigations that won't trigger beforeunload.
+        const confirmLeave = async (): Promise<boolean> => {
+            if (allowNextNavigationRef.current) return true;
+            if (!getHasUnsavedChanges()) return true;
+            return await showConfirm(
+                "You have unsaved changes that may be lost. Leave this page anyway?",
+                "Unsaved changes",
+            );
+        };
+
+        const onDocumentClickCapture = (e: MouseEvent) => {
+            if (e.defaultPrevented) return;
+            if (e.button !== 0) return; // left-click only
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+            if (allowNextNavigationRef.current) return;
+            if (!getHasUnsavedChanges()) return;
+
+            const target = e.target as HTMLElement | null;
+            const anchor = target?.closest?.("a") as HTMLAnchorElement | null;
+            if (!anchor) return;
+            if (anchor.target && anchor.target !== "_self") return;
+            const hrefAttr = (anchor.getAttribute("href") || "").trim();
+            if (!hrefAttr || hrefAttr.startsWith("#")) return;
+
+            // Prevent immediate navigation; we'll re-trigger if confirmed.
+            e.preventDefault();
+            e.stopPropagation();
+
+            const href = anchor.href;
+            void (async () => {
+                const ok = await confirmLeave();
+                if (!ok) return;
+
+                allowNextNavigationRef.current = true;
+                try {
+                    window.location.assign(href);
+                } finally {
+                    // If navigation fails for some reason, re-arm after a tick.
+                    setTimeout(() => {
+                        allowNextNavigationRef.current = false;
+                    }, 1000);
+                }
+            })();
+        };
+
+        const onPopState = (e: PopStateEvent) => {
+            if (allowNextNavigationRef.current) return;
+            if (!getHasUnsavedChanges()) return;
+
+            // We can't cancel popstate directly. Push state back to keep the user here,
+            // then ask; if confirmed, go back again.
+            if (!leaveGuardArmedRef.current) {
+                try {
+                    history.pushState({ __klonerLeaveGuard: true }, "", window.location.href);
+                    leaveGuardArmedRef.current = true;
+                } catch {
+                    // ignore
+                }
+            } else {
+                try {
+                    history.pushState({ __klonerLeaveGuard: true }, "", window.location.href);
+                } catch {
+                    // ignore
+                }
+            }
+
+            void (async () => {
+                const ok = await confirmLeave();
+                if (!ok) return;
+
+                allowNextNavigationRef.current = true;
+                try {
+                    history.back();
+                } finally {
+                    setTimeout(() => {
+                        allowNextNavigationRef.current = false;
+                    }, 1000);
+                }
+            })();
+        };
+
+        document.addEventListener("click", onDocumentClickCapture, true);
+        window.addEventListener("popstate", onPopState);
+        return () => {
+            document.removeEventListener("click", onDocumentClickCapture, true);
+            window.removeEventListener("popstate", onPopState);
+        };
+    }, [getHasUnsavedChanges, showConfirm]);
     const [deployChoiceError, setDeployChoiceError] = useState<string | null>(null);
+
+    // Lock chat until the preview iframe has successfully loaded.
+    // Any reload/restart/reconnect should re-lock until we see another successful iframe load.
+    useEffect(() => {
+        if (previewMode !== "webcontainer") {
+            setIsWebPreviewReady(true);
+            return;
+        }
+        setIsWebPreviewReady(false);
+    }, [previewMode, refreshKey, localRestartKey, reconnectKey]);
     const [lastDeployLiveUrl, setLastDeployLiveUrl] = useState<string | null>(null);
     const [showDeploySuccess, setShowDeploySuccess] = useState(false);
     const [leftPanelWidth, setLeftPanelWidth] = useState(500); // Default wider AI chat panel
@@ -444,6 +718,27 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
             setIsPreviewBuilding(false);
         }
     }, [isPreviewBuilding]);
+
+    // Allow child panels (like AIAgentChat) to request a true "fresh machine" rebuild.
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        const handler = (event: Event) => {
+            try {
+                const ce = event as CustomEvent<any>;
+                const requestedAppId = String(ce?.detail?.appId || "").trim();
+                if (!requestedAppId || requestedAppId !== appId) return;
+                void restartLocalPreview(true);
+            } catch {
+                // ignore
+            }
+        };
+
+        window.addEventListener("kloner:preview-force-fresh", handler as any);
+        return () => {
+            window.removeEventListener("kloner:preview-force-fresh", handler as any);
+        };
+    }, [appId, restartLocalPreview]);
 
     const consumeAiEditCredit = useCallback(
         async (creditRequestId: string) => {
@@ -689,387 +984,46 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
             const next = nextFiles || ({} as any);
 
             const allPaths = new Set<string>([...Object.keys(prev), ...Object.keys(next)]);
-            const edits: Array<{ path: string; content?: string; delete?: boolean }> = [];
 
+            const entries: Array<{ path: string; content?: string; delete?: boolean }> = [];
             for (const p of allPaths) {
-                const prevContent = typeof (prev as any)?.[p]?.content === "string" ? (prev as any)[p].content : undefined;
-                const nextContent = typeof (next as any)?.[p]?.content === "string" ? (next as any)[p].content : undefined;
+                const prevContent = (prev as any)?.[p]?.content;
+                const nextContent = (next as any)?.[p]?.content;
 
-                if (nextContent === undefined && prevContent !== undefined) {
-                    edits.push({ path: p, delete: true });
+                if (typeof prevContent === "string" && typeof nextContent !== "string") {
+                    entries.push({ path: p, delete: true });
                     continue;
                 }
 
-                if (typeof nextContent === "string" && nextContent !== prevContent) {
-                    edits.push({ path: p, content: nextContent });
+                if (typeof nextContent === "string" && typeof prevContent !== "string") {
+                    entries.push({ path: p, content: String(nextContent) });
+                    continue;
+                }
+
+                if (typeof prevContent === "string" && typeof nextContent === "string" && prevContent !== nextContent) {
+                    entries.push({ path: p, content: String(nextContent) });
                 }
             }
 
-            if (edits.length === 0) return;
-
-            const estimateBytes = (batch: Array<{ path: string; content?: string; delete?: boolean }>) => {
-                let bytes = 0;
-                for (const e of batch) {
-                    const p = String((e as any)?.path || "");
-                    bytes += p.length;
-                    if (!(e as any)?.delete && typeof (e as any)?.content === "string") {
-                        bytes += String((e as any).content).length;
-                    }
-                }
-                return bytes;
-            };
-
-            const buildBatches = (all: typeof edits) => {
-                // Server enforces 200 files and ~2MB. Keep headroom.
-                const maxFiles = 150;
-                const maxBytes = 1_500_000;
-                const batches: typeof edits[] = [];
-                let current: typeof edits = [];
-
-                for (const e of all) {
-                    const next = [...current, e];
-                    if (current.length >= maxFiles || estimateBytes(next) > maxBytes) {
-                        if (current.length > 0) batches.push(current);
-                        current = [e];
-                    } else {
-                        current = next;
-                    }
-                }
-                if (current.length > 0) batches.push(current);
-                return batches;
-            };
-
-            const batches = buildBatches(edits);
-
-            try {
-                const csrf = await fetchFreshCsrf();
-                let activeCode = getStoredPreviewCode();
-                let overallNeedsRebuild = false;
-
-                for (const batch of batches) {
-                    const res = await fetch("/api/v1/webcontainer/apply", {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
-                        },
-                        credentials: "include",
-                        cache: "no-store",
-                        body: JSON.stringify({ appId, ...(activeCode ? { code: activeCode } : {}), files: batch }),
-                    });
-
-                    const data = await res.json().catch(() => ({} as any));
-                    const explicitOkFalse =
-                        data && typeof data === "object" && !Array.isArray(data) && "ok" in data && (data as any).ok === false;
-
-                    if (!res.ok || explicitOkFalse) {
-                        const msg = String((data as any)?.error || `Live update failed (HTTP ${res.status})`);
-                        if (interactive) void showAlert(msg, "Restore");
-                        return;
-                    }
-
-                    // Keep our local preview code fresh if the hub rotated it.
-                    const nextCode = String(
-                        (data as any)?.code ||
-                            (data as any)?.previewCode ||
-                            (data as any)?.preview_code ||
-                            activeCode ||
-                            "",
-                    ).trim();
-                    if (nextCode) {
-                        activeCode = nextCode;
-                        try {
-                            localStorage.setItem(
-                                `webcontainer_${appId}`,
-                                JSON.stringify({ code: nextCode, timestamp: Date.now() }),
-                            );
-                        } catch {
-                            // ignore
-                        }
-                    }
-
-                    // Update dedupe state for applied files.
-                    for (const e of batch) {
-                        const p = String((e as any)?.path || "").trim();
-                        if (!p) continue;
-                        if ((e as any)?.delete) {
-                            delete lastAppliedContentRef.current[p];
-                        } else if (typeof (e as any)?.content === "string") {
-                            lastAppliedContentRef.current[p] = String((e as any).content);
-                        }
-                    }
-
-                    const needsRebuild = Boolean(
-                        (data as any)?.needsRebuild ||
-                            (data as any)?.needs_rebuild ||
-                            (data as any)?.requiresRebuild ||
-                            (data as any)?.requires_rebuild ||
-                            (data as any)?.requiresRestart ||
-                            (data as any)?.requires_restart,
-                    );
-                    overallNeedsRebuild = overallNeedsRebuild || needsRebuild;
-                }
-
-                if (overallNeedsRebuild && activeCode) {
-                    const rres = await fetch(`/api/v1/preview/${encodeURIComponent(activeCode)}/restart`, {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
-                        },
-                        credentials: "include",
-                        cache: "no-store",
-                        body: JSON.stringify({ appId }),
-                    });
-                    const rdata = await rres.json().catch(() => ({} as any));
-                    const explicitOkFalse =
-                        rdata && typeof rdata === "object" && !Array.isArray(rdata) && "ok" in rdata && (rdata as any).ok === false;
-                    if (!rres.ok || explicitOkFalse) {
-                        const msg = String((rdata as any)?.error || `Restart failed (HTTP ${rres.status})`);
-                        if (interactive) void showAlert(msg, "Restart needed");
-                    }
-                }
-            } catch (err: any) {
-                if (interactive) void showAlert(String(err?.message || "Restore apply failed."), "Restore");
-            }
-        },
-        [appId, fetchFreshCsrf, getStoredPreviewCode, showAlert]
-    );
-
-    const runDevApplyTest = useCallback(async () => {
-        if (!appId) return;
-        if (!isDevEnv) return;
-        if (isDevApplyTesting) return;
-
-        setIsDevApplyTesting(true);
-        try {
-            // Hide any previous debug unless something fails again.
-            setDevHmrLastRunFailed(false);
-            setDevHmrDebug(null);
-
-            // Prefer sending the locally stored container code when available.
-            let storedCode = "";
-            try {
-                const raw = localStorage.getItem(`webcontainer_${appId}`);
-                if (raw) {
-                    const parsed = JSON.parse(raw);
-                    if (parsed?.code) storedCode = String(parsed.code).trim();
-                }
-            } catch {
-                // ignore
-            }
+            if (entries.length === 0) return;
 
             const csrf = await fetchFreshCsrf();
+            let activeCode = getStoredPreviewCode();
+            let overallNeedsRebuild = false;
 
-            const summarizeInspect = (idata: any) => {
-                const proxy = (idata as any)?.proxy || {};
-                const wsUpgrades = typeof proxy?.wsUpgrades === "number" ? proxy.wsUpgrades : null;
-                const lastWsUrl = typeof proxy?.lastWs?.url === "string" ? proxy.lastWs.url : null;
-                const lastApply = proxy?.lastApply || null;
-                const lastApplyRequestId = typeof lastApply?.requestId === "string" ? lastApply.requestId : null;
-                const lastApplyWrote = typeof lastApply?.wrote === "number" ? lastApply.wrote : null;
-                const lastApplyPaths = Array.isArray(lastApply?.files)
-                    ? (lastApply.files as any[])
-                          .map((f) => String((f as any)?.path || "").trim())
-                          .filter(Boolean)
-                          .slice(0, 8)
-                    : [];
-                return { wsUpgrades, lastWsUrl, lastApplyRequestId, lastApplyWrote, lastApplyPaths };
-            };
+            const batchSize = 20;
+            for (let i = 0; i < entries.length; i += batchSize) {
+                const batch = entries.slice(i, i + batchSize);
+                const payload: any = {
+                    appId,
+                    files: batch.map((e) =>
+                        e.delete
+                            ? { path: e.path, delete: true }
+                            : { path: e.path, content: typeof e.content === "string" ? e.content : "" },
+                    ),
+                };
+                if (activeCode) payload.code = activeCode;
 
-            const chooseNextRootFromLayout = (layout: any) => {
-                const l = layout || {};
-                if (l?.hasSrcAppDir === true) return { root: "src/app", routerType: "app" as const };
-                if (l?.hasAppDir === true) return { root: "app", routerType: "app" as const };
-                if (l?.hasSrcPagesDir === true) return { root: "src/pages", routerType: "pages" as const };
-                if (l?.hasPagesDir === true) return { root: "pages", routerType: "pages" as const };
-                return { root: "", routerType: "unknown" as const };
-            };
-
-            const fallbackExistingEntry = () => {
-                const candidates = [
-                    { path: "src/app/page.tsx", routerType: "app" as const, root: "src/app" },
-                    { path: "app/page.tsx", routerType: "app" as const, root: "app" },
-                    { path: "src/pages/index.tsx", routerType: "pages" as const, root: "src/pages" },
-                    { path: "pages/index.tsx", routerType: "pages" as const, root: "pages" },
-                ];
-                for (const c of candidates) {
-                    if (app?.files && (app.files as any)[c.path]) return c;
-                }
-                return null;
-            };
-
-            // 1) Inspect first: determine the Next.js layout + proxy readiness.
-            const inspectBase = `/api/previews/inspect?appId=${encodeURIComponent(appId)}`;
-            const inspectUrl = storedCode ? `${inspectBase}&code=${encodeURIComponent(storedCode)}` : inspectBase;
-
-            const inspectStartedAt = Date.now();
-            let inspectOk = false;
-            let inspectData: any = null;
-
-            while (Date.now() - inspectStartedAt < 30_000) {
-                const ires = await fetch(inspectUrl, {
-                    method: "GET",
-                    credentials: "include",
-                    cache: "no-store",
-                });
-                const idata = await ires.json().catch(() => ({} as any));
-                inspectData = idata;
-                const proxy = (idata as any)?.proxy || {};
-                const layout = proxy?.layout || {};
-                console.log("[dev-hmr-test][inspect]", {
-                    status: ires.status,
-                    ok: ires.ok,
-                    code: (idata as any)?.code,
-                    reason: (idata as any)?.reason,
-                    wsUpgrades: proxy?.wsUpgrades,
-                    lastWsUrl: proxy?.lastWs?.url,
-                    layout: {
-                        hasSrcAppDir: layout?.hasSrcAppDir,
-                        hasAppDir: layout?.hasAppDir,
-                        hasSrcPagesDir: layout?.hasSrcPagesDir,
-                        hasPagesDir: layout?.hasPagesDir,
-                    },
-                });
-
-                if (ires.ok && (idata as any)?.ok) {
-                    inspectOk = true;
-                    break;
-                }
-
-                const hubCode = String((idata as any)?.code || "").toUpperCase();
-
-                if (ires.status === 404 && hubCode === "NO_ACTIVE_PREVIEW") {
-                    const confirmed = await showConfirm(
-                        "No active preview exists yet. Start/reconnect the preview now?",
-                        "Test HMR",
-                    );
-                    if (confirmed) {
-                        await restartLocalPreview(false);
-                        void showAlert(
-                            "Preview start/reconnect triggered. Re-run Test HMR once the preview is up.",
-                            "Test HMR",
-                        );
-                    }
-                    setDevHmrLastRunFailed(true);
-                    return;
-                }
-
-                if (ires.status === 409 && hubCode === "MACHINE_NOT_READY") {
-                    // Keep polling inspect while the machine boots.
-                    await sleep(2000);
-                    continue;
-                }
-
-                if (ires.status === 409 && hubCode === "PROXY_NOT_READY") {
-                    const confirmed = await showConfirm(
-                        "Preview proxy isn’t ready. Restart the preview proxy now?",
-                        "Test HMR",
-                    );
-                    if (!confirmed) return;
-
-                    const restartCode =
-                        storedCode ||
-                        String((idata as any)?.previewCode || (idata as any)?.preview_code || (idata as any)?.code || "").trim();
-
-                    if (!restartCode) {
-                        void showAlert(
-                            "Cannot restart without a preview code. Reconnect the preview first, then retry.",
-                            "Test HMR",
-                        );
-                        return;
-                    }
-
-                    const rres = await fetch("/api/previews/restart", {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
-                        },
-                        credentials: "include",
-                        cache: "no-store",
-                        body: JSON.stringify({ appId, code: restartCode }),
-                    });
-                    const rdata = await rres.json().catch(() => ({} as any));
-                    console.log("[dev-hmr-test][restart]", { status: rres.status, ok: rres.ok, data: rdata });
-
-                    if (!rres.ok || !(rdata as any)?.ok) {
-                        const msg = String((rdata as any)?.error || `Restart failed (HTTP ${rres.status})`);
-                        void showAlert(`${msg}\n\n(Details logged in console)`, "Test HMR");
-                        return;
-                    }
-
-                    // After restart, loop back to inspect polling.
-                    await sleep(2000);
-                    continue;
-                }
-
-                // Unknown inspect failure.
-                const msg = String((idata as any)?.error || `Inspect failed (HTTP ${ires.status})`);
-                setDevHmrLastRunFailed(true);
-                void showAlert(`${msg}\n\n(Details logged in console)`, "Test HMR");
-                return;
-            }
-
-            if (!inspectOk) {
-                const msg = String((inspectData as any)?.error || "Inspect timed out waiting for preview readiness.");
-                setDevHmrLastRunFailed(true);
-                void showAlert(`${msg}\n\n(Details logged in console)`, "Test HMR");
-                return;
-            }
-
-            // 2) Choose exactly one Next.js root from inspect.proxy.layout.
-            const proxy = (inspectData as any)?.proxy || {};
-            const layout = proxy?.layout || {};
-            let { root: chosenRoot, routerType } = chooseNextRootFromLayout(layout);
-            const notes: string[] = [];
-
-            if (!chosenRoot || routerType === "unknown") {
-                const fallback = fallbackExistingEntry();
-                if (!fallback) {
-                    setDevHmrLastRunFailed(true);
-                    void showAlert(
-                        "Could not determine the Next.js router root from inspect (no app/pages dirs detected). Open a standard Next.js project template or start the preview, then retry.",
-                        "Test HMR",
-                    );
-                    return;
-                }
-                chosenRoot = fallback.root;
-                routerType = fallback.routerType;
-                notes.push(`inspect.layout missing; fell back to existing entry: ${fallback.path}`);
-            }
-
-            // 3) Generate exactly one route file based on routerType.
-            const stamp = new Date().toISOString();
-            const bannerColor = Math.floor(Math.random() * 360);
-            const testUi = `export default function KlonerHmrTestPage() {\n  return (\n    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'hsl(${bannerColor} 90% 55%)', color: '#0b0b0c', fontFamily: 'ui-sans-serif, system-ui, -apple-system' }}>\n      <div style={{ maxWidth: 900, padding: 48, background: 'rgba(255,255,255,0.92)', borderRadius: 24, boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>\n        <div style={{ fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', opacity: 0.75 }}>Kloner Next.js HMR Smoke Test</div>\n        <h1 style={{ marginTop: 10, fontSize: 44, lineHeight: 1.05 }}>Hello from HMR</h1>\n        <p style={{ marginTop: 14, fontSize: 18, lineHeight: 1.5 }}>If HMR is connected, this page updates without a refresh.</p>\n        <pre style={{ marginTop: 18, padding: 16, background: '#0b0b0c', color: '#f5f5f5', borderRadius: 14, overflowX: 'auto' }}>{` + "`" + `appId=${appId}\\nupdatedAt=${stamp}\\ncolorHue=${bannerColor}` + "`" + `}</pre>\n        <p style={{ marginTop: 14, fontSize: 14, opacity: 0.75 }}>Click “Test HMR” again: timestamp + hue should change via hot update.</p>\n      </div>\n    </div>\n  );\n}\n`;
-            const fileContent = `// Auto-generated by Kloner HMR test\n${testUi}`;
-
-            // Hard test: overwrite the *main* entry page so you can’t miss it.
-            // App Router: <root>/page.tsx
-            // Pages Router: <root>/index.tsx
-            const appliedPath =
-                routerType === "app" ? `${chosenRoot}/page.tsx` : `${chosenRoot}/index.tsx`;
-
-            setDevHmrDebug({
-                chosenRoot,
-                routerType,
-                appliedPath,
-                inspectWsUpgrades: null,
-                inspectLastWsUrl: null,
-                lastApplyRequestId: null,
-                lastApplyWrote: null,
-                lastApplyPaths: [],
-                notes,
-            });
-
-            const payload: any = { appId, files: [{ path: appliedPath, content: fileContent }] };
-            if (storedCode) payload.code = storedCode;
-
-            // Retry a few times on 409 (machine busy/booting) without restarting anything.
-            let lastRes: Response | null = null;
-            let lastData: any = null;
-            for (let attempt = 0; attempt < 5; attempt += 1) {
                 const res = await fetch("/api/previews/apply", {
                     method: "POST",
                     headers: {
@@ -1082,144 +1036,88 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                 });
 
                 const data = await res.json().catch(() => ({} as any));
-                lastRes = res;
-                lastData = data;
-                console.log("[dev-hmr-test][apply]", {
-                    attempt: attempt + 1,
-                    status: res.status,
-                    ok: res.ok,
-                    code: (data as any)?.code,
-                    reason: (data as any)?.reason,
-                    needsRestart:
-                        (data as any)?.needsRestart ??
-                        (data as any)?.needsRebuild ??
-                        (data as any)?.requiresRestart ??
-                        (data as any)?.requiresRebuild ??
-                        (data as any)?.requires_rebuild,
-                    debug: (data as any)?.__debug,
-                });
-
-                if (res.ok && (data as any)?.ok) break;
-                if (res.status !== 409) break;
-                await sleep(800 + attempt * 400);
-            }
-
-            const res = lastRes;
-            const data = lastData;
-            if (!res) throw new Error("Apply test failed: no response");
-
-            if (!res.ok || !(data as any)?.ok) {
-                if (res.status === 404) {
-                    const confirmed = await showConfirm(
-                        "No active preview was found for this app. Start/reconnect the preview now? (This should not delete an existing machine.)",
-                        "Apply test",
-                    );
-                    if (confirmed) {
+                if (!res.ok || !(data as any)?.ok) {
+                    if (res.status === 404) {
+                        if (interactive) {
+                            void showAlert(
+                                "No active preview is running to apply these changes. Start/reconnect the preview and try again.",
+                                "Restore",
+                            );
+                        }
                         await restartLocalPreview(false);
-                        void showAlert(
-                            "Preview start/reconnect triggered. Click the test button again once the preview is running.",
-                            "Apply test",
-                        );
+                        return;
                     }
-                    setDevHmrLastRunFailed(true);
+
+                    if (res.status === 409) {
+                        if (interactive) {
+                            void showAlert(
+                                "Preview is busy/booting (409). Try restoring again in a moment.",
+                                "Restore",
+                            );
+                        }
+                        return;
+                    }
+
+                    const msg = String((data as any)?.error || `Restore apply failed (HTTP ${res.status})`);
+                    if (interactive) void showAlert(msg, "Restore");
                     return;
                 }
 
-                if (res.status === 409) {
-                    setDevHmrLastRunFailed(true);
-                    void showAlert(
-                        "Preview returned 409. Check console for hub response (+ __debug) — this is usually MACHINE_NOT_READY or PROXY_NOT_READY.",
-                        "Test HMR",
-                    );
-                    return;
+                const nextCode = String((data as any)?.code || "").trim();
+                if (nextCode) {
+                    activeCode = nextCode;
+                    try {
+                        localStorage.setItem(
+                            `webcontainer_${appId}`,
+                            JSON.stringify({ code: nextCode, timestamp: Date.now() }),
+                        );
+                    } catch {
+                        // ignore
+                    }
                 }
 
-                const msg = String((data as any)?.error || `Apply failed (HTTP ${res.status})`);
-                setDevHmrLastRunFailed(true);
-                void showAlert(`${msg}\n\n(Details logged in console)`, "Test HMR");
-                return;
-            }
-
-            const nextCode = String((data as any)?.code || storedCode || "").trim();
-            if (nextCode) {
-                try {
-                    localStorage.setItem(
-                        `webcontainer_${appId}`,
-                        JSON.stringify({ code: nextCode, timestamp: Date.now() })
-                    );
-                } catch {
-                    // ignore
+                // Update dedupe state for applied files.
+                for (const e of batch) {
+                    const p = String((e as any)?.path || "").trim();
+                    if (!p) continue;
+                    if ((e as any)?.delete) {
+                        delete lastAppliedContentRef.current[p];
+                    } else if (typeof (e as any)?.content === "string") {
+                        lastAppliedContentRef.current[p] = String((e as any).content);
+                    }
                 }
-            }
 
-            const requiresRestart = Boolean(
-                (data as any)?.requiresRestart || (data as any)?.requiresRebuild || (data as any)?.requires_rebuild,
-            );
-            if (requiresRestart) {
-                void showAlert(
-                    "Apply succeeded, but the backend says this needs a full restart to take effect.",
-                    "Test HMR",
+                const needsRebuild = Boolean(
+                    (data as any)?.needsRebuild ||
+                        (data as any)?.needs_rebuild ||
+                        (data as any)?.requiresRebuild ||
+                        (data as any)?.requires_rebuild ||
+                        (data as any)?.requiresRestart ||
+                        (data as any)?.requires_restart,
                 );
-            } else {
-                // 4) Re-inspect to validate HMR websocket + lastApply.
-                await sleep(1500);
-                const i2res = await fetch(inspectUrl, { method: "GET", credentials: "include", cache: "no-store" });
-                const i2 = await i2res.json().catch(() => ({} as any));
-                const s2 = summarizeInspect(i2);
-                const wsOk =
-                    typeof s2.wsUpgrades === "number" &&
-                    s2.wsUpgrades > 0 &&
-                    typeof s2.lastWsUrl === "string" &&
-                    s2.lastWsUrl.toLowerCase().includes("webpack-hmr");
-
-                const appliedSeen = s2.lastApplyPaths.some((p) => p === appliedPath);
-
-                setDevHmrDebug((prev) =>
-                    prev
-                        ? {
-                              ...prev,
-                              inspectWsUpgrades: s2.wsUpgrades,
-                              inspectLastWsUrl: s2.lastWsUrl,
-                              lastApplyRequestId: s2.lastApplyRequestId,
-                              lastApplyWrote: s2.lastApplyWrote,
-                              lastApplyPaths: s2.lastApplyPaths,
-                              notes: [...(prev.notes || []), ...(appliedSeen ? [] : ["lastApply did not list the expected file path"])],
-                          }
-                        : prev,
-                );
-
-                if (!wsOk) {
-                    const extra = `wsUpgrades=${s2.wsUpgrades ?? "?"}\nlastWs.url=${s2.lastWsUrl || "(none)"}`;
-                    setDevHmrLastRunFailed(true);
-                    void showAlert(
-                        `HMR websocket not connected; changes will not hot-update.\n\n${extra}\n\n(See the debug panel next to the button.)`,
-                        "Test HMR",
-                    );
-                    return;
-                }
-
-                if (!appliedSeen) {
-                    const extra = `lastApply.requestId=${s2.lastApplyRequestId || "(none)"}\nlastApply.wrote=${String(s2.lastApplyWrote ?? "(none)")}\npaths=${s2.lastApplyPaths.join(", ") || "(none)"}`;
-                    setDevHmrLastRunFailed(true);
-                    void showAlert(
-                        `Apply succeeded, but inspect.lastApply did not confirm the expected path.\n\n${extra}\n\n(See the debug panel next to the button.)`,
-                        "Test HMR",
-                    );
-                    return;
-                }
-
-                // Success: no popup and no debug panel.
-                setDevHmrDebug(null);
-                setDevHmrLastRunFailed(false);
+                overallNeedsRebuild = overallNeedsRebuild || needsRebuild;
             }
-        } catch (err: any) {
-            console.error("[dev-apply-test] failed", err);
-            setDevHmrLastRunFailed(true);
-            void showAlert(err?.message || "Test HMR failed.", "Test HMR");
-        } finally {
-            setIsDevApplyTesting(false);
-        }
-    }, [appId, app?.files, isDevEnv, isDevApplyTesting, restartLocalPreview, showAlert, showConfirm]);
+
+            if (overallNeedsRebuild && activeCode) {
+                const rres = await fetch("/api/previews/restart", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
+                    },
+                    credentials: "include",
+                    cache: "no-store",
+                    body: JSON.stringify({ appId, code: activeCode }),
+                });
+                const rdata = await rres.json().catch(() => ({} as any));
+                if (!rres.ok || !(rdata as any)?.ok) {
+                    const msg = String((rdata as any)?.error || `Restart failed (HTTP ${rres.status})`);
+                    if (interactive) void showAlert(msg, "Restart needed");
+                }
+            }
+        },
+        [appId, fetchFreshCsrf, getStoredPreviewCode, restartLocalPreview, showAlert]
+    );
 
     const queuePreviewApply = useCallback(
         (changes: Array<{ path: string; content: string }>, { interactive }: { interactive: boolean }) => {
@@ -2381,7 +2279,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                         >
                             <Database className="w-4 h-4" />
                             {supabaseConnected === null ? (
-                                <span>Database…</span>
+                                <span>Database: Verifying</span>
                             ) : supabaseConnected ? (
                                 <span>Database: Connected</span>
                             ) : (
@@ -2389,43 +2287,15 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                             )}
                         </button>
 
-                        {isDevEnv ? (
-                            <div className="flex items-center gap-3">
-                                <button
-                                    onClick={() => void runDevApplyTest()}
-                                    disabled={isDevApplyTesting || isSaving}
-                                    className="px-4 py-2 bg-gray-900 text-xs font-semibold text-white rounded flex items-center gap-2 rounded-full hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed"
-                                    title="Dev only: inspect Next.js layout, apply exactly one route file, and verify HMR websocket + lastApply"
-                                >
-                                    <Edit3 className="w-4 h-4" />
-                                    {isDevApplyTesting ? "Testing…" : "Test HMR"}
-                                </button>
-
-                                {devHmrDebug && devHmrLastRunFailed ? (
-                                    <div className="hidden lg:block max-w-[560px] px-3 py-2 rounded-2xl border border-red-200 bg-red-50/80 text-[11px] leading-snug">
-                                        <div className="font-semibold text-red-700">HMR check failed (debug)</div>
-                                        <div className="text-black/60">root: {devHmrDebug.chosenRoot} ({devHmrDebug.routerType})</div>
-                                        <div className="text-black/60">file: {devHmrDebug.appliedPath}</div>
-                                        <div className="text-black/60">
-                                            wsUpgrades: {devHmrDebug.inspectWsUpgrades ?? "?"}
-                                            {devHmrDebug.inspectLastWsUrl
-                                                ? ` • lastWs: ${devHmrDebug.inspectLastWsUrl}`
-                                                : ""}
-                                        </div>
-                                        <div className="text-black/60">
-                                            lastApply: {devHmrDebug.lastApplyRequestId || "(none)"} • wrote: {devHmrDebug.lastApplyWrote ?? "?"}
-                                        </div>
-                                        {devHmrDebug.lastApplyPaths?.length ? (
-                                            <div className="text-black/50 truncate">
-                                                files: {devHmrDebug.lastApplyPaths.join(" • ")}
-                                            </div>
-                                        ) : null}
-                                        {devHmrDebug.notes?.length ? (
-                                            <div className="text-black/50 truncate">notes: {devHmrDebug.notes.join(" • ")}</div>
-                                        ) : null}
-                                    </div>
-                                ) : null}
-                            </div>
+                        {supabaseConnected ? (
+                            <button
+                                onClick={() => void disconnectSupabase()}
+                                className="px-4 py-2 text-xs font-semibold rounded-full flex items-center gap-2 transition-colors bg-white text-red-700 border border-red-200 hover:bg-red-50"
+                                title="Disconnect Supabase from Kloner (does not delete your Supabase project)"
+                            >
+                                <X className="w-4 h-4" />
+                                <span>Disconnect</span>
+                            </button>
                         ) : null}
                         <button
                             onClick={handleReconnect}
@@ -2434,16 +2304,16 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                             title="Reconnect to the existing machine without restarting"
                         >
                             <RotateCcw className="w-4 h-4" />
-                            Reconnect
+                            Refresh
                         </button>
                         <button
                             onClick={() => handleRefresh(true)}
                             disabled={isPreviewBuilding || isRefreshing}
                             className="px-4 py-2 bg-[#F55F2A] text-xs font-semibold text-white rounded flex items-center gap-2 rounded-full hover:bg-[#E04E1B]"
-                            title="Delete current machine and start fresh (this will not delete your website)"
+                            title="Delete current machine and rebuild app (this will not delete your website)"
                         >
                             <RefreshCw className="w-4 h-4" />
-                            {isPreviewBuilding ? "Starting…" : "Start fresh"}
+                            {isPreviewBuilding ? "Starting…" : "Rebuild app"}
                         </button>
                         <button
                             onClick={handleDeploy}
@@ -2510,6 +2380,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                     onFilesReplace={handleFilesReplaceFromServer}
                                     onRestoreApplied={handleRestoreApplied}
                                     creditError={agentCreditError}
+                                    previewReady={previewMode !== "webcontainer" ? true : isWebPreviewReady}
                                 />
                             ) : (
                                 // Code View - File Tree and Editor
@@ -2591,6 +2462,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                         appId={appId}
                                         files={app.files}
                                         onFileChange={handleFileChangeFromContainer}
+                                        onPreviewReadyChange={setIsWebPreviewReady}
                                         reloadToken={refreshKey}
                                         restartToken={localRestartKey}
                                         reconnectToken={reconnectKey}

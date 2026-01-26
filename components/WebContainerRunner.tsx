@@ -15,6 +15,7 @@ interface WebContainerRunnerProps {
   appId: string;
   files: { [path: string]: { content: string; lastModified: number } };
   onFileChange?: (path: string, content: string) => void;
+  onPreviewReadyChange?: (ready: boolean) => void;
   reloadToken?: number;
   restartToken?: number;
   reconnectToken?: number;
@@ -23,7 +24,7 @@ interface WebContainerRunnerProps {
   navigatePathToken?: number;
 }
 
-export default function WebContainerRunner({ appId, files, onFileChange, reloadToken, restartToken, reconnectToken, forceFreshStart, navigatePath, navigatePathToken }: WebContainerRunnerProps) {
+export default function WebContainerRunner({ appId, files, onFileChange, onPreviewReadyChange, reloadToken, restartToken, reconnectToken, forceFreshStart, navigatePath, navigatePathToken }: WebContainerRunnerProps) {
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
@@ -327,14 +328,26 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
     try {
       const parsed: any = JSON.parse(raw);
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        return JSON.stringify({ compilerOptions: {} }, null, 2) + '\n';
+        return JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "@/*": ["./*"] } } }, null, 2) + '\n';
       }
       if (!parsed.compilerOptions || typeof parsed.compilerOptions !== 'object' || Array.isArray(parsed.compilerOptions)) {
         parsed.compilerOptions = {};
       }
+
+      // Ensure the common @/* alias works in user apps.
+      if (!parsed.compilerOptions.baseUrl || typeof parsed.compilerOptions.baseUrl !== 'string') {
+        parsed.compilerOptions.baseUrl = ".";
+      }
+      if (!parsed.compilerOptions.paths || typeof parsed.compilerOptions.paths !== 'object' || Array.isArray(parsed.compilerOptions.paths)) {
+        parsed.compilerOptions.paths = {};
+      }
+      if (!Array.isArray(parsed.compilerOptions.paths["@/*"])) {
+        parsed.compilerOptions.paths["@/*"] = ["./*"];
+      }
+
       return JSON.stringify(parsed, null, 2) + '\n';
     } catch {
-      return JSON.stringify({ compilerOptions: {} }, null, 2) + '\n';
+      return JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "@/*": ["./*"] } } }, null, 2) + '\n';
     }
   };
 
@@ -365,6 +378,66 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
       const normalized = normalizeConfigJson('{"compilerOptions":{}}');
       nextFiles['jsconfig.json'] = { content: normalized };
       fixes.push({ path: 'jsconfig.json', content: normalized });
+    }
+
+    // Auto-heal common AI edits that assume @ alias + AuthProvider/NavBar exist.
+    try {
+      const layoutPath =
+        typeof nextFiles['app/layout.js']?.content === 'string'
+          ? 'app/layout.js'
+          : typeof nextFiles['app/layout.jsx']?.content === 'string'
+            ? 'app/layout.jsx'
+            : typeof nextFiles['app/layout.tsx']?.content === 'string'
+              ? 'app/layout.tsx'
+              : typeof nextFiles['app/layout.ts']?.content === 'string'
+                ? 'app/layout.ts'
+                : null;
+
+      const layoutContent = layoutPath ? String(nextFiles[layoutPath]?.content || '') : '';
+      const usesAuthProvider = layoutContent.includes("@/components/AuthProvider");
+      const usesNavBar = layoutContent.includes("@/components/NavBar");
+
+      const hasAuthProvider =
+        typeof nextFiles['components/AuthProvider.js']?.content === 'string' ||
+        typeof nextFiles['components/AuthProvider.jsx']?.content === 'string' ||
+        typeof nextFiles['components/AuthProvider.tsx']?.content === 'string' ||
+        typeof nextFiles['components/AuthProvider.ts']?.content === 'string';
+
+      const hasNavBar =
+        typeof nextFiles['components/NavBar.js']?.content === 'string' ||
+        typeof nextFiles['components/NavBar.jsx']?.content === 'string' ||
+        typeof nextFiles['components/NavBar.tsx']?.content === 'string' ||
+        typeof nextFiles['components/NavBar.ts']?.content === 'string';
+
+      if (usesAuthProvider && !hasAuthProvider) {
+        const content = `"use client";
+
+export default function AuthProvider({ children }) {
+  return children;
+}
+`;
+        nextFiles['components/AuthProvider.js'] = { content };
+        fixes.push({ path: 'components/AuthProvider.js', content });
+      }
+
+      if (usesNavBar && !hasNavBar) {
+        const content = `"use client";
+
+import Link from "next/link";
+
+export default function NavBar() {
+  return (
+    <nav style={{ padding: 12, borderBottom: "1px solid rgba(0,0,0,0.12)" }}>
+      <Link href="/">Home</Link>
+    </nav>
+  );
+}
+`;
+        nextFiles['components/NavBar.js'] = { content };
+        fixes.push({ path: 'components/NavBar.js', content });
+      }
+    } catch {
+      // ignore
     }
 
     return { nextFiles, fixes };
@@ -1547,6 +1620,12 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
       }
 
       // Clear any pending iframe load timeout
+      if (!previewUrl) {
+        // No preview visible (either not started yet, or errored/reset).
+        try { onPreviewReadyChange?.(false); } catch { }
+        return;
+      }
+
       if (iframeLoadTimeoutRef.current) {
         clearTimeout(iframeLoadTimeoutRef.current);
         iframeLoadTimeoutRef.current = null;
@@ -1650,6 +1729,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
     if (!isSoftReload) {
       // Reset iframe loaded state on meaningful URL changes.
       iframeLoadedSuccessfullyRef.current = false;
+      try { onPreviewReadyChange?.(false); } catch { }
     }
 
     // Set a timeout for iframe loading (30 seconds for DNS/network issues)
@@ -1667,6 +1747,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
           iframeLoadedSuccessfullyRef.current = false;
           appLoadedSuccessfullyRef.current = false;
           setPreviewUrl(null); // Hide the iframe
+          try { onPreviewReadyChange?.(false); } catch { }
           stopAllTimers();
         }
       }, 30000); // 30 second timeout
@@ -1720,6 +1801,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
               setLoadingStatus('');
               iframeLoadedSuccessfullyRef.current = true;
               appLoadedSuccessfullyRef.current = true;
+              try { onPreviewReadyChange?.(true); } catch { }
               stopAllTimers();
               if (isPolling) setIsPolling(false);
               if (currentStatusData) setCurrentStatusData(null);
@@ -1740,6 +1822,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
             }}
             onError={() => {
               console.log('Iframe failed to load - URL may be unreachable:', previewUrl);
+              try { onPreviewReadyChange?.(false); } catch { }
               // Check if this looks like a DNS/network error or preview routing issue
               if (previewUrl.includes('tracksite-hub.fly.dev')) {
                 setError(`Preview failed to load. This may be due to cookie/session issues or the preview not being ready yet. Automatically refreshing in 10 seconds...`);
@@ -1752,6 +1835,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
                 iframeLoadedSuccessfullyRef.current = false;
                 appLoadedSuccessfullyRef.current = false;
                 setPreviewUrl(null); // Hide the iframe
+                try { onPreviewReadyChange?.(false); } catch { }
                 // Automatically retry after 10 seconds for hub domain errors (only if not already scheduled)
                 if (!retryScheduledRef.current && totalAttemptsRef.current < maxTotalAttempts) {
                   retryScheduledRef.current = true;
@@ -1772,6 +1856,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, reloadT
                 iframeLoadedSuccessfullyRef.current = false;
                 appLoadedSuccessfullyRef.current = false;
                 setPreviewUrl(null); // Hide the iframe
+                try { onPreviewReadyChange?.(false); } catch { }
               } else {
                 handleAssetFailure();
               }

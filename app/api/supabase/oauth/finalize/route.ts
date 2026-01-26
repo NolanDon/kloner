@@ -10,10 +10,39 @@ type SupabaseRegionSelection =
   | { type: "specific"; code: string };
 
 interface SupabaseProject {
-  id: string;
+  id: string | number;
   name: string;
   ref?: string;
   status: string;
+}
+
+function normalizeProjectId(v: unknown): string {
+  if (typeof v === "string") return v.trim();
+  if (typeof v === "number") return String(v);
+  return "";
+}
+
+function toValidDateOrNull(v: unknown): Date | null {
+  try {
+    if (!v) return null;
+    if (v instanceof Date) return Number.isFinite(v.getTime()) ? v : null;
+    if (typeof v === "number") {
+      const d = new Date(v);
+      return Number.isFinite(d.getTime()) ? d : null;
+    }
+    if (typeof v === "string") {
+      const d = new Date(v);
+      return Number.isFinite(d.getTime()) ? d : null;
+    }
+    const anyV: any = v as any;
+    if (typeof anyV?.toDate === "function") {
+      const d = anyV.toDate();
+      return d instanceof Date && Number.isFinite(d.getTime()) ? d : null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 function normalizeProjectName(uid: string): string {
@@ -126,6 +155,13 @@ async function getRecommendedRegionSelection(
 }
 
 export async function POST(request: NextRequest) {
+    console.log('[supabase/oauth/finalize] Handler invoked');
+      try {
+        const body = await request.json().catch(() => ({} as any));
+        console.log('[supabase/oauth/finalize] Request body:', JSON.stringify(body));
+      } catch (e) {
+        console.error('[supabase/oauth/finalize] Failed to parse request body:', e);
+      }
   const db = getAdminDb();
 
   let uid = "";
@@ -140,6 +176,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!finalizeToken) {
+      console.error('[supabase/oauth/finalize] Missing finalizeToken');
       return NextResponse.json({ ok: false, error: "missing_finalize_token" }, { status: 400 });
     }
 
@@ -154,6 +191,7 @@ export async function POST(request: NextRequest) {
       const storedToken = typeof setup?.finalizeToken === "string" ? setup.finalizeToken : "";
 
     if (!setup || !storedToken || storedToken !== finalizeToken) {
+      console.error('[supabase/oauth/finalize] Invalid or missing setup/finalizeToken', { setup, storedToken, finalizeToken });
       return NextResponse.json({ ok: false, error: "invalid_finalize_token" }, { status: 403 });
     }
 
@@ -161,6 +199,7 @@ export async function POST(request: NextRequest) {
       const encryptedRefreshToken = setup?.refreshToken as EncryptedBlobV1 | undefined;
 
     if (!encryptedAccessToken) {
+      console.error('[supabase/oauth/finalize] Missing encryptedAccessToken');
       return NextResponse.json({ ok: false, error: "missing_supabase_access_token" }, { status: 400 });
     }
 
@@ -221,6 +260,12 @@ export async function POST(request: NextRequest) {
       throw new Error("Project creation succeeded but returned no project ref.");
     }
 
+    const projectId = normalizeProjectId(project.id);
+    const createRequestId =
+      projectResponse.headers.get("x-request-id") ||
+      projectResponse.headers.get("x-supabase-request-id") ||
+      null;
+
         // Persist projectRef so the polling endpoint can finish setup without
         // keeping this request open (important for serverless timeouts).
     await setupRef.set(
@@ -228,15 +273,92 @@ export async function POST(request: NextRequest) {
         provider: "supabase",
         status: "IN_PROGRESS" satisfies SupabaseSetupStatus,
         organizationSlug,
-        projectId: project.id,
+        projectId,
         projectRef,
         projectName: project.name,
         regionSelection,
         step: "WAIT_ACTIVE",
+        waitActiveStartedAt: new Date(),
+        createProjectRequestId: createRequestId,
         updatedAt: new Date(),
       },
       { merge: true }
     );
+
+    // IMPORTANT: also write the integration doc immediately.
+    // Users may close the OAuth popout early; the main app + migrations need
+    // to see that Supabase is connected, even while provisioning continues.
+    const integrationRef = db
+      .collection("kloner_users")
+      .doc(uid)
+      .collection("integrations")
+      .doc("supabase");
+
+    await integrationRef.set(
+      {
+        provider: "supabase",
+        mode: "oauth",
+        status: typeof project.status === "string" ? project.status : "UNKNOWN",
+        projectId: projectId || null,
+        projectRef,
+        projectName: project.name || null,
+        supabaseUrl: `https://${projectRef}.supabase.co`,
+        databaseUrl: null,
+        anonKey: null,
+        serviceRoleKey: null,
+        accessToken: encryptedAccessToken,
+        refreshToken: encryptedRefreshToken || null,
+        tokenExpiresAt: toValidDateOrNull(setup?.tokenExpiresAt),
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      },
+      { merge: true }
+    );
+
+    // Fetch the latest appId for this user from kloner_apps
+    let appId = null;
+    const appsSnap = await db.collection("kloner_users").doc(uid).collection("kloner_apps")
+      .orderBy("createdAt", "desc")
+      .limit(1)
+      .get();
+    if (!appsSnap.empty) {
+      appId = appsSnap.docs[0].id;
+      console.log(`[supabase/oauth/finalize] Found latest appId for user ${uid}: ${appId}`);
+    } else {
+      console.warn(`[supabase/oauth/finalize] No kloner_apps found for user ${uid}`);
+    }
+    if (appId) {
+      const envContent = [
+        `# Generated by Kloner (preview-only)`,
+        `# Do not commit this file; do not deploy secrets from here.`,
+        `NEXT_PUBLIC_SUPABASE_URL=https://${projectRef}.supabase.co`,
+        `SUPABASE_URL=https://${projectRef}.supabase.co`,
+        // anonKey and serviceRoleKey will be filled in later after provisioning completes
+        `NEXT_PUBLIC_SUPABASE_ANON_KEY=`,
+        `SUPABASE_SERVICE_ROLE_KEY=`,
+        ""
+      ].join("\n");
+      const appRef = db.collection("kloner_users").doc(uid).collection("kloner_apps").doc(appId);
+      const appSnap = await appRef.get();
+      if (!appSnap.exists) {
+        console.error(`[supabase/oauth/finalize] kloner_apps doc for appId ${appId} does not exist!`);
+      } else {
+        console.log(`[supabase/oauth/finalize] kloner_apps doc for appId ${appId} found, writing .env.local`);
+      }
+      const prevFiles = appSnap.exists && appSnap.data()?.files ? appSnap?.data()?.files : {};
+      const newFiles = {
+        ...prevFiles,
+        [".env.local"]: {
+          content: envContent,
+          lastModified: Date.now(),
+        }
+      };
+      await appRef.set({ files: newFiles }, { merge: true });
+      console.log(`[supabase/oauth/finalize] .env.local written for appId=${appId}`);
+    } else {
+      console.error(`[supabase/oauth/finalize] Could not determine appId for user ${uid}, .env.local not written!`);
+    }
+    console.log('[supabase/oauth/finalize] Handler completed');
 
     return NextResponse.json({ ok: true, projectRef, provisioning: true });
   } catch (e: any) {

@@ -1396,7 +1396,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                             </span>
                                                         ) : null}
                                                         {!isAdmin && (
-                                                            <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                                                            <span className="whitespace-nowrap inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
                                                                 Coming Soon
                                                             </span>
                                                         )}
@@ -1705,6 +1705,33 @@ export default function PreviewPage(): JSX.Element {
     const [appDeployWizardLiveUrl, setAppDeployWizardLiveUrl] = useState<string | null>(null);
     const autoAppDeployTriggeredRef = useRef(false);
 
+    const refreshUserTierNow = useCallback(async (): Promise<UserTier> => {
+        // Deploy gating should never rely on a stale cached tier.
+        // Stripe webhooks + custom claims can lag; force-refresh the backend view of tier.
+        try {
+            const res = await fetch("/api/billing/tier?refresh=1", {
+                method: "GET",
+                credentials: "include",
+                cache: "no-store",
+            });
+            if (res.ok) {
+                const data = await res.json().catch(() => ({} as any));
+                const t = typeof data?.tier === "string" ? data.tier : "free";
+                const normalized: UserTier =
+                    t === "pro" || t === "agency" || t === "enterprise" ? (t as UserTier) : "free";
+                setUserTier(normalized);
+                return normalized;
+            }
+        } catch {
+            // ignore; fall back below
+        }
+
+        // Fall back to existing state.
+        // IMPORTANT: if the cached tier is `free` but refresh failed, treat as `unknown`
+        // so we don't show a false-positive paywall to paid users.
+        return userTier === "free" ? "unknown" : userTier;
+    }, [userTier]);
+
     // ───────── web app wizard (new) ─────────
     const [appWizardOpen, setAppWizardOpen] = useState(false);
     const [appWizardStep, setAppWizardStep] = useState<1 | 2>(1);
@@ -1905,17 +1932,44 @@ export default function PreviewPage(): JSX.Element {
         autoAppDeployTriggeredRef.current = false;
     }, []);
 
-    const openAppDeployWizard = useCallback((app: { id: string; name: string }) => {
-        setAppDeployWizardAppId(app.id);
-        setAppDeployWizardAppName(app.name || "");
-        setAppDeployWizardError(null);
-        setAppDeployWizardBusy(false);
-        setAppDeployWizardLiveUrl(null);
-        autoAppDeployTriggeredRef.current = false;
+    const openAppDeployWizard = useCallback(
+        (app: { id: string; name: string }) => {
+            setAppDeployWizardAppId(app.id);
+            setAppDeployWizardAppName(app.name || "");
+            setAppDeployWizardError(null);
+            setAppDeployWizardBusy(false);
+            setAppDeployWizardLiveUrl(null);
+            autoAppDeployTriggeredRef.current = false;
 
-        setAppDeployWizardOpen(true);
-        setAppDeployWizardStep(1);
-    }, []);
+            // If Vercel is already connected, don't show a redundant "Connected" modal.
+            // Instead, ask for a single global confirmation before deploying live.
+            if (isVercelConnected) {
+                void (async () => {
+                    const tierNow = await refreshUserTierNow();
+                    if (tierNow === "free") {
+                        setAppDeployWizardOpen(true);
+                        setAppDeployWizardStep(2);
+                        return;
+                    }
+
+                    const ok = await showConfirm(
+                        "This will deploy your current changes to your live Vercel site (production). Continue?",
+                        "Deploy Live"
+                    );
+                    if (!ok) return;
+
+                    setAppDeployWizardOpen(true);
+                    setAppDeployWizardStep(3);
+                    autoAppDeployTriggeredRef.current = true;
+                })();
+                return;
+            }
+
+            setAppDeployWizardOpen(true);
+            setAppDeployWizardStep(1);
+        },
+        [isVercelConnected, refreshUserTierNow, showConfirm]
+    );
 
     const deployAppLive = useCallback(async (opts?: { force?: boolean }) => {
         if (appDeployWizardBusy && !opts?.force) return;
@@ -2135,7 +2189,9 @@ export default function PreviewPage(): JSX.Element {
             setAppWizardBusy(false);
             setAppWizardTriedConnect(false);
             setAppWizardOpeningVercel(false);
-            setAppWizardStep(1);
+            // Vercel should not be required to *start* a project.
+            // Only require it during deployment.
+            setAppWizardStep(2);
             setAppWizardOpen(true);
         },
         [refreshVercelStatus],
@@ -2157,12 +2213,6 @@ export default function PreviewPage(): JSX.Element {
 
     const submitAppWizardWebsite = useCallback(async () => {
         if (appWizardBusy) return;
-        if (!isVercelConnected) {
-            setAppWizardError("Connect Vercel to continue.");
-            setAppWizardStep(1);
-            return;
-        }
-
         setAppWizardBusy(true);
         setAppWizardError(null);
 
@@ -2194,16 +2244,10 @@ export default function PreviewPage(): JSX.Element {
         } finally {
             setAppWizardBusy(false);
         }
-    }, [appWizardBusy, isVercelConnected, appWizardUrl, appWizardSeedRenderId, renders, handleCreateApp]);
+    }, [appWizardBusy, appWizardUrl, appWizardSeedRenderId, renders, handleCreateApp]);
 
     const submitAppWizardSample = useCallback(async () => {
         if (appWizardBusy) return;
-        if (!isVercelConnected) {
-            setAppWizardError("Connect Vercel to continue.");
-            setAppWizardStep(1);
-            return;
-        }
-
         setAppWizardBusy(true);
         setAppWizardError(null);
 
@@ -2217,16 +2261,10 @@ export default function PreviewPage(): JSX.Element {
         } finally {
             setAppWizardBusy(false);
         }
-    }, [appWizardBusy, isVercelConnected, handleCreateApp]);
+    }, [appWizardBusy, handleCreateApp]);
 
     const submitAppWizardPrompt = useCallback(async () => {
         if (appWizardBusy) return;
-        if (!isVercelConnected) {
-            setAppWizardError("Connect Vercel to continue.");
-            setAppWizardStep(1);
-            return;
-        }
-
         const prompt = (appWizardPrompt || "").trim();
         if (!prompt) {
             setAppWizardError("Enter a prompt to continue.");
@@ -2251,7 +2289,7 @@ export default function PreviewPage(): JSX.Element {
         } finally {
             setAppWizardBusy(false);
         }
-    }, [appWizardBusy, isVercelConnected, appWizardPrompt, handleCreateApp]);
+    }, [appWizardBusy, appWizardPrompt, handleCreateApp]);
 
     // New: create an app from the starter template (free)
     const handleCreateTemplateApp = useCallback(async () => {
@@ -5483,8 +5521,8 @@ export default function PreviewPage(): JSX.Element {
                                             <div className="text-sm font-semibold text-neutral-900">Create a Web App</div>
                                             <div className="text-xs text-neutral-600">
                                                 {appWizardStep === 1
-                                                    ? "Vercel is required to preview and deploy your app live."
-                                                    : "Choose how you want to create your app."}
+                                                    ? "Optional: connect Vercel now to deploy a live URL later."
+                                                    : "Start building now. You’ll only need Vercel when you deploy."}
                                             </div>
 
                                             <div className="pt-2">
@@ -5500,7 +5538,7 @@ export default function PreviewPage(): JSX.Element {
                                                     >
                                                         <span className="opacity-90">Stage 1</span>
                                                         <span className="opacity-90">·</span>
-                                                        <span className="opacity-95">Connect Vercel</span>
+                                                        <span className="opacity-95">Connect Vercel (optional)</span>
                                                     </span>
 
                                                     <span className="text-neutral-300">→</span>
@@ -5646,7 +5684,7 @@ export default function PreviewPage(): JSX.Element {
                                                     >
                                                         <div className="flex items-center justify-between gap-2">
                                                             <div className="text-sm font-semibold text-neutral-900">Build from this URL</div>
-                                                            <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                                                            <span className="whitespace-nowrap inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
                                                                 Coming soon
                                                             </span>
                                                         </div>
@@ -5665,7 +5703,7 @@ export default function PreviewPage(): JSX.Element {
                                                     >
                                                         <div className="flex items-center justify-between gap-2">
                                                             <div className="text-sm font-semibold text-neutral-900">Build from a prompt</div>
-                                                            <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                                                            <span className="whitespace-nowrap inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
                                                                 Coming soon
                                                             </span>
                                                         </div>
@@ -5690,26 +5728,23 @@ export default function PreviewPage(): JSX.Element {
                                         <button
                                             type="button"
                                             onClick={() => {
-                                                if (appWizardStep === 2) setAppWizardStep(1);
-                                                else {
-                                                    setAppWizardOpen(false);
-                                                    setAppWizardError(null);
-                                                    setAppWizardBusy(false);
-                                                }
+                                                setAppWizardOpen(false);
+                                                setAppWizardError(null);
+                                                setAppWizardBusy(false);
                                             }}
                                             className="rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-800 hover:bg-neutral-50"
                                         >
-                                            {appWizardStep === 2 ? "Back" : "Cancel"}
+                                            Cancel
                                         </button>
 
-                                        {appWizardStep === 1 && !isVercelConnected ? null : appWizardStep === 1 ? (
+                                        {appWizardStep === 1 ? (
                                             <button
                                                 type="button"
                                                 onClick={() => setAppWizardStep(2)}
                                                 className="rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
                                                 style={{ backgroundColor: ACCENT }}
                                             >
-                                                Continue
+                                                {isVercelConnected ? "Continue" : "Skip for now"}
                                             </button>
                                         ) : null}
                                     </div>
@@ -5810,20 +5845,24 @@ export default function PreviewPage(): JSX.Element {
                                                 <div className="flex gap-2">
                                                     <button
                                                         type="button"
-                                                        onClick={() => {
-                                                            if (!isVercelConnected) {
-                                                                // Reuse the website/app wizard connect handler.
-                                                                void handleConnectVercelForAppWizard();
-                                                                return;
-                                                            }
+                                                        onClick={() =>
+                                                            void (async () => {
+                                                                if (!isVercelConnected) {
+                                                                    // Reuse the website/app wizard connect handler.
+                                                                    void handleConnectVercelForAppWizard();
+                                                                    return;
+                                                                }
 
-                                                            if (userTier === "free") {
-                                                                setAppDeployWizardStep(2);
-                                                            } else {
+                                                                const tierNow = await refreshUserTierNow();
+                                                                if (tierNow === "free") {
+                                                                    setAppDeployWizardStep(2);
+                                                                    return;
+                                                                }
+
                                                                 setAppDeployWizardStep(3);
                                                                 autoAppDeployTriggeredRef.current = true;
-                                                            }
-                                                        }}
+                                                            })()
+                                                        }
                                                         className="flex-1 rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
                                                         style={{ backgroundColor: ACCENT }}
                                                         disabled={isVercelChecking}

@@ -1,53 +1,22 @@
 // app/api/app-builder/create/route.ts
+import { getAdminDb } from "@/app/api/_lib/auth";
+import { requireSessionAndMaybeCsrf } from "@/app/api/_lib/route-guard";
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminDb } from "../../_lib/auth";
-import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
-import { DEFAULT_APP_TEMPLATE_FILES, DEFAULT_APP_TEMPLATE_VERSION } from "../_lib/default-app-template";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// Fetch default template from Firebase
 // Fetch default template from Firebase. If not found, throw.
 async function getDefaultTemplate(db: any) {
   const templateDoc = await db.collection("system").doc("default_app_template").get();
   if (!templateDoc.exists) {
-    // Self-heal: write the canonical default template into Firestore.
-    // This keeps a single template source of truth while avoiding manual setup in dev/new envs.
-    await db.collection("system").doc("default_app_template").set(
-      {
-        files: DEFAULT_APP_TEMPLATE_FILES,
-        updatedAt: new Date(),
-        version: DEFAULT_APP_TEMPLATE_VERSION,
-        source: "auto_seed",
-      },
-      { merge: true },
-    );
-    console.warn("[app-builder/create] system/default_app_template missing; auto-seeded default template");
-    return DEFAULT_APP_TEMPLATE_FILES;
+    throw new Error("Default app template not found in Firestore. Please run setup-default-template.js.");
   }
   const templateData = templateDoc.data();
   if (!templateData?.files) {
     throw new Error("Default app template is missing 'files' property in Firestore.");
   }
-
-  // If we previously auto-seeded the doc and the canonical template version has changed,
-  // keep the Firestore doc in sync automatically.
-  if (templateData?.source === "auto_seed" && templateData?.version !== DEFAULT_APP_TEMPLATE_VERSION) {
-    await db.collection("system").doc("default_app_template").set(
-      {
-        files: DEFAULT_APP_TEMPLATE_FILES,
-        updatedAt: new Date(),
-        version: DEFAULT_APP_TEMPLATE_VERSION,
-        source: "auto_seed",
-      },
-      { merge: true },
-    );
-    console.warn(
-      `[app-builder/create] system/default_app_template auto-seeded version '${templateData?.version}' updated to '${DEFAULT_APP_TEMPLATE_VERSION}'`,
-    );
-    return DEFAULT_APP_TEMPLATE_FILES;
-  }
-
   return templateData.files;
 }
 
@@ -90,7 +59,6 @@ export async function POST(req: NextRequest) {
     let initialFiles = await getDefaultTemplate(db);
     // Ensure common DB deps exist so the first Supabase connect doesn't fail with a missing module.
     ensureSupabaseJsDependencyInPackageJson(initialFiles as any);
-
     // If renderId is provided, generate initial content from the render
     if (renderId) {
       try {
@@ -106,16 +74,16 @@ export async function POST(req: NextRequest) {
 
 export default function Home() {
   return (
-    <main className="kloner-shell">
-      <div className="kloner-card">
-        <div className="kloner-top">
-          <div className="kloner-brand">
-            <span className="kloner-dot" aria-hidden="true" />
+    <main className=\"kloner-shell\">
+      <div className=\"kloner-card\">
+        <div className=\"kloner-top\">
+          <div className=\"kloner-brand\">
+            <span className=\"kloner-dot\" aria-hidden=\"true\" />
             <span>Kloner</span>
           </div>
-          <div className="kloner-meta">Imported render</div>
+          <div className=\"kloner-meta\">Imported render</div>
         </div>
-        <div className="kloner-body">
+        <div className=\"kloner-body\">
           <div dangerouslySetInnerHTML={{ __html: \`${renderData.html.replace(/`/g, '\\`')}\` }} />
         </div>
       </div>

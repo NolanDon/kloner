@@ -48,9 +48,15 @@ function toDateFromFirestoreTimestampLike(v: any): Date | null {
 function getActiveTierOverride(data: any, now: Date): UserTier | null {
     if (!data || typeof data !== "object") return null;
     const rawTier = typeof data.tierOverrideTier === "string" ? data.tierOverrideTier : "";
+    const rawReason = typeof data.tierOverrideReason === "string" ? data.tierOverrideReason : "";
+    const reason = rawReason.trim().toLowerCase();
     const until = toDateFromFirestoreTimestampLike(data.tierOverrideUntil);
     if (!rawTier || !until) return null;
     if (!(now < until)) return null;
+
+    // `trial_cancelled` should not revoke paid access immediately.
+    // Credits/feature limits are handled via credits overrides.
+    if (reason === "trial_cancelled") return null;
 
     const t = rawTier.toLowerCase();
     if (t === "free" || t === "pro" || t === "agency") return t as UserTier;
@@ -123,6 +129,10 @@ export async function GET(req: NextRequest) {
                 try {
                     const expected = monthlyLimitFor(tier, "edit");
                     const bucket = aiEditsBucketFromUserData(userData);
+                    const currentRemaining =
+                        bucket && typeof bucket.remaining === "number" && Number.isFinite(bucket.remaining) && bucket.remaining >= 0
+                            ? bucket.remaining
+                            : null;
                     const currentMonthly =
                         bucket && typeof bucket.monthlyLimit === "number" && bucket.monthlyLimit >= 0
                             ? bucket.monthlyLimit
@@ -136,19 +146,28 @@ export async function GET(req: NextRequest) {
                                 ? new Date(stripePeriodEndSec * 1000)
                                 : endOfCurrentMonthUtc();
 
-                        await userRef.set(
-                            {
-                                "credits.aiEdits":
-                                    expected === 0
-                                        ? { monthlyLimit: 0, remaining: null, periodEnd: toFirestoreTsOrDate(periodEndDate) }
-                                        : {
-                                            monthlyLimit: expected,
-                                            remaining: expected,
-                                            periodEnd: toFirestoreTsOrDate(periodEndDate),
-                                        },
-                            },
-                            { merge: true },
-                        );
+                        // IMPORTANT: remaining may include paid top-ups.
+                        // On tier change, reset the *monthly* portion to the new expected limit,
+                        // but preserve any purchased bonus credits.
+                        const bonusRaw = (bucket as any)?.bonusRemaining;
+                        const bonus =
+                            typeof bonusRaw === "number" && Number.isFinite(bonusRaw) && bonusRaw >= 0
+                                ? Math.floor(bonusRaw)
+                                : currentRemaining !== null && currentMonthly !== null
+                                    ? Math.max(0, currentRemaining - currentMonthly)
+                                    : 0;
+
+                        const nextBucket: any =
+                            expected === 0
+                                ? { monthlyLimit: 0, remaining: null, periodEnd: toFirestoreTsOrDate(periodEndDate) }
+                                : {
+                                    monthlyLimit: expected,
+                                    periodEnd: toFirestoreTsOrDate(periodEndDate),
+                                    remaining: expected + bonus,
+                                    ...(bonus > 0 ? { bonusRemaining: bonus } : {}),
+                                };
+
+                        await userRef.set({ "credits.aiEdits": nextBucket }, { merge: true });
 
                         const after = await userRef.get();
                         userData = after.exists ? after.data() : userData;

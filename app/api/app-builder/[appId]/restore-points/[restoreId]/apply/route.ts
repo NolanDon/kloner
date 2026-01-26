@@ -6,6 +6,12 @@ import { assertAppBuilderScope } from "@/app/api/_lib/appBuilderScope";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function isEnvPath(path: string): boolean {
+    const lower = String(path || "").toLowerCase();
+    const base = lower.split("/").pop() || lower;
+    return base === ".env" || base.startsWith(".env.");
+}
+
 function safeString(v: unknown, max = 200): string {
     return typeof v === "string" ? v.trim().slice(0, max) : "";
 }
@@ -22,6 +28,7 @@ function captureSnapshot(files: Record<string, { content: string; lastModified: 
     let total = 0;
 
     for (const [path, file] of Object.entries(files).slice(0, MAX_FILES)) {
+        if (isEnvPath(path)) continue;
         const content = typeof (file as any)?.content === "string" ? (file as any).content : "";
         total += content.length;
         if (total > MAX_TOTAL) break;
@@ -83,6 +90,7 @@ export async function POST(
                 inversePaths.push(...inverseCapture.paths);
             } else {
                 for (const p of paths) {
+                    if (isEnvPath(p)) continue;
                     if (Object.prototype.hasOwnProperty.call(files, p)) {
                         inverse[p] = typeof files[p]?.content === "string" ? files[p].content : "";
                     } else {
@@ -99,6 +107,7 @@ export async function POST(
             }
 
             for (const p of paths) {
+                if (isEnvPath(p)) continue;
                 const v = before[p];
                 if (v === null) {
                     if (!isSnapshot) delete nextFiles[p];

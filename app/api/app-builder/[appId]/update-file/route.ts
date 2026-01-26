@@ -7,6 +7,12 @@ import { assertAppBuilderScope } from "../../../_lib/appBuilderScope";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function isEnvPath(path: string): boolean {
+    const lower = String(path || "").toLowerCase();
+    const base = lower.split("/").pop() || lower;
+    return base === ".env" || base.startsWith(".env.");
+}
+
 function sanitizeRelativePath(input: unknown): string | null {
     const raw = typeof input === "string" ? input.trim() : "";
     if (!raw) return null;
@@ -65,6 +71,13 @@ export async function POST(
         const sanitizedPath = sanitizeRelativePath(path);
         if (!sanitizedPath || typeof content !== "string") {
             return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+        }
+
+        if (isEnvPath(sanitizedPath)) {
+            return NextResponse.json(
+                { error: "Refusing to write .env files. Use Vercel env vars for deploy, and preview env sync for local preview." },
+                { status: 400 },
+            );
         }
 
         const normalized = normalizeJsTsConfig(sanitizedPath, content);
