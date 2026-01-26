@@ -2124,23 +2124,25 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                     </div>
                 ) : null}
 
-                <div className="flex gap-2 border border-gray-300">
+                <div className="flex items-stretch overflow-hidden rounded-xl border border-gray-300 bg-white">
                     <textarea
                         ref={inputRef}
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyPress={handleKeyPress}
                         placeholder="Ask me to build something..."
-                        className="flex-1 p-3 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-accent"
+                        className="flex-1 resize-none bg-transparent p-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none"
                         rows={3}
                         disabled={isLoading || chatDisabled}
                     />
                     <button
+                        type="button"
                         onClick={sendMessage}
                         disabled={!input.trim() || isLoading || chatDisabled}
-                        className="px-3 py-2 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        className="flex w-14 items-center justify-center border-l border-gray-200 bg-white text-accent transition hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        aria-label="Send message"
                     >
-                        <Send className="w-6 h-6 text-accent" />
+                        <Send className="h-6 w-6" />
                     </button>
                 </div>
                 <div className="mt-2 text-xs text-gray-500">
