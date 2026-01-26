@@ -41,6 +41,31 @@ function inferReturnPathFromLocalStorage(): string | null {
     if (typeof window === "undefined") return null;
     try {
         // Prefer more specific flows first.
+        const pendingAppDeploy = window.localStorage.getItem("kloner_vercel_pending_app_deploy");
+        if (pendingAppDeploy) {
+            try {
+                const parsed = JSON.parse(pendingAppDeploy) as any;
+                const appId = typeof parsed?.appId === "string" ? parsed.appId.trim() : "";
+
+                const startedAt = Number(parsed?.startedAt || 0);
+                const MAX_AGE_MS = 15 * 60 * 1000;
+                if (startedAt && Number.isFinite(startedAt) && Date.now() - startedAt > MAX_AGE_MS) {
+                    try {
+                        window.localStorage.removeItem("kloner_vercel_pending_app_deploy");
+                    } catch {
+                        // ignore
+                    }
+                    return null;
+                }
+
+                return appId
+                    ? `/dashboard/view?appVercel=connected&flow=appDeploy&appId=${encodeURIComponent(appId)}`
+                    : "/dashboard/view?appVercel=connected&flow=appDeploy";
+            } catch {
+                return "/dashboard/view?appVercel=connected&flow=appDeploy";
+            }
+        }
+
         const pendingAppPreview = window.localStorage.getItem("kloner_vercel_pending_app_preview");
         if (pendingAppPreview) {
             // App Builder preview restore is already handled by the legacy `vercel=connected` listener.

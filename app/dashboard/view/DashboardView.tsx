@@ -4303,7 +4303,7 @@ export default function PreviewPage(): JSX.Element {
             ].join("; ");
 
             // IMPORTANT: use a different callback signal than the legacy deploy wizard.
-            const returnTo = `/dashboard/view?appVercel=connected`;
+            const returnTo = `/dashboard/view?appVercel=connected&flow=appWizard`;
             document.cookie = [
                 `vercel_oauth_return=${encodeURIComponent(returnTo)}`,
                 "Path=/",
@@ -4317,6 +4317,65 @@ export default function PreviewPage(): JSX.Element {
             console.error("Inline Vercel connect failed to start", e);
             setAppWizardError("Could not open Vercel. Try again in a moment.");
             setAppWizardOpeningVercel(false);
+        }
+    }
+
+    function handleConnectVercelForAppDeployWizard() {
+        const u = auth.currentUser;
+        if (!VERCEL_INTEGRATION_SLUG || !u) {
+            console.error("Missing integration slug or user not signed in");
+            setAppDeployWizardError("Sign in to connect Vercel.");
+            return;
+        }
+
+        setAppDeployWizardError(null);
+
+        try {
+            const bytes = new Uint8Array(16);
+            crypto.getRandomValues(bytes);
+            const state = Array.from(bytes)
+                .map((b) => b.toString(16).padStart(2, "0"))
+                .join("");
+
+            // Persist which app this deploy was for so we can resume after OAuth redirect.
+            try {
+                const payload = {
+                    appId: appDeployWizardAppId,
+                    appName: appDeployWizardAppName,
+                    startedAt: Date.now(),
+                };
+                localStorage.setItem(
+                    "kloner_vercel_pending_app_deploy",
+                    JSON.stringify(payload),
+                );
+            } catch {
+                // ignore
+            }
+
+            localStorage.setItem("kloner_vercel_latest_csrf", state);
+            document.cookie = [
+                `vercel_oauth_state=${state}`,
+                "Path=/",
+                "Max-Age=600",
+                "SameSite=Lax",
+            ].join("; ");
+
+            const appIdParam = appDeployWizardAppId
+                ? `&appId=${encodeURIComponent(appDeployWizardAppId)}`
+                : "";
+            const returnTo = `/dashboard/view?appVercel=connected&flow=appDeploy${appIdParam}`;
+            document.cookie = [
+                `vercel_oauth_return=${encodeURIComponent(returnTo)}`,
+                "Path=/",
+                "Max-Age=600",
+                "SameSite=Lax",
+            ].join("; ");
+
+            const link = `https://vercel.com/integrations/${VERCEL_INTEGRATION_SLUG}/new?state=${state}`;
+            window.location.assign(link);
+        } catch (e) {
+            console.error("Inline Vercel connect failed to start", e);
+            setAppDeployWizardError("Could not open Vercel. Try again in a moment.");
         }
     }
 
@@ -4399,6 +4458,84 @@ export default function PreviewPage(): JSX.Element {
         void (async () => {
             await refreshVercelStatus();
 
+            const flow = searchParams.get("flow") || "";
+
+            // If we connected Vercel from the app deploy wizard, resume that flow (auto-deploy).
+            let pendingAppDeploy: { appId?: string | null; appName?: string | null; startedAt?: number | null } | null = null;
+            try {
+                const raw = localStorage.getItem("kloner_vercel_pending_app_deploy");
+                if (raw) pendingAppDeploy = JSON.parse(raw);
+            } catch {
+                pendingAppDeploy = null;
+            }
+
+            const appIdFromQuery = searchParams.get("appId");
+
+            // Ignore very old pending markers (e.g. user aborted OAuth days ago).
+            try {
+                const startedAt = Number((pendingAppDeploy as any)?.startedAt || 0);
+                const MAX_AGE_MS = 15 * 60 * 1000;
+                if (startedAt && Number.isFinite(startedAt) && Date.now() - startedAt > MAX_AGE_MS) {
+                    pendingAppDeploy = null;
+                    localStorage.removeItem("kloner_vercel_pending_app_deploy");
+                }
+            } catch {
+                // ignore
+            }
+
+            const isAppDeployFlow = flow === "appDeploy" || !!pendingAppDeploy?.appId;
+
+            if (isAppDeployFlow) {
+                const nextAppId =
+                    (typeof pendingAppDeploy?.appId === "string" && pendingAppDeploy.appId) ||
+                    (flow === "appDeploy" && typeof appIdFromQuery === "string" ? appIdFromQuery : null) ||
+                    null;
+                const nextAppName =
+                    (typeof pendingAppDeploy?.appName === "string" && pendingAppDeploy.appName) ||
+                    "";
+
+                setAppWizardOpen(false);
+                setAppWizardError(null);
+                setAppWizardBusy(false);
+
+                setAppDeployWizardAppId(nextAppId);
+                setAppDeployWizardAppName(nextAppName);
+                setAppDeployWizardError(null);
+                setAppDeployWizardBusy(false);
+                setAppDeployWizardLiveUrl(null);
+                setAppDeployWizardOpen(true);
+
+                try {
+                    localStorage.removeItem("kloner_vercel_pending_app_deploy");
+                } catch {
+                    // ignore
+                }
+
+                const tierNow = await refreshUserTierNow();
+                if (tierNow === "free") {
+                    setAppDeployWizardStep(2);
+                } else {
+                    setAppDeployWizardStep(3);
+                    autoAppDeployTriggeredRef.current = true;
+                }
+
+                // Clean up callback params so refresh/back doesn't reopen flows.
+                try {
+                    const url = new URL(window.location.href);
+                    const params = url.searchParams;
+                    params.delete("appVercel");
+                    params.delete("flow");
+                    params.delete("appId");
+                    const qs = params.toString();
+                    const next = qs ? `${url.pathname}?${qs}` : url.pathname;
+                    router.replace(next, { scroll: false });
+                } catch {
+                    // ignore
+                }
+
+                return;
+            }
+
             let pendingAppWizard: { url?: string; seedRenderId?: string | null } | null = null;
             try {
                 const raw = localStorage.getItem("kloner_vercel_pending_app_wizard");
@@ -4445,8 +4582,22 @@ export default function PreviewPage(): JSX.Element {
             setAppWizardTriedConnect(true);
             setAppWizardError(null);
             setAppWizardBusy(false);
+
+            // Clean up callback params so refresh/back doesn't reopen flows.
+            try {
+                const url = new URL(window.location.href);
+                const params = url.searchParams;
+                params.delete("appVercel");
+                params.delete("flow");
+                params.delete("appId");
+                const qs = params.toString();
+                const next = qs ? `${url.pathname}?${qs}` : url.pathname;
+                router.replace(next, { scroll: false });
+            } catch {
+                // ignore
+            }
         })();
-    }, [searchParams, refreshVercelStatus]);
+    }, [searchParams, refreshVercelStatus, refreshUserTierNow, router]);
 
     // ───────── step 1: start wizard from a render card ─────────
 
@@ -5886,8 +6037,7 @@ export default function PreviewPage(): JSX.Element {
                                                         onClick={() =>
                                                             void (async () => {
                                                                 if (!isVercelConnected) {
-                                                                    // Reuse the website/app wizard connect handler.
-                                                                    void handleConnectVercelForAppWizard();
+                                                                    void handleConnectVercelForAppDeployWizard();
                                                                     return;
                                                                 }
 
