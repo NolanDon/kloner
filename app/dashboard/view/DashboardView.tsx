@@ -5757,8 +5757,44 @@ export default function PreviewPage(): JSX.Element {
                                         </div>
 
                                         {appDeployWizardError ? (
-                                            <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                                                {appDeployWizardError}
+                                            <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                                                {/already exists/i.test(appDeployWizardError) ? (
+                                                    <div>
+                                                        <div className="font-semibold">Project name already exists</div>
+                                                        <div className="mt-1 text-sm text-red-700">
+                                                            {appDeployWizardError}
+                                                        </div>
+                                                        <div className="mt-2 text-[12px] leading-relaxed text-red-700">
+                                                            Fix: open your app in the editor by clicking <span className="font-semibold">Customize app</span> on your project,
+                                                            then rename it in the <span className="font-semibold">top left</span>. After that, retry deploy.
+                                                        </div>
+
+                                                        <div className="mt-3 flex items-center gap-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const id = appDeployWizardAppId;
+                                                                    if (!id) return;
+                                                                    closeAppDeployWizard();
+                                                                    setCurrentAppId(id);
+                                                                    setAppBuilderOpen(true);
+                                                                }}
+                                                                className="rounded-xl bg-white px-3 py-2 text-sm font-semibold text-neutral-900 shadow-sm hover:bg-neutral-50"
+                                                            >
+                                                                Customize app
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setAppDeployWizardError(null)}
+                                                                className="rounded-xl border border-red-200 bg-transparent px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100/60"
+                                                            >
+                                                                Dismiss
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="text-sm text-red-700">{appDeployWizardError}</div>
+                                                )}
                                             </div>
                                         ) : null}
 

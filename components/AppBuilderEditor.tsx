@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import Editor from "@monaco-editor/react";
-import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database } from "lucide-react";
+import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database, Rocket } from "lucide-react";
 import AIAgentChat from "./AIAgentChat";
 import KlonerLoader from "./KlonerLoader";
 import WebContainerRunner from "./WebContainerRunner";
@@ -189,6 +189,11 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     const [supabaseProjectRef, setSupabaseProjectRef] = useState<string | null>(null);
     const supabaseVerifyInFlightRef = useRef(false);
     const lastSupabaseVerifyAtRef = useRef(0);
+    const supabaseConnectedRef = useRef<boolean | null>(null);
+
+    useEffect(() => {
+        supabaseConnectedRef.current = supabaseConnected;
+    }, [supabaseConnected]);
 
         const refreshSupabaseStatusFromApi = useCallback(async (): Promise<boolean> => {
             try {
@@ -219,11 +224,11 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
 
         const verifySupabaseConnection = useCallback(async (opts?: { silent?: boolean }): Promise<boolean> => {
             if (!user?.uid) return false;
-            if (supabaseVerifyInFlightRef.current) return supabaseConnected === true;
+            if (supabaseVerifyInFlightRef.current) return supabaseConnectedRef.current === true;
 
             const now = Date.now();
             if (now - lastSupabaseVerifyAtRef.current < 10_000) {
-                return supabaseConnected === true;
+                return supabaseConnectedRef.current === true;
             }
             lastSupabaseVerifyAtRef.current = now;
             supabaseVerifyInFlightRef.current = true;
@@ -243,7 +248,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                 if (!res.ok || !data?.ok) {
                     // If we're in a neutral/"verifying" state, don't get stuck.
                     // Fall back to the session-protected status endpoint (GET; no CSRF).
-                    if (supabaseConnected === null) {
+                    if (supabaseConnectedRef.current === null) {
                         const ok = await refreshSupabaseStatusFromApi();
                         if (ok) return true;
                         setSupabaseConnected(false);
@@ -252,7 +257,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                         return false;
                     }
                     // Don’t flap the UI on transient failures.
-                    return supabaseConnected === true;
+                    return supabaseConnectedRef.current === true;
                 }
 
                 if (data.connected) {
@@ -277,7 +282,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                 }
                 return false;
             } catch {
-                if (supabaseConnected === null) {
+                if (supabaseConnectedRef.current === null) {
                     const ok = await refreshSupabaseStatusFromApi();
                     if (ok) return true;
                     setSupabaseConnected(false);
@@ -285,11 +290,11 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                     setSupabaseProjectRef(null);
                     return false;
                 }
-                return supabaseConnected === true;
+                return supabaseConnectedRef.current === true;
             } finally {
                 supabaseVerifyInFlightRef.current = false;
             }
-        }, [showAlert, supabaseConnected, user?.uid]);
+        }, [refreshSupabaseStatusFromApi, showAlert, user?.uid]);
 
         useEffect(() => {
             if (!user?.uid) {
@@ -2211,7 +2216,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
             <div className="h-full w-full bg-white flex flex-col">
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b bg-gray-50">
-                    <div className="flex items-center gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
                         {isRenaming ? (
                             <div className="flex items-center gap-2">
                                 <input
@@ -2251,84 +2256,113 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                 </h1>
                             </div>
                         )}
+
+                        {/* Project controls (moved off top-right) */}
+                        <div className="ml-2 flex items-center gap-2">
+                            <button
+                                onClick={() => void handleSave(true)}
+                                disabled={isSaving}
+                                className="px-4 py-2 bg-[#F55F2A] text-xs font-semibold text-white rounded hover:bg-[#E04E1B] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all rounded-full"
+                            >
+                                <Upload className="w-4 h-4" />
+                                {isSaving ? "Saving..." : "Save"}
+                            </button>
+
+                            <button
+                                onClick={() => void openDatabaseConnect()}
+                                className={`min-w-[170px] px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors whitespace-nowrap ${
+                                    supabaseConnected === null
+                                        ? "bg-white text-gray-500 border border-gray-200"
+                                        : supabaseConnected
+                                          ? "bg-green-100 text-green-900 hover:bg-green-200"
+                                          : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-100"
+                                }`}
+                                title={
+                                    supabaseConnected
+                                        ? `Database connected${supabaseProjectName ? `: ${supabaseProjectName}` : ""}`
+                                        : "Connect your database"
+                                }
+                            >
+                                <Database className="w-4 h-4" />
+                                {supabaseConnected === null ? (
+                                    <span>DB: Verifying</span>
+                                ) : supabaseConnected ? (
+                                    <span>DB: Connected</span>
+                                ) : (
+                                    <span>Connect DB</span>
+                                )}
+                            </button>
+
+                            {supabaseConnected ? (
+                                <button
+                                    onClick={() => void disconnectSupabase()}
+                                    className="p-2 rounded-full border border-red-200 bg-white text-red-700 hover:bg-red-50 transition-colors"
+                                    title="Disconnect Supabase from Kloner (does not delete your Supabase project)"
+                                    aria-label="Disconnect database"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            ) : null}
+                        </div>
                     </div>
                     <div className="flex gap-2 items-center">
-                        <button
-                            onClick={() => void handleSave(true)}
-                            disabled={isSaving}
-                            className="px-4 py-2 bg-[#F55F2A] text-xs font-semibold text-white rounded hover:bg-[#E04E1B] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all  rounded-full"
-                        >
-                            <Upload className="w-4 h-4" />
-                            {isSaving ? "Saving..." : "Save"}
-                        </button>
+                        {/* Top-right reserved for machine + deploy (PreviewEditorV2-style) */}
+                        <div className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-2 py-1 shadow-md">
+                            <div className="px-2 text-[11px] font-semibold text-neutral-700 whitespace-nowrap">
+                                <span
+                                    className={`mr-2 inline-block h-2 w-2 rounded-full ${
+                                        isPreviewBuilding
+                                            ? "bg-amber-500"
+                                            : isRefreshing
+                                              ? "bg-blue-500"
+                                              : isWebPreviewReady
+                                                ? "bg-green-500"
+                                                : "bg-neutral-400"
+                                    }`}
+                                    aria-hidden="true"
+                                />
+                                Machine: {isPreviewBuilding ? "Starting" : isRefreshing ? "Refreshing" : isWebPreviewReady ? "Ready" : "Idle"}
+                            </div>
 
-                        <button
-                            onClick={() => void openDatabaseConnect()}
-                            className={`px-4 py-2 text-xs font-semibold rounded-full flex items-center gap-2 transition-colors ${
-                                supabaseConnected === null
-                                    ? "bg-white text-gray-500 border border-gray-200"
-                                    : supabaseConnected
-                                      ? "bg-green-100 text-green-900 hover:bg-green-200"
-                                      : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-100"
-                            }`}
-                            title={
-                                supabaseConnected
-                                    ? `Database connected${supabaseProjectName ? `: ${supabaseProjectName}` : ""}`
-                                    : "Connect your database"
-                            }
-                        >
-                            <Database className="w-4 h-4" />
-                            {supabaseConnected === null ? (
-                                <span>Database: Verifying</span>
-                            ) : supabaseConnected ? (
-                                <span>Database: Connected</span>
-                            ) : (
-                                <span>Connect database</span>
-                            )}
-                        </button>
-
-                        {supabaseConnected ? (
                             <button
-                                onClick={() => void disconnectSupabase()}
-                                className="px-4 py-2 text-xs font-semibold rounded-full flex items-center gap-2 transition-colors bg-white text-red-700 border border-red-200 hover:bg-red-50"
-                                title="Disconnect Supabase from Kloner (does not delete your Supabase project)"
+                                onClick={handleReconnect}
+                                disabled={isRefreshing || isPreviewBuilding}
+                                className="inline-flex h-7 items-center justify-center gap-1.5 rounded-full border border-neutral-300 bg-white px-2.5 text-[12px] font-semibold text-neutral-700 shadow-sm transition hover:bg-neutral-50 disabled:opacity-60"
+                                title="Reconnect to the existing machine without restarting"
                             >
-                                <X className="w-4 h-4" />
-                                <span>Disconnect</span>
+                                <RotateCcw className="h-3.5 w-3.5" />
+                                <span>Refresh</span>
                             </button>
-                        ) : null}
-                        <button
-                            onClick={handleReconnect}
-                            disabled={isRefreshing || isPreviewBuilding}
-                            className="px-4 py-2 bg-[#F55F2A] text-xs font-semibold text-white rounded flex items-center gap-2 rounded-full hover:bg-[#E04E1B] disabled:opacity-50 disabled:cursor-not-allowed"
-                            title="Reconnect to the existing machine without restarting"
-                        >
-                            <RotateCcw className="w-4 h-4" />
-                            Refresh
-                        </button>
-                        <button
-                            onClick={() => handleRefresh(true)}
-                            disabled={isPreviewBuilding || isRefreshing}
-                            className="px-4 py-2 bg-[#F55F2A] text-xs font-semibold text-white rounded flex items-center gap-2 rounded-full hover:bg-[#E04E1B]"
-                            title="Delete current machine and rebuild app (this will not delete your website)"
-                        >
-                            <RefreshCw className="w-4 h-4" />
-                            {isPreviewBuilding ? "Starting…" : "Rebuild app"}
-                        </button>
+
+                            <button
+                                onClick={() => handleRefresh(true)}
+                                disabled={isPreviewBuilding || isRefreshing}
+                                className="inline-flex h-7 items-center justify-center gap-1.5 rounded-full border border-neutral-300 bg-white px-2.5 text-[12px] font-semibold text-neutral-700 shadow-sm transition hover:bg-neutral-50 disabled:opacity-60"
+                                title="Delete current machine and rebuild app (this will not delete your website)"
+                            >
+                                <RefreshCw className="h-3.5 w-3.5" />
+                                <span>{isPreviewBuilding ? "Starting" : "Rebuild"}</span>
+                            </button>
+                        </div>
+
                         <button
                             onClick={handleDeploy}
                             disabled={isDeploying}
-                            className="px-4 py-2 bg-[#F55F2A] text-xs font-semibold text-white rounded hover:bg-[#E04E1B] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all  rounded-full"
+                            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#f55f2a] bg-[#f55f2a] px-3 py-1 text-[13px] font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60"
+                            title="Deploy"
+                            aria-label="Deploy"
                         >
-                            <Upload className="w-4 h-4" />
-                            {isDeploying ? "Deploying..." : "Deploy"}
+                            <Rocket className="h-3.5 w-3.5" aria-hidden="true" />
+                            <span>{isDeploying ? "Deploying…" : "Deploy"}</span>
                         </button>
+
                         <button
                             onClick={onClose}
-                            className="p-2 hover:bg-gray-200 rounded transition-colors"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-300 bg-white text-neutral-700 shadow-md transition hover:bg-neutral-50"
                             title="Close"
+                            aria-label="Close editor"
                         >
-                            <X className="w-5 h-5" />
+                            <X className="w-4 h-4" />
                         </button>
                     </div>
                 </div>
