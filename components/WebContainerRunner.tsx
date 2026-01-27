@@ -64,6 +64,9 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const iframeLoadedSuccessfullyRef = useRef(false); // Track if iframe loaded successfully
   const lastForceFreshStartRef = useRef<number>(0);
   const pollingCodeRef = useRef<string | null>(null); // Track the current polling code
+  const backendReadyRef = useRef(false); // Backend contract: `ready === true` is authoritative
+  const lastUiStageRef = useRef<string>('');
+  const lastStatusRef = useRef<string>('');
   const statusPollTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Track status polling timeout
   const iframeLoadTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Track iframe load timeout
   const automaticRetryTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Track automatic retry timeout
@@ -474,6 +477,10 @@ export default function NavBar() {
     }
   };
 
+  // Frontend grace window: if the preview flips to `status=error` very early,
+  // keep polling because the backend/VM may still recover (restarts during boot).
+  const PREVIEW_ERROR_GRACE_MS = 3 * 60 * 1000;
+
   const formatStatusTime = (ms: number) => {
     try {
       return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -487,18 +494,21 @@ export default function NavBar() {
     // const stage = String(statusData?.uiStage || statusData?.status || '').trim();
     const title = String(statusData?.uiTitle || '').trim();
     const detail = String(statusData?.uiMessage || '').trim();
-    const message = [title, detail].filter(Boolean).join(' — ');
+    // UI log line contract:
+    // - Show exactly one message (prefer uiMessage).
+    // - Format: HH:MM — <message>
+    const message = detail || title;
     const updatedAtMs = getUpdatedAtMs(statusData?.updatedAt);
     const timeLabel = typeof updatedAtMs === 'number' ? formatStatusTime(updatedAtMs) : '';
     // if (!stage && !message && !timeLabel) return null;
-    if (!message && !timeLabel) return null;
-    
-    const left = [timeLabel].filter(Boolean).join(' ');
+    if (!message) return null;
+
+    const left = timeLabel;
     return (
       <div className="mt-6 w-full max-w-2xl rounded-2xl border border-black/10 bg-white/70 px-6 py-4 text-left shadow-sm backdrop-blur-sm">
         <div className="text-sm text-black/80">
           {left ? <span className="font-semibold">{left}</span> : null}
-          {message ? <span className="text-black/60">{`${left ? ' — ' : ''}${message}`}</span> : null}
+          <span className="text-black/60">{`${left ? ' — ' : ''}${message}`}</span>
         </div>
       </div>
     );
@@ -1250,7 +1260,45 @@ export default function NavBar() {
             }
 
             const statusData = await statusResponse.json();
-            console.log('Status check:', statusData);
+            if (process.env.NODE_ENV !== 'production') {
+              try {
+                const status = String((statusData as any)?.status || '').toLowerCase();
+                const uiStage = String((statusData as any)?.uiStage || '').toLowerCase();
+                const ready = Boolean((statusData as any)?.ready);
+                const progress = (statusData as any)?.uiProgress;
+                console.log('[WebContainerRunner] preview poll tick', {
+                  appId,
+                  code,
+                  status,
+                  uiStage,
+                  ready,
+                  progress,
+                  machineId: (statusData as any)?.machineId,
+                });
+
+                if (uiStage && uiStage !== lastUiStageRef.current) {
+                  console.log('[WebContainerRunner] uiStage transition', {
+                    appId,
+                    code,
+                    from: lastUiStageRef.current,
+                    to: uiStage,
+                  });
+                  lastUiStageRef.current = uiStage;
+                }
+
+                if (status && status !== lastStatusRef.current) {
+                  console.log('[WebContainerRunner] status transition', {
+                    appId,
+                    code,
+                    from: lastStatusRef.current,
+                    to: status,
+                  });
+                  lastStatusRef.current = status;
+                }
+              } catch {
+                // ignore telemetry failures
+              }
+            }
             
             // Reset 404 counter on successful response
             containerNotFoundCountRef.current = 0;
@@ -1258,9 +1306,51 @@ export default function NavBar() {
             // Store the status data for UI display
             setCurrentStatusData(statusData);
 
-            if (statusData.status === 'ready' || statusData.status === 'running' || statusData.status === 'compiled' || statusData.status === 'started') {
-              // App is ready! Set the preview URL
-              const deploymentUrl = statusData.url;
+            const status = String((statusData as any)?.status || '').toLowerCase();
+            const uiStage = String((statusData as any)?.uiStage || '').toLowerCase();
+            const readyFlag = Boolean((statusData as any)?.ready);
+            const deploymentUrl = String((statusData as any)?.url || '').trim();
+
+            // Backend contract: treat `ready === true` as the completion signal.
+            // Also handle explicit terminal states and transient restarting states.
+            if (status === 'stopped') {
+              backendReadyRef.current = false;
+              await clearStoredContainerCodeEverywhere(appId, user);
+              stopAllTimers();
+              setIsPolling(false);
+              setIsLoading(false);
+              setConnectingToExisting(false);
+              setLoadingStatus('');
+              setError('Preview stopped. Use Reconnect, or Start fresh to create a new machine.');
+              setCanRetry(true);
+              setPreviewUrl(null);
+              return;
+            }
+
+            // New contract can emit uiStage=restarting while the machine restarts.
+            // Keep polling, and optionally show the preview URL (fallback UI) if it's already reachable.
+            if (uiStage === 'restarting') {
+              backendReadyRef.current = false;
+              setError(null);
+              setCanRetry(false);
+              setIsPolling(true);
+              setIsLoading(false);
+              if (deploymentUrl) {
+                // Show the host UI if it's up, but keep polling until ready.
+                iframeLoadedSuccessfullyRef.current = false;
+                setPreviewUrl(deploymentUrl);
+              }
+              statusPollTimeoutRef.current = setTimeout(pollStatus, 5000);
+              return;
+            }
+
+            const isReady =
+              readyFlag ||
+              status === 'ready' ||
+              ['running', 'compiled', 'started', 'online', 'active', 'completed', 'finished'].includes(status);
+
+            if (isReady) {
+              backendReadyRef.current = true;
               console.log('Deployment ready at:', deploymentUrl);
 
               if (!deploymentUrl) {
@@ -1270,67 +1360,128 @@ export default function NavBar() {
 
               // Clear status data since we're done
               setCurrentStatusData(null);
-              setLoadingStatus(''); // Clear loading status on success
+              setLoadingStatus('');
+
+              // Force a reload when we hit ready, so we don't stick on a fallback UI.
+              const readyUrl = withCacheBust(deploymentUrl);
 
               // For Fly.io deployments, add a small delay to let DNS propagate
               if (deploymentUrl.includes('.fly.dev')) {
                 console.log('Fly.io deployment detected, allowing time for DNS propagation...');
-                setLoadingStatus(`Deployment ready on machine ${statusData.machineId}! Waiting for DNS propagation...`);
-                // Add a longer delay for DNS propagation (Fly.io can be slow)
+                setLoadingStatus(`Deployment ready on machine ${(statusData as any)?.machineId}! Waiting for DNS propagation...`);
                 setTimeout(() => {
-                  setPreviewUrl(deploymentUrl);
-                  setLoadingStatus(`Connected to machine ${statusData.machineId}! Loading interface...`);
-                  setIsPolling(false); // Stop polling state
+                  setPreviewUrl(readyUrl);
+                  setLoadingStatus(`Connected to machine ${(statusData as any)?.machineId}! Loading interface...`);
+                  setIsPolling(false);
                   appLoadedSuccessfullyRef.current = true;
                   pollingRetryCountRef.current = 0;
-                  // Clear any pending retry timeout since we succeeded
                   if (retryTimeoutRef.current) {
                     clearTimeout(retryTimeoutRef.current);
                     retryTimeoutRef.current = null;
                   }
-                }, 10000); // 10 second delay for DNS
+                }, 10000);
               } else {
-                setPreviewUrl(deploymentUrl);
-                setLoadingStatus(`Connected to machine ${statusData.machineId}! Loading interface...`);
-                setIsPolling(false); // Stop polling state
+                setPreviewUrl(readyUrl);
+                setLoadingStatus(`Connected to machine ${(statusData as any)?.machineId}! Loading interface...`);
+                setIsPolling(false);
                 appLoadedSuccessfullyRef.current = true;
                 pollingRetryCountRef.current = 0;
-                // Clear any pending retry timeout since we succeeded
                 if (retryTimeoutRef.current) {
                   clearTimeout(retryTimeoutRef.current);
                   retryTimeoutRef.current = null;
                 }
               }
 
-            } else if (statusData.status === 'error') {
+              return;
+            }
+            if (status === 'error') {
               // Handle specific timeout errors more gracefully
-              const errorMessage = statusData.error || 'Failed to create preview';
+              const errorMessage =
+                statusData.error ||
+                statusData.uiMessage ||
+                statusData.uiTitle ||
+                'Preview failed to start';
               const isTimeoutError = errorMessage.includes('Preview URL did not become reachable before timeout');
               
-              if (isTimeoutError && statusData.url) {
+              if (isTimeoutError && deploymentUrl) {
                 // Backend timed out but provided a URL - try connecting directly
-                console.log('Backend timed out but provided URL, attempting direct connection:', statusData.url);
+                console.log('Backend timed out but provided URL, attempting direct connection:', deploymentUrl);
                 
                 try {
-                  const reachable = await probePreviewUrl(appId, statusData.url);
+                  const reachable = await probePreviewUrl(appId, deploymentUrl);
                   if (reachable) {
-                    console.log('Direct probe successful, proceeding with URL:', statusData.url);
+                    console.log('Direct probe successful, proceeding with URL:', deploymentUrl);
                     iframeLoadedSuccessfullyRef.current = false;
-                    setPreviewUrl(statusData.url);
-                    setLoadingStatus('App ready! Loading interface...');
-                    setIsPolling(false);
+                    setPreviewUrl(deploymentUrl);
+                    setLoadingStatus('Preview is reachable. Still verifying readiness…');
+                    setIsPolling(true);
                     setError(null);
                     setCanRetry(false);
                     appLoadedSuccessfullyRef.current = true;
                     pollingRetryCountRef.current = 0;
-                    stopAllTimers();
+                    statusPollTimeoutRef.current = setTimeout(pollStatus, 5000);
                     return;
                   }
-                  console.log('Direct probe indicates URL is not reachable yet:', statusData.url);
+                  console.log('Direct probe indicates URL is not reachable yet:', deploymentUrl);
                 } catch (directError) {
                   console.log('Direct connection also failed:', directError);
                   // Fall through to normal error handling
                 }
+              }
+
+              // General "handoff" safety:
+              // Sometimes the backend marks status=error due to healthcheck issues/restarts, but the preview URL may still be reachable.
+              // If we have a URL, try a last-chance probe before we permanently fail.
+              if (!isTimeoutError && deploymentUrl) {
+                try {
+                  const reachable = await probePreviewUrl(appId, deploymentUrl);
+                  if (reachable) {
+                    console.log('Preview URL is reachable despite error status; proceeding with URL:', deploymentUrl);
+                    iframeLoadedSuccessfullyRef.current = false;
+                    setPreviewUrl(deploymentUrl);
+                    setLoadingStatus('Preview is reachable. Still verifying readiness…');
+                    setIsPolling(true);
+                    setError(null);
+                    setCanRetry(false);
+                    appLoadedSuccessfullyRef.current = true;
+                    pollingRetryCountRef.current = 0;
+                    statusPollTimeoutRef.current = setTimeout(pollStatus, 5000);
+                    return;
+                  }
+                } catch (probeErr) {
+                  console.log('Preview URL probe failed during error handoff:', probeErr);
+                }
+              }
+
+              // Frontend resilience: if this error is very fresh, treat it as transient and keep polling.
+              // We use `createdAt` when present, otherwise fall back to `updatedAt`.
+              const createdAtMs = getUpdatedAtMs(statusData?.createdAt) ?? getUpdatedAtMs(statusData?.updatedAt);
+              const previewAgeMs = typeof createdAtMs === 'number' ? (Date.now() - createdAtMs) : null;
+              const withinGrace = typeof previewAgeMs === 'number' && previewAgeMs >= 0 && previewAgeMs < PREVIEW_ERROR_GRACE_MS;
+              if (withinGrace) {
+                const remainingMs = Math.max(0, PREVIEW_ERROR_GRACE_MS - previewAgeMs);
+
+                // Keep showing progress UI, but do not hard-fail the session.
+                setError(null);
+                setCanRetry(false);
+                setIsPolling(true);
+                setIsLoading(true);
+                setConnectingToExisting(false);
+
+                setCurrentStatusData({
+                  ...statusData,
+                  status: 'booting',
+                  uiStage: 'booting',
+                  uiTitle: 'Starting preview',
+                  uiMessage: `Preview hit a transient boot error and is restarting. Still trying for ~${Math.ceil(remainingMs / 1000)}s…`,
+                  uiProgress: typeof statusData?.uiProgress === 'number' ? statusData.uiProgress : 0,
+                });
+
+                setLoadingStatus('Preview is still starting (this can take a few minutes)…');
+
+                // Continue polling a bit faster during grace.
+                statusPollTimeoutRef.current = setTimeout(pollStatus, 5000);
+                return;
               }
               
               // Normal error handling
@@ -1391,27 +1542,27 @@ export default function NavBar() {
               // (Error banner uses `error` above.)
               return;
 
-            } else if (statusData.status === 'pending' || statusData.status === 'archiving' || 
-                       statusData.status === 'uploading_archive' || statusData.status === 'creating_machine' || 
-                       statusData.status === 'booting' || statusData.status === 'building' || 
-                       statusData.status === 'compiling' || statusData.status === 'starting') {
+            } else if (status === 'pending' || status === 'archiving' || 
+                       status === 'uploading_archive' || status === 'creating_machine' || 
+                       status === 'booting' || status === 'building' || 
+                       status === 'compiling' || status === 'starting') {
               // Still building, continue polling and show progress if available
               // But if we have a URL and the machine is running (not just pending/creating), try to connect early
-              if (statusData.url && !['pending', 'archiving', 'uploading_archive', 'creating_machine'].includes(statusData.status)) {
-                console.log(`Backend reports ${statusData.status} but has URL, checking if app is actually ready:`, statusData.url);
+              if (deploymentUrl && !['pending', 'archiving', 'uploading_archive', 'creating_machine'].includes(status)) {
+                console.log(`Backend reports ${status} but has URL, checking reachability:`, deploymentUrl);
                 try {
-                  const reachable = await probePreviewUrl(appId, statusData.url);
+                  const reachable = await probePreviewUrl(appId, deploymentUrl);
                   if (reachable) {
-                    console.log('URL is reachable during build, connecting early to show build progress');
+                    console.log('URL is reachable during build; showing preview while continuing to poll');
                     iframeLoadedSuccessfullyRef.current = false;
-                    setPreviewUrl(statusData.url);
-                    setLoadingStatus(`Connecting to machine ${statusData.machineId}... (showing build progress)`);
-                    setIsPolling(false);
+                    setPreviewUrl(deploymentUrl);
+                    setLoadingStatus(`Connecting to machine ${(statusData as any)?.machineId}... (showing progress)`);
+                    setIsPolling(true);
                     setError(null);
                     setCanRetry(false);
                     appLoadedSuccessfullyRef.current = true;
                     pollingRetryCountRef.current = 0;
-                    stopAllTimers();
+                    statusPollTimeoutRef.current = setTimeout(pollStatus, 10000);
                     return;
                   }
                   console.log('URL not yet reachable, continuing to poll');
@@ -1434,7 +1585,7 @@ export default function NavBar() {
             } else {
               // Unknown status - log it and treat as still building for now
               console.warn('Unknown status received from backend:', statusData.status, statusData);
-              setLoadingStatus(`Building app... (status: ${statusData.status})`);
+              setLoadingStatus(`Building app... (status: ${status})`);
               statusPollTimeoutRef.current = setTimeout(pollStatus, 10000); // Poll every 10 seconds
             }
 
@@ -1761,7 +1912,42 @@ export default function NavBar() {
       iframeLoadTimeoutRef.current = setTimeout(() => {
         if (!iframeLoadedSuccessfullyRef.current) {
           console.log('Iframe load timeout - URL may be unreachable:', previewUrl);
-          setError(`Unable to load preview at ${previewUrl}. The preview may still be starting up or has failed. Try Reconnect, or use Start fresh to start a new machine.`);
+          // If backend hasn't declared ready yet, treat iframe reachability as transient.
+          // Keep polling so we can recover from restarts/DNS delays.
+          if (!backendReadyRef.current) {
+            setError(null);
+            setCanRetry(false);
+            setIsLoading(false);
+            setIsPolling(true);
+            setConnectingToExisting(false);
+            setLoadingStatus('');
+            setCurrentStatusData((prev: any) =>
+              prev && typeof prev === 'object'
+                ? {
+                    ...prev,
+                    uiStage: prev?.uiStage || 'waiting_for_preview',
+                    uiTitle: prev?.uiTitle || 'Starting preview',
+                    uiMessage: prev?.uiMessage || 'Preview URL not reachable yet. Still trying…',
+                    updatedAt: Date.now(),
+                  }
+                : {
+                    uiStage: 'waiting_for_preview',
+                    uiTitle: 'Starting preview',
+                    uiMessage: 'Preview URL not reachable yet. Still trying…',
+                    updatedAt: Date.now(),
+                    status: 'starting',
+                    uiProgress: 0,
+                  }
+            );
+            iframeLoadedSuccessfullyRef.current = false;
+            appLoadedSuccessfullyRef.current = true;
+            setPreviewUrl(null);
+            try { onPreviewReadyChange?.(false); } catch { }
+            return;
+          }
+
+          // If backend had already declared ready, treat this as a real failure.
+          setError(`Unable to load preview at ${previewUrl}. Try Reconnect, or use Start fresh to start a new machine.`);
           setCanRetry(true);
           setIsLoading(false);
           setIsPolling(false);
@@ -1815,20 +2001,26 @@ export default function NavBar() {
             onLoad={() => {
               console.log('Iframe loaded successfully - preview should now be active at:', previewUrl);
 
-              // Treat iframe onLoad as a strong signal that the preview is interactive.
-              // Clear any stale error/polling state so the UI isn't stuck in "failed".
+              // Iframe load indicates the host is reachable (often a fallback UI).
+              // Only stop polling and mark "ready" when the backend contract says `ready === true`.
               setError(null);
               setCanRetry(false);
               setIsLoading(false);
-              setIsPolling(false);
               setConnectingToExisting(false);
               setLoadingStatus('');
               iframeLoadedSuccessfullyRef.current = true;
               appLoadedSuccessfullyRef.current = true;
-              try { onPreviewReadyChange?.(true); } catch { }
-              stopAllTimers();
-              if (isPolling) setIsPolling(false);
-              if (currentStatusData) setCurrentStatusData(null);
+
+              if (backendReadyRef.current) {
+                try { onPreviewReadyChange?.(true); } catch { }
+                stopAllTimers();
+                if (isPolling) setIsPolling(false);
+                if (currentStatusData) setCurrentStatusData(null);
+              } else {
+                try { onPreviewReadyChange?.(false); } catch { }
+                // Keep polling in the background until `ready === true`.
+                if (!isPolling) setIsPolling(true);
+              }
               // Reset asset failure count on successful load
               assetFailureCountRef.current = 0;
               // Clear the load timeout since we succeeded
@@ -1847,6 +2039,21 @@ export default function NavBar() {
             onError={() => {
               console.log('Iframe failed to load - URL may be unreachable:', previewUrl);
               try { onPreviewReadyChange?.(false); } catch { }
+
+              // If backend hasn't declared ready, treat this as transient and keep polling.
+              if (!backendReadyRef.current) {
+                setError(null);
+                setCanRetry(false);
+                setIsLoading(false);
+                setIsPolling(true);
+                setConnectingToExisting(false);
+                setLoadingStatus('');
+                iframeLoadedSuccessfullyRef.current = false;
+                appLoadedSuccessfullyRef.current = true;
+                setPreviewUrl(null);
+                return;
+              }
+
               // Check if this looks like a DNS/network error or preview routing issue
               if (previewUrl.includes('tracksite-hub.fly.dev')) {
                 setError(`Preview failed to load. This may be due to cookie/session issues or the preview not being ready yet. Automatically refreshing in 10 seconds...`);
@@ -1886,24 +2093,6 @@ export default function NavBar() {
               }
             }}
           />
-          {/* Loading overlay while iframe loads */}
-          {!iframeLoadedSuccessfullyRef.current && !error && (
-            <div className="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm">
-              <div className="text-center space-y-4">
-                <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
-                {renderLiveStatusLine(
-                  currentStatusData
-                    ? { ...currentStatusData, updatedAt: currentStatusData?.updatedAt ?? Date.now() }
-                    : {
-                      uiStage: 'loading_preview',
-                      uiTitle: 'Loading preview',
-                      uiMessage: 'Preparing your app for display',
-                      updatedAt: Date.now(),
-                    }
-                )}
-              </div>
-            </div>
-          )}
         </div>
       ) : !error ? (
         <div className="flex-1 flex items-center justify-center">

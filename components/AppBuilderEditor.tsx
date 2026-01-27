@@ -2311,7 +2311,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
 
     return (
         <div className="fixed inset-0 z-[16000] bg-black/70 backdrop-blur-sm">
-            {isGenerationProcessing ? (
+            {isGenerationProcessing && previewMode !== "webcontainer" ? (
                 <div className="fixed inset-0 z-[17000] bg-black/70 backdrop-blur-sm flex items-center justify-center">
                     <div className="bg-white rounded-lg p-8 max-w-md">
                         <div className="text-center">
@@ -2492,6 +2492,12 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                         </button>
                     </div>
                 </div>
+
+                {isGenerationProcessing && previewMode === "webcontainer" ? (
+                    <div className="border-b bg-amber-50 px-4 py-2 text-xs text-amber-900">
+                        Generating your app. Preview will update automatically when it's ready.
+                    </div>
+                ) : null}
 
                 <div className="flex flex-1 min-h-0" data-app-builder-container>
                     {/* Left Panel - AI Chat and Controls */}
