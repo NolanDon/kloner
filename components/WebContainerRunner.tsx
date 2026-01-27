@@ -20,11 +20,17 @@ interface WebContainerRunnerProps {
   restartToken?: number;
   reconnectToken?: number;
   forceFreshStart?: number;
+  pollingConfig?: {
+    // Default is the existing behavior (30 retries, ~5 minutes).
+    // Use this only for long-running generated builds.
+    maxPollingRetries?: number;
+    maxContainerNotFound?: number;
+  };
   navigatePath?: string | null;
   navigatePathToken?: number;
 }
 
-export default function WebContainerRunner({ appId, files, onFileChange, onPreviewReadyChange, reloadToken, restartToken, reconnectToken, forceFreshStart, navigatePath, navigatePathToken }: WebContainerRunnerProps) {
+export default function WebContainerRunner({ appId, files, onFileChange, onPreviewReadyChange, reloadToken, restartToken, reconnectToken, forceFreshStart, pollingConfig, navigatePath, navigatePathToken }: WebContainerRunnerProps) {
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
@@ -39,7 +45,10 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   // original "start/stop" thrash bug while still allowing reconnect/retry tokens.
   const lastStartKeyRef = useRef<string | null>(null);
   const maxRetries = 2; // Reduced from 3 to be less aggressive
-  const maxPollingRetries = 30; // Increased to allow up to 5 minutes of polling
+  const maxPollingRetries =
+    typeof pollingConfig?.maxPollingRetries === 'number'
+      ? pollingConfig.maxPollingRetries
+      : 30; // default: up to ~5 minutes of polling
   const pollingRetryCountRef = useRef(0); // Track polling retry attempts
   const retryScheduledRef = useRef(false);
   const totalAttemptsRef = useRef(0); // Circuit breaker for infinite retries
@@ -47,7 +56,10 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const assetFailureCountRef = useRef(0); // Track 404s for static assets
   const maxAssetFailures = 3; // Stop auto-retrying after this many asset 404s
   const containerNotFoundCountRef = useRef(0); // Track 404s for container status
-  const maxContainerNotFound = 5; // Give up after this many container 404s
+  const maxContainerNotFound =
+    typeof pollingConfig?.maxContainerNotFound === 'number'
+      ? pollingConfig.maxContainerNotFound
+      : 5; // default: give up after this many container 404s
   const appLoadedSuccessfullyRef = useRef(false); // Track if app server is successfully loaded
   const iframeLoadedSuccessfullyRef = useRef(false); // Track if iframe loaded successfully
   const lastForceFreshStartRef = useRef<number>(0);
@@ -1341,7 +1353,19 @@ export default function NavBar() {
               const reqId = typeof flyApi?.requestId === 'string' ? flyApi.requestId : '';
 
               let userFacing = [uiTitle, uiMsg].filter(Boolean).join(' — ');
+
+              // If the backend only provides a generic UI message, also include the underlying error details.
+              // This is especially important when the machine boot script fails (exit code) or a healthcheck/port mismatch occurs.
+              const isGenericUi =
+                uiTitle.toLowerCase() === 'something went wrong' ||
+                uiMsg.toLowerCase().includes("couldn’t get your preview ready") ||
+                uiMsg.toLowerCase().includes("couldn't get your preview ready") ||
+                uiMsg.toLowerCase().includes('could not start the preview');
+
               if (!userFacing) userFacing = errorMessage;
+              else if (isGenericUi && errorMessage && !userFacing.toLowerCase().includes(String(errorMessage).toLowerCase())) {
+                userFacing = `${userFacing}\n\nDetails: ${errorMessage}`;
+              }
 
               if (flyIsDischargeMissing) {
                 userFacing =

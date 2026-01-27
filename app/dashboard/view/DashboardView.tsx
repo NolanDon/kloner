@@ -676,6 +676,8 @@ function RenderCardInner({
                                             ? "Unarchive this preview to deploy it"
                                             : isDeployedFlag
                                                 ? "View and manage this deployment"
+                                                : !r.html?.trim()
+                                                    ? "This preview's HTML isn't available yet. Click Customize to finish generating it, then deploy."
                                                 : deployLocked
                                                     ? "Upgrade to publish live sites"
                                                     : "Deploy current HTML to Vercel"
@@ -717,6 +719,8 @@ function RenderCardInner({
                                                     ? "Still building preview"
                                                     : isFailed
                                                         ? "Retry the render operation"
+                                                        : !r.html?.trim()
+                                                            ? "Open the editor to finish preparing this preview"
                                                         : "Open editor to customize"
                                         }
                                     >
@@ -2072,7 +2076,12 @@ export default function PreviewPage(): JSX.Element {
                 });
 
                 if (res.status === 202) {
-                    const { appId: generatedAppId } = await res.json();
+                    const data: any = await res.json().catch(() => ({} as any));
+                    const generatedAppId = typeof data?.appId === "string" ? data.appId.trim() : "";
+                    if (!generatedAppId) {
+                        const reqId = typeof data?.reqId === "string" ? data.reqId : "";
+                        throw new Error(reqId ? `Generation accepted but no appId returned (reqId: ${reqId})` : "Generation accepted but no appId returned");
+                    }
                     appId = generatedAppId;
                 } else {
                     const data = await res.json().catch(() => ({} as any));
@@ -2092,7 +2101,12 @@ export default function PreviewPage(): JSX.Element {
                 });
 
                 if (res.status === 202) {
-                    const { appId: generatedAppId } = await res.json();
+                    const data: any = await res.json().catch(() => ({} as any));
+                    const generatedAppId = typeof data?.appId === "string" ? data.appId.trim() : "";
+                    if (!generatedAppId) {
+                        const reqId = typeof data?.reqId === "string" ? data.reqId : "";
+                        throw new Error(reqId ? `Generation accepted but no appId returned (reqId: ${reqId})` : "Generation accepted but no appId returned");
+                    }
                     appId = generatedAppId;
                 } else {
                     const data = await res.json().catch(() => ({} as any));
@@ -4659,6 +4673,76 @@ export default function PreviewPage(): JSX.Element {
     // exit offer
     const STEP5_SALE_MS = 15 * 60 * 1000;
 
+    const STEP5_SALE_PREFIX = "kloner_step5_sale_endsAt:";
+
+    function isQuotaExceededError(err: unknown) {
+        const anyErr = err as any;
+        const name = typeof anyErr?.name === "string" ? anyErr.name : "";
+        const code = anyErr?.code;
+        return (
+            name === "QuotaExceededError" ||
+            name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+            code === 22 ||
+            code === 1014
+        );
+    }
+
+    function safeLocalStorageGet(key: string) {
+        try {
+            return window.localStorage.getItem(key);
+        } catch {
+            return null;
+        }
+    }
+
+    function cleanupStep5SaleKeys(keepKey?: string) {
+        try {
+            const now = Date.now();
+            for (let i = window.localStorage.length - 1; i >= 0; i -= 1) {
+                const k = window.localStorage.key(i);
+                if (!k) continue;
+                if (!k.startsWith(STEP5_SALE_PREFIX)) continue;
+                if (keepKey && k === keepKey) continue;
+
+                const raw = safeLocalStorageGet(k);
+                const parsed = raw ? Number(raw) : 0;
+                // Prefer removing obviously bad/expired entries first.
+                if (!parsed || !Number.isFinite(parsed) || parsed < now) {
+                    window.localStorage.removeItem(k);
+                }
+            }
+
+            // If we're still tight on quota, drop all remaining sale keys (they're not critical state).
+            for (let i = window.localStorage.length - 1; i >= 0; i -= 1) {
+                const k = window.localStorage.key(i);
+                if (!k) continue;
+                if (!k.startsWith(STEP5_SALE_PREFIX)) continue;
+                if (keepKey && k === keepKey) continue;
+                window.localStorage.removeItem(k);
+            }
+        } catch {
+            // Ignore; cleanup is best-effort.
+        }
+    }
+
+    function safeLocalStorageSet(key: string, value: string) {
+        try {
+            window.localStorage.setItem(key, value);
+            return true;
+        } catch (err) {
+            if (isQuotaExceededError(err)) {
+                cleanupStep5SaleKeys(key);
+                try {
+                    window.localStorage.setItem(key, value);
+                    return true;
+                } catch {
+                    return false;
+                }
+            }
+            return false;
+        }
+    }
+
     function formatMMSS(totalSeconds: number) {
         const s = Math.max(0, totalSeconds | 0);
         const mm = String(Math.floor(s / 60)).padStart(2, "0");
@@ -4683,13 +4767,13 @@ export default function PreviewPage(): JSX.Element {
     const [step5SaleEndsAt, setStep5SaleEndsAt] = useState<number>(() => {
         if (typeof window === "undefined") return Date.now() + STEP5_SALE_MS;
 
-        const raw = window.localStorage.getItem(step5SaleStorageKey);
+        const raw = safeLocalStorageGet(step5SaleStorageKey);
         const parsed = raw ? Number(raw) : 0;
 
         if (parsed && Number.isFinite(parsed) && parsed > Date.now()) return parsed;
 
         const next = Date.now() + STEP5_SALE_MS;
-        window.localStorage.setItem(step5SaleStorageKey, String(next));
+        safeLocalStorageSet(step5SaleStorageKey, String(next));
         return next;
     });
 
@@ -4706,7 +4790,7 @@ export default function PreviewPage(): JSX.Element {
     useEffect(() => {
         if (typeof window === "undefined") return;
 
-        const raw = window.localStorage.getItem(step5SaleStorageKey);
+        const raw = safeLocalStorageGet(step5SaleStorageKey);
         const parsed = raw ? Number(raw) : 0;
 
         if (parsed && Number.isFinite(parsed) && parsed > Date.now()) {
@@ -4716,7 +4800,7 @@ export default function PreviewPage(): JSX.Element {
         }
 
         const next = Date.now() + STEP5_SALE_MS;
-        window.localStorage.setItem(step5SaleStorageKey, String(next));
+        safeLocalStorageSet(step5SaleStorageKey, String(next));
         setStep5SaleEndsAt(next);
         setStep5SaleRemainingSec(getRemainingSec(next));
     }, [step5SaleStorageKey]);
@@ -4724,7 +4808,7 @@ export default function PreviewPage(): JSX.Element {
     // ✅ keep storage synced (ONLY ONCE)
     useEffect(() => {
         if (typeof window === "undefined") return;
-        window.localStorage.setItem(step5SaleStorageKey, String(step5SaleEndsAt));
+        safeLocalStorageSet(step5SaleStorageKey, String(step5SaleEndsAt));
     }, [step5SaleEndsAt, step5SaleStorageKey]);
 
     useEffect(() => {
@@ -5621,9 +5705,9 @@ export default function PreviewPage(): JSX.Element {
                                                             placeholder={targetUrl || "https://example.com"}
                                                             className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-[#f55f2a]/20"
                                                         />
-                                                        <div className="text-[11px] leading-4 text-neutral-500">
+                                                        {/* <div className="text-[11px] leading-4 text-neutral-500">
                                                             Tip: for best fidelity, we’ll use your stored full-page screenshots for the selected URL.
-                                                        </div>
+                                                        </div> */}
                                                     </div>
                                                 ) : null}
 

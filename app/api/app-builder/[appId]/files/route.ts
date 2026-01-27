@@ -34,6 +34,14 @@ export async function GET(
             isDeployed: Boolean((data as any).isDeployed),
             productionUrl: (data as any).productionUrl || null,
             vercelProtectionBypassSecret: (data as any).vercelProtectionBypassSecret || null,
+            generationStatus: (data as any).generationStatus || null,
+            generationError: (data as any).generationError || null,
+            generationProgress:
+                typeof (data as any).generationProgress === "number"
+                    ? (data as any).generationProgress
+                    : typeof (data as any).progress === "number"
+                      ? (data as any).progress
+                      : null,
         });
 
         // Bind the browser session to this specific appId for all follow-up writes.

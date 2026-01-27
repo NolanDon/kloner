@@ -1,5 +1,7 @@
 // src/lib/callBackend.ts
 import crypto from "node:crypto";
+import { Agent, fetch as undiciFetch } from "undici";
+import dns from "node:dns";
 
 type Reqish =
     | { headers?: any; get?: (name: string) => string | undefined } // Express req
@@ -39,6 +41,58 @@ const BACKEND_PREFIX = (process.env.BACKEND_PREFIX ?? "/api/v1").replace(
     ""
 );
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || "";
+
+let ipv4Dispatcher: Agent | null = null;
+
+function isFlyHost(urlStr: string): boolean {
+    try {
+        const host = new URL(urlStr).hostname.toLowerCase();
+        return host.endsWith(".fly.dev");
+    } catch {
+        return false;
+    }
+}
+
+function getIpv4Dispatcher(): Agent {
+    if (!ipv4Dispatcher) {
+        const lookup: any = (hostname: string, opts: any, cb: any) => {
+            return dns.lookup(hostname, { ...(opts || {}), family: 4 }, cb);
+        };
+        ipv4Dispatcher = new Agent({ connect: { lookup } as any });
+    }
+    return ipv4Dispatcher;
+}
+
+function shouldForceIpv4Always(): boolean {
+    const forced = String(process.env.FORCE_IPV4_BACKEND || "").trim();
+    if (forced === "1" || forced.toLowerCase() === "true") return true;
+    return false;
+}
+
+function shouldRetryWithIpv4(err: any, urlStr: string): boolean {
+    if (!isFlyHost(urlStr)) return false;
+    const aggregateErrors: any[] = Array.isArray(err?.cause?.errors)
+        ? err.cause.errors
+        : Array.isArray(err?.errors)
+          ? err.errors
+          : [];
+
+    const codes = new Set<string>();
+    const pushCode = (c: any) => {
+        const s = String(c || "").trim();
+        if (s) codes.add(s);
+    };
+
+    pushCode(err?.code);
+    pushCode(err?.cause?.code);
+    for (const e of aggregateErrors) {
+        pushCode(e?.code);
+    }
+
+    // Retry if we see any sign of a broken IPv6 route or connect timeout.
+    // These happen before a request is sent, so retrying is safe.
+    return codes.has("ENETUNREACH") || codes.has("EHOSTUNREACH") || codes.has("ETIMEDOUT");
+}
 
 function buildUrl(
     path: string,
@@ -97,30 +151,54 @@ export async function callBackend(req: Reqish, opts: CallOpts) {
         opts.timeoutMs ?? 15_000
     );
 
-    let upstream: Response;
+    let upstream: any;
     try {
-        upstream = await fetch(url, {
-            method,
-            headers: {
-                ...(opts.headers || {}),
-                "content-type": "application/json",
-                "cache-control": "no-store",
-                "x-request-id": reqId,
-                "x-internal-key": INTERNAL_API_KEY,
-                ...(signed
-                    ? { "x-user-ctx": signed.payload, "x-user-ctx-sig": signed.sig }
-                    : {}),
-                ...(opts.idempotencyKey ? { "idempotency-key": opts.idempotencyKey } : {}),
-            },
-            body:
-                method === "GET" || method === "HEAD" || method === "OPTIONS"
-                    ? undefined
-                    : JSON.stringify(opts.body ?? {}),
-            signal: controller.signal,
-            // keepalive could help in edge cases, but avoid on Node fetch < 18.3 issues
-        });
+        const doFetch = async (dispatcher?: Agent) => {
+            const controller = new AbortController();
+            const timeoutHandle = setTimeout(() => controller.abort(), opts.timeoutMs ?? 15_000);
+            try {
+                return await undiciFetch(url, {
+                    method,
+                    headers: {
+                        ...(opts.headers || {}),
+                        "content-type": "application/json",
+                        "cache-control": "no-store",
+                        "x-request-id": reqId,
+                        "x-internal-key": INTERNAL_API_KEY,
+                        ...(signed
+                            ? { "x-user-ctx": signed.payload, "x-user-ctx-sig": signed.sig }
+                            : {}),
+                        ...(opts.idempotencyKey ? { "idempotency-key": opts.idempotencyKey } : {}),
+                    },
+                    body:
+                        method === "GET" || method === "HEAD" || method === "OPTIONS"
+                            ? undefined
+                            : JSON.stringify(opts.body ?? {}),
+                    signal: controller.signal,
+                    ...(dispatcher ? { dispatcher } : {}),
+                });
+            } finally {
+                clearTimeout(timeoutHandle);
+            }
+        };
+
+        // Default path: do not force IPv4 unless explicitly requested.
+        if (shouldForceIpv4Always()) {
+            upstream = await doFetch(getIpv4Dispatcher());
+        } else {
+            try {
+                upstream = await doFetch(undefined);
+            } catch (err: any) {
+                // Surgical fallback: if the first attempt fails with a dual-stack connect signature,
+                // retry once forcing IPv4.
+                if (shouldRetryWithIpv4(err, url)) {
+                    upstream = await doFetch(getIpv4Dispatcher());
+                } else {
+                    throw err;
+                }
+            }
+        }
     } catch (err: any) {
-        clearTimeout(timeoutHandle);
         const aborted = err?.name === "AbortError";
         if (aborted && opts.acceptOnTimeout) {
             const json = { ok: true, queued: true, code: "TIMEOUT_ACCEPTED" };

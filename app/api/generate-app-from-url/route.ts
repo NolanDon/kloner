@@ -10,6 +10,17 @@ import { peekUserCredit, consumeUserCredit } from "../_lib/credits-server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function backendConfigHint() {
+  const origin = process.env.BACKEND_ORIGIN || process.env.BACKEND_URL || process.env.PUBLIC_ORIGIN || "";
+  const prefix = process.env.BACKEND_PREFIX || "/api/v1";
+  const hasInternalKey = Boolean(process.env.INTERNAL_API_KEY);
+  return { origin, prefix, hasInternalKey };
+}
+
+function isBackendFetchFailed(resp: any) {
+  return resp?.status === 502 && String(resp?.json?.error || "") === "Backend fetch failed";
+}
+
 function isHttpUrl(s?: string): s is string {
   if (!s) return false;
   try {
@@ -109,6 +120,33 @@ export async function POST(req: NextRequest) {
           acceptOnTimeout: true,
         });
 
+        if (isBackendFetchFailed(screenshotResponse)) {
+          const hint = backendConfigHint();
+          return NextResponse.json(
+            {
+              error:
+                process.env.NODE_ENV !== "production"
+                  ? `Failed to reach the backend screenshot service at ${screenshotResponse.url}. Check BACKEND_URL/BACKEND_ORIGIN and INTERNAL_API_KEY. Also try /api/internal/env-check.`
+                  : "Failed to reach the backend screenshot service.",
+              code: "BACKEND_UNREACHABLE",
+              reqId: screenshotResponse.reqId,
+              ...(process.env.NODE_ENV !== "production"
+                ? {
+                    debug: {
+                      attemptedUrl: screenshotResponse.url,
+                      env: {
+                        BACKEND_ORIGIN: hint.origin || null,
+                        BACKEND_PREFIX: hint.prefix,
+                        INTERNAL_API_KEY_SET: hint.hasInternalKey,
+                      },
+                    },
+                  }
+                : {}),
+            },
+            { status: 502 },
+          );
+        }
+
         const screenshotPayload = screenshotResponse.json && Object.keys(screenshotResponse.json).length
           ? screenshotResponse.json
           : { ok: true, queued: screenshotResponse.status === 202 || screenshotResponse.status === 204 };
@@ -168,6 +206,33 @@ export async function POST(req: NextRequest) {
         timeoutMs: 300000, // 5 minutes
         acceptOnTimeout: true,
       });
+
+      if (isBackendFetchFailed(appResponse)) {
+        const hint = backendConfigHint();
+        return NextResponse.json(
+          {
+            error:
+              process.env.NODE_ENV !== "production"
+                ? `Failed to reach the backend generation service at ${appResponse.url}. Check BACKEND_URL/BACKEND_ORIGIN and INTERNAL_API_KEY. Also try /api/internal/env-check.`
+                : "Failed to reach the backend generation service.",
+            code: "BACKEND_UNREACHABLE",
+            reqId: appResponse.reqId,
+            ...(process.env.NODE_ENV !== "production"
+              ? {
+                  debug: {
+                    attemptedUrl: appResponse.url,
+                    env: {
+                      BACKEND_ORIGIN: hint.origin || null,
+                      BACKEND_PREFIX: hint.prefix,
+                      INTERNAL_API_KEY_SET: hint.hasInternalKey,
+                    },
+                  },
+                }
+              : {}),
+          },
+          { status: 502 },
+        );
+      }
 
       // Treat any 2xx as a successful "job accepted".
       if (appResponse.status >= 200 && appResponse.status < 300) {

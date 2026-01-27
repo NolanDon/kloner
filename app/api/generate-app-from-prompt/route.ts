@@ -9,6 +9,17 @@ import type { UserTier } from "@/src/lib/credits";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function backendConfigHint() {
+  const origin = process.env.BACKEND_ORIGIN || process.env.BACKEND_URL || process.env.PUBLIC_ORIGIN || "";
+  const prefix = process.env.BACKEND_PREFIX || "/api/v1";
+  const hasInternalKey = Boolean(process.env.INTERNAL_API_KEY);
+  return { origin, prefix, hasInternalKey };
+}
+
+function isBackendFetchFailed(resp: any) {
+  return resp?.status === 502 && String(resp?.json?.error || "") === "Backend fetch failed";
+}
+
 export async function POST(req: NextRequest) {
   return requireSessionAndMaybeCsrf(req, async ({ req }) => {
     let decoded: any;
@@ -58,6 +69,33 @@ export async function POST(req: NextRequest) {
         timeoutMs: 300000, // 5 minutes timeout
         acceptOnTimeout: true, // Return 202 if it times out
       });
+
+      if (isBackendFetchFailed(backendResponse)) {
+        const hint = backendConfigHint();
+        return NextResponse.json(
+          {
+            error:
+              process.env.NODE_ENV !== "production"
+                ? `Failed to reach the backend generation service at ${backendResponse.url}. Check BACKEND_URL/BACKEND_ORIGIN and INTERNAL_API_KEY. Also try /api/internal/env-check.`
+                : "Failed to reach the backend generation service.",
+            code: "BACKEND_UNREACHABLE",
+            reqId: backendResponse.reqId,
+            ...(process.env.NODE_ENV !== "production"
+              ? {
+                  debug: {
+                    attemptedUrl: backendResponse.url,
+                    env: {
+                      BACKEND_ORIGIN: hint.origin || null,
+                      BACKEND_PREFIX: hint.prefix,
+                      INTERNAL_API_KEY_SET: hint.hasInternalKey,
+                    },
+                  },
+                }
+              : {}),
+          },
+          { status: 502 },
+        );
+      }
 
       // Treat any 2xx as a successful "job accepted".
       if (backendResponse.status >= 200 && backendResponse.status < 300) {

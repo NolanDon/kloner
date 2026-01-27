@@ -7,6 +7,17 @@ import { getAdminDb } from '../_lib/auth';
 import { FieldValue } from 'firebase-admin/firestore';
 import crypto from 'node:crypto';
 
+function backendConfigHint() {
+  const origin = process.env.BACKEND_ORIGIN || process.env.BACKEND_URL || process.env.PUBLIC_ORIGIN || '';
+  const prefix = process.env.BACKEND_PREFIX || '/api/v1';
+  const hasInternalKey = Boolean(process.env.INTERNAL_API_KEY);
+  return { origin, prefix, hasInternalKey };
+}
+
+function isBackendFetchFailed(resp: any) {
+  return resp?.status === 502 && String(resp?.json?.error || '') === 'Backend fetch failed';
+}
+
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -100,6 +111,40 @@ async function handleWebcontainerPost(body: any, uid?: string) {
       userCtx: uid ? { uid } : undefined,
       noPrefix: true,
     });
+
+    if (isBackendFetchFailed(response)) {
+      const hint = backendConfigHint();
+      console.error('[webcontainer] backend unreachable', {
+        url: response.url,
+        reqId: response.reqId,
+        origin: hint.origin || '(unset)',
+        hasInternalKey: hint.hasInternalKey,
+      });
+      return NextResponse.json(
+        {
+          error:
+            process.env.NODE_ENV !== 'production'
+              ? `Failed to reach the backend preview service at ${response.url}. This is usually a BACKEND_ORIGIN/BACKEND_URL misconfiguration (or the service is down).`
+              : 'Failed to reach the backend preview service. This is usually a BACKEND_ORIGIN/BACKEND_URL misconfiguration (or the service is down).',
+          code: 'BACKEND_UNREACHABLE',
+          ...(process.env.NODE_ENV !== 'production'
+            ? {
+                debug: {
+                  attemptedUrl: response.url,
+                  requestId: response.reqId,
+                  env: {
+                    BACKEND_ORIGIN: hint.origin || null,
+                    BACKEND_PREFIX: hint.prefix,
+                    INTERNAL_API_KEY_SET: hint.hasInternalKey,
+                  },
+                },
+              }
+            : {}),
+        },
+        { status: 502 },
+      );
+    }
+
     if (response.status >= 400) {
       const error = response.json?.error || 'Backend error';
       return NextResponse.json({ error }, { status: response.status });
@@ -107,7 +152,17 @@ async function handleWebcontainerPost(body: any, uid?: string) {
     const { code } = response.json;
     return NextResponse.json({ code }); // Return code immediately
   } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error || '');
     console.error('Backend call error:', error);
+    if (msg.includes('INTERNAL_API_KEY not set')) {
+      return NextResponse.json(
+        {
+          error: 'Server is missing INTERNAL_API_KEY. Set it in .env.local (dev) or as a deployment secret, then restart.',
+          code: 'MISSING_INTERNAL_API_KEY',
+        },
+        { status: 500 },
+      );
+    }
     return NextResponse.json({ error: 'Failed to start webcontainer' }, { status: 500 });
   }
 }
@@ -223,6 +278,32 @@ async function handleWebcontainerStatus(code: string, uid?: string) {
       userCtx: uid ? { uid } : undefined,
       noPrefix: true,
     });
+
+    if (isBackendFetchFailed(response)) {
+      const hint = backendConfigHint();
+      return NextResponse.json(
+        {
+          error:
+            'Failed to reach the backend preview service while polling status. Check BACKEND_ORIGIN/BACKEND_URL.',
+          code: 'BACKEND_UNREACHABLE',
+          ...(process.env.NODE_ENV !== 'production'
+            ? {
+                debug: {
+                  attemptedUrl: response.url,
+                  requestId: response.reqId,
+                  env: {
+                    BACKEND_ORIGIN: hint.origin || null,
+                    BACKEND_PREFIX: hint.prefix,
+                    INTERNAL_API_KEY_SET: hint.hasInternalKey,
+                  },
+                },
+              }
+            : {}),
+        },
+        { status: 502 },
+      );
+    }
+
     if (response.status >= 400) {
       const error = response.json?.error || 'Backend error';
       return NextResponse.json({ error }, { status: response.status });
@@ -242,6 +323,32 @@ async function handleWebcontainerDelete(code: string, uid?: string) {
       userCtx: uid ? { uid } : undefined,
       noPrefix: true,
     });
+
+    if (isBackendFetchFailed(response)) {
+      const hint = backendConfigHint();
+      return NextResponse.json(
+        {
+          error:
+            'Failed to reach the backend preview service while cleaning up. Check BACKEND_ORIGIN/BACKEND_URL.',
+          code: 'BACKEND_UNREACHABLE',
+          ...(process.env.NODE_ENV !== 'production'
+            ? {
+                debug: {
+                  attemptedUrl: response.url,
+                  requestId: response.reqId,
+                  env: {
+                    BACKEND_ORIGIN: hint.origin || null,
+                    BACKEND_PREFIX: hint.prefix,
+                    INTERNAL_API_KEY_SET: hint.hasInternalKey,
+                  },
+                },
+              }
+            : {}),
+        },
+        { status: 502 },
+      );
+    }
+
     if (response.status >= 400) {
       const error = response.json?.error || 'Backend error';
       return NextResponse.json({ error }, { status: response.status });

@@ -35,6 +35,7 @@ type AppData = {
     vercelProtectionBypassSecret?: string | null;
     generationStatus?: "processing" | "ready" | "error";
     generationError?: string;
+    generationProgress?: number | null;
 };
 
 type AutoPreviewPhase =
@@ -446,6 +447,94 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     const [previewMode, setPreviewMode] = useState<PreviewMode>("webcontainer");
     const [vercelConnectOpen, setVercelConnectOpen] = useState(false);
     const [vercelConnectOpening, setVercelConnectOpening] = useState(false);
+    const [generationEver, setGenerationEver] = useState(false);
+
+    const generationPlaceholderFiles = useMemo(() => {
+        // Minimal Next.js App Router template so we can start a machine immediately
+        // while backend generation is still running.
+        const appName = String((app as any)?.name || "Kloner App");
+        const safeTitle = appName.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        return {
+            "package.json": {
+                content: JSON.stringify(
+                    {
+                        name: "kloner-generated-app",
+                        private: true,
+                        scripts: {
+                            dev: "next dev -p 3000",
+                            build: "next build",
+                            start: "next start -p 3000",
+                        },
+                        dependencies: {
+                            next: "^14.0.0",
+                            react: "^18.2.0",
+                            "react-dom": "^18.2.0",
+                        },
+                    },
+                    null,
+                    2,
+                ) + "\n",
+            },
+            "next.config.mjs": {
+                content: "export default {\n  reactStrictMode: true,\n};\n",
+            },
+            "tsconfig.json": {
+                content:
+                    JSON.stringify(
+                        {
+                            compilerOptions: {
+                                target: "ES2020",
+                                lib: ["dom", "dom.iterable", "esnext"],
+                                allowJs: true,
+                                skipLibCheck: true,
+                                strict: false,
+                                noEmit: true,
+                                esModuleInterop: true,
+                                module: "esnext",
+                                moduleResolution: "bundler",
+                                resolveJsonModule: true,
+                                isolatedModules: true,
+                                jsx: "preserve",
+                                incremental: true,
+                                baseUrl: ".",
+                                paths: { "@/*": ["./*"] },
+                            },
+                            include: ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
+                            exclude: ["node_modules"],
+                        },
+                        null,
+                        2,
+                    ) + "\n",
+            },
+            "next-env.d.ts": {
+                content: "/// <reference types=\"next\" />\n/// <reference types=\"next/image-types\" />\n\n// NOTE: This file should not be edited\n// see https://nextjs.org/docs/pages/api-reference/config/typescript for more information.\n",
+            },
+            "app/layout.tsx": {
+                content:
+                    `export const metadata = {\n  title: ${JSON.stringify(appName)},\n  description: "Generating your app…",\n};\n\nexport default function RootLayout({ children }: { children: React.ReactNode }) {\n  return (\n    <html lang=\"en\">\n      <body style={{ fontFamily: 'ui-sans-serif, system-ui, -apple-system' }}>{children}</body>\n    </html>\n  );\n}\n`,
+            },
+            "app/page.tsx": {
+                content:
+                    `export default function Page() {\n  return (\n    <main style={{ padding: 24, maxWidth: 760, margin: '0 auto' }}>\n      <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8 }}>${safeTitle}</h1>\n      <p style={{ color: '#374151', marginBottom: 16 }}>\n        Your app is being generated from your screenshots.\n      </p>\n      <div style={{ padding: 16, borderRadius: 12, border: '1px solid #e5e7eb', background: '#f9fafb' }}>\n        <div style={{ fontWeight: 600, marginBottom: 6 }}>Preview machine</div>\n        <div style={{ color: '#6b7280' }}>Starting now so it’s ready when generation finishes.</div>\n      </div>\n    </main>\n  );\n}\n`,
+            },
+        } as Record<string, { content: string }>;
+    }, [app?.name]);
+
+    const isGenerationProcessing = app?.generationStatus === "processing";
+    useEffect(() => {
+        if (app?.generationStatus === "processing") {
+            setGenerationEver(true);
+        }
+    }, [app?.generationStatus]);
+    const effectivePreviewFiles = useMemo(() => {
+        if (isGenerationProcessing) return generationPlaceholderFiles;
+        return (app?.files as any) || {};
+    }, [app?.files, generationPlaceholderFiles, isGenerationProcessing]);
+
+    const usedPlaceholderRef = useRef(false);
+    useEffect(() => {
+        if (isGenerationProcessing) usedPlaceholderRef.current = true;
+    }, [isGenerationProcessing]);
 
     // Guard against losing in-editor changes on refresh/navigation.
     // - For full-page navigations (refresh/close/url change), browsers require a synchronous beforeunload prompt.
@@ -723,6 +812,20 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
             setIsPreviewBuilding(false);
         }
     }, [isPreviewBuilding]);
+
+    // If we used a placeholder preview while generating, restart the machine with the real files
+    // once generation completes.
+    const lastGenStatusRef = useRef<string | undefined>(undefined);
+    useEffect(() => {
+        const status = app?.generationStatus;
+        const prev = lastGenStatusRef.current;
+        lastGenStatusRef.current = status;
+
+        if (prev === "processing" && status === "ready" && usedPlaceholderRef.current) {
+            usedPlaceholderRef.current = false;
+            void restartLocalPreview(true);
+        }
+    }, [app?.generationStatus, restartLocalPreview]);
 
     // Allow child panels (like AIAgentChat) to request a true "fresh machine" rebuild.
     useEffect(() => {
@@ -1423,56 +1526,62 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
             (docSnapshot) => {
                 if (docSnapshot.exists()) {
                     const firebaseData = docSnapshot.data();
-                    if (firebaseData && firebaseData.files) {
-                        // Update local state immediately when Firebase changes
-                        setApp(prevApp => {
+                    if (firebaseData) {
+                        // Update local state immediately when Firebase changes.
+                        // Important: generationStatus may update BEFORE files are written.
+                        setApp((prevApp) => {
                             if (!prevApp) return prevApp;
-                            
-                            // Check if generation status changed
-                            const generationStatusChanged = prevApp.generationStatus !== firebaseData.generationStatus ||
-                                                          prevApp.generationError !== firebaseData.generationError;
-                            
-                            // Only update if files or generation status actually changed to avoid unnecessary re-renders
-                            const mergedFiles = mergeFilesPreferNewest(prevApp.files, firebaseData.files);
-                            const filesChanged = !filesShallowEqualByContentAndTimestamp(prevApp.files, mergedFiles);
-                            
-                            if (filesChanged || generationStatusChanged) {
-                                const updatedApp = {
-                                    ...prevApp,
-                                    files: mergedFiles,
-                                    generationStatus: firebaseData.generationStatus,
-                                    generationError: firebaseData.generationError,
-                                    isDeployed: Boolean((firebaseData as any).isDeployed),
-                                    productionUrl: (firebaseData as any).productionUrl || null,
-                                    updatedAt: firebaseData.updatedAt
-                                };
 
-                                const nextLiveUrl = typeof (firebaseData as any).productionUrl === "string"
-                                    ? (firebaseData as any).productionUrl.trim()
-                                    : "";
-                                setLastDeployLiveUrl(nextLiveUrl || null);
-                                
-                                // Update file tree if files changed
-                                if (filesChanged) {
-                                    buildFileTree(mergedFiles);
-                                }
-                                
-                                // If the currently open file was modified, update the editor content.
-                                // Use a ref so this listener doesn't resubscribe on every tab switch.
+                            const nextGenStatus = (firebaseData as any).generationStatus;
+                            const nextGenError = (firebaseData as any).generationError;
+                            const nextGenProgress =
+                                typeof (firebaseData as any).generationProgress === "number"
+                                    ? (firebaseData as any).generationProgress
+                                    : typeof (firebaseData as any).progress === "number"
+                                      ? (firebaseData as any).progress
+                                      : null;
+
+                            const generationStatusChanged =
+                                prevApp.generationStatus !== nextGenStatus ||
+                                prevApp.generationError !== nextGenError ||
+                                prevApp.generationProgress !== nextGenProgress;
+
+                            const hasFilesUpdate = Boolean((firebaseData as any).files);
+                            const mergedFiles = hasFilesUpdate
+                                ? mergeFilesPreferNewest(prevApp.files, (firebaseData as any).files)
+                                : prevApp.files;
+                            const filesChanged = hasFilesUpdate
+                                ? !filesShallowEqualByContentAndTimestamp(prevApp.files, mergedFiles)
+                                : false;
+
+                            if (!filesChanged && !generationStatusChanged) return prevApp;
+
+                            const updatedApp: any = {
+                                ...prevApp,
+                                files: mergedFiles,
+                                generationStatus: nextGenStatus,
+                                generationError: nextGenError,
+                                generationProgress: nextGenProgress,
+                                isDeployed: Boolean((firebaseData as any).isDeployed),
+                                productionUrl: (firebaseData as any).productionUrl || null,
+                                updatedAt: (firebaseData as any).updatedAt,
+                            };
+
+                            const nextLiveUrl = typeof (firebaseData as any).productionUrl === "string"
+                                ? (firebaseData as any).productionUrl.trim()
+                                : "";
+                            setLastDeployLiveUrl(nextLiveUrl || null);
+
+                            if (filesChanged) {
+                                buildFileTree(mergedFiles);
+
                                 const openPath = currentFileRef.current;
                                 if (openPath && (mergedFiles as any)[openPath]) {
                                     setCode((mergedFiles as any)[openPath].content);
                                 }
 
-                                // For non-webcontainer previews (e.g. embedded deployment), we still need
-                                // an iframe refresh when file content changes.
-                                // For webcontainer previews, rely on live-apply/HMR to avoid double reloads.
-                                if (filesChanged && previewMode !== "webcontainer") {
+                                if (previewMode !== "webcontainer") {
                                     queuePreviewReloadFromFirebase();
-
-                                    // Also live-apply the changed files so the running preview reflects remote edits.
-                                    // This covers cases where files were updated server-side (agent/restore points)
-                                    // and only arrived via Firestore snapshots.
                                     try {
                                         const changes: Array<{ path: string; content: string }> = [];
                                         const prevFiles = prevApp.files || ({} as any);
@@ -1491,11 +1600,9 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                         // ignore
                                     }
                                 }
-                                
-                                return updatedApp;
                             }
-                            
-                            return prevApp;
+
+                            return updatedApp;
                         });
                     }
                 }
@@ -1792,6 +1899,12 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     }, [appId, queuePreviewApply, showAlert]);
 
     const handleFileChangeFromContainer = useCallback((path: string, content: string) => {
+        // While we are in generation-processing state we may be running a placeholder template.
+        // Do not persist container-origin writes during that phase.
+        if ((appRef.current as any)?.generationStatus === "processing") {
+            return;
+        }
+
         // Update local state
         setApp((prev) => prev ? {
             ...prev,
@@ -2175,21 +2288,6 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
         );
     }
 
-    if (app.generationStatus === "processing") {
-        return (
-            <div className="fixed inset-0 z-[16000] bg-black/70 backdrop-blur-sm flex items-center justify-center">
-                <div className="bg-white rounded-lg p-8 max-w-md">
-                    <div className="text-center">
-                        <KlonerLoader />
-                        <div className="text-gray-600 text-sm mt-4">
-                            Generating your app... This may take a few minutes.
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
     if (app.generationStatus === "error") {
         return (
             <div className="fixed inset-0 z-[16000] bg-black/70 backdrop-blur-sm flex items-center justify-center">
@@ -2213,6 +2311,34 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
 
     return (
         <div className="fixed inset-0 z-[16000] bg-black/70 backdrop-blur-sm">
+            {isGenerationProcessing ? (
+                <div className="fixed inset-0 z-[17000] bg-black/70 backdrop-blur-sm flex items-center justify-center">
+                    <div className="bg-white rounded-lg p-8 max-w-md">
+                        <div className="text-center">
+                            <KlonerLoader />
+                            <div className="text-gray-600 text-sm mt-4">
+                                Generating your app… Starting a preview machine in the background.
+                            </div>
+
+                            {typeof (app as any).generationProgress === "number" ? (
+                                <div className="mt-4">
+                                    <div className="text-xs font-semibold text-gray-700">
+                                        Progress: {Math.max(0, Math.min(100, Math.round((app as any).generationProgress)))}%
+                                    </div>
+                                    <div className="mt-2 h-2 w-full rounded-full bg-gray-200 overflow-hidden">
+                                        <div
+                                            className="h-full bg-[#F55F2A]"
+                                            style={{
+                                                width: `${Math.max(0, Math.min(100, Math.round((app as any).generationProgress)))}%`,
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                            ) : null}
+                        </div>
+                    </div>
+                </div>
+            ) : null}
             <div className="h-full w-full bg-white flex flex-col">
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b bg-gray-50">
@@ -2494,13 +2620,14 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                 <div className="h-full w-full p-3">
                                     <WebContainerRunner
                                         appId={appId}
-                                        files={app.files}
+                                        files={effectivePreviewFiles}
                                         onFileChange={handleFileChangeFromContainer}
                                         onPreviewReadyChange={setIsWebPreviewReady}
                                         reloadToken={refreshKey}
                                         restartToken={localRestartKey}
                                         reconnectToken={reconnectKey}
                                         forceFreshStart={forceFreshStartKey.current}
+                                        pollingConfig={generationEver ? { maxPollingRetries: 90, maxContainerNotFound: 10 } : undefined}
                                     />
                                 </div>
                             ) : previewSrc ? (

@@ -12,8 +12,10 @@ async function handleWebcontainerStatus(code: string, appId: string, uid?: strin
       noPrefix: true,
     });
     if (response.status >= 400) {
-      const error = response.json?.error || 'Backend error';
-      return NextResponse.json({ error }, { status: response.status });
+      const payload = (response.json && typeof response.json === 'object') ? response.json : {};
+      const error = (payload as any)?.error || 'Backend error';
+      // Preserve backend diagnostics (uiTitle/uiMessage/events/etc) so the frontend can render them.
+      return NextResponse.json({ ...payload, error }, { status: response.status });
     }
     return NextResponse.json(response.json);
   } catch (error) {
