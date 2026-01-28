@@ -143,6 +143,7 @@ function clampPct(v: number): number {
 }
 
 export default function PriceClient(): JSX.Element {
+    const BILLING_COMING_SOON = true;
     const [loadingPlan, setLoadingPlan] = useState<null | "pro" | "agency">(null);
     const [loadingTopup, setLoadingTopup] = useState(false);
     const [topupCredits, setTopupCredits] = useState<number>(500);
@@ -257,57 +258,7 @@ export default function PriceClient(): JSX.Element {
         };
     }, [authLoading]);
 
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-        if (authLoading) return;
-        if (!user) return;
-        if (pendingAutoCheckoutAttemptedRef.current) return;
-
-        const readPending = (): { type: "topup"; credits: number } | null => {
-            try {
-                const raw = window.sessionStorage.getItem("kloner:pendingCheckout");
-                if (!raw) return null;
-                const parsed = JSON.parse(raw);
-                if (parsed?.type !== "topup") return null;
-                const credits = Number(parsed?.credits);
-                if (!Number.isFinite(credits) || credits <= 0) return null;
-                return { type: "topup", credits: Math.floor(credits) };
-            } catch {
-                return null;
-            }
-        };
-
-        const url = new URL(window.location.href);
-        const autoCheckout = url.searchParams.get("autocheckout");
-        const creditsFromUrl = Number(url.searchParams.get("credits"));
-
-        const fromUrl =
-            autoCheckout === "topup" && Number.isFinite(creditsFromUrl) && creditsFromUrl > 0
-                ? ({ type: "topup", credits: Math.floor(creditsFromUrl) } as const)
-                : null;
-
-        const pending = fromUrl || readPending();
-        if (!pending) return;
-
-        pendingAutoCheckoutAttemptedRef.current = true;
-
-        try {
-            window.sessionStorage.removeItem("kloner:pendingCheckout");
-        } catch {
-            // ignore
-        }
-
-        // Clean URL params so refresh doesn't re-trigger checkout.
-        if (fromUrl) {
-            url.searchParams.delete("autocheckout");
-            url.searchParams.delete("credits");
-            window.history.replaceState({}, "", url.toString());
-        }
-
-        // Auto-start the Stripe flow the user requested pre-login.
-        void startTopup(pending.credits);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [authLoading, user]);
+    // Intentionally no auto-checkout: billing flows are currently disabled.
 
     const creditsDisplay = useMemo(() => {
         const remaining = aiCredits?.remaining ?? null;
@@ -444,6 +395,10 @@ export default function PriceClient(): JSX.Element {
     }, []);
 
     async function startCheckout(plan: "pro" | "agency") {
+        if (BILLING_COMING_SOON) {
+            await showAlert("Billing is coming soon. For now, subscriptions are disabled.", "Coming soon");
+            return;
+        }
         if (loadingPlan) return;
         setLoadingPlan(plan);
 
@@ -483,14 +438,13 @@ export default function PriceClient(): JSX.Element {
         }
     }
 
-    async function startTopup(creditsOverride?: number) {
+    async function startTopup() {
+        if (BILLING_COMING_SOON) {
+            await showAlert("Credit top-ups are coming soon. For now, purchases are disabled.", "Coming soon");
+            return;
+        }
         if (loadingTopup) return;
         setLoadingTopup(true);
-
-        const creditsToBuy =
-            typeof creditsOverride === "number" && Number.isFinite(creditsOverride) && creditsOverride > 0
-                ? Math.floor(creditsOverride)
-                : topupCredits;
 
         try {
             const csrf = await ensureCsrf();
@@ -502,25 +456,11 @@ export default function PriceClient(): JSX.Element {
                     ...(csrf ? { "x-csrf": csrf } : {}),
                 },
                 credentials: "include",
-                body: JSON.stringify({ credits: creditsToBuy }),
+                body: JSON.stringify({ credits: topupCredits }),
             });
 
             if (res.status === 401) {
-                try {
-                    window.sessionStorage.setItem(
-                        "kloner:pendingCheckout",
-                        JSON.stringify({ type: "topup", credits: creditsToBuy }),
-                    );
-                } catch {
-                    // ignore
-                }
-
-                const nextUrl = new URL("/price", window.location.origin);
-                nextUrl.searchParams.set("autocheckout", "topup");
-                nextUrl.searchParams.set("credits", String(creditsToBuy));
-                nextUrl.hash = "topup";
-
-                const next = encodeURIComponent(nextUrl.pathname + nextUrl.search + nextUrl.hash);
+                const next = encodeURIComponent("/price#topup");
                 window.location.href = `/login?next=${next}`;
                 return;
             }
@@ -608,13 +548,18 @@ export default function PriceClient(): JSX.Element {
                                     </p>
                                 </div>
 
-                                <a
-                                    href="#topup"
-                                    className="inline-flex items-center justify-center rounded-full px-3 py-1.5 text-xs font-semibold text-white hover:brightness-95"
-                                    style={{ backgroundColor: ACCENT }}
-                                >
-                                    Top up
-                                </a>
+                                <div className="inline-flex items-center gap-2">
+                                    <span className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800">
+                                        Coming soon
+                                    </span>
+                                    <a
+                                        href="#topup"
+                                        className="inline-flex items-center justify-center rounded-full px-3 py-1.5 text-xs font-semibold text-white hover:brightness-95"
+                                        style={{ backgroundColor: ACCENT }}
+                                    >
+                                        Details
+                                    </a>
+                                </div>
                             </div>
 
                             {creditsDisplay.showBar ? (
@@ -731,17 +676,17 @@ export default function PriceClient(): JSX.Element {
                                     <button
                                         type="button"
                                         onClick={() => handleClick(tier.name)}
-                                        disabled={isLoading}
+                                        disabled={isLoading || BILLING_COMING_SOON}
                                         className={
                                             "mt-2 w-full rounded-full px-4 py-2.5 text-sm font-semibold transition " +
                                             (tier.highlight
                                                 ? "text-white"
                                                 : "text-neutral-900 border border-neutral-300 bg-white hover:bg-neutral-50") +
-                                            (isLoading ? " opacity-70 cursor-wait" : "")
+                                            (isLoading || BILLING_COMING_SOON ? " opacity-70 cursor-not-allowed" : "")
                                         }
                                         style={tier.highlight ? { backgroundColor: ACCENT } : undefined}
                                     >
-                                        {isLoading ? "Redirecting to Stripe…" : tier.cta}
+                                        {BILLING_COMING_SOON ? "Coming soon" : isLoading ? "Redirecting to Stripe…" : tier.cta}
                                     </button>
 
                                     {isPro ? (
@@ -787,6 +732,12 @@ export default function PriceClient(): JSX.Element {
                                 <h2 className="text-lg font-semibold tracking-tight">Top up AI credits</h2>
                                 <p className="mt-1 text-[12px] text-neutral-600">One-time checkout. Credits apply after Stripe confirms.</p>
                             </div>
+
+                            {BILLING_COMING_SOON ? (
+                                <span className="inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-[11px] font-semibold text-neutral-700">
+                                    Coming soon
+                                </span>
+                            ) : null}
 
                             {userTier === "pro" || userTier === "agency" ? (
                                 <span className="inline-flex items-center rounded-full border border-[rgba(245,95,42,0.35)] bg-white px-3 py-1 text-[11px] font-semibold text-[rgba(245,95,42,1)]">
@@ -847,6 +798,7 @@ export default function PriceClient(): JSX.Element {
                                         disabled={
                                             loadingTopup ||
                                             authLoading ||
+                                            BILLING_COMING_SOON ||
                                             (!!user && !(userTier === "pro" || userTier === "agency"))
                                         }
                                         onClick={() => void startTopup()}
@@ -855,7 +807,7 @@ export default function PriceClient(): JSX.Element {
                                         }
                                         style={{ backgroundColor: ACCENT }}
                                     >
-                                        {loadingTopup ? "Redirecting to Stripe…" : "Top up credits"}
+                                        {BILLING_COMING_SOON ? "Coming soon" : loadingTopup ? "Redirecting to Stripe…" : "Top up credits"}
                                     </button>
 
                                     {user ? null : (

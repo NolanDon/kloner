@@ -421,6 +421,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     const [localRestartKey, setLocalRestartKey] = useState(0);
     const [reconnectKey, setReconnectKey] = useState(0);
     const [isWebPreviewReady, setIsWebPreviewReady] = useState(false);
+    const [dismissedGenerationError, setDismissedGenerationError] = useState(false);
     const [agentCreditError, setAgentCreditError] = useState<string | null>(null);
     const lastConsumedAiCreditRequestIdRef = useRef<string | null>(null);
     const [forceFreshStart, setForceFreshStart] = useState(false);
@@ -521,6 +522,31 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     }, [app]);
 
     const isGenerationProcessing = app?.generationStatus === "processing";
+
+    const generationErrorText = useMemo(() => {
+        return String((app as any)?.generationError || "");
+    }, [app]);
+
+    const generationErrorLooksPreviewRelated = useMemo(() => {
+        const t = generationErrorText.toLowerCase();
+        return (
+            t.includes("preview") ||
+            t.includes("webcontainer") ||
+            t.includes("hub") ||
+            t.includes("502") ||
+            t.includes("poll") ||
+            t.includes("render_failed")
+        );
+    }, [generationErrorText]);
+
+    useEffect(() => {
+        // If the backend marked generation as error due to a transient preview issue,
+        // but the preview is now connected, don't hard-block the UI.
+        if (app?.generationStatus !== "error") return;
+        if (!generationErrorLooksPreviewRelated) return;
+        if (!isWebPreviewReady) return;
+        setDismissedGenerationError(true);
+    }, [app?.generationStatus, generationErrorLooksPreviewRelated, isWebPreviewReady]);
     useEffect(() => {
         if (app?.generationStatus === "processing") {
             setGenerationEver(true);
@@ -2369,7 +2395,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
         );
     }
 
-    if (app.generationStatus === "error") {
+    if (app.generationStatus === "error" && !dismissedGenerationError) {
         return (
             <div className="fixed inset-0 z-[16000] bg-black/70 backdrop-blur-sm flex items-center justify-center">
                 <div className="bg-white rounded-lg p-8 max-w-md">
@@ -2378,12 +2404,26 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                         <div className="text-gray-600 text-sm mb-4">
                             {app.generationError || "An error occurred while generating your app."}
                         </div>
-                        <button
-                            onClick={() => window.location.reload()}
-                            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                        >
-                            Retry
-                        </button>
+                        <div className="flex flex-wrap items-center justify-center gap-2">
+                            <button
+                                onClick={handleReconnect}
+                                className="px-4 py-2 bg-accent text-white rounded-full hover:bg-accent-dark transition-colors"
+                            >
+                                Reconnect preview
+                            </button>
+                            <button
+                                onClick={() => setDismissedGenerationError(true)}
+                                className="px-4 py-2 bg-gray-100 text-gray-900 rounded-full hover:bg-gray-200 transition-colors"
+                            >
+                                Continue anyway
+                            </button>
+                            <button
+                                onClick={() => window.location.reload()}
+                                className="px-4 py-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors"
+                            >
+                                Retry
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
