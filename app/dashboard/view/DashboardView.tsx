@@ -1115,27 +1115,6 @@ function AppCard({
 
             {/* Main visual area */}
             <div className="relative aspect-[3/3] w-full overflow-hidden flex flex-col items-center justify-center bg-gradient-to-br from-neutral-50 to-neutral-100">
-                <div className="pointer-events-auto flex flex-col items-center gap-3">
-                    {/* <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#f55f2a]/10">
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            fill="currentColor"
-                            className="h-8 w-8 text-[#f55f2a]"
-                        >
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                            <polyline points="14,2 14,8 20,8" />
-                            <line x1="12" y1="13" x2="12" y2="13.01" />
-                            <line x1="12" y1="17" x2="12" y2="17.01" />
-                        </svg>
-                    </div> */}
-                    <div className="text-center mt-5">
-                        <h3 className="text-sm font-semibold text-neutral-900 max-w-[200px] truncate">
-                            {app.name}
-                        </h3>
-                    </div>
-                </div>
-
                 {/* Action buttons overlay */}
                 <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
                     <div className="pointer-events-auto flex max-w-xs flex-col items-stretch rounded-xl border border-neutral-200 bg-white/80 p-3 text-xs shadow-lg backdrop-blur-sm">
@@ -2025,7 +2004,7 @@ export default function PreviewPage(): JSX.Element {
     ) => {
         if (!user) return;
 
-        if (!isAdmin && (mode === "url" || mode === "prompt")) {
+        if (!isAdmin && mode === "prompt") {
             push("Coming soon.", "err");
             return null;
         }
@@ -2161,8 +2140,8 @@ export default function PreviewPage(): JSX.Element {
             setAppWizardUrl(url);
             setAppWizardShotsUrl(url);
             setAppWizardSeedRenderId(opts?.seedRenderId ?? null);
-            // Default to Clone from URL for admins; otherwise keep Quick start selected.
-            setAppWizardSource(isAdmin ? "website" : "sample");
+            // Default to Clone from URL when we already have a URL; otherwise keep prior behavior.
+            setAppWizardSource(url ? "website" : (isAdmin ? "website" : "sample"));
             setAppWizardPrompt("");
             setAppWizardError(null);
             setAppWizardBusy(false);
@@ -2173,10 +2152,6 @@ export default function PreviewPage(): JSX.Element {
 
     const submitAppWizardWebsite = useCallback(async () => {
         if (appWizardBusy) return;
-        if (!isAdmin) {
-            setAppWizardError("Coming soon.");
-            return;
-        }
         setAppWizardBusy(true);
         setAppWizardError(null);
 
@@ -2209,7 +2184,7 @@ export default function PreviewPage(): JSX.Element {
         } finally {
             setAppWizardBusy(false);
         }
-    }, [appWizardBusy, appWizardUrl, appWizardShotsUrl, user, shots, handleCreateApp, isAdmin]);
+    }, [appWizardBusy, appWizardUrl, appWizardShotsUrl, user, shots, handleCreateApp]);
 
     const submitAppWizardSample = useCallback(async () => {
         if (appWizardBusy) return;
@@ -5632,25 +5607,16 @@ export default function PreviewPage(): JSX.Element {
                                                     <button
                                                         type="button"
                                                         onClick={() => {
-                                                            if (!isAdmin) return;
                                                             setAppWizardSource("website");
                                                             setAppWizardPrompt("");
                                                             setAppWizardUrl((prev) => (prev || targetUrl || ""));
                                                             setAppWizardShotsUrl((prev) => (prev || targetUrl || ""));
                                                         }}
-                                                        disabled={!isAdmin}
-                                                        className={`relative w-full rounded-xl border p-4 text-left transition ${!isAdmin
-                                                            ? "cursor-not-allowed border-neutral-200 bg-neutral-50 opacity-60"
-                                                            : appWizardSource === "website"
-                                                                ? "border-[#f55f2a] bg-[#f55f2a]/5"
-                                                                : "border-neutral-200 bg-white hover:bg-neutral-50"
+                                                        className={`relative w-full rounded-xl border p-4 text-left transition ${appWizardSource === "website"
+                                                            ? "border-[#f55f2a] bg-[#f55f2a]/5"
+                                                            : "border-neutral-200 bg-white hover:bg-neutral-50"
                                                             }`}
                                                     >
-                                                        {!isAdmin ? (
-                                                            <span className="absolute right-3 top-3 rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-neutral-700">
-                                                                Coming soon
-                                                            </span>
-                                                        ) : null}
                                                         <div className="text-sm font-semibold text-neutral-900">Clone from URL</div>
                                                         <div className="mt-1 text-xs text-neutral-600 break-all">
                                                             High-fidelity clone using your saved screenshots when available.
@@ -5695,7 +5661,7 @@ export default function PreviewPage(): JSX.Element {
                                                     </button>
                                                 </div>
 
-                                                {appWizardSource === "website" && isAdmin ? (
+                                                {appWizardSource === "website" ? (
                                                     <div className="mt-2 space-y-2">
                                                         <label className="text-xs font-semibold text-neutral-700">
                                                             URL
@@ -5730,9 +5696,8 @@ export default function PreviewPage(): JSX.Element {
                                             <button
                                                 type="button"
                                                 onClick={() => {
-                                                    if (appWizardSource !== "sample" && !isAdmin) {
-                                                        setAppWizardError("Coming soon for non-admins.");
-                                                        setAppWizardSource("sample");
+                                                    if (appWizardSource === "prompt" && !isAdmin) {
+                                                        setAppWizardError("Coming soon.");
                                                         return;
                                                     }
 

@@ -101,6 +101,25 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     }
   };
 
+  const isValidPreviewUrlCandidate = (maybeUrl: string): boolean => {
+    const raw = String(maybeUrl || '').trim();
+    if (!raw) return false;
+
+    try {
+      const u = new URL(raw, typeof window !== 'undefined' ? window.location.origin : undefined);
+      const host = u.hostname.toLowerCase();
+      if (host === 'tracksite-hub.fly.dev') {
+        // Never navigate to hub root; hub previews must be /preview/<code>(/path)? with a viewer token.
+        const parts = u.pathname.split('/').filter(Boolean);
+        return parts.length >= 2 && parts[0] === 'preview' && Boolean(parts[1]);
+      }
+      // For non-hub URLs, accept http(s) URLs.
+      return u.protocol === 'http:' || u.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  };
+
   const requestForceFreshRebuild = (reason: string, previewUrl: string) => {
     if (typeof window === 'undefined') return;
     const code = derivePreviewCodeFromUrl(previewUrl) || 'unknown';
@@ -1459,7 +1478,13 @@ export default function NavBar() {
             // This ensures the iframe can show its own /__preview loader and we avoid a second outer loader.
             if (deploymentUrl) {
               latestDeploymentUrlRef.current = deploymentUrl;
-              if (previewUrlRef.current !== deploymentUrl) {
+              if (!isValidPreviewUrlCandidate(deploymentUrl)) {
+                console.warn('[WebContainerRunner] Ignoring invalid preview url from status (missing /preview/<code>?)', {
+                  appId,
+                  code,
+                  deploymentUrl,
+                });
+              } else if (previewUrlRef.current !== deploymentUrl) {
                 iframeLoadedSuccessfullyRef.current = false;
                 setPreviewUrl(deploymentUrl);
               }
@@ -1510,6 +1535,14 @@ export default function NavBar() {
                 throw new Error('Backend reported app ready but did not provide deployment URL');
               }
 
+              if (!isValidPreviewUrlCandidate(readyUrl)) {
+                console.warn('[WebContainerRunner] Backend ready URL is not a valid preview URL; refusing to navigate', {
+                  appId,
+                  code,
+                  readyUrl,
+                });
+              }
+
               // Clear status data since we're done
               setCurrentStatusData(null);
               setLoadingStatus('');
@@ -1533,8 +1566,10 @@ export default function NavBar() {
 
               // Default behavior (no parent callback): reload the iframe by cache-busting the URL
               // (preserving the viewer token `t`).
-              proxyBaseRef.current = readyUrl;
-              setPreviewUrl(withCacheBust(readyUrl));
+              if (isValidPreviewUrlCandidate(readyUrl)) {
+                proxyBaseRef.current = readyUrl;
+                setPreviewUrl(withCacheBust(readyUrl));
+              }
               setLoadingStatus(`Connected to machine ${(statusData as any)?.machineId}! Loading interface...`);
               setIsPolling(false);
               appLoadedSuccessfullyRef.current = true;
@@ -2128,9 +2163,9 @@ export default function NavBar() {
       )}
       {previewUrl && !error ? (
         <div className="relative w-full h-full">
-          <div className="absolute left-3 top-3 z-10 rounded-xl border border-black/10 bg-white/80 px-3 py-2 text-xs text-black/70 shadow-sm backdrop-blur-sm">
+          <div className="absolute right-3 top-3 z-10 rounded-xl border border-black/10 bg-white/80 px-3 py-2 text-xs text-black/70 shadow-sm backdrop-blur-sm">
             <details>
-              <summary className="cursor-pointer select-none">Embedded preview URL</summary>
+              {/* <summary className="cursor-pointer select-none">Embedded preview URL</summary> */}
               <div className="mt-2 max-w-[min(720px,90vw)] break-all font-mono text-[11px] text-black/80">
                 {previewUrl}
               </div>
