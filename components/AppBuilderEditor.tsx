@@ -518,7 +518,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                     `export default function Page() {\n  return (\n    <main style={{ padding: 24, maxWidth: 760, margin: '0 auto' }}>\n      <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8 }}>${safeTitle}</h1>\n      <p style={{ color: '#374151', marginBottom: 16 }}>\n        Your app is being generated from your screenshots.\n      </p>\n      <div style={{ padding: 16, borderRadius: 12, border: '1px solid #e5e7eb', background: '#f9fafb' }}>\n        <div style={{ fontWeight: 600, marginBottom: 6 }}>Preview machine</div>\n        <div style={{ color: '#6b7280' }}>Starting now so it’s ready when generation finishes.</div>\n      </div>\n    </main>\n  );\n}\n`,
             },
         } as Record<string, { content: string }>;
-    }, [app?.name]);
+    }, [app]);
 
     const isGenerationProcessing = app?.generationStatus === "processing";
     useEffect(() => {
@@ -774,7 +774,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
         return new Promise((resolve) => setTimeout(resolve, ms));
     }
 
-    async function fetchFreshCsrf(): Promise<string | null> {
+    const fetchFreshCsrf = useCallback(async (): Promise<string | null> => {
         try {
             const res = await fetch("/api/auth/csrf", {
                 method: "POST",
@@ -788,7 +788,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
         } catch {
             return null;
         }
-    }
+    }, []);
 
     const restartLocalPreview = useCallback(async (forceFresh: boolean = false) => {
         if (isPreviewBuilding) return;
@@ -876,7 +876,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                 setAgentCreditError(String(err?.message || "Failed to consume AI edit credit"));
             }
         },
-        []
+        [fetchFreshCsrf]
     );
 
 
@@ -1068,7 +1068,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                 }
             }
         },
-        [appId, restartLocalPreview, showAlert]
+        [appId, fetchFreshCsrf, restartLocalPreview, showAlert]
     );
 
     const getStoredPreviewCode = useCallback((): string => {
@@ -1484,7 +1484,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                 }
             }
         },
-        [appId, isVercelConnected, enableVercelProtectionBypassAutomatically],
+        [appId, enableVercelProtectionBypassAutomatically],
     );
 
     // Load app data
@@ -1515,7 +1515,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
             }
         };
         loadApp();
-    }, [appId]);
+    }, [appId, onClose]);
 
     // Firebase real-time listener for instant UI updates when files change
     useEffect(() => {
@@ -2495,7 +2495,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
 
                 {isGenerationProcessing && previewMode === "webcontainer" ? (
                     <div className="border-b bg-amber-50 px-4 py-2 text-xs text-amber-900">
-                        Generating your app. Preview will update automatically when it's ready.
+                        {"Generating your app. Preview will update automatically when it's ready."}
                     </div>
                 ) : null}
 

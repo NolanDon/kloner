@@ -45,10 +45,12 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   // original "start/stop" thrash bug while still allowing reconnect/retry tokens.
   const lastStartKeyRef = useRef<string | null>(null);
   const maxRetries = 2; // Reduced from 3 to be less aggressive
-  const maxPollingRetries =
+  const maxPollingRetriesRaw =
     typeof pollingConfig?.maxPollingRetries === 'number'
       ? pollingConfig.maxPollingRetries
-      : 30; // default: up to ~5 minutes of polling
+      : 480; // default: up to ~12 minutes of polling at 1.5s/tick
+  // Enforce a minimum aligned with the 12-minute hard timeout.
+  const maxPollingRetries = Math.max(480, maxPollingRetriesRaw);
   const pollingRetryCountRef = useRef(0); // Track polling retry attempts
   const retryScheduledRef = useRef(false);
   const totalAttemptsRef = useRef(0); // Circuit breaker for infinite retries
@@ -70,6 +72,23 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const statusPollTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Track status polling timeout
   const iframeLoadTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Track iframe load timeout
   const automaticRetryTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Track automatic retry timeout
+  const pollStartedAtRef = useRef<number>(0);
+  const latestDeploymentUrlRef = useRef<string>('');
+  const hubStatusUrlRef = useRef<string | null>(null);
+
+  const POLL_INTERVAL_MS = 1500;
+  const HARD_POLL_TIMEOUT_MS = 12 * 60 * 1000;
+
+  const buildHubStatusUrl = (code: string, deploymentUrl: string): string | null => {
+    try {
+      const u = new URL(deploymentUrl);
+      const token = u.searchParams.get('t');
+      if (!token) return null;
+      return `https://tracksite-hub.fly.dev/preview/${encodeURIComponent(code)}/status?t=${encodeURIComponent(token)}`;
+    } catch {
+      return null;
+    }
+  };
 
   const stopAllTimers = () => {
     if (retryTimeoutRef.current) {
@@ -1214,12 +1233,52 @@ export default function NavBar() {
         const pollStatus = async () => {
           if (startRunIdRef.current !== runId) return; // Component was unmounted
 
+          // Hard timeout guard (12 minutes)
+          if (pollStartedAtRef.current && Date.now() - pollStartedAtRef.current > HARD_POLL_TIMEOUT_MS) {
+            console.error('[WebContainerRunner] Preview polling timed out');
+            stopAllTimers();
+            setIsPolling(false);
+            setIsLoading(false);
+            setConnectingToExisting(false);
+            setLoadingStatus('');
+            setCurrentStatusData(null);
+            setError('Preview is taking longer than expected (12 minute timeout). Try Reconnect, or use Start fresh to start a new machine.');
+            setCanRetry(true);
+            return;
+          }
+
           try {
-            const headers = await getAuthenticatedHeaders();
-            const statusResponse = await fetch(`/api/webcontainer-status?code=${code}&appId=${appId}`, {
-              headers,
-              credentials: "include"
-            });
+            let statusResponse: Response | null = null;
+            const hubStatusUrl = hubStatusUrlRef.current;
+            if (hubStatusUrl) {
+              // Poll the hub status endpoint directly once we have a viewer token.
+              try {
+                statusResponse = await fetch(hubStatusUrl, { method: 'GET', cache: 'no-store', credentials: 'omit' });
+              } catch (err) {
+                // If the browser blocks this (CORS) or network fails, fall back to our API proxy.
+                console.warn('[WebContainerRunner] Hub status poll failed; falling back to /api/webcontainer-status', err);
+                hubStatusUrlRef.current = null;
+                statusResponse = null;
+              }
+            } else {
+              // Fallback: poll via our API until the backend returns a URL with viewer token.
+              const headers = await getAuthenticatedHeaders();
+              statusResponse = await fetch(`/api/webcontainer-status?code=${code}&appId=${appId}`, {
+                headers,
+                credentials: "include",
+                cache: 'no-store',
+              });
+            }
+
+            if (!statusResponse) {
+              const headers = await getAuthenticatedHeaders();
+              statusResponse = await fetch(`/api/webcontainer-status?code=${code}&appId=${appId}`, {
+                headers,
+                credentials: "include",
+                cache: 'no-store',
+              });
+            }
+
             if (!statusResponse.ok) {
               // Handle 404s specially for newly created containers
               if (statusResponse.status === 404) {
@@ -1253,13 +1312,13 @@ export default function NavBar() {
                 }
                 
                 // For 404s, retry more frequently since the container might not be registered yet
-                statusPollTimeoutRef.current = setTimeout(pollStatus, 2000); // Retry in 2 seconds
+                statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
                 return;
               }
               throw new Error(`Status check failed: ${statusResponse.status}`);
             }
 
-            const statusData = await statusResponse.json();
+            const statusData = await statusResponse.json().catch(() => ({} as any));
             if (process.env.NODE_ENV !== 'production') {
               try {
                 const status = String((statusData as any)?.status || '').toLowerCase();
@@ -1311,6 +1370,20 @@ export default function NavBar() {
             const readyFlag = Boolean((statusData as any)?.ready);
             const deploymentUrl = String((statusData as any)?.url || '').trim();
 
+            // If backend/hub provided a URL, always surface it immediately.
+            // This ensures the iframe can show its own /__preview loader and we avoid a second outer loader.
+            if (deploymentUrl) {
+              latestDeploymentUrlRef.current = deploymentUrl;
+              if (previewUrlRef.current !== deploymentUrl) {
+                iframeLoadedSuccessfullyRef.current = false;
+                setPreviewUrl(deploymentUrl);
+              }
+
+              // Once we have the viewer token, switch polling to the hub status endpoint.
+              const nextHub = buildHubStatusUrl(code, deploymentUrl);
+              if (nextHub) hubStatusUrlRef.current = nextHub;
+            }
+
             // Backend contract: treat `ready === true` as the completion signal.
             // Also handle explicit terminal states and transient restarting states.
             if (status === 'stopped') {
@@ -1335,12 +1408,7 @@ export default function NavBar() {
               setCanRetry(false);
               setIsPolling(true);
               setIsLoading(false);
-              if (deploymentUrl) {
-                // Show the host UI if it's up, but keep polling until ready.
-                iframeLoadedSuccessfullyRef.current = false;
-                setPreviewUrl(deploymentUrl);
-              }
-              statusPollTimeoutRef.current = setTimeout(pollStatus, 5000);
+              statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
               return;
             }
 
@@ -1351,9 +1419,10 @@ export default function NavBar() {
 
             if (isReady) {
               backendReadyRef.current = true;
-              console.log('Deployment ready at:', deploymentUrl);
+              const readyUrl = deploymentUrl || latestDeploymentUrlRef.current;
+              console.log('Deployment ready at:', readyUrl);
 
-              if (!deploymentUrl) {
+              if (!readyUrl) {
                 console.error('Backend reported ready but no URL provided:', statusData);
                 throw new Error('Backend reported app ready but did not provide deployment URL');
               }
@@ -1362,11 +1431,8 @@ export default function NavBar() {
               setCurrentStatusData(null);
               setLoadingStatus('');
 
-              // Force a reload when we hit ready, so we don't stick on a fallback UI.
-              const readyUrl = withCacheBust(deploymentUrl);
-
               // For Fly.io deployments, add a small delay to let DNS propagate
-              if (deploymentUrl.includes('.fly.dev')) {
+              if (readyUrl.includes('.fly.dev')) {
                 console.log('Fly.io deployment detected, allowing time for DNS propagation...');
                 setLoadingStatus(`Deployment ready on machine ${(statusData as any)?.machineId}! Waiting for DNS propagation...`);
                 setTimeout(() => {
@@ -1419,7 +1485,7 @@ export default function NavBar() {
                     setCanRetry(false);
                     appLoadedSuccessfullyRef.current = true;
                     pollingRetryCountRef.current = 0;
-                    statusPollTimeoutRef.current = setTimeout(pollStatus, 5000);
+                    statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
                     return;
                   }
                   console.log('Direct probe indicates URL is not reachable yet:', deploymentUrl);
@@ -1445,7 +1511,7 @@ export default function NavBar() {
                     setCanRetry(false);
                     appLoadedSuccessfullyRef.current = true;
                     pollingRetryCountRef.current = 0;
-                    statusPollTimeoutRef.current = setTimeout(pollStatus, 5000);
+                    statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
                     return;
                   }
                 } catch (probeErr) {
@@ -1480,7 +1546,7 @@ export default function NavBar() {
                 setLoadingStatus('Preview is still starting (this can take a few minutes)…');
 
                 // Continue polling a bit faster during grace.
-                statusPollTimeoutRef.current = setTimeout(pollStatus, 5000);
+                statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
                 return;
               }
               
@@ -1547,30 +1613,7 @@ export default function NavBar() {
                        status === 'booting' || status === 'building' || 
                        status === 'compiling' || status === 'starting') {
               // Still building, continue polling and show progress if available
-              // But if we have a URL and the machine is running (not just pending/creating), try to connect early
-              if (deploymentUrl && !['pending', 'archiving', 'uploading_archive', 'creating_machine'].includes(status)) {
-                console.log(`Backend reports ${status} but has URL, checking reachability:`, deploymentUrl);
-                try {
-                  const reachable = await probePreviewUrl(appId, deploymentUrl);
-                  if (reachable) {
-                    console.log('URL is reachable during build; showing preview while continuing to poll');
-                    iframeLoadedSuccessfullyRef.current = false;
-                    setPreviewUrl(deploymentUrl);
-                    setLoadingStatus(`Connecting to machine ${(statusData as any)?.machineId}... (showing progress)`);
-                    setIsPolling(true);
-                    setError(null);
-                    setCanRetry(false);
-                    appLoadedSuccessfullyRef.current = true;
-                    pollingRetryCountRef.current = 0;
-                    statusPollTimeoutRef.current = setTimeout(pollStatus, 10000);
-                    return;
-                  }
-                  console.log('URL not yet reachable, continuing to poll');
-                } catch {
-                  // Not reachable yet, continuing to poll
-                  console.log('URL not yet reachable, continuing to poll');
-                }
-              }
+              // If we have a URL, we already surfaced it above so the iframe can show its own loader.
               
               if (statusData.uiTitle && statusData.uiMessage) {
                 // Use the rich progress information from backend
@@ -1580,13 +1623,13 @@ export default function NavBar() {
                 // Fallback to generic message - only set if no rich progress data
                 setLoadingStatus('Building app... (this may take several minutes)');
               }
-              statusPollTimeoutRef.current = setTimeout(pollStatus, 10000); // Poll every 10 seconds
+              statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
 
             } else {
               // Unknown status - log it and treat as still building for now
               console.warn('Unknown status received from backend:', statusData.status, statusData);
               setLoadingStatus(`Building app... (status: ${status})`);
-              statusPollTimeoutRef.current = setTimeout(pollStatus, 10000); // Poll every 10 seconds
+              statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
             }
 
           } catch (err) {
@@ -1598,7 +1641,7 @@ export default function NavBar() {
                 errorMessage.includes('FieldValue.serverTimestamp() cannot be used inside of an array')) {
               console.error('Backend Firestore error detected - this is a server-side issue that should be fixed');
               // Don't count this as a polling retry, just try again
-              statusPollTimeoutRef.current = setTimeout(pollStatus, 3000); // Retry after 3 seconds
+              statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
               return;
             } else if (errorMessage.includes('files is not iterable')) {
               console.error('Backend validation error - this appears to be a server-side bug');
@@ -1632,13 +1675,14 @@ export default function NavBar() {
               // Retry polling
               console.log(`Polling retry ${pollingRetryCountRef.current}/${maxPollingRetries}`);
               setLoadingStatus(`Retrying status check... (${pollingRetryCountRef.current}/${maxPollingRetries})`);
-              statusPollTimeoutRef.current = setTimeout(pollStatus, 5000); // Retry after 5 seconds
+              statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
             }
           }
         };
 
-        // Start the first status poll - wait much longer for Node.js machine to start
-        statusPollTimeoutRef.current = setTimeout(pollStatus, 20000); // Start polling after 20 seconds (increased from 15)
+        pollStartedAtRef.current = Date.now();
+        // Start polling quickly; the iframe URL will appear as soon as the backend issues it.
+        statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
 
       } catch (err) {
         console.error('Error starting app:', err);
@@ -1993,6 +2037,29 @@ export default function NavBar() {
       )}
       {previewUrl && !error ? (
         <div className="relative w-full h-full">
+          <div className="absolute left-3 top-3 z-10 rounded-xl border border-black/10 bg-white/80 px-3 py-2 text-xs text-black/70 shadow-sm backdrop-blur-sm">
+            <details>
+              <summary className="cursor-pointer select-none">Embedded preview URL</summary>
+              <div className="mt-2 max-w-[min(720px,90vw)] break-all font-mono text-[11px] text-black/80">
+                {previewUrl}
+              </div>
+              <div className="mt-2">
+                <button
+                  type="button"
+                  className="inline-flex items-center rounded-full border border-black/10 bg-white px-3 py-1 text-[11px] font-semibold text-black/70 shadow-sm hover:bg-black/5"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(previewUrl);
+                    } catch {
+                      // ignore
+                    }
+                  }}
+                >
+                  Copy URL
+                </button>
+              </div>
+            </details>
+          </div>
           <iframe
             src={previewUrl}
             className="w-full h-full border border-black/10 rounded-lg"
