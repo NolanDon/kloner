@@ -109,6 +109,8 @@ async function handleWebcontainerPost(body: any, uid?: string) {
       method: "POST",
       body: { appId, files: safeFiles, mode },
       userCtx: uid ? { uid } : undefined,
+      // Startup can legitimately take longer than the default callBackend timeout.
+      timeoutMs: 45_000,
       noPrefix: true,
     });
 
@@ -276,6 +278,7 @@ async function handleWebcontainerStatus(code: string, uid?: string) {
       path: `/api/v1/webcontainer/status/${code}`,
       method: "GET",
       userCtx: uid ? { uid } : undefined,
+      timeoutMs: 20_000,
       noPrefix: true,
     });
 
@@ -321,6 +324,7 @@ async function handleWebcontainerDelete(code: string, uid?: string) {
       path: `/api/v1/webcontainer/${code}`,
       method: "DELETE",
       userCtx: uid ? { uid } : undefined,
+      timeoutMs: 20_000,
       noPrefix: true,
     });
 

@@ -184,7 +184,7 @@ export async function POST(req: NextRequest) {
                 return callBackend(authedReq, {
                     path: "/webcontainer/inspect",
                     method: "GET",
-                    timeoutMs: 12_000,
+                    timeoutMs: 25_000,
                     userCtx: { uid },
                     query: { appId, ...(previewCode ? { code: previewCode } : {}) },
                 });
@@ -194,7 +194,7 @@ export async function POST(req: NextRequest) {
                 return callBackend(authedReq, {
                     path: `/webcontainer/status/${previewCode}`,
                     method: "GET",
-                    timeoutMs: 10_000,
+                    timeoutMs: 15_000,
                     userCtx: { uid },
                     query: { appId },
                 });

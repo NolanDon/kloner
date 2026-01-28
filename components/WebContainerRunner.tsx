@@ -16,6 +16,7 @@ interface WebContainerRunnerProps {
   files: { [path: string]: { content: string; lastModified: number } };
   onFileChange?: (path: string, content: string) => void;
   onPreviewReadyChange?: (ready: boolean) => void;
+  onBackendReady?: (args: { appId: string; code: string; url: string }) => void;
   reloadToken?: number;
   restartToken?: number;
   reconnectToken?: number;
@@ -30,11 +31,12 @@ interface WebContainerRunnerProps {
   navigatePathToken?: number;
 }
 
-export default function WebContainerRunner({ appId, files, onFileChange, onPreviewReadyChange, reloadToken, restartToken, reconnectToken, forceFreshStart, pollingConfig, navigatePath, navigatePathToken }: WebContainerRunnerProps) {
+export default function WebContainerRunner({ appId, files, onFileChange, onPreviewReadyChange, onBackendReady, reloadToken, restartToken, reconnectToken, forceFreshStart, pollingConfig, navigatePath, navigatePathToken }: WebContainerRunnerProps) {
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [iframeKey, setIframeKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [canRetry, setCanRetry] = useState(false);
   const [startAttempt, setStartAttempt] = useState(0);
@@ -75,13 +77,51 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const pollStartedAtRef = useRef<number>(0);
   const latestDeploymentUrlRef = useRef<string>('');
   const hubStatusUrlRef = useRef<string | null>(null);
+  const lastReportedStatusRef = useRef<string>('');
+  const lastReadyUrlRef = useRef<string | null>(null);
+  const lastBackendReadyNotifyRef = useRef<string | null>(null);
+  const autoRebuildByCodeRef = useRef<Record<string, true>>({});
+  const lastAppServerKindRef = useRef<'fallback' | 'next-dev' | 'next-prod' | ''>('');
 
   const POLL_INTERVAL_MS = 1500;
   const HARD_POLL_TIMEOUT_MS = 12 * 60 * 1000;
 
+  const derivePreviewCodeFromUrl = (url: string): string | null => {
+    try {
+      const u = new URL(url, typeof window !== 'undefined' ? window.location.origin : undefined);
+      // Hub URLs look like: https://tracksite-hub.fly.dev/preview/<code>?t=<token>
+      const parts = u.pathname.split('/').filter(Boolean);
+      if (parts.length >= 2 && parts[0] === 'preview') {
+        const code = String(parts[1] || '').trim();
+        if (code) return code;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
+  const requestForceFreshRebuild = (reason: string, previewUrl: string) => {
+    if (typeof window === 'undefined') return;
+    const code = derivePreviewCodeFromUrl(previewUrl) || 'unknown';
+    if (autoRebuildByCodeRef.current[code]) return;
+    autoRebuildByCodeRef.current[code] = true;
+
+    console.warn('[WebContainerRunner] Auto-rebuild requested', { appId, reason, code });
+    try {
+      window.dispatchEvent(
+        new CustomEvent('kloner:preview-force-fresh', {
+          detail: { appId, reason, code },
+        })
+      );
+    } catch {
+      // ignore
+    }
+  };
+
   const buildHubStatusUrl = (code: string, deploymentUrl: string): string | null => {
     try {
-      const u = new URL(deploymentUrl);
+      const u = new URL(deploymentUrl, typeof window !== 'undefined' ? window.location.origin : undefined);
       const token = u.searchParams.get('t');
       if (!token) return null;
       return `https://tracksite-hub.fly.dev/preview/${encodeURIComponent(code)}/status?t=${encodeURIComponent(token)}`;
@@ -304,7 +344,18 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     if (!flyState.ok) return flyState;
 
     const normalized = String(flyState.state || "").toLowerCase();
-    const running = normalized === "started" || normalized === "running" || normalized === "starting";
+    // Fly can report transient states during deploy/replace even while the app is
+    // actually reachable. Be conservative about clearing stored machine references:
+    // only treat explicitly terminal/off states as not running.
+    const explicitlyNotRunning = new Set([
+      "stopped",
+      "stopping",
+      "destroyed",
+      "destroying",
+      "dead",
+      "failed",
+    ]);
+    const running = normalized ? !explicitlyNotRunning.has(normalized) : true;
     return { ok: true, running, state: flyState.state };
   };
   
@@ -544,7 +595,7 @@ export default function NavBar() {
   const withCacheBust = (url: string) => {
     const cb = String(Date.now());
     try {
-      const u = new URL(url);
+      const u = new URL(url, typeof window !== 'undefined' ? window.location.origin : undefined);
       // IMPORTANT: `t` is the viewer token (capability). Never overwrite it.
       u.searchParams.set('cb', cb);
       return u.toString();
@@ -578,12 +629,15 @@ export default function NavBar() {
   useEffect(() => {
     if (!previewUrl) return;
     try {
-      const u = new URL(previewUrl);
+      const isRelative = String(previewUrl).startsWith('/');
+      const u = new URL(isRelative ? `${window.location.origin}${previewUrl}` : String(previewUrl));
       // IMPORTANT: keep `t` (viewer token). Only strip our cache-buster.
       u.searchParams.delete('cb');
-      proxyBaseRef.current = u.toString();
+      proxyBaseRef.current = isRelative ? `${u.pathname}${u.search}${u.hash}` : u.toString();
     } catch {
-      proxyBaseRef.current = String(previewUrl).split('?')[0] || previewUrl;
+      // Last-resort fallback: never strip query params (it may contain the viewer token `t`).
+      const raw = String(previewUrl);
+      proxyBaseRef.current = raw.replace(/([?&])cb=[^&#]+(&)?/g, (m, sep, trailing) => (sep === '?' && trailing ? '?' : sep === '?' ? '' : trailing ? '&' : '')).replace(/[?&]$/, '') || raw;
     }
   }, [previewUrl]);
 
@@ -632,6 +686,11 @@ export default function NavBar() {
     appLoadedSuccessfullyRef.current = false;
     iframeLoadedSuccessfullyRef.current = false;
     pollingCodeRef.current = null;
+    backendReadyRef.current = false;
+    pollStartedAtRef.current = 0;
+    latestDeploymentUrlRef.current = '';
+    hubStatusUrlRef.current = null;
+    lastReportedStatusRef.current = '';
   }, [appId, restartToken]);
 
   // Reconnect requested: re-run connection logic without restarting and without
@@ -661,6 +720,11 @@ export default function NavBar() {
     appLoadedSuccessfullyRef.current = false;
     iframeLoadedSuccessfullyRef.current = false;
     pollingCodeRef.current = null;
+    backendReadyRef.current = false;
+    pollStartedAtRef.current = 0;
+    latestDeploymentUrlRef.current = '';
+    hubStatusUrlRef.current = null;
+    lastReportedStatusRef.current = '';
   }, [appId, reconnectToken]);
 
   // Monitor app loading and surface persistent asset failures
@@ -894,10 +958,15 @@ export default function NavBar() {
                     if (flyState.ok) {
                       console.log(`🛫 Fly machine state for ${statusData.machineId}:`, flyState.state);
                       const normalized = String(flyState.state || "").toLowerCase();
-                      const flySaysRunning =
-                        normalized === "started" ||
-                        normalized === "running" ||
-                        normalized === "starting";
+                      const explicitlyNotRunning = new Set([
+                        "stopped",
+                        "stopping",
+                        "destroyed",
+                        "destroying",
+                        "dead",
+                        "failed",
+                      ]);
+                      const flySaysRunning = normalized ? !explicitlyNotRunning.has(normalized) : true;
                       if (flySaysRunning) {
                         console.log(
                           `✅ Fly reports machine ${statusData.machineId} is '${flyState.state}', probing URL before reusing stopped container ${existingCode}`
@@ -1369,6 +1438,22 @@ export default function NavBar() {
             const uiStage = String((statusData as any)?.uiStage || '').toLowerCase();
             const readyFlag = Boolean((statusData as any)?.ready);
             const deploymentUrl = String((statusData as any)?.url || '').trim();
+            const appServerKindRaw = String((statusData as any)?.appServerKind || '').toLowerCase();
+            const appServerKind = (appServerKindRaw === 'fallback' || appServerKindRaw === 'next-dev' || appServerKindRaw === 'next-prod')
+              ? (appServerKindRaw as any)
+              : '';
+
+            lastAppServerKindRef.current = appServerKind;
+
+            // If the backend reports `status=ready` but `ready=false`, we still want to refresh the iframe
+            // once (without changing the URL) because the hub may have switched from a waiting page to the app.
+            if (status && status !== lastReportedStatusRef.current) {
+              if (status === 'ready' && !readyFlag) {
+                const base = deploymentUrl || proxyBaseRef.current || previewUrlRef.current;
+                if (base) setPreviewUrl(withCacheBust(base));
+              }
+              lastReportedStatusRef.current = status;
+            }
 
             // If backend/hub provided a URL, always surface it immediately.
             // This ensures the iframe can show its own /__preview loader and we avoid a second outer loader.
@@ -1412,15 +1497,13 @@ export default function NavBar() {
               return;
             }
 
-            const isReady =
-              readyFlag ||
-              status === 'ready' ||
-              ['running', 'compiled', 'started', 'online', 'active', 'completed', 'finished'].includes(status);
-
-            if (isReady) {
+            // Completion contract: only stop polling when `ready === true`.
+            if (readyFlag) {
               backendReadyRef.current = true;
               const readyUrl = deploymentUrl || latestDeploymentUrlRef.current;
               console.log('Deployment ready at:', readyUrl);
+
+              lastReadyUrlRef.current = readyUrl || null;
 
               if (!readyUrl) {
                 console.error('Backend reported ready but no URL provided:', statusData);
@@ -1431,31 +1514,34 @@ export default function NavBar() {
               setCurrentStatusData(null);
               setLoadingStatus('');
 
-              // For Fly.io deployments, add a small delay to let DNS propagate
-              if (readyUrl.includes('.fly.dev')) {
-                console.log('Fly.io deployment detected, allowing time for DNS propagation...');
-                setLoadingStatus(`Deployment ready on machine ${(statusData as any)?.machineId}! Waiting for DNS propagation...`);
-                setTimeout(() => {
-                  setPreviewUrl(readyUrl);
-                  setLoadingStatus(`Connected to machine ${(statusData as any)?.machineId}! Loading interface...`);
-                  setIsPolling(false);
-                  appLoadedSuccessfullyRef.current = true;
-                  pollingRetryCountRef.current = 0;
-                  if (retryTimeoutRef.current) {
-                    clearTimeout(retryTimeoutRef.current);
-                    retryTimeoutRef.current = null;
+              // If the parent wants to run its own "Refresh" behavior, notify it once.
+              // This is intentionally the AppBuilderEditor "Refresh" (reconnect) semantics.
+              if (readyUrl && typeof onBackendReady === 'function') {
+                const key = `${code}|${readyUrl}`;
+                if (lastBackendReadyNotifyRef.current !== key) {
+                  lastBackendReadyNotifyRef.current = key;
+                  try {
+                    onBackendReady({ appId, code, url: readyUrl });
+                  } catch {
+                    // ignore
                   }
-                }, 10000);
-              } else {
-                setPreviewUrl(readyUrl);
-                setLoadingStatus(`Connected to machine ${(statusData as any)?.machineId}! Loading interface...`);
-                setIsPolling(false);
-                appLoadedSuccessfullyRef.current = true;
-                pollingRetryCountRef.current = 0;
-                if (retryTimeoutRef.current) {
-                  clearTimeout(retryTimeoutRef.current);
-                  retryTimeoutRef.current = null;
                 }
+                setIsPolling(false);
+                setIsLoading(false);
+                return;
+              }
+
+              // Default behavior (no parent callback): reload the iframe by cache-busting the URL
+              // (preserving the viewer token `t`).
+              proxyBaseRef.current = readyUrl;
+              setPreviewUrl(withCacheBust(readyUrl));
+              setLoadingStatus(`Connected to machine ${(statusData as any)?.machineId}! Loading interface...`);
+              setIsPolling(false);
+              appLoadedSuccessfullyRef.current = true;
+              pollingRetryCountRef.current = 0;
+              if (retryTimeoutRef.current) {
+                clearTimeout(retryTimeoutRef.current);
+                retryTimeoutRef.current = null;
               }
 
               return;
@@ -1606,6 +1692,12 @@ export default function NavBar() {
               setPreviewUrl(null);
               // Keep the status data available for the inline status component if needed.
               // (Error banner uses `error` above.)
+              return;
+
+            } else if (status === 'ready' && !readyFlag) {
+              // Some backend flows emit status='ready' before flipping the authoritative ready=true flag.
+              // This is expected; keep polling, and avoid showing an 'unknown status' warning.
+              statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
               return;
 
             } else if (status === 'pending' || status === 'archiving' || 
@@ -1971,13 +2063,13 @@ export default function NavBar() {
                     ...prev,
                     uiStage: prev?.uiStage || 'waiting_for_preview',
                     uiTitle: prev?.uiTitle || 'Starting preview',
-                    uiMessage: prev?.uiMessage || 'Preview URL not reachable yet. Still trying…',
+                    uiMessage: prev?.uiMessage || 'Preview is still loading in the embedded frame. If it stays stuck, use “Open in new tab” or “Reload preview”.',
                     updatedAt: Date.now(),
                   }
                 : {
                     uiStage: 'waiting_for_preview',
                     uiTitle: 'Starting preview',
-                    uiMessage: 'Preview URL not reachable yet. Still trying…',
+                    uiMessage: 'Preview is still loading in the embedded frame. If it stays stuck, use “Open in new tab” or “Reload preview”.',
                     updatedAt: Date.now(),
                     status: 'starting',
                     uiProgress: 0,
@@ -1985,7 +2077,6 @@ export default function NavBar() {
             );
             iframeLoadedSuccessfullyRef.current = false;
             appLoadedSuccessfullyRef.current = true;
-            setPreviewUrl(null);
             try { onPreviewReadyChange?.(false); } catch { }
             return;
           }
@@ -2013,7 +2104,7 @@ export default function NavBar() {
         iframeLoadTimeoutRef.current = null;
       }
     };
-  }, [previewUrl]);
+  }, [previewUrl, onPreviewReadyChange]);
 
   return (
     <div className="h-full flex flex-col bg-white text-black/90 border border-black/10 rounded-2xl shadow">
@@ -2044,9 +2135,27 @@ export default function NavBar() {
                 {previewUrl}
               </div>
               <div className="mt-2">
+                <a
+                  className="inline-flex items-center rounded-full border border-black/10 bg-white px-3 py-1 text-[11px] font-semibold text-black/70 shadow-sm hover:bg-black/5"
+                  href={previewUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open in new tab
+                </a>
                 <button
                   type="button"
-                  className="inline-flex items-center rounded-full border border-black/10 bg-white px-3 py-1 text-[11px] font-semibold text-black/70 shadow-sm hover:bg-black/5"
+                  className="ml-2 inline-flex items-center rounded-full border border-black/10 bg-white px-3 py-1 text-[11px] font-semibold text-black/70 shadow-sm hover:bg-black/5"
+                  onClick={() => {
+                    const base = proxyBaseRef.current || previewUrl;
+                    setPreviewUrl(withCacheBust(base));
+                  }}
+                >
+                  Reload preview
+                </button>
+                <button
+                  type="button"
+                  className="ml-2 inline-flex items-center rounded-full border border-black/10 bg-white px-3 py-1 text-[11px] font-semibold text-black/70 shadow-sm hover:bg-black/5"
                   onClick={async () => {
                     try {
                       await navigator.clipboard.writeText(previewUrl);
@@ -2061,6 +2170,7 @@ export default function NavBar() {
             </details>
           </div>
           <iframe
+            key={iframeKey}
             src={previewUrl}
             className="w-full h-full border border-black/10 rounded-lg"
             title="App Preview"
@@ -2083,6 +2193,15 @@ export default function NavBar() {
                 stopAllTimers();
                 if (isPolling) setIsPolling(false);
                 if (currentStatusData) setCurrentStatusData(null);
+
+                const readyUrl = lastReadyUrlRef.current || previewUrl;
+                const serverKind = lastAppServerKindRef.current;
+
+                // If the backend says we're still on the fallback server, an iframe refresh won't help.
+                // Trigger the same force-fresh rebuild flow once.
+                if (readyUrl && serverKind === 'fallback') {
+                  requestForceFreshRebuild('status_appServerKind_fallback_after_ready', readyUrl);
+                }
               } else {
                 try { onPreviewReadyChange?.(false); } catch { }
                 // Keep polling in the background until `ready === true`.
@@ -2098,7 +2217,7 @@ export default function NavBar() {
 
               // Add a small delay then try to validate the deployment
               setTimeout(() => {
-                console.log('Machined Preview loaded successfully - sticky routing via tsc_preview cookie should be active');
+                console.log('Machined Preview loaded successfully');
                 // For now, just log that the deployment seems to be working
                 // CORS prevents us from doing detailed content checks
               }, 2000);
@@ -2117,7 +2236,6 @@ export default function NavBar() {
                 setLoadingStatus('');
                 iframeLoadedSuccessfullyRef.current = false;
                 appLoadedSuccessfullyRef.current = true;
-                setPreviewUrl(null);
                 return;
               }
 

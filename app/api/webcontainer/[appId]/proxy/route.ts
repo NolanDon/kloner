@@ -45,7 +45,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: { appId: string } }
 ) {
-  return NextResponse.json({ error: 'Not implemented' }, { status: 501 });
+  return proxyRequest(req, params.appId);
 }
 
 export async function POST(
@@ -87,13 +87,42 @@ async function proxyRequest(req: NextRequest, appId: string) {
 
     const targetUrl = `${BACKEND_ORIGIN}/api/v1/webcontainer/${appId}/proxy/`;
 
+    const hopByHop = new Set([
+      'connection',
+      'keep-alive',
+      'proxy-authenticate',
+      'proxy-authorization',
+      'te',
+      'trailer',
+      'transfer-encoding',
+      'upgrade',
+      'host',
+      'content-length',
+      'accept-encoding',
+    ]);
+
+    const outboundHeaders = new Headers();
+    // Forward a minimal, safe header set.
+    for (const [k, v] of req.headers.entries()) {
+      const key = k.toLowerCase();
+      if (hopByHop.has(key)) continue;
+      // Never forward browser cookies/authorization to the upstream.
+      if (key === 'cookie' || key === 'authorization') continue;
+      outboundHeaders.set(k, v);
+    }
+
     const upstream = await fetch(targetUrl, {
       method: req.method,
-      headers: req.headers,
-      body: req.body,
+      headers: outboundHeaders,
+      body: req.method === 'GET' || req.method === 'HEAD' ? undefined : req.body,
+      signal: AbortSignal.timeout(30_000),
     });
 
     const responseHeaders = new Headers(upstream.headers);
+    // Critical hardening: a separately-hosted upstream must not be able to set cookies on our domain.
+    responseHeaders.delete('set-cookie');
+    // Strip hop-by-hop headers from upstream.
+    for (const h of hopByHop) responseHeaders.delete(h);
     responseHeaders.set('Cross-Origin-Resource-Policy', 'same-origin');
 
     return new NextResponse(upstream.body, {

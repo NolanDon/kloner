@@ -1,7 +1,7 @@
 // app/price/PriceClient.tsx (CLIENT)
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import { useModal } from "@/components/ui/ModalContext";
@@ -159,6 +159,8 @@ export default function PriceClient(): JSX.Element {
     const { showAlert } = useModal();
     const { user, userTier, loading: authLoading } = useAuth();
 
+    const pendingAutoCheckoutAttemptedRef = useRef(false);
+
     const [aiCredits, setAiCredits] = useState<
         null | {
             remaining: number | null;
@@ -254,6 +256,58 @@ export default function PriceClient(): JSX.Element {
             cancelled = true;
         };
     }, [authLoading]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        if (authLoading) return;
+        if (!user) return;
+        if (pendingAutoCheckoutAttemptedRef.current) return;
+
+        const readPending = (): { type: "topup"; credits: number } | null => {
+            try {
+                const raw = window.sessionStorage.getItem("kloner:pendingCheckout");
+                if (!raw) return null;
+                const parsed = JSON.parse(raw);
+                if (parsed?.type !== "topup") return null;
+                const credits = Number(parsed?.credits);
+                if (!Number.isFinite(credits) || credits <= 0) return null;
+                return { type: "topup", credits: Math.floor(credits) };
+            } catch {
+                return null;
+            }
+        };
+
+        const url = new URL(window.location.href);
+        const autoCheckout = url.searchParams.get("autocheckout");
+        const creditsFromUrl = Number(url.searchParams.get("credits"));
+
+        const fromUrl =
+            autoCheckout === "topup" && Number.isFinite(creditsFromUrl) && creditsFromUrl > 0
+                ? ({ type: "topup", credits: Math.floor(creditsFromUrl) } as const)
+                : null;
+
+        const pending = fromUrl || readPending();
+        if (!pending) return;
+
+        pendingAutoCheckoutAttemptedRef.current = true;
+
+        try {
+            window.sessionStorage.removeItem("kloner:pendingCheckout");
+        } catch {
+            // ignore
+        }
+
+        // Clean URL params so refresh doesn't re-trigger checkout.
+        if (fromUrl) {
+            url.searchParams.delete("autocheckout");
+            url.searchParams.delete("credits");
+            window.history.replaceState({}, "", url.toString());
+        }
+
+        // Auto-start the Stripe flow the user requested pre-login.
+        void startTopup(pending.credits);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [authLoading, user]);
 
     const creditsDisplay = useMemo(() => {
         const remaining = aiCredits?.remaining ?? null;
@@ -429,9 +483,14 @@ export default function PriceClient(): JSX.Element {
         }
     }
 
-    async function startTopup() {
+    async function startTopup(creditsOverride?: number) {
         if (loadingTopup) return;
         setLoadingTopup(true);
+
+        const creditsToBuy =
+            typeof creditsOverride === "number" && Number.isFinite(creditsOverride) && creditsOverride > 0
+                ? Math.floor(creditsOverride)
+                : topupCredits;
 
         try {
             const csrf = await ensureCsrf();
@@ -443,11 +502,25 @@ export default function PriceClient(): JSX.Element {
                     ...(csrf ? { "x-csrf": csrf } : {}),
                 },
                 credentials: "include",
-                body: JSON.stringify({ credits: topupCredits }),
+                body: JSON.stringify({ credits: creditsToBuy }),
             });
 
             if (res.status === 401) {
-                const next = encodeURIComponent("/price#topup");
+                try {
+                    window.sessionStorage.setItem(
+                        "kloner:pendingCheckout",
+                        JSON.stringify({ type: "topup", credits: creditsToBuy }),
+                    );
+                } catch {
+                    // ignore
+                }
+
+                const nextUrl = new URL("/price", window.location.origin);
+                nextUrl.searchParams.set("autocheckout", "topup");
+                nextUrl.searchParams.set("credits", String(creditsToBuy));
+                nextUrl.hash = "topup";
+
+                const next = encodeURIComponent(nextUrl.pathname + nextUrl.search + nextUrl.hash);
                 window.location.href = `/login?next=${next}`;
                 return;
             }

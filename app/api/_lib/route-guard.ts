@@ -113,6 +113,24 @@ export async function requireSessionAndMaybeCsrf(
             path: req.nextUrl?.pathname,
             message: typeof err?.message === "string" ? err.message : String(err),
         });
-        throw err;
+
+        // Return a structured 500 so the frontend can surface a usable error.
+        // In production we avoid leaking internal details.
+        return NextResponse.json(
+            {
+                ok: false,
+                error: "Internal server error",
+                reqId,
+                ...(process.env.NODE_ENV !== "production"
+                    ? {
+                          debug:
+                              typeof err?.message === "string"
+                                  ? err.message
+                                  : String(err),
+                      }
+                    : {}),
+            },
+            { status: 500 },
+        );
     }
 }

@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
                 result = await callBackend(authedReq, {
                     path: "/webcontainer/inspect",
                     method: "GET",
-                    timeoutMs: 15_000,
+                    timeoutMs: 30_000,
                     userCtx: { uid },
                     query: { appId, ...(code ? { code } : {}) },
                 });

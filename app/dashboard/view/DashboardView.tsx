@@ -2161,13 +2161,14 @@ export default function PreviewPage(): JSX.Element {
             setAppWizardUrl(url);
             setAppWizardShotsUrl(url);
             setAppWizardSeedRenderId(opts?.seedRenderId ?? null);
-            setAppWizardSource("sample");
+            // Default to Clone from URL for admins; otherwise keep Quick start selected.
+            setAppWizardSource(isAdmin ? "website" : "sample");
             setAppWizardPrompt("");
             setAppWizardError(null);
             setAppWizardBusy(false);
             setAppWizardOpen(true);
         },
-        [refreshVercelStatus],
+        [isAdmin, refreshVercelStatus],
     );
 
     const submitAppWizardWebsite = useCallback(async () => {
@@ -5630,17 +5631,6 @@ export default function PreviewPage(): JSX.Element {
                                             <div className="grid gap-2">
                                                     <button
                                                         type="button"
-                                                        onClick={() => setAppWizardSource("sample")}
-                                                        className={`w-full rounded-xl border p-4 text-left transition ${appWizardSource === "sample"
-                                                            ? "border-[#f55f2a] bg-[#f55f2a]/5"
-                                                            : "border-neutral-200 bg-white hover:bg-neutral-50"
-                                                            }`}
-                                                    >
-                                                        <div className="text-sm font-semibold text-neutral-900">Quick start</div>
-                                                        <div className="mt-1 text-xs text-neutral-600">Start from a Kloner sample app. You&apos;ll still be able to customize it</div>
-                                                    </button>
-                                                    <button
-                                                        type="button"
                                                         onClick={() => {
                                                             if (!isAdmin) return;
                                                             setAppWizardSource("website");
@@ -5661,13 +5651,24 @@ export default function PreviewPage(): JSX.Element {
                                                                 Coming soon
                                                             </span>
                                                         ) : null}
-                                                        <div className="text-sm font-semibold text-neutral-900">Build from this URL</div>
+                                                        <div className="text-sm font-semibold text-neutral-900">Clone from URL</div>
                                                         <div className="mt-1 text-xs text-neutral-600 break-all">
                                                             High-fidelity clone using your saved screenshots when available.
                                                         </div>
                                                         <div className="mt-1 text-xs text-neutral-500 break-all">
                                                             {appWizardUrl || targetUrl || "(no URL selected)"}
                                                         </div>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setAppWizardSource("sample")}
+                                                        className={`w-full rounded-xl border p-4 text-left transition ${appWizardSource === "sample"
+                                                            ? "border-[#f55f2a] bg-[#f55f2a]/5"
+                                                            : "border-neutral-200 bg-white hover:bg-neutral-50"
+                                                            }`}
+                                                    >
+                                                        <div className="text-sm font-semibold text-neutral-900">Quick start</div>
+                                                        <div className="mt-1 text-xs text-neutral-600">Start from a Kloner sample app. You&apos;ll still be able to customize it</div>
                                                     </button>
 
                                                     <button

@@ -813,20 +813,6 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
         }
     }, [isPreviewBuilding]);
 
-    // If we used a placeholder preview while generating, restart the machine with the real files
-    // once generation completes.
-    const lastGenStatusRef = useRef<string | undefined>(undefined);
-    useEffect(() => {
-        const status = app?.generationStatus;
-        const prev = lastGenStatusRef.current;
-        lastGenStatusRef.current = status;
-
-        if (prev === "processing" && status === "ready" && usedPlaceholderRef.current) {
-            usedPlaceholderRef.current = false;
-            void restartLocalPreview(true);
-        }
-    }, [app?.generationStatus, restartLocalPreview]);
-
     // Allow child panels (like AIAgentChat) to request a true "fresh machine" rebuild.
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -1758,6 +1744,95 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
         [currentFile, queuePreviewApply]
     );
 
+    // If we used a placeholder preview while generating, rebuild the machine with the real files
+    // once generation completes. Important: generationStatus can flip to "ready" before files are
+    // fully written, so we re-hydrate from the server first.
+    const lastGenStatusRef = useRef<string | undefined>(undefined);
+    const generationBaselineFilesRef = useRef<AppData["files"] | null>(null);
+    const generationRehydrateInFlightRef = useRef(false);
+    useEffect(() => {
+        const status = app?.generationStatus;
+        const prev = lastGenStatusRef.current;
+        lastGenStatusRef.current = status;
+
+        if (status === "processing" && prev !== "processing") {
+            generationBaselineFilesRef.current = (app?.files as any) || null;
+        }
+
+        if (prev === "processing" && status === "ready" && usedPlaceholderRef.current) {
+            if (generationRehydrateInFlightRef.current) return;
+            usedPlaceholderRef.current = false;
+            generationRehydrateInFlightRef.current = true;
+
+            void (async () => {
+                try {
+                    if (!appId) return;
+
+                    // Mirror AIAgentChat's flow: refresh session before syncing files.
+                    await ensureSessionAndCsrf().catch(() => null);
+
+                    const baseline = generationBaselineFilesRef.current || (app?.files as any) || ({} as any);
+                    let lastFetchedFiles: any = null;
+                    const start = Date.now();
+                    const maxWaitMs = 20000;
+                    const intervalMs = 1000;
+
+                    while (Date.now() - start < maxWaitMs) {
+                        try {
+                            const res = await fetch(`/api/app-builder/${appId}/files`, {
+                                method: "GET",
+                                credentials: "include",
+                                cache: "no-store",
+                            });
+                            if (res.ok) {
+                                const data = await res.json().catch(() => null);
+                                const nextFiles = (data as any)?.files;
+                                if (nextFiles && typeof nextFiles === "object") {
+                                    lastFetchedFiles = nextFiles;
+                                    const differsFromBaseline =
+                                        !filesShallowEqualByContentAndTimestamp(baseline as any, nextFiles as any);
+                                    const differsFromCurrent =
+                                        !filesShallowEqualByContentAndTimestamp((app?.files as any) || ({} as any), nextFiles as any);
+
+                                    if (differsFromBaseline || differsFromCurrent) {
+                                        suppressNextFilesReplaceApplyRef.current = true;
+                                        handleFilesReplaceFromServer(nextFiles);
+                                        break;
+                                    }
+                                }
+                            }
+                        } catch {
+                            // ignore and retry
+                        }
+
+                        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+                    }
+
+                    if (lastFetchedFiles) {
+                        // Even if the server responded with the same files, use the server copy as the
+                        // canonical source of truth before we start a fresh machine.
+                        suppressNextFilesReplaceApplyRef.current = true;
+                        handleFilesReplaceFromServer(lastFetchedFiles);
+                    }
+                } finally {
+                    generationBaselineFilesRef.current = null;
+                    generationRehydrateInFlightRef.current = false;
+
+                    // Use the same canonical “force fresh” pathway as the AI agent.
+                    if (typeof window !== "undefined") {
+                        window.dispatchEvent(
+                            new CustomEvent("kloner:preview-force-fresh", {
+                                detail: { appId, reason: "generation-ready" },
+                            }),
+                        );
+                    } else {
+                        await restartLocalPreview(true);
+                    }
+                }
+            })();
+        }
+    }, [app?.files, app?.generationStatus, appId, handleFilesReplaceFromServer, restartLocalPreview]);
+
     const handleRestoreApplied = useCallback(
         async ({ previousFiles, restoredFiles }: { previousFiles: AppData["files"]; restoredFiles: AppData["files"] }) => {
             suppressNextFilesReplaceApplyRef.current = true;
@@ -2268,9 +2343,15 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                         <div className="text-gray-600 text-sm mb-4">{error}</div>
                         <button
                             onClick={() => window.location.reload()}
-                            className="px-4 py-2 bg-accent text-white rounded hover:bg-accent-dark transition-colors"
+                            className="px-4 py-2 bg-accent text-white rounded-full hover:bg-accent-dark transition-colors"
                         >
                             Retry
+                        </button>
+                         <button
+                            onClick={() => setError(null)}
+                            className="px-4 py-2 bg-accent text-white rounded-full hover:bg-accent-dark transition-colors"
+                        >
+                            Close
                         </button>
                     </div>
                 </div>
@@ -2629,11 +2710,16 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                         files={effectivePreviewFiles}
                                         onFileChange={handleFileChangeFromContainer}
                                         onPreviewReadyChange={setIsWebPreviewReady}
+                                        onBackendReady={() => {
+                                            // Mirror the top-right "Refresh" button behavior.
+                                            setPreviewMode("webcontainer");
+                                            setReconnectKey((k) => k + 1);
+                                        }}
                                         reloadToken={refreshKey}
                                         restartToken={localRestartKey}
                                         reconnectToken={reconnectKey}
                                         forceFreshStart={forceFreshStartKey.current}
-                                        pollingConfig={generationEver ? { maxPollingRetries: 90, maxContainerNotFound: 10 } : undefined}
+                                        pollingConfig={generationEver ? { maxPollingRetries: 480, maxContainerNotFound: 10 } : undefined}
                                     />
                                 </div>
                             ) : previewSrc ? (
