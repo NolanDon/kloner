@@ -82,8 +82,10 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const lastBackendReadyNotifyRef = useRef<string | null>(null);
   const autoRebuildByCodeRef = useRef<Record<string, true>>({});
   const lastAppServerKindRef = useRef<'fallback' | 'next-dev' | 'next-prod' | ''>('');
+  const stickyProgressByCodeRef = useRef<Record<string, number>>({});
 
-  const POLL_INTERVAL_MS = 1500;
+  // Fly quota protection: keep status checks relatively infrequent.
+  const POLL_INTERVAL_MS = 10_000;
   const HARD_POLL_TIMEOUT_MS = 12 * 60 * 1000;
 
   const derivePreviewCodeFromUrl = (url: string): string | null => {
@@ -598,6 +600,73 @@ export default function NavBar() {
         <div className="text-sm text-black/80">
           {left ? <span className="font-semibold">{left}</span> : null}
           <span className="text-black/60">{`${left ? ' — ' : ''}${message}`}</span>
+        </div>
+      </div>
+    );
+  };
+
+  const normalizeStatusDataForUi = (code: string, raw: any): any => {
+    try {
+      const status = String((raw as any)?.status || '').toLowerCase();
+      const uiStage = String((raw as any)?.uiStage || '').toLowerCase();
+      const transitioning = status === 'transitioning' || uiStage === 'transitioning' || uiStage.includes('transition');
+
+      const uiProgressRaw = (raw as any)?.uiProgress;
+      const explicitProgress =
+        typeof uiProgressRaw === 'number' && Number.isFinite(uiProgressRaw)
+          ? Math.max(0, Math.min(100, uiProgressRaw))
+          : null;
+
+      // If backend doesn't send uiProgress, infer a coarse progress from stage.
+      const inferredProgress = (() => {
+        if (status === 'ready') return 100;
+        if (status === 'building' || status === 'compiling') return 60;
+        if (status === 'booting' || status === 'starting' || status === 'creating_machine') return 20;
+        if (transitioning) return 90;
+        return 0;
+      })();
+
+      const nextProgress = explicitProgress == null ? inferredProgress : explicitProgress;
+      const prev = typeof stickyProgressByCodeRef.current[code] === 'number' ? stickyProgressByCodeRef.current[code]! : 0;
+      const sticky = Math.max(prev, nextProgress);
+      stickyProgressByCodeRef.current[code] = sticky;
+
+      return { ...raw, uiProgress: sticky, __transitioning: transitioning };
+    } catch {
+      return raw;
+    }
+  };
+
+  const renderBuildChecklist = (statusData: any) => {
+    if (!statusData) return null;
+
+    const progress = typeof statusData?.uiProgress === 'number' ? statusData.uiProgress : 0;
+    const ready = Boolean(statusData?.ready) || String(statusData?.status || '').toLowerCase() === 'ready';
+    const transitioning = Boolean(statusData?.__transitioning);
+
+    const p = Math.max(0, Math.min(100, Math.floor(progress || 0)));
+    const steps = [
+      { id: 'machine', label: 'Provision machine', done: ready || p >= 5 },
+      { id: 'deps', label: 'Install dependencies', done: ready || p >= 25 },
+      { id: 'build', label: 'Build app', done: ready || p >= 55 },
+      { id: 'server', label: 'Start server', done: ready || p >= 85 },
+      { id: 'ready', label: 'Ready', done: ready || p >= 100 },
+    ];
+
+    return (
+      <div className="mt-2 rounded-xl border border-black/10 bg-white/80 px-3 py-2 text-[11px] text-black/70 shadow-sm backdrop-blur-sm">
+        <div className="mb-1 flex items-center justify-between gap-3">
+          <span className="font-semibold text-black/70">Build progress</span>
+          <span className="tabular-nums text-black/50">{p}%</span>
+        </div>
+        <div className="space-y-1">
+          {steps.map((s) => (
+            <div key={s.id} className="flex items-center gap-2">
+              <span className={s.done ? 'text-emerald-600' : 'text-black/30'}>{s.done ? '✓' : '○'}</span>
+              <span className={s.done ? 'text-black/70' : 'text-black/60'}>{s.label}</span>
+            </div>
+          ))}
+          {transitioning ? <div className="pt-1 text-black/50">Transitioning deployment…</div> : null}
         </div>
       </div>
     );
@@ -1375,14 +1444,16 @@ export default function NavBar() {
 
                 // Provide a helpful UI status while waiting for the backend to register the preview.
                 // (404 during the first ~seconds is expected; do not treat as fatal yet.)
-                setCurrentStatusData({
-                  uiStage: 'registering_preview',
-                  uiTitle: 'Starting preview',
-                  uiMessage: 'Waiting for the preview to come online…',
-                  updatedAt: Date.now(),
-                  status: 'starting',
-                  uiProgress: 0,
-                });
+                setCurrentStatusData(
+                  normalizeStatusDataForUi(code, {
+                    uiStage: 'registering_preview',
+                    uiTitle: 'Starting preview',
+                    uiMessage: 'Waiting for the preview to come online…',
+                    updatedAt: Date.now(),
+                    status: 'starting',
+                    uiProgress: 0,
+                  })
+                );
                 
                 if (containerNotFoundCountRef.current >= maxContainerNotFound) {
                   console.log('Too many 404s, giving up on this container');
@@ -1406,7 +1477,8 @@ export default function NavBar() {
               throw new Error(`Status check failed: ${statusResponse.status}`);
             }
 
-            const statusData = await statusResponse.json().catch(() => ({} as any));
+            const statusDataRaw = await statusResponse.json().catch(() => ({} as any));
+            const statusData = normalizeStatusDataForUi(code, statusDataRaw);
             if (process.env.NODE_ENV !== 'production') {
               try {
                 const status = String((statusData as any)?.status || '').toLowerCase();
@@ -1655,14 +1727,16 @@ export default function NavBar() {
                 setIsLoading(true);
                 setConnectingToExisting(false);
 
-                setCurrentStatusData({
-                  ...statusData,
-                  status: 'booting',
-                  uiStage: 'booting',
-                  uiTitle: 'Starting preview',
-                  uiMessage: `Preview hit a transient boot error and is restarting. Still trying for ~${Math.ceil(remainingMs / 1000)}s…`,
-                  uiProgress: typeof statusData?.uiProgress === 'number' ? statusData.uiProgress : 0,
-                });
+                setCurrentStatusData(
+                  normalizeStatusDataForUi(code, {
+                    ...statusData,
+                    status: 'booting',
+                    uiStage: 'booting',
+                    uiTitle: 'Starting preview',
+                    uiMessage: `Preview hit a transient boot error and is restarting. Still trying for ~${Math.ceil(remainingMs / 1000)}s…`,
+                    uiProgress: typeof statusData?.uiProgress === 'number' ? statusData.uiProgress : 0,
+                  })
+                );
 
                 setLoadingStatus('Preview is still starting (this can take a few minutes)…');
 
@@ -1738,7 +1812,8 @@ export default function NavBar() {
             } else if (status === 'pending' || status === 'archiving' || 
                        status === 'uploading_archive' || status === 'creating_machine' || 
                        status === 'booting' || status === 'building' || 
-                       status === 'compiling' || status === 'starting') {
+                       status === 'compiling' || status === 'starting' ||
+                       status === 'transitioning') {
               // Still building, continue polling and show progress if available
               // If we have a URL, we already surfaced it above so the iframe can show its own loader.
               
@@ -2345,6 +2420,7 @@ export default function NavBar() {
                           updatedAt: Date.now(),
                         }
                 )}
+                {renderBuildChecklist(currentStatusData)}
               </div>
             ) : (
               // Initial loading state
