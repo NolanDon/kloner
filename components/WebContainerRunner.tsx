@@ -349,7 +349,11 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
         { method: "GET", headers, credentials: "include", cache: "no-store" }
       );
       const data = await res.json().catch(() => null);
-      if (!res.ok) return { ok: false, reason: "http_error" };
+      if (!res.ok) {
+        if (res.status === 404) return { ok: false, reason: "not_found" };
+        const reason = typeof (data as any)?.reason === 'string' ? String((data as any).reason) : 'http_error';
+        return { ok: false, reason };
+      }
       if (!data?.ok) return { ok: false, reason: String(data?.reason || "not_ok") };
       return { ok: true, state: data?.state };
     } catch {
@@ -1013,20 +1017,23 @@ export default function NavBar() {
                     setPreviewUrl(statusData.url);
                     setLoadingStatus(`Connected to machine ${statusData.machineId}!`);
                     setIsLoading(false);
+                    backendReadyRef.current = true;
+                    lastReadyUrlRef.current = statusData.url;
                     appLoadedSuccessfullyRef.current = true;
                     return; // Successfully connected to existing container
                   }
 
-                  console.log(`❌ Probe failed for existing container ${existingCode}; clearing stored code and creating a new machine.`);
-                  if (reconnectOnly) {
-                    setConnectingToExisting(false);
-                    setIsLoading(false);
-                    setIsPolling(false);
-                    setError('Could not reach the existing machine. Try Reconnect again, or use Start fresh.');
-                    setCanRetry(true);
-                    return;
-                  }
-                  await clearStoredContainerCodeEverywhere(appId, user);
+                  // IMPORTANT: a probe can fail transiently (hub cold start, brief DNS, Fly edge jitter).
+                  // Do NOT clear stored code here. Attempt to load the iframe anyway.
+                  console.log(`⚠️ Probe failed for existing container ${existingCode}; attempting to load preview anyway (keeping stored code).`);
+                  pollingCodeRef.current = existingCode;
+                  setPreviewUrl(statusData.url);
+                  setLoadingStatus(`Connecting to machine ${statusData.machineId}…`);
+                  setIsLoading(false);
+                  backendReadyRef.current = true;
+                  lastReadyUrlRef.current = statusData.url;
+                  appLoadedSuccessfullyRef.current = true;
+                  return;
                 } else {
                   console.log(`❌ Existing container ${existingCode} has allowed status '${statusData.status}' but no URL provided`);
                 }
@@ -1116,20 +1123,22 @@ export default function NavBar() {
                   setPreviewUrl(statusData.url);
                   setLoadingStatus(`Connected to machine ${statusData.machineId}!`);
                   setIsLoading(false);
+                  backendReadyRef.current = Boolean(statusData?.ready) || String(statusData?.status || '').toLowerCase() === 'ready';
+                  if (backendReadyRef.current) lastReadyUrlRef.current = statusData.url;
                   appLoadedSuccessfullyRef.current = true;
                   return;
                 }
 
-                console.log(`❌ Probe failed for container ${existingCode}; clearing stored code.`);
-                if (reconnectOnly) {
-                  setConnectingToExisting(false);
-                  setIsLoading(false);
-                  setIsPolling(false);
-                  setError('Could not reach the existing machine. Try Reconnect again, or use Start fresh.');
-                  setCanRetry(true);
-                  return;
-                }
-                await clearStoredContainerCodeEverywhere(appId, user);
+                // Same policy as above: do not discard the saved machine on a transient probe failure.
+                console.log(`⚠️ Probe failed for container ${existingCode}; attempting to load preview anyway (keeping stored code).`);
+                pollingCodeRef.current = existingCode;
+                setPreviewUrl(statusData.url);
+                setLoadingStatus(`Connecting to machine ${statusData.machineId}…`);
+                setIsLoading(false);
+                backendReadyRef.current = Boolean(statusData?.ready) || String(statusData?.status || '').toLowerCase() === 'ready';
+                if (backendReadyRef.current) lastReadyUrlRef.current = statusData.url;
+                appLoadedSuccessfullyRef.current = true;
+                return;
               } else {
                 console.log(`❌ Container ${existingCode} doesn't meet fallback conditions (status='${statusData.status}', progress=${statusData.uiProgress}%, url=${!!statusData.url}, machineId=${!!statusData.machineId})`);
                 

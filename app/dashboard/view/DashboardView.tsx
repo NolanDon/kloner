@@ -5205,13 +5205,9 @@ export default function PreviewPage(): JSX.Element {
                                             }
                                         }}
                                         onAppClick={() => {
-                                            setEditorMode("app");
-                                            setEditorOpen(true);
-                                            setEditorHtml("");
-                                            setEditorRefImg("");
-                                            setActiveRenderId(undefined);
-                                            setActiveSeoMetaByPage(null);
-                                            setActiveArchivedPageIds([]);
+                                            // Next.js apps should not open the HTML PreviewEditor with empty initialHtml.
+                                            // Route through the app wizard which creates/opens the App Builder overlay.
+                                            startWebAppWizard({ seedRenderId: null, url: targetUrl || "" });
                                         }}
                                         isAdmin={isAdmin}
                                         onStartFromTemplate={handleCreateTemplateApp}
@@ -5346,15 +5342,9 @@ export default function PreviewPage(): JSX.Element {
                                                         }
                                                     }}
                                                     onAppClick={() => {
-                                                        if (isAdmin) {
-                                                            setEditorMode("app");
-                                                            setEditorOpen(true);
-                                                            setEditorHtml("");
-                                                            setEditorRefImg("");
-                                                            setActiveRenderId(undefined);
-                                                            setActiveSeoMetaByPage(null);
-                                                            setActiveArchivedPageIds([]);
-                                                        }
+                                                        // Next.js apps should not open the HTML PreviewEditor with empty initialHtml.
+                                                        // Route through the app wizard which creates/opens the App Builder overlay.
+                                                        startWebAppWizard({ seedRenderId: null, url: targetUrl || "" });
                                                     }}
                                                     isAdmin={isAdmin}
                                                     onStartFromTemplate={handleCreateTemplateApp}

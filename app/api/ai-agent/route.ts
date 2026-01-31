@@ -16,6 +16,16 @@ type ChatMessage = {
     content: string;
 };
 
+type StoredMessage = {
+    id: string;
+    role: "user" | "assistant";
+    content: string;
+    type?: "text" | "code" | "file-edit";
+    timestampMs?: number;
+    restorePointId?: string | null;
+    restoreActionLabel?: string | null;
+};
+
 type FileEdit = { path: string; content: string };
 
 type RestorePointPayload = {
@@ -120,6 +130,95 @@ function isSafeAppFilePath(path: string): boolean {
 function safeString(val: unknown, maxLen: number): string {
     if (typeof val !== "string") return "";
     return val.length > maxLen ? val.slice(0, maxLen) : val;
+}
+
+function normalizeStoredMessages(input: unknown): StoredMessage[] {
+    if (!Array.isArray(input)) return [];
+    const out: StoredMessage[] = [];
+    for (const raw of input) {
+        if (!raw || typeof raw !== "object") continue;
+        const m = raw as any;
+
+        const id = typeof m.id === "string" ? m.id : "";
+        const role = m.role === "user" || m.role === "assistant" ? m.role : null;
+        const content = typeof m.content === "string" ? m.content : null;
+        const type = m.type === "text" || m.type === "code" || m.type === "file-edit" ? m.type : "text";
+        const timestampMs = typeof m.timestampMs === "number" ? m.timestampMs : Date.now();
+        if (!id || !role || content == null) continue;
+
+        out.push({
+            id,
+            role,
+            content,
+            type,
+            timestampMs,
+            restorePointId: typeof m.restorePointId === "string" ? m.restorePointId : null,
+            restoreActionLabel: typeof m.restoreActionLabel === "string" ? m.restoreActionLabel : null,
+        });
+    }
+    return out.slice(-120);
+}
+
+async function persistLegacyAiChat(params: {
+    db: any;
+    uid: string;
+    appId: string;
+    userMessage: string;
+    assistantMessage: string;
+    conversationId?: string;
+}) {
+    const { db, uid, appId, userMessage, assistantMessage } = params;
+    const conversationId = safeString(params.conversationId || "default", 80) || "default";
+
+    const chatRef = db
+        .collection("kloner_users")
+        .doc(uid)
+        .collection("kloner_apps")
+        .doc(appId)
+        .collection("ai_chat")
+        .doc(conversationId);
+
+    // Best-effort transactional append with tail trimming.
+    await db.runTransaction(async (tx: any) => {
+        const snap = await tx.get(chatRef);
+        const existing = snap.exists ? (snap.data() as any) : null;
+        const base = normalizeStoredMessages(existing?.messages);
+
+        const now = Date.now();
+        const userId = `user_${now}_${crypto.randomUUID()}`;
+        const aiId = `ai_${now}_${crypto.randomUUID()}`;
+
+        const next = [
+            ...base,
+            {
+                id: userId,
+                role: "user",
+                content: safeString(userMessage, 10_000),
+                type: "text",
+                timestampMs: now,
+                restorePointId: null,
+                restoreActionLabel: null,
+            },
+            {
+                id: aiId,
+                role: "assistant",
+                content: safeString(assistantMessage, 20_000),
+                type: "text",
+                timestampMs: now,
+                restorePointId: null,
+                restoreActionLabel: null,
+            },
+        ].slice(-120);
+
+        tx.set(
+            chatRef,
+            {
+                messages: next,
+                updatedAt: new Date(),
+            },
+            { merge: true },
+        );
+    });
 }
 
 function normalizeLeadingSlash(rawPath: string): string {
@@ -277,6 +376,8 @@ export async function POST(req: NextRequest) {
             const body = await req.json();
             const message = safeString(body?.message, 10_000);
             const appId = safeString(body?.appId, 200);
+            const persistChat = body?.persistChat === true;
+            const conversationId = safeString(body?.conversationId, 80);
             const conversationHistory = Array.isArray(body?.conversationHistory)
                 ? (body.conversationHistory as any[])
                 : [];
@@ -302,10 +403,27 @@ export async function POST(req: NextRequest) {
             // Security-first guard: if a request likely needs persistence/auth and no DB is connected,
             // do not implement fake/local auth. Instead, push the user to connect Supabase.
             if (requestLikelyNeedsDatabase(message) && !hasAnyDb) {
+                const response =
+                    "This feature needs secure, persistent storage (database) to be safe. Right now no database is connected, so I won’t create local/in-memory users or store passwords on the client.\n\nDo you want to connect Supabase now and have me set up authentication + the required schema (e.g. a profiles table + RLS) for you?";
+
+                if (persistChat) {
+                    try {
+                        await persistLegacyAiChat({
+                            db,
+                            uid,
+                            appId,
+                            userMessage: message,
+                            assistantMessage: response,
+                            conversationId: conversationId || undefined,
+                        });
+                    } catch (err) {
+                        console.warn("[ai-agent] chat persistence failed", err);
+                    }
+                }
+
                 return NextResponse.json(
                     {
-                        response:
-                            "This feature needs secure, persistent storage (database) to be safe. Right now no database is connected, so I won’t create local/in-memory users or store passwords on the client.\n\nDo you want to connect Supabase now and have me set up authentication + the required schema (e.g. a profiles table + RLS) for you?",
+                        response,
                         refreshServer: false,
                         fileEdits: [],
                         setupDatabase: true,
@@ -591,6 +709,21 @@ ${buildContext}`;
                     // continue loop with build logs
                 } else {
                     break;
+                }
+            }
+
+            if (persistChat) {
+                try {
+                    await persistLegacyAiChat({
+                        db,
+                        uid,
+                        appId,
+                        userMessage: message,
+                        assistantMessage: assistantSummary,
+                        conversationId: conversationId || undefined,
+                    });
+                } catch (err) {
+                    console.warn("[ai-agent] chat persistence failed", err);
                 }
             }
 

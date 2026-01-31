@@ -28,7 +28,9 @@ function isAllowedProbeTarget(u: URL): boolean {
 
 async function probe(url: string) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4000);
+    // The hub can cold-start or briefly stall on first request; keep this lenient to avoid
+    // incorrectly throwing away a perfectly good existing machine.
+    const timeout = setTimeout(() => controller.abort(), 10_000);
 
     try {
         const u = new URL(url);
