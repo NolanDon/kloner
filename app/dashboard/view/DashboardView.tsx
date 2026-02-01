@@ -1121,7 +1121,7 @@ function AppCard({
                         <button
                             onClick={() => onCustomize(app.id)}
                             disabled={isDeleting}
-                            className="group inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-[#f55f2a] text-white shadow-sm hover:bg-[#ff8a4c] px-3 py-2 font-medium disabled:opacity-60"
+                            className="group inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-[#f55f2a] text-white shadow-sm px-3 py-2 font-medium disabled:opacity-60"
                             title="Open app in editor"
                         >
                             <span>Customize App</span>

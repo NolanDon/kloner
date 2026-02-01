@@ -118,7 +118,7 @@ export default function UniformModal({
               <button
                 type="button"
                 onClick={handleConfirm}
-                className="px-4 py-2 text-sm font-medium text-white bg-[#f55f2a] rounded-lg hover:bg-[#ff8a4c]"
+                className="px-4 py-2 text-sm font-medium text-white bg-[#f55f2a] rounded-lg"
               >
                 {confirmText}
               </button>
