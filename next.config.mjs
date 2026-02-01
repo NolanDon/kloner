@@ -20,7 +20,8 @@ const nextConfig = {
                 source: '/dashboard/:path*',
                 headers: [
                     { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp' },
-                    { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
+                    // Allow OAuth popups (e.g. Google sign-in) while keeping COOP enabled.
+                    { key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' },
                 ],
             },
         ];

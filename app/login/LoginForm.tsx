@@ -194,7 +194,9 @@ export let csrfPromise: Promise<string | null> | null = null;
 let cachedCsrfToken: string | null = null;
 let csrfTokenExpiry: number = 0;
 
-async function fetchCsrf(): Promise<string | null> {
+type CsrfFetchResult = { token: string | null; status: number | null };
+
+async function fetchCsrfWithStatus(): Promise<CsrfFetchResult> {
     try {
         const res = await fetch("/api/auth/csrf", {
             method: "POST",
@@ -203,18 +205,22 @@ async function fetchCsrf(): Promise<string | null> {
             cache: "no-store",
         });
         if (!res.ok) {
-            console.warn("CSRF fetch failed:", res.status, res.statusText);
-            return null;
+            // CSRF endpoint currently requires a valid session cookie.
+            // On fresh logins we may not have a session yet; handle that upstream.
+            if (res.status !== 401) {
+                console.warn("CSRF fetch failed:", res.status, res.statusText);
+            }
+            return { token: null, status: res.status };
         }
         const data = await res.json().catch(() => null);
         if (!data || !data.csrf) {
             console.warn("CSRF response missing token:", data);
-            return null;
+            return { token: null, status: res.status };
         }
-        return data.csrf;
+        return { token: data.csrf, status: res.status };
     } catch (error) {
         console.warn("CSRF fetch error:", error);
-        return null;
+        return { token: null, status: null };
     }
 }
 
@@ -227,7 +233,37 @@ export async function ensureSessionAndCsrf(): Promise<string | null> {
 
     // If no cached token or it's expired, fetch a new one
     if (!csrfPromise) {
-        csrfPromise = fetchCsrf();
+        csrfPromise = (async () => {
+            // First attempt: fetch CSRF using any existing session.
+            let r = await fetchCsrfWithStatus();
+            if (r.token) return r.token;
+
+            // If unauthorized, we're likely missing the server session cookie.
+            // Bootstrap it from Firebase auth, then retry CSRF.
+            if (r.status === 401 && auth.currentUser) {
+                try {
+                    const idToken = await getIdToken(auth.currentUser, true);
+                    const s = await fetch("/api/auth/session", {
+                        method: "POST",
+                        headers: { "content-type": "application/json" },
+                        body: JSON.stringify({ idToken }),
+                        credentials: "include",
+                        cache: "no-store",
+                    });
+
+                    if (s.ok) {
+                        r = await fetchCsrfWithStatus();
+                        if (r.token) return r.token;
+                    } else {
+                        console.warn("Session bootstrap failed:", s.status, s.statusText);
+                    }
+                } catch (e) {
+                    console.warn("Session bootstrap error:", e);
+                }
+            }
+
+            return null;
+        })();
     }
 
     const token = await csrfPromise;
@@ -248,17 +284,22 @@ async function setSessionCookie(): Promise<void> {
     if (!u) return;
 
     const idToken = await getIdToken(u, true);
-    const csrf = await ensureSessionAndCsrf();
 
-    await fetch("/api/auth/session", {
+    // The session endpoint does not require CSRF; it *creates* the server session cookie.
+    // Fetching CSRF before establishing a session causes a 401 loop.
+    const res = await fetch("/api/auth/session", {
         method: "POST",
         headers: {
             "content-type": "application/json",
-            ...(csrf ? { "x-csrf": csrf } : {}),
         },
         body: JSON.stringify({ idToken }),
         credentials: "include",
+        cache: "no-store",
     });
+
+    if (!res.ok) {
+        console.warn("Failed to set session cookie:", res.status, res.statusText);
+    }
 }
 
 /* ───────── URL + generate helpers (split) ───────── */
