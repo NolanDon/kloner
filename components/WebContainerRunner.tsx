@@ -2248,7 +2248,7 @@ export default function NavBar() {
       {previewUrl && !error ? (
         <div className="relative w-full h-full">
           <div className="absolute right-3 top-3 z-10 rounded-xl border border-black/10 bg-white/80 px-3 py-2 text-xs text-black/70 shadow-sm backdrop-blur-sm">
-            {/* <details>
+            <details>
               <summary className="cursor-pointer select-none">Embedded preview URL</summary>
               <div className="mt-2 max-w-[min(720px,90vw)] break-all font-mono text-[11px] text-black/80">
                 {previewUrl}
@@ -2287,7 +2287,6 @@ export default function NavBar() {
                 </button>
               </div>
             </details> 
-            */}
           </div>
           <iframe
             key={iframeKey}

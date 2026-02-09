@@ -136,11 +136,15 @@ export default function Hero() {
       }}
     >
       <div className="absolute inset-0 p-3 sm:p-4">
-        <div className="relative h-full w-full overflow-hidden rounded-[28px] ring-1 ring-black/10 shadow-2xl bg-[#2a1b3e]">
+        <div className="relative h-full w-full overflow-hidden ring-1 ring-black/10 shadow-2xl bg-[#2a1b3e] rounded-none sm:rounded-[28px]">
           {/* BACKGROUND */}
-          <div className="absolute inset-0 bg-black overflow-hidden">
-            <RetroGridBackground />
-            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/30" />
+          <div className="absolute inset-0 overflow-hidden">
+            <img
+              src="/images/hero_bg.jpg"
+              alt="Hero background"
+              className="w-full h-full object-cover select-none pointer-events-none"
+            />
+            <div className="absolute inset-0 bg-gradient-to-b bg-black/10" />
           </div>
 
           {/* CONTENT */}
@@ -196,7 +200,7 @@ export default function Hero() {
                   </button>
                 </div>
 
-                <div className="mt-3 sm:mt-4 text-xs sm:text-sm text-white/60 font-medium">
+                <div className="mt-3 sm:mt-4 text-xs sm:text-sm text-white font-medium">
                   {error ??
                     "Instant site cloning technology • No credit card required"}
                 </div>
