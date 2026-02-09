@@ -188,9 +188,14 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     const [supabaseConnected, setSupabaseConnected] = useState<boolean | null>(null);
     const [supabaseProjectName, setSupabaseProjectName] = useState<string | null>(null);
     const [supabaseProjectRef, setSupabaseProjectRef] = useState<string | null>(null);
+    const [supabaseDbReachable, setSupabaseDbReachable] = useState<boolean | null>(null);
+    const [supabaseDbStatusText, setSupabaseDbStatusText] = useState<string | null>(null);
+    const [supabaseDbLastCheckedAt, setSupabaseDbLastCheckedAt] = useState<number | null>(null);
     const supabaseVerifyInFlightRef = useRef(false);
     const lastSupabaseVerifyAtRef = useRef(0);
     const supabaseConnectedRef = useRef<boolean | null>(null);
+    const supabaseDbHealthInFlightRef = useRef(false);
+    const lastSupabaseDbHealthAtRef = useRef(0);
 
     useEffect(() => {
         supabaseConnectedRef.current = supabaseConnected;
@@ -297,11 +302,93 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
             }
         }, [refreshSupabaseStatusFromApi, showAlert, user?.uid]);
 
+        const checkSupabaseDbHealth = useCallback(async (opts?: { silent?: boolean }): Promise<boolean> => {
+            if (!user?.uid) return false;
+            if (supabaseDbHealthInFlightRef.current) return supabaseDbReachable === true;
+
+            const now = Date.now();
+            if (now - lastSupabaseDbHealthAtRef.current < 10_000) {
+                return supabaseDbReachable === true;
+            }
+            lastSupabaseDbHealthAtRef.current = now;
+            supabaseDbHealthInFlightRef.current = true;
+
+            try {
+                const csrf = await ensureSessionAndCsrf().catch(() => null);
+                const res = await fetch("/api/supabase/db-health", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
+                    },
+                    body: JSON.stringify({ cleanupIfDeleted: true }),
+                    cache: "no-store",
+                });
+
+                const data: any = await res.json().catch(() => null);
+                setSupabaseDbLastCheckedAt(Date.now());
+
+                if (!res.ok || !data?.ok) {
+                    // Don’t flap on transient failures.
+                    setSupabaseDbReachable(null);
+                    setSupabaseDbStatusText("Could not verify database reachability");
+                    return false;
+                }
+
+                if (data.connected === false) {
+                    setSupabaseConnected(false);
+                    setSupabaseProjectName(null);
+                    setSupabaseProjectRef(null);
+                    setSupabaseDbReachable(false);
+                    setSupabaseDbStatusText(
+                        data?.reason === "project_deleted"
+                            ? "Supabase project was deleted"
+                            : data?.reason === "unauthorized"
+                              ? "Supabase access unauthorized"
+                              : "Supabase not connected",
+                    );
+
+                    if (!opts?.silent) {
+                        void showAlert(
+                            data?.reason === "project_deleted"
+                                ? "Your Supabase project no longer exists (it looks like it was deleted). Kloner removed the stale connection."
+                                : "Supabase is not reachable right now. Please reconnect.",
+                            "Database",
+                        );
+                    }
+                    return false;
+                }
+
+                const reachable = Boolean(data.reachable);
+                setSupabaseDbReachable(reachable);
+
+                const err = typeof data?.error === "string" && data.error.trim() ? data.error.trim() : null;
+                setSupabaseDbStatusText(
+                    reachable
+                        ? "Database reachable"
+                        : err
+                          ? err
+                          : "Database not reachable (project may be paused or networking is blocked)",
+                );
+                return reachable;
+            } catch {
+                setSupabaseDbLastCheckedAt(Date.now());
+                setSupabaseDbReachable(null);
+                setSupabaseDbStatusText("Could not verify database reachability");
+                return false;
+            } finally {
+                supabaseDbHealthInFlightRef.current = false;
+            }
+        }, [showAlert, supabaseDbReachable, user?.uid]);
+
         useEffect(() => {
             if (!user?.uid) {
                 setSupabaseConnected(null);
                 setSupabaseProjectName(null);
                 setSupabaseProjectRef(null);
+                setSupabaseDbReachable(null);
+                setSupabaseDbStatusText(null);
+                setSupabaseDbLastCheckedAt(null);
                 return;
             }
 
@@ -329,6 +416,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                     setSupabaseProjectRef(ref);
 
                     void verifySupabaseConnection({ silent: true });
+                    void checkSupabaseDbHealth({ silent: true });
                 },
                 () => {
                     // If Firestore read fails (rules/offline), fall back to the session-protected status endpoint.
@@ -343,7 +431,15 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
             );
 
             return () => unsub();
-        }, [refreshSupabaseStatusFromApi, user?.uid, verifySupabaseConnection]);
+        }, [checkSupabaseDbHealth, refreshSupabaseStatusFromApi, user?.uid, verifySupabaseConnection]);
+
+        useEffect(() => {
+            if (!supabaseConnected) return;
+            const id = window.setInterval(() => {
+                void checkSupabaseDbHealth({ silent: true });
+            }, 60_000);
+            return () => window.clearInterval(id);
+        }, [checkSupabaseDbHealth, supabaseConnected]);
 
         const disconnectSupabase = useCallback(async () => {
             if (!user?.uid) {
@@ -418,6 +514,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
     const [fileTree, setFileTree] = useState<FileNode[]>([]);
     const [code, setCode] = useState<string>("");
     const [refreshKey, setRefreshKey] = useState(0);
+    const [applyCompleteKey, setApplyCompleteKey] = useState(0);
     const [localRestartKey, setLocalRestartKey] = useState(0);
     const [reconnectKey, setReconnectKey] = useState(0);
     const [isWebPreviewReady, setIsWebPreviewReady] = useState(false);
@@ -1055,6 +1152,11 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                 const requiresRestart = Boolean(
                     (data as any)?.requiresRestart || (data as any)?.requiresRebuild || (data as any)?.requires_rebuild,
                 );
+
+                // Notify the runner that an apply finished. The runner will do a delayed hard reload
+                // only if HMR websocket is blocked/unknown (prevents "reload too early" issues).
+                setApplyCompleteKey((k) => k + 1);
+
                 if (requiresRestart) {
                     const now = Date.now();
                     if (interactive || now - lastApplyAlertAtRef.current > 15000) {
@@ -2521,12 +2623,16 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                     supabaseConnected === null
                                         ? "bg-white text-gray-500 border border-gray-200"
                                         : supabaseConnected
-                                          ? "bg-green-100 text-green-900 hover:bg-green-200"
+                                          ? supabaseDbReachable === false
+                                              ? "bg-red-100 text-red-900 hover:bg-red-200"
+                                              : supabaseDbReachable === true
+                                                ? "bg-green-100 text-green-900 hover:bg-green-200"
+                                                : "bg-white text-green-900 border border-green-200 hover:bg-green-50"
                                           : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-100"
                                 }`}
                                 title={
                                     supabaseConnected
-                                        ? `Database connected${supabaseProjectName ? `: ${supabaseProjectName}` : ""}`
+                                        ? `${supabaseDbReachable === false ? "Database unreachable" : "Database connected"}${supabaseProjectName ? `: ${supabaseProjectName}` : ""}${supabaseDbStatusText ? `\n\n${supabaseDbStatusText}` : ""}`
                                         : "Connect your database"
                                 }
                             >
@@ -2534,7 +2640,13 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                 {supabaseConnected === null ? (
                                     <span>DB: Verifying</span>
                                 ) : supabaseConnected ? (
-                                    <span>DB: Connected</span>
+                                    <span>
+                                        {supabaseDbReachable === false
+                                            ? "DB: Unreachable"
+                                            : supabaseDbReachable === true
+                                              ? "DB: Healthy"
+                                              : "DB: Connected"}
+                                    </span>
                                 ) : (
                                     <span>Connect DB</span>
                                 )}
@@ -2756,6 +2868,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                             setReconnectKey((k) => k + 1);
                                         }}
                                         reloadToken={refreshKey}
+                                        applyToken={applyCompleteKey}
                                         restartToken={localRestartKey}
                                         reconnectToken={reconnectKey}
                                         forceFreshStart={forceFreshStartKey.current}

@@ -76,9 +76,11 @@ async function probe(url: string) {
             // ignore
         }
 
-        // Treat any non-5xx response on the allowed host as reachable.
-        // This avoids false negatives when the preview redirects within the same origin.
-        const reachable = res.status < 500 && !crossOriginRedirect;
+        // Treat only 2xx/3xx responses on the allowed host as reachable.
+        // IMPORTANT: 404/4xx often means the preview code/token is stale or expired.
+        // We must not treat those as reachable, otherwise the UI can show a "Not Found"
+        // page while claiming the preview is active.
+        const reachable = res.status >= 200 && res.status < 400 && !crossOriginRedirect;
         return {
             reachable,
             status: res.status,

@@ -21,6 +21,18 @@ type Message = {
     migrationSql?: string;
     migrationDestructive?: boolean;
     migrationStatus?: "PENDING" | "APPLYING" | "APPLIED" | "FAILED";
+
+    stagedBundleId?: string;
+};
+
+type StagedBundle = {
+    id: string;
+    createdAt: number;
+    label: string;
+    proposalIds: string[];
+    appliedProposalIds: Record<string, boolean>;
+    fileEdits: Array<{ path: string; content: string }>;
+    creditRequestId?: string;
 };
 
 type Checkpoint = {
@@ -149,6 +161,9 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     const [showSupabaseSetup, setShowSupabaseSetup] = useState(false);
     const [showSupabaseAdvanced, setShowSupabaseAdvanced] = useState(false);
     const [isSupabaseConnected, setIsSupabaseConnected] = useState(false);
+    const [supabaseDbReachable, setSupabaseDbReachable] = useState<boolean | null>(null);
+    const [supabaseDbStatusText, setSupabaseDbStatusText] = useState<string | null>(null);
+    const [supabaseDbLastCheckedAt, setSupabaseDbLastCheckedAt] = useState<number | null>(null);
     const [existingSupabaseProjectRef, setExistingSupabaseProjectRef] = useState("");
     const [existingSupabaseAnonKey, setExistingSupabaseAnonKey] = useState("");
     const [existingSupabaseServiceRoleKey, setExistingSupabaseServiceRoleKey] = useState("");
@@ -159,7 +174,11 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     const [migrationConfirmText, setMigrationConfirmText] = useState("");
     const [migrationShowSqlInModal, setMigrationShowSqlInModal] = useState(false);
 
+    const [stagedBundles, setStagedBundles] = useState<StagedBundle[]>([]);
+
     const isSupabaseConnectedRef = useRef(false);
+    const supabaseDbHealthInFlightRef = useRef(false);
+    const lastSupabaseDbHealthAtRef = useRef(0);
 
     const chatDisabled = previewReady === false;
 
@@ -198,6 +217,9 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     useEffect(() => {
         if (!user?.uid) {
             setIsSupabaseConnected(false);
+            setSupabaseDbReachable(null);
+            setSupabaseDbStatusText(null);
+            setSupabaseDbLastCheckedAt(null);
             return;
         }
 
@@ -207,6 +229,9 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             (snap) => {
                 if (!snap.exists()) {
                     setIsSupabaseConnected(false);
+                    setSupabaseDbReachable(null);
+                    setSupabaseDbStatusText(null);
+                    setSupabaseDbLastCheckedAt(null);
                     return;
                 }
 
@@ -219,6 +244,9 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 // If we can't read the integration doc (offline/rules), don't force the popup open.
                 // Default to false so the user can still choose to connect.
                 setIsSupabaseConnected(false);
+                setSupabaseDbReachable(null);
+                setSupabaseDbStatusText(null);
+                setSupabaseDbLastCheckedAt(null);
             },
         );
 
@@ -327,6 +355,109 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         if (csrf) headers["x-csrf"] = String(csrf);
         return headers;
     }, []);
+
+    const checkSupabaseDbHealth = useCallback(async (opts?: { silent?: boolean }) => {
+        if (!user?.uid) {
+            setSupabaseDbReachable(null);
+            setSupabaseDbStatusText(null);
+            setSupabaseDbLastCheckedAt(null);
+            return { connected: false, reachable: false, reason: "no_user" as const };
+        }
+
+        if (!isSupabaseConnectedRef.current) {
+            setSupabaseDbReachable(null);
+            setSupabaseDbStatusText(null);
+            setSupabaseDbLastCheckedAt(null);
+            return { connected: false, reachable: false, reason: "not_connected" as const };
+        }
+
+        if (supabaseDbHealthInFlightRef.current) {
+            return { connected: true, reachable: supabaseDbReachable === true, reason: "in_flight" as const };
+        }
+
+        const now = Date.now();
+        if (now - lastSupabaseDbHealthAtRef.current < 10_000) {
+            return { connected: true, reachable: supabaseDbReachable === true, reason: "throttled" as const };
+        }
+
+        lastSupabaseDbHealthAtRef.current = now;
+        supabaseDbHealthInFlightRef.current = true;
+
+        try {
+            const headers = await withCsrfHeaders();
+            const res = await fetch("/api/supabase/db-health", {
+                method: "POST",
+                headers,
+                body: JSON.stringify({ cleanupIfDeleted: true }),
+                cache: "no-store",
+            });
+
+            const data: any = await res.json().catch(() => null);
+            setSupabaseDbLastCheckedAt(Date.now());
+
+            if (!res.ok || !data?.ok) {
+                setSupabaseDbReachable(null);
+                setSupabaseDbStatusText("Could not verify database reachability");
+                return { connected: true, reachable: false, reason: "request_failed" as const };
+            }
+
+            if (data.connected === false) {
+                setSupabaseDbReachable(false);
+                setSupabaseDbStatusText(
+                    data?.reason === "project_deleted"
+                        ? "Supabase project was deleted"
+                        : data?.reason === "unauthorized"
+                          ? "Supabase access unauthorized"
+                          : "Supabase not connected",
+                );
+                setIsSupabaseConnected(false);
+
+                if (!opts?.silent) {
+                    await showAlert(
+                        data?.reason === "project_deleted"
+                            ? "Your Supabase project no longer exists (it looks like it was deleted). Kloner removed the stale connection."
+                            : "Supabase is not reachable right now. Please reconnect.",
+                        "Database",
+                    );
+                }
+
+                return { connected: false, reachable: false, reason: data?.reason || "disconnected" };
+            }
+
+            const reachable = Boolean(data.reachable);
+            setSupabaseDbReachable(reachable);
+            const err = typeof data?.error === "string" && data.error.trim() ? data.error.trim() : null;
+            setSupabaseDbStatusText(
+                reachable
+                    ? "Database reachable"
+                    : err
+                      ? err
+                      : "Database not reachable (project may be paused or networking is blocked)",
+            );
+            return { connected: true, reachable, reason: data?.reason || (reachable ? "ok" : "unreachable"), error: err || undefined };
+        } catch (e: any) {
+            setSupabaseDbLastCheckedAt(Date.now());
+            setSupabaseDbReachable(null);
+            setSupabaseDbStatusText("Could not verify database reachability");
+            return { connected: true, reachable: false, reason: "client_error" as const, error: typeof e?.message === "string" ? e.message : undefined };
+        } finally {
+            supabaseDbHealthInFlightRef.current = false;
+        }
+    }, [showAlert, supabaseDbReachable, user?.uid, withCsrfHeaders]);
+
+    useEffect(() => {
+        if (!isSupabaseConnected) return;
+        void checkSupabaseDbHealth({ silent: true });
+        const id = window.setInterval(() => {
+            void checkSupabaseDbHealth({ silent: true });
+        }, 60_000);
+        return () => window.clearInterval(id);
+    }, [checkSupabaseDbHealth, isSupabaseConnected]);
+
+    useEffect(() => {
+        if (!migrationReviewMessageId) return;
+        void checkSupabaseDbHealth({ silent: true });
+    }, [checkSupabaseDbHealth, migrationReviewMessageId]);
 
     useEffect(() => {
         // Only sync envs after preview is ready
@@ -728,6 +859,86 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         setCheckpoints(prev => [...prev, checkpoint]);
         setCurrentCheckpoint(checkpointId);
     }, [files]);
+
+    const applyStagedBundle = useCallback((bundleId: string, options?: { unsafe?: boolean }) => {
+        setStagedBundles((prev) => {
+            const bundle = prev.find((b) => b.id === bundleId);
+            if (!bundle) return prev;
+
+            // Always create a local checkpoint right before applying.
+            createCheckpoint(bundle.label || "Apply staged edits");
+
+            // Apply edits (this persists to Firebase via the parent).
+            for (const edit of bundle.fileEdits) {
+                try {
+                    onFileEdit(edit.path, edit.content, bundle.creditRequestId);
+                } catch {
+                    // ignore; individual edits are handled by the parent save path
+                }
+            }
+
+            // Clear linkage so the modal doesn't keep showing staged actions.
+            setMessages((msgs) =>
+                msgs.map((m) => (m.stagedBundleId === bundleId ? { ...m, stagedBundleId: undefined } : m))
+            );
+
+            // Emit a small chat note.
+            setMessages((msgs) => [
+                ...msgs,
+                {
+                    id: `staged_applied_${Date.now()}`,
+                    role: "assistant",
+                    content: options?.unsafe
+                        ? "Applied the staged code changes (without waiting for the database update). If something breaks, you can undo via the restore point/checkpoint."
+                        : "Applied the staged code changes now that the database update is applied.",
+                    timestamp: new Date(),
+                    type: "text",
+                },
+            ]);
+
+            return prev.filter((b) => b.id !== bundleId);
+        });
+    }, [createCheckpoint, onFileEdit]);
+
+    const discardStagedBundle = useCallback((bundleId: string) => {
+        setStagedBundles((prev) => prev.filter((b) => b.id !== bundleId));
+        setMessages((msgs) => msgs.map((m) => (m.stagedBundleId === bundleId ? { ...m, stagedBundleId: undefined } : m)));
+        setMessages((msgs) => [
+            ...msgs,
+            {
+                id: `staged_discarded_${Date.now()}`,
+                role: "assistant",
+                content: "Discarded the staged code changes. Your app will keep using the last working version.",
+                timestamp: new Date(),
+                type: "text",
+            },
+        ]);
+    }, []);
+
+    const markMigrationApplied = useCallback((proposalId: string) => {
+        setStagedBundles((prev) => {
+            if (!proposalId) return prev;
+            const next = prev.map((b) =>
+                b.proposalIds.includes(proposalId)
+                    ? { ...b, appliedProposalIds: { ...b.appliedProposalIds, [proposalId]: true } }
+                    : b
+            );
+
+            // Auto-apply any bundle that is now fully satisfied.
+            const ready = next.filter((b) => b.proposalIds.length > 0 && b.proposalIds.every((id) => b.appliedProposalIds[id]));
+            if (ready.length === 0) return next;
+
+            // Apply outside of this setter tick.
+            queueMicrotask(() => {
+                for (const b of ready) {
+                    applyStagedBundle(b.id);
+                }
+            });
+
+            // Keep bundles until applyStagedBundle removes them.
+            return next;
+        });
+    }, [applyStagedBundle]);
 
     const handleDatabaseConnect = useCallback((connection: DatabaseConnection) => {
         setDatabaseConnections(prev => [...prev.filter(c => c.id !== connection.id), connection]);
@@ -1238,6 +1449,26 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
             try {
                 const headers = await withCsrfHeaders();
+
+                const health = await checkSupabaseDbHealth({ silent: true });
+                if (!health.reachable) {
+                    const detail = health?.error || supabaseDbStatusText || "Database not reachable";
+                    setMessages((prev) => [
+                        ...prev,
+                        {
+                            id: `mig_blocked_${Date.now()}`,
+                            role: "assistant",
+                            content:
+                                `I can’t apply that migration right now because Supabase isn’t reachable.\n\n${detail}\n\nOpen **Connect Database** and reconnect Supabase (your project may have been paused/deleted).`,
+                            timestamp: new Date(),
+                            type: "text",
+                            migrationProposalId: proposalId,
+                            migrationStatus: "FAILED",
+                        },
+                    ]);
+                    return;
+                }
+
                 setApplyingMigrationIds((prev) => ({ ...prev, [proposalId]: true }));
 
                 const res = await fetch("/api/supabase/migrations/apply", {
@@ -1277,6 +1508,9 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                         migrationStatus: "APPLIED",
                     },
                 ]);
+
+                // If we staged code edits behind this migration, apply them now.
+                markMigrationApplied(proposalId);
             } catch (err) {
                 console.error("Migration apply error:", err);
                 setMessages((prev) => [
@@ -1366,8 +1600,11 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
             setMessages(prev => [...prev, aiMessage]);
 
+            const hasDbMigrations = Array.isArray(data.dbMigrations) && data.dbMigrations.length > 0;
+
             // Handle database migrations (propose -> ask user -> apply)
-            if (Array.isArray(data.dbMigrations) && data.dbMigrations.length > 0) {
+            const proposalIdsForThisResponse: string[] = [];
+            if (hasDbMigrations) {
                 const headers2 = await withCsrfHeaders();
                 for (const mig of data.dbMigrations as Array<any>) {
                     const sql = typeof mig?.sql === "string" ? mig.sql : "";
@@ -1418,6 +1655,8 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                     const proposalId = String(proposeJson.proposalId || "");
                     const destructiveFinal = Boolean(proposeJson.destructive);
 
+                    if (proposalId) proposalIdsForThisResponse.push(proposalId);
+
                     setMessages((prev) => [
                         ...prev,
                         {
@@ -1448,31 +1687,104 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
             // Handle file edits if any
             if (data.fileEdits && data.fileEdits.length > 0) {
-                createCheckpoint(`AI edit: ${input.slice(0, 50)}...`);
                 const creditRequestId =
                     (typeof data?.restorePointId === "string" && data.restorePointId) ||
                     `ai_agent_${appId}_${userMessage.id}`;
 
-                data.fileEdits.forEach((edit: { path: string; content: string }) => {
-                    onFileEdit(edit.path, edit.content, creditRequestId);
-                });
+                // Safety: if the agent also proposed DB changes, don't persist/apply code changes yet.
+                // This prevents the preview from breaking on missing schema until the user confirms the migration.
+                if (hasDbMigrations) {
+                    const bundleId = `staged_${Date.now()}`;
+                    const label = `AI edit (staged): ${input.slice(0, 50)}...`;
+                    const fileEdits = (data.fileEdits as Array<any>)
+                        .filter((e) => e && typeof e.path === "string" && typeof e.content === "string")
+                        .map((e) => ({ path: e.path, content: e.content }));
 
-                const rid = typeof data?.restorePointId === "string" ? data.restorePointId : null;
-                if (rid) {
-                    setLastRestorePointId(rid);
-                    setMessages(prev => [
+                    setStagedBundles((prev) => [
                         ...prev,
                         {
-                            id: `rp_${Date.now()}`,
-                            role: "assistant",
-                            content: "Created a restore point for that edit.",
-                            timestamp: new Date(),
-                            type: "text",
-                            restorePointId: rid,
-                            restoreActionLabel: "Undo",
+                            id: bundleId,
+                            createdAt: Date.now(),
+                            label,
+                            proposalIds: proposalIdsForThisResponse,
+                            appliedProposalIds: {},
+                            fileEdits,
+                            creditRequestId,
                         },
                     ]);
-                    fetchRestorePoints();
+
+                    // Link the staged code bundle to one migration message so we keep a single DB confirmation modal.
+                    if (proposalIdsForThisResponse.length > 0) {
+                        const attachTo = proposalIdsForThisResponse[0];
+                        setMessages((prev) =>
+                            prev.map((m) =>
+                                m.migrationProposalId === attachTo
+                                    ? {
+                                        ...m,
+                                        stagedBundleId: bundleId,
+                                        content: `${m.content}\n\n(Your related code changes are staged and will apply automatically after this database update.)`,
+                                    }
+                                    : m
+                            )
+                        );
+                    } else {
+                        // Fallback: no proposal ID to attach to (e.g. DB not connected). Keep a single message with actions.
+                        setMessages((prev) => [
+                            ...prev,
+                            {
+                                id: `staged_note_${Date.now()}`,
+                                role: "assistant",
+                                content:
+                                    "I staged the code changes for this request because it requires a database update, but I couldn’t create a migration proposal yet. Connect your database and ask me to retry, or discard the staged code changes.",
+                                timestamp: new Date(),
+                                type: "text",
+                                stagedBundleId: bundleId,
+                            },
+                        ]);
+                    }
+
+                    const rid = typeof data?.restorePointId === "string" ? data.restorePointId : null;
+                    if (rid) {
+                        setLastRestorePointId(rid);
+                        setMessages((prev) => [
+                            ...prev,
+                            {
+                                id: `rp_${Date.now()}`,
+                                role: "assistant",
+                                content: "Created a restore point for that edit.",
+                                timestamp: new Date(),
+                                type: "text",
+                                restorePointId: rid,
+                                restoreActionLabel: "Undo",
+                            },
+                        ]);
+                        fetchRestorePoints();
+                    }
+
+                } else {
+                    createCheckpoint(`AI edit: ${input.slice(0, 50)}...`);
+
+                    data.fileEdits.forEach((edit: { path: string; content: string }) => {
+                        onFileEdit(edit.path, edit.content, creditRequestId);
+                    });
+
+                    const rid = typeof data?.restorePointId === "string" ? data.restorePointId : null;
+                    if (rid) {
+                        setLastRestorePointId(rid);
+                        setMessages(prev => [
+                            ...prev,
+                            {
+                                id: `rp_${Date.now()}`,
+                                role: "assistant",
+                                content: "Created a restore point for that edit.",
+                                timestamp: new Date(),
+                                type: "text",
+                                restorePointId: rid,
+                                restoreActionLabel: "Undo",
+                            },
+                        ]);
+                        fetchRestorePoints();
+                    }
                 }
             }
         } catch (err) {
@@ -1597,8 +1909,8 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                     >
                         <div
                             className={`group relative max-w-[80%] rounded-lg p-3 ${message.role === "user"
-                                    ? "bg-purple-50 border border-purple-200 text-gray-900"
-                                    : "bg-orange-50 border border-orange-200"
+                                ? "bg-purple-50 border border-purple-200 text-gray-900"
+                                : "bg-orange-50 border border-orange-200"
                                 }`}
                         >
                             <button
@@ -1612,13 +1924,19 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                             </button>
 
                             <div className="whitespace-pre-wrap break-words text-sm">{renderTextWithLinks(message.content)}</div>
+
+                            {message.stagedBundleId ? (
+                                <div className="mt-2 text-[11px] text-gray-600">
+                                    Code changes are staged (not saved) and will apply after the database update.
+                                </div>
+                            ) : null}
                             {/* Prominent warning/info for risky or pending migrations */}
                             {message.migrationProposalId && message.migrationSql && (message.migrationStatus === "PENDING" || message.migrationStatus === "APPLYING") && (
-                                <div className={`mb-2 flex items-center gap-2 ${message.migrationDestructive ? "text-amber-700" : "text-blue-700"}`}>
+                                <div className={`my-3 flex items-center gap-2 ${message.migrationDestructive ? "text-amber-700" : "text-blue-700"}`}>
                                     {message.migrationDestructive ? (
-                                        <AlertTriangle className="h-5 w-5 animate-bounce" />
+                                        <AlertTriangle className="h-5 w-5" />
                                     ) : (
-                                        <Database className="h-5 w-5 animate-bounce" />
+                                        <Database className="h-5 w-5" />
                                     )}
                                     <span className="font-bold text-base">
                                         Database update required
@@ -1629,60 +1947,55 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                             {message.migrationProposalId && message.migrationSql ? (
                                 <div className="mt-3 space-y-2">
                                     <div className="rounded border border-gray-200 bg-white/70 p-3">
-                                        <div className="flex items-center justify-between gap-3">
-                                            <div className="min-w-0">
-                                                <div className="flex items-center gap-2 text-xs font-semibold text-gray-800">
+                                        {/* <div className="flex items-center justify-between gap-3"> */}
+                                        {/* <div className="min-w-0"> */}
+                                        {/* <div className="flex items-center gap-2 text-xs font-semibold text-gray-800">
                                                     {message.migrationDestructive ? (
                                                         <AlertTriangle className="h-4 w-4 text-amber-600" />
                                                     ) : null}
                                                     <span>
                                                         Database update
                                                     </span>
-                                                </div>
-                                                <div className="mt-0.5 text-[11px] text-gray-600">
-                                                    {message.migrationProposalId.slice(0, 8)}
-                                                    {message.migrationStatus === "APPLIED" ? " • applied" : ""}
-                                                    {message.migrationStatus === "FAILED" ? " • failed" : ""}
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-2 flex-shrink-0">
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        setShowMigrationSqlByMessageId((prev) => ({
-                                                            ...prev,
-                                                            [message.id]: !prev[message.id],
-                                                        }))
-                                                    }
-                                                    className="px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50"
-                                                    title="Show advanced SQL"
-                                                >
-                                                    {showMigrationSqlByMessageId[message.id] ? (
-                                                        <span className="inline-flex items-center gap-1">
-                                                            <ChevronUp className="h-3 w-3" /> Hide SQL
-                                                        </span>
-                                                    ) : (
-                                                        <span className="inline-flex items-center gap-1">
-                                                            <ChevronDown className="h-3 w-3" /> Show SQL
-                                                        </span>
-                                                    )}
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setMigrationReviewMessageId(message.id);
-                                                        setMigrationAcknowledge(false);
-                                                        setMigrationConfirmText("");
-                                                        setMigrationShowSqlInModal(false);
-                                                    }}
-                                                    disabled={Boolean(message.migrationStatus === "APPLIED")}
-                                                    className="px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
-                                                    title={message.migrationDestructive ? "Review & apply (risky)" : "Review & apply"}
-                                                >
-                                                    {message.migrationStatus === "APPLIED" ? "Applied" : "Review & Apply"}
-                                                </button>
-                                            </div>
+                                                </div> */}
+                                        {/* </div> */}
+                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    setShowMigrationSqlByMessageId((prev) => ({
+                                                        ...prev,
+                                                        [message.id]: !prev[message.id],
+                                                    }))
+                                                }
+                                                className="px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50"
+                                                title="Show advanced SQL"
+                                            >
+                                                {showMigrationSqlByMessageId[message.id] ? (
+                                                    <span className="inline-flex items-center gap-1">
+                                                        <ChevronUp className="h-3 w-3" /> Hide SQL
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-flex items-center gap-1">
+                                                        <ChevronDown className="h-3 w-3" /> Show SQL
+                                                    </span>
+                                                )}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setMigrationReviewMessageId(message.id);
+                                                    setMigrationAcknowledge(false);
+                                                    setMigrationConfirmText("");
+                                                    setMigrationShowSqlInModal(false);
+                                                }}
+                                                disabled={Boolean(message.migrationStatus === "APPLIED")}
+                                                className="px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+                                                title={message.migrationDestructive ? "Review & apply (risky)" : "Review & apply"}
+                                            >
+                                                {message.migrationStatus === "APPLIED" ? "Applied" : "Review & Apply"}
+                                            </button>
                                         </div>
+                                        {/* </div> */}
 
                                         {showMigrationSqlByMessageId[message.id] && (
                                             <pre className="mt-2 max-h-56 overflow-auto rounded bg-white border border-gray-200 p-2 text-[11px] leading-relaxed whitespace-pre-wrap">
@@ -1794,7 +2107,13 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                             <div className="text-left">
                                 <div className="font-semibold text-gray-900">Supabase</div>
                                 <div className="text-xs text-gray-600">
-                                    {isSupabaseConnected ? "Connected" : "PostgreSQL with auth & real-time"}
+                                    {isSupabaseConnected
+                                        ? supabaseDbReachable === false
+                                            ? "Connected (unreachable)"
+                                            : supabaseDbReachable === true
+                                              ? "Connected (healthy)"
+                                              : "Connected"
+                                        : "PostgreSQL with auth & real-time"}
                                 </div>
                             </div>
                         </button>
@@ -1840,7 +2159,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                             <div className="flex gap-3">
                                 <button
                                     onClick={handleCreateSupabaseProject}
-                                    className="flex-1 bg-[#F55F2A] text-white py-2 px-4 rounded-full hover:bg-[#E04E1B] transition-colors font-semibold"
+                                    className="flex-1 bg-[#F55F2A] text-white py-2 px-4 rounded-full hover:bg-[#E04E1B] text-sm transition-colors"
                                 >
                                     Create New Supabase Project
                                 </button>
@@ -1935,7 +2254,8 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                             const destructive = Boolean(msg?.migrationDestructive);
                             const isApplying = proposalId ? Boolean(applyingMigrationIds[proposalId]) : false;
                             const typedOk = destructive ? migrationConfirmText.trim().toLowerCase() === "apply" : true;
-                            const canApply = Boolean(proposalId) && migrationAcknowledge && typedOk && !isApplying;
+                            const dbBlocksApply = isSupabaseConnected && supabaseDbReachable === false;
+                            const canApply = Boolean(proposalId) && migrationAcknowledge && typedOk && !isApplying && !dbBlocksApply;
 
                             return (
                                 <>
@@ -1970,7 +2290,36 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                         </button>
                                     </div>
 
-                                    <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-800">
+                                    {isSupabaseConnected ? (
+                                        supabaseDbReachable === false ? (
+                                            <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                                                <div className="font-semibold">Supabase is connected, but the database is unreachable</div>
+                                                <div className="mt-1 text-sm text-red-700 whitespace-pre-wrap">
+                                                    {supabaseDbStatusText || "Database not reachable (project may be paused or deleted)."}
+                                                </div>
+                                                <div className="mt-2 flex items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => void checkSupabaseDbHealth({ silent: true })}
+                                                        className="px-2 py-1 text-xs bg-white border border-red-200 rounded hover:bg-red-50"
+                                                    >
+                                                        Re-check
+                                                    </button>
+                                                    {supabaseDbLastCheckedAt ? (
+                                                        <span className="text-[11px] text-red-700/80">
+                                                            Last checked {Math.max(1, Math.round((Date.now() - supabaseDbLastCheckedAt) / 1000))}s ago
+                                                        </span>
+                                                    ) : null}
+                                                </div>
+                                            </div>
+                                        ) : supabaseDbReachable === null ? (
+                                            <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-800">
+                                                Checking Supabase database reachability…
+                                            </div>
+                                        ) : null
+                                    ) : null}
+
+                                    {/* <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-800">
                                         <div className="font-semibold">What this is for</div>
                                         <div className="mt-1 text-sm text-gray-700 whitespace-pre-wrap">
                                             {msg?.content || "Database update"}
@@ -1978,7 +2327,47 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                         <div className="mt-2 text-xs text-gray-600">
                                             Note: App “restore points” do not automatically undo database changes.
                                         </div>
-                                    </div>
+                                    </div> */}
+                                    {msg?.stagedBundleId ? (
+                                        <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-800">
+                                            <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3">
+                                                <div className="text-sm font-semibold text-amber-900">Code changes are staged</div>
+                                                <div className="mt-1 text-xs text-amber-900/80">
+                                                    These code changes have not been saved yet to avoid breaking the app before the database update.
+                                                    After you apply this migration, the code changes will apply automatically.
+                                                </div>
+                                                <div className="mt-3 flex flex-wrap gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const ok = window.confirm(
+                                                                "Discard the staged code changes?\n\nThis will keep your app on the last working version."
+                                                            );
+                                                            if (!ok) return;
+                                                            discardStagedBundle(msg.stagedBundleId!);
+                                                        }}
+                                                        className="px-3 py-1.5 text-xs font-semibold rounded border border-amber-200 bg-white text-amber-900 hover:bg-amber-100/60"
+                                                    >
+                                                        Discard staged code
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const ok = window.confirm(
+                                                                "Apply the staged code changes now (without waiting for the database update)?\n\nThis can break the app if the schema isn’t updated yet."
+                                                            );
+                                                            if (!ok) return;
+                                                            applyStagedBundle(msg.stagedBundleId!, { unsafe: true });
+                                                        }}
+                                                        className="px-3 py-1.5 text-xs font-semibold rounded border border-amber-200 bg-white text-amber-900 hover:bg-amber-100/60"
+                                                        title="Unsafe: apply code before DB update"
+                                                    >
+                                                        Apply staged code (unsafe)
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : null}
 
                                     <div className="mt-4 space-y-3">
                                         <label className="flex items-start gap-2 text-sm text-gray-800">
@@ -2043,6 +2432,19 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                                 if (applyingMigrationIds[proposalId]) return;
                                                 setApplyingMigrationIds((prev) => ({ ...prev, [proposalId]: true }));
                                                 try {
+                                                    const health = await checkSupabaseDbHealth({ silent: true });
+                                                    if (!health.reachable) {
+                                                        const detail = health?.error || supabaseDbStatusText || "Database not reachable";
+                                                        setMessages((prev) =>
+                                                            prev.map((m) =>
+                                                                m.id === migrationReviewMessageId
+                                                                    ? { ...m, migrationStatus: "FAILED", content: `${m.content}\n\nMigration failed: Supabase is unreachable.\n${detail}` }
+                                                                    : m
+                                                            )
+                                                        );
+                                                        return;
+                                                    }
+
                                                     const headers = await withCsrfHeaders();
                                                     const res = await fetch("/api/supabase/migrations/apply", {
                                                         method: "POST",
@@ -2068,6 +2470,9 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                                                 : m
                                                         )
                                                     );
+
+                                                    // If we staged code edits behind this migration, apply them now.
+                                                    markMigrationApplied(proposalId);
                                                     setMigrationReviewMessageId(null);
                                                 } catch (e) {
                                                     console.error("Migration apply error:", e);

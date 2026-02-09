@@ -18,6 +18,7 @@ interface WebContainerRunnerProps {
   onPreviewReadyChange?: (ready: boolean) => void;
   onBackendReady?: (args: { appId: string; code: string; url: string }) => void;
   reloadToken?: number;
+  applyToken?: number;
   restartToken?: number;
   reconnectToken?: number;
   forceFreshStart?: number;
@@ -31,12 +32,16 @@ interface WebContainerRunnerProps {
   navigatePathToken?: number;
 }
 
-export default function WebContainerRunner({ appId, files, onFileChange, onPreviewReadyChange, onBackendReady, reloadToken, restartToken, reconnectToken, forceFreshStart, pollingConfig, navigatePath, navigatePathToken }: WebContainerRunnerProps) {
+export default function WebContainerRunner({ appId, files, onFileChange, onPreviewReadyChange, onBackendReady, reloadToken, applyToken, restartToken, reconnectToken, forceFreshStart, pollingConfig, navigatePath, navigatePathToken }: WebContainerRunnerProps) {
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [iframeKey, setIframeKey] = useState(0);
+  const [showPreviewUrlOverlay, setShowPreviewUrlOverlay] = useState(true);
+  const [previewUrlDetailsOpen, setPreviewUrlDetailsOpen] = useState(false);
+  const [showHmrWarning, setShowHmrWarning] = useState(true);
+  const [hmrWsStatus, setHmrWsStatus] = useState<'unknown' | 'ok' | 'blocked'>('unknown');
   const [error, setError] = useState<string | null>(null);
   const [canRetry, setCanRetry] = useState(false);
   const [startAttempt, setStartAttempt] = useState(0);
@@ -138,6 +143,85 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     } catch {
       // ignore
     }
+  };
+
+  const shouldShowInternalPreviewDetails = (): boolean => {
+    if (process.env.NODE_ENV !== 'production') return true;
+    if (typeof window === 'undefined') return false;
+    try {
+      const u = new URL(window.location.href);
+      if (u.searchParams.get('debugPreview') === '1') return true;
+    } catch {
+      // ignore
+    }
+    try {
+      return localStorage.getItem('kloner.debug') === '1';
+    } catch {
+      return false;
+    }
+  };
+
+  const buildUserFacingPreviewError = (args: {
+    uiTitle?: string;
+    uiMessage?: string;
+    errorMessage?: string;
+    reqId?: string;
+    flyIsDischargeMissing?: boolean;
+  }): string => {
+    const showDetails = shouldShowInternalPreviewDetails();
+
+    const uiTitle = String(args.uiTitle || '').trim();
+    const uiMsg = String(args.uiMessage || '').trim();
+    const errorMessage = String(args.errorMessage || '').trim();
+    const reqId = String(args.reqId || '').trim();
+
+    const genericFallback = "Something went wrong — We couldn’t get your preview ready. Please try again.";
+
+    // Internal-only: very specific infra guidance should never be shown to end users.
+    if (args.flyIsDischargeMissing) {
+      if (!showDetails) return "Preview is temporarily unavailable. Please try again in a few minutes or contact support.";
+      return (
+        "Fly Machines API rejected the token used by the hub (tracksite-hub). The FlyV1 token is missing its third-party discharge token (likely split/truncated).\n\n" +
+        "Fix: update the Fly app 'tracksite-hub' secret so FLY_API_TOKEN is a single full token: 'FlyV1 <macaroon>,<discharge>' (do not split on commas). Then restart/redeploy the hub and try again." +
+        (reqId ? `\n\nFly requestId: ${reqId}` : '')
+      );
+    }
+
+    // If backend text is generic (or empty), prefer our own stable message.
+    const isGenericUi =
+      uiTitle.toLowerCase() === 'something went wrong' ||
+      uiMsg.toLowerCase().includes("couldn’t get your preview ready") ||
+      uiMsg.toLowerCase().includes("couldn't get your preview ready") ||
+      uiMsg.toLowerCase().includes('could not start the preview');
+
+    // Map known sensitive/internal-ish error strings to user-safe messaging.
+    const lower = `${uiTitle} ${uiMsg} ${errorMessage}`.toLowerCase();
+    const looksLikeBilling =
+      lower.includes('billing account') ||
+      lower.includes('delinquent') ||
+      lower.includes('past_due') ||
+      lower.includes('payment') ||
+      lower.includes('invoice') ||
+      lower.includes('subscription');
+
+    if (!showDetails) {
+      if (looksLikeBilling) {
+        return "Preview is unavailable for this project due to an account issue. Please check your billing or contact support.";
+      }
+
+      if (!uiTitle && !uiMsg) return genericFallback;
+      if (isGenericUi) return genericFallback;
+      return [uiTitle, uiMsg].filter(Boolean).join(' — ') || genericFallback;
+    }
+
+    // Debug mode: include the underlying error message when the UI text is generic.
+    let userFacing = [uiTitle, uiMsg].filter(Boolean).join(' — ');
+    if (!userFacing) userFacing = errorMessage || genericFallback;
+    else if (isGenericUi && errorMessage && !userFacing.toLowerCase().includes(errorMessage.toLowerCase())) {
+      userFacing = `${userFacing}\n\nDetails: ${errorMessage}`;
+    }
+    if (reqId) userFacing = `${userFacing}\n\nRequestId: ${reqId}`;
+    return userFacing;
   };
 
   const buildHubStatusUrl = (code: string, deploymentUrl: string): string | null => {
@@ -300,7 +384,17 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     }
   };
 
-  const probePreviewUrl = async (appId: string, url: string): Promise<boolean> => {
+  type ProbeResult = {
+    ok: boolean;
+    reachable: boolean;
+    status?: number;
+    finalUrl?: string | null;
+    redirected?: boolean;
+    crossOriginRedirect?: boolean;
+    error?: string;
+  };
+
+  const probePreviewUrl = async (appId: string, url: string): Promise<ProbeResult> => {
     const attempts = 2;
     for (let i = 0; i < attempts; i++) {
       try {
@@ -310,7 +404,22 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
           { method: 'GET', headers, credentials: 'include', cache: 'no-store' }
         );
         const data = await res.json().catch(() => null);
-        if (res.ok && (data as any)?.ok && (data as any)?.reachable) return true;
+        if (res.ok && (data as any)?.ok) {
+          return {
+            ok: true,
+            reachable: Boolean((data as any)?.reachable),
+            status: typeof (data as any)?.status === 'number' ? (data as any).status : undefined,
+            finalUrl: (data as any)?.finalUrl ?? null,
+            redirected: Boolean((data as any)?.redirected),
+            crossOriginRedirect: Boolean((data as any)?.crossOriginRedirect),
+          };
+        }
+        return {
+          ok: false,
+          reachable: false,
+          status: res.status,
+          error: typeof (data as any)?.error === 'string' ? (data as any).error : 'probe_failed',
+        };
       } catch {
         // ignore; retry
       }
@@ -320,7 +429,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
         await new Promise((r) => setTimeout(r, 350));
       }
     }
-    return false;
+    return { ok: false, reachable: false, error: 'probe_failed' };
   };
 
   const getFlyAppFromUrl = (maybeUrl: string): string | null => {
@@ -421,8 +530,15 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   };
   const proxyBaseRef = useRef<string | null>(null);
   const previewUrlRef = useRef<string | null>(null);
+  const hmrWsRef = useRef<WebSocket | null>(null);
+  const hmrWsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastHmrWsCheckKeyRef = useRef<string>('');
+  const autoReloadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastFilesSignatureRef = useRef<string>('');
   const lastReloadIssuedAtRef = useRef<number>(0);
   const lastReloadTokenRef = useRef<number | null>(null);
+  const lastApplyTokenRef = useRef<number | null>(null);
+  const applyReloadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastRestartTokenRef = useRef<number | null>(null);
   const lastReconnectTokenRef = useRef<number | null>(null);
   const lastNavigatePathTokenRef = useRef<number | null>(null);
@@ -683,6 +799,169 @@ export default function NavBar() {
   useEffect(() => {
     previewUrlRef.current = previewUrl;
   }, [previewUrl]);
+
+  // When the preview URL changes (new machine / new viewer token), re-show the overlay.
+  useEffect(() => {
+    setShowPreviewUrlOverlay(true);
+    setPreviewUrlDetailsOpen(false);
+    setShowHmrWarning(true);
+    setHmrWsStatus('unknown');
+    lastHmrWsCheckKeyRef.current = '';
+
+    if (hmrWsTimeoutRef.current) {
+      clearTimeout(hmrWsTimeoutRef.current);
+      hmrWsTimeoutRef.current = null;
+    }
+    if (hmrWsRef.current) {
+      try { hmrWsRef.current.close(); } catch { }
+      hmrWsRef.current = null;
+    }
+  }, [previewUrl]);
+
+  // HMR relies on a websocket to `/_next/webpack-hmr` at the preview origin.
+  // Some VPNs / proxies / adblockers block websockets, causing the iframe to stop live-updating.
+  // We can't reliably detect "VPN enabled", but we can detect that the websocket can't connect.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!previewUrl) return;
+
+    // Only relevant for hub + next-dev.
+    const kind = String((currentStatusData as any)?.appServerKind || '').toLowerCase();
+    if (kind !== 'next-dev') return;
+
+    let u: URL;
+    try {
+      u = new URL(previewUrl, window.location.origin);
+    } catch {
+      return;
+    }
+
+    if (u.hostname.toLowerCase() !== 'tracksite-hub.fly.dev') return;
+    const wsUrl = `${u.protocol === 'https:' ? 'wss:' : 'ws:'}//${u.host}/_next/webpack-hmr`;
+    if (lastHmrWsCheckKeyRef.current === wsUrl && hmrWsStatus !== 'unknown') return;
+    lastHmrWsCheckKeyRef.current = wsUrl;
+
+    if (hmrWsTimeoutRef.current) {
+      clearTimeout(hmrWsTimeoutRef.current);
+      hmrWsTimeoutRef.current = null;
+    }
+    if (hmrWsRef.current) {
+      try { hmrWsRef.current.close(); } catch { }
+      hmrWsRef.current = null;
+    }
+
+    let settled = false;
+    let opened = false;
+    const settle = (next: 'ok' | 'blocked') => {
+      if (settled) return;
+      settled = true;
+      setHmrWsStatus(next);
+      if (hmrWsTimeoutRef.current) {
+        clearTimeout(hmrWsTimeoutRef.current);
+        hmrWsTimeoutRef.current = null;
+      }
+      const ws = hmrWsRef.current;
+      hmrWsRef.current = null;
+      if (ws) {
+        try { ws.close(); } catch { }
+      }
+    };
+
+    try {
+      const ws = new WebSocket(wsUrl);
+      hmrWsRef.current = ws;
+
+      ws.onopen = () => {
+        opened = true;
+        settle('ok');
+      };
+      ws.onerror = () => {
+        settle('blocked');
+      };
+      ws.onclose = () => {
+        if (!opened) settle('blocked');
+      };
+
+      // Timeout: if it doesn't open quickly, treat as blocked.
+      hmrWsTimeoutRef.current = setTimeout(() => settle('blocked'), 3000);
+    } catch {
+      settle('blocked');
+    }
+
+    return () => {
+      if (hmrWsTimeoutRef.current) {
+        clearTimeout(hmrWsTimeoutRef.current);
+        hmrWsTimeoutRef.current = null;
+      }
+      if (hmrWsRef.current) {
+        try { hmrWsRef.current.close(); } catch { }
+        hmrWsRef.current = null;
+      }
+    };
+  }, [previewUrl, (currentStatusData as any)?.appServerKind, hmrWsStatus]);
+
+  const hardReloadPreview = (reason: string) => {
+    const base = proxyBaseRef.current || previewUrlRef.current;
+    if (!base) return;
+    console.log('[WebContainerRunner] hard reload preview', { appId, reason });
+    setIframeKey((k) => k + 1);
+    setPreviewUrl(withCacheBust(base));
+  };
+
+  // Workaround: HMR inside embedded hub previews can stop propagating even when the dev server recompiles.
+  // When we detect next-dev + hub + preview already loaded, issue a hard reload after file edits.
+  useEffect(() => {
+    const currentUrl = previewUrlRef.current;
+    if (!currentUrl) return;
+    if (!iframeLoadedSuccessfullyRef.current) return;
+    if (lastAppServerKindRef.current !== 'next-dev') return;
+    if (!String(currentUrl).includes('tracksite-hub.fly.dev')) return;
+
+    // If the HMR websocket is healthy, prefer letting HMR update the page.
+    // The whole point of this workaround is when HMR is blocked/broken.
+    if (hmrWsStatus === 'ok') return;
+
+    const fileCount = Object.keys(files || {}).length;
+    let maxModified = 0;
+    try {
+      for (const f of Object.values(files || {})) {
+        const lm = Number((f as any)?.lastModified);
+        if (Number.isFinite(lm)) maxModified = Math.max(maxModified, lm);
+      }
+    } catch {
+      // ignore
+    }
+    const sig = `${fileCount}:${maxModified}`;
+
+    if (!lastFilesSignatureRef.current) {
+      lastFilesSignatureRef.current = sig;
+      return;
+    }
+    if (sig === lastFilesSignatureRef.current) return;
+    lastFilesSignatureRef.current = sig;
+
+    if (autoReloadTimeoutRef.current) {
+      clearTimeout(autoReloadTimeoutRef.current);
+      autoReloadTimeoutRef.current = null;
+    }
+
+    // Give Next dev a moment to recompile before reloading, otherwise we often
+    // reload into the *previous* build and the user needs to refresh again.
+    const AUTO_HARD_RELOAD_DELAY_MS = 3000;
+    autoReloadTimeoutRef.current = setTimeout(() => {
+      autoReloadTimeoutRef.current = null;
+      // Only reload if we still have a preview URL.
+      if (!previewUrlRef.current) return;
+      hardReloadPreview('files_changed');
+    }, AUTO_HARD_RELOAD_DELAY_MS);
+
+    return () => {
+      if (autoReloadTimeoutRef.current) {
+        clearTimeout(autoReloadTimeoutRef.current);
+        autoReloadTimeoutRef.current = null;
+      }
+    };
+  }, [appId, files, hmrWsStatus]);
 
   const withCacheBust = (url: string) => {
     const cb = String(Date.now());
@@ -1011,8 +1290,8 @@ export default function NavBar() {
                       }
                     }
 
-                    const reachable = await probePreviewUrl(appId, statusData.url);
-                    if (reachable) {
+                    const probe = await probePreviewUrl(appId, statusData.url);
+                    if (probe.reachable) {
                       pollingCodeRef.current = existingCode;
                       setPreviewUrl(statusData.url);
                       setLoadingStatus(`Connected to machine ${statusData.machineId}!`);
@@ -1021,6 +1300,15 @@ export default function NavBar() {
                       lastReadyUrlRef.current = statusData.url;
                       appLoadedSuccessfullyRef.current = true;
                       return; // Successfully connected to existing container
+                    }
+
+                    // If the probe says "not found", this is not transient.
+                    if (probe.status === 404 || probe.status === 410) {
+                      console.log(
+                        `🗑️ Probe returned ${probe.status} for existing container ${existingCode}; clearing stored code and starting fresh.`
+                      );
+                      await clearStoredContainerCodeEverywhere(appId, user);
+                      throw new Error("probe_not_found");
                     }
 
                     // IMPORTANT: a probe can fail transiently (hub cold start, brief DNS, Fly edge jitter).
@@ -1066,8 +1354,8 @@ export default function NavBar() {
                           console.log(
                             `✅ Fly reports machine ${statusData.machineId} is '${flyState.state}', probing URL before reusing stopped container ${existingCode}`
                           );
-                          const reachable = await probePreviewUrl(appId, statusData.url);
-                          if (reachable) {
+                          const probe = await probePreviewUrl(appId, statusData.url);
+                          if (probe.reachable) {
                             pollingCodeRef.current = existingCode;
                             setPreviewUrl(statusData.url);
                             setLoadingStatus(`Connected to machine ${statusData.machineId}!`);
@@ -1116,8 +1404,8 @@ export default function NavBar() {
                     throw new Error("fly_machine_not_running");
                   }
 
-                  const reachable = await probePreviewUrl(appId, statusData.url);
-                  if (reachable) {
+                  const probe = await probePreviewUrl(appId, statusData.url);
+                  if (probe.reachable) {
                     console.log(`✅ Probe succeeded for container ${existingCode} (${statusData.machineId})`);
                     pollingCodeRef.current = existingCode;
                     setPreviewUrl(statusData.url);
@@ -1127,6 +1415,14 @@ export default function NavBar() {
                     if (backendReadyRef.current) lastReadyUrlRef.current = statusData.url;
                     appLoadedSuccessfullyRef.current = true;
                     return;
+                  }
+
+                  if (probe.status === 404 || probe.status === 410) {
+                    console.log(
+                      `🗑️ Probe returned ${probe.status} for container ${existingCode}; clearing stored code and starting fresh.`
+                    );
+                    await clearStoredContainerCodeEverywhere(appId, user);
+                    throw new Error("probe_not_found");
                   }
 
                   // Same policy as above: do not discard the saved machine on a transient probe failure.
@@ -1208,9 +1504,9 @@ export default function NavBar() {
                       const url = String((statusData as any)?.url || '').trim();
 
                       if (url && isReady) {
-                        const reachable = await probePreviewUrl(appId, url);
+                        const probe = await probePreviewUrl(appId, url);
                         if (startRunIdRef.current !== runId) return;
-                        if (reachable) {
+                        if (probe.reachable) {
                           pollingCodeRef.current = existingCode;
                           iframeLoadedSuccessfullyRef.current = false;
                           setPreviewUrl(url);
@@ -1220,6 +1516,11 @@ export default function NavBar() {
                           setLoadingStatus(`Connected to machine ${statusData.machineId}!`);
                           appLoadedSuccessfullyRef.current = true;
                           return;
+                        }
+
+                        if (probe.status === 404 || probe.status === 410) {
+                          await clearStoredContainerCodeEverywhere(appId, user);
+                          break;
                         }
                       }
                     }
@@ -1262,7 +1563,7 @@ export default function NavBar() {
               setConnectingToExisting(false);
               setIsLoading(false);
               setIsPolling(false);
-              setError('No usable existing machine to reconnect to. Use Start fresh to create a new one.');
+              setError('No usable existing machine to reconnect to. Use Rebuild to create a new one.');
               setCanRetry(true);
               return;
             }
@@ -1565,7 +1866,9 @@ export default function NavBar() {
                   code,
                   deploymentUrl,
                 });
-              } else if (previewUrlRef.current !== deploymentUrl) {
+              } else if (status !== 'error' && previewUrlRef.current !== deploymentUrl) {
+                // For non-error states, it is useful to show the preview URL ASAP.
+                // For error states, only navigate after a successful probe (otherwise we can embed a 404 page).
                 iframeLoadedSuccessfullyRef.current = false;
                 setPreviewUrl(deploymentUrl);
               }
@@ -1676,8 +1979,8 @@ export default function NavBar() {
                 console.log('Backend timed out but provided URL, attempting direct connection:', deploymentUrl);
 
                 try {
-                  const reachable = await probePreviewUrl(appId, deploymentUrl);
-                  if (reachable) {
+                  const probe = await probePreviewUrl(appId, deploymentUrl);
+                  if (probe.reachable) {
                     console.log('Direct probe successful, proceeding with URL:', deploymentUrl);
                     iframeLoadedSuccessfullyRef.current = false;
                     setPreviewUrl(deploymentUrl);
@@ -1689,6 +1992,10 @@ export default function NavBar() {
                     pollingRetryCountRef.current = 0;
                     statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
                     return;
+                  }
+                  if (probe.status === 404 || probe.status === 410) {
+                    console.log(`Direct probe returned ${probe.status}; clearing stale container code for ${code}.`);
+                    await clearStoredContainerCodeEverywhere(appId, user);
                   }
                   console.log('Direct probe indicates URL is not reachable yet:', deploymentUrl);
                 } catch (directError) {
@@ -1702,8 +2009,8 @@ export default function NavBar() {
               // If we have a URL, try a last-chance probe before we permanently fail.
               if (!isTimeoutError && deploymentUrl) {
                 try {
-                  const reachable = await probePreviewUrl(appId, deploymentUrl);
-                  if (reachable) {
+                  const probe = await probePreviewUrl(appId, deploymentUrl);
+                  if (probe.reachable) {
                     console.log('Preview URL is reachable despite error status; proceeding with URL:', deploymentUrl);
                     iframeLoadedSuccessfullyRef.current = false;
                     setPreviewUrl(deploymentUrl);
@@ -1715,6 +2022,12 @@ export default function NavBar() {
                     pollingRetryCountRef.current = 0;
                     statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
                     return;
+                  }
+
+                  // If the URL is definitively gone, clear the saved code so the next action starts fresh.
+                  if (probe.status === 404 || probe.status === 410) {
+                    console.log(`Probe returned ${probe.status} during error handoff; clearing stale container code for ${code}.`);
+                    await clearStoredContainerCodeEverywhere(appId, user);
                   }
                 } catch (probeErr) {
                   console.log('Preview URL probe failed during error handoff:', probeErr);
@@ -1769,30 +2082,14 @@ export default function NavBar() {
               // IMPORTANT:
               // If backend reports status=error, do NOT keep retrying and showing "Still building".
               // Stop polling and show the actual error, with a clear next action.
-              const uiTitle = String(statusData?.uiTitle || 'Something went wrong').trim();
-              const uiMsg = String(statusData?.uiMessage || '').trim();
               const reqId = typeof flyApi?.requestId === 'string' ? flyApi.requestId : '';
-
-              let userFacing = [uiTitle, uiMsg].filter(Boolean).join(' — ');
-
-              // If the backend only provides a generic UI message, also include the underlying error details.
-              // This is especially important when the machine boot script fails (exit code) or a healthcheck/port mismatch occurs.
-              const isGenericUi =
-                uiTitle.toLowerCase() === 'something went wrong' ||
-                uiMsg.toLowerCase().includes("couldn’t get your preview ready") ||
-                uiMsg.toLowerCase().includes("couldn't get your preview ready") ||
-                uiMsg.toLowerCase().includes('could not start the preview');
-
-              if (!userFacing) userFacing = errorMessage;
-              else if (isGenericUi && errorMessage && !userFacing.toLowerCase().includes(String(errorMessage).toLowerCase())) {
-                userFacing = `${userFacing}\n\nDetails: ${errorMessage}`;
-              }
-
-              if (flyIsDischargeMissing) {
-                userFacing =
-                  "Fly Machines API rejected the token used by the hub (tracksite-hub). The FlyV1 token is missing its third-party discharge token (likely split/truncated).\n\nFix: update the Fly app 'tracksite-hub' secret so FLY_API_TOKEN is a single full token: 'FlyV1 <macaroon>,<discharge>' (do not split on commas). Then restart/redeploy the hub and try again." +
-                  (reqId ? `\n\nFly requestId: ${reqId}` : '');
-              }
+              const userFacing = buildUserFacingPreviewError({
+                uiTitle: statusData?.uiTitle,
+                uiMessage: statusData?.uiMessage,
+                errorMessage,
+                reqId,
+                flyIsDischargeMissing,
+              });
 
               console.error('Backend reported error status:', { errorMessage, statusData, flyApi });
 
@@ -2128,6 +2425,40 @@ export default function NavBar() {
     setPreviewUrl(nextUrl);
   }, [reloadToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // After /apply finishes, HMR should update the preview. In embedded iframes it can be
+  // blocked or silently stall. When the parent signals an apply completed, schedule a
+  // delayed hard reload *only when* HMR websocket isn't OK.
+  useEffect(() => {
+    if (typeof applyToken !== 'number') return;
+    if (applyToken <= 0) return;
+    if (lastApplyTokenRef.current === applyToken) return;
+    lastApplyTokenRef.current = applyToken;
+
+    if (applyReloadTimeoutRef.current) {
+      clearTimeout(applyReloadTimeoutRef.current);
+      applyReloadTimeoutRef.current = null;
+    }
+
+    // If HMR is healthy, do nothing.
+    if (hmrWsStatus === 'ok') return;
+
+    // Wait for Next to finish recompiling, otherwise we reload old output.
+    const delayMs = 3000;
+    applyReloadTimeoutRef.current = setTimeout(() => {
+      applyReloadTimeoutRef.current = null;
+      if (!iframeLoadedSuccessfullyRef.current) return;
+      if (!previewUrlRef.current) return;
+      hardReloadPreview('apply_finished');
+    }, delayMs);
+
+    return () => {
+      if (applyReloadTimeoutRef.current) {
+        clearTimeout(applyReloadTimeoutRef.current);
+        applyReloadTimeoutRef.current = null;
+      }
+    };
+  }, [applyToken, hmrWsStatus]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Handle iframe load timeout
   useEffect(() => {
     if (!previewUrl) {
@@ -2247,47 +2578,113 @@ export default function NavBar() {
       )}
       {previewUrl && !error ? (
         <div className="relative w-full h-full">
-          <div className="absolute right-3 top-3 z-10 rounded-xl border border-black/10 bg-white/80 px-3 py-2 text-xs text-black/70 shadow-sm backdrop-blur-sm">
-            <details>
-              <summary className="cursor-pointer select-none">Embedded preview URL</summary>
-              <div className="mt-2 max-w-[min(720px,90vw)] break-all font-mono text-[11px] text-black/80">
-                {previewUrl}
-              </div>
-              <div className="mt-2">
-                <a
-                  className="inline-flex items-center rounded-full border border-black/10 bg-white px-3 py-1 text-[11px] font-semibold text-black/70 shadow-sm hover:bg-black/5"
-                  href={previewUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Open in new tab
-                </a>
+          {/* {hmrWsStatus === 'blocked' && showHmrWarning ? (
+            <div className="absolute left-3 top-3 z-10 max-w-[min(520px,92vw)] rounded-xl border border-amber-200 bg-amber-50/90 px-3 py-2 text-xs text-amber-900 shadow-sm backdrop-blur-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="font-semibold text-amber-900">Live updates may be blocked</div>
+                  <div className="mt-0.5 text-[11px] text-amber-900/80">
+                    The preview uses a WebSocket for Next.js HMR. Some VPNs, proxies, or blockers prevent it from connecting,
+                    so you may need to reload to see changes.
+                  </div>
+                </div>
                 <button
                   type="button"
-                  className="ml-2 inline-flex items-center rounded-full border border-black/10 bg-white px-3 py-1 text-[11px] font-semibold text-black/70 shadow-sm hover:bg-black/5"
-                  onClick={() => {
-                    const base = proxyBaseRef.current || previewUrl;
-                    setPreviewUrl(withCacheBust(base));
-                  }}
+                  className="shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-md hover:bg-amber-100"
+                  aria-label="Hide live update warning"
+                  onClick={() => setShowHmrWarning(false)}
+                >
+                  ×
+                </button>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="inline-flex items-center rounded-full border border-amber-200 bg-white px-3 py-1 text-[11px] font-semibold text-amber-900 shadow-sm hover:bg-amber-100/60"
+                  onClick={() => hardReloadPreview('hmr_ws_blocked_reload')}
                 >
                   Reload preview
                 </button>
-                <button
-                  type="button"
-                  className="ml-2 inline-flex items-center rounded-full border border-black/10 bg-white px-3 py-1 text-[11px] font-semibold text-black/70 shadow-sm hover:bg-black/5"
-                  onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(previewUrl);
-                    } catch {
-                      // ignore
-                    }
+                {!showPreviewUrlOverlay ? (
+                  <button
+                    type="button"
+                    className="inline-flex items-center rounded-full border border-amber-200 bg-white px-3 py-1 text-[11px] font-semibold text-amber-900 shadow-sm hover:bg-amber-100/60"
+                    onClick={() => {
+                      setShowPreviewUrlOverlay(true);
+                      setPreviewUrlDetailsOpen(false);
+                    }}
+                  >
+                    Show URL
+                  </button>
+                ) : null}
+              </div>
+              <div className="mt-2 text-[11px] text-amber-900/70">
+                If you’re on a VPN, try disabling it (or split-tunnel/allowlist <span className="font-mono">tracksite-hub.fly.dev</span>).
+              </div>
+            </div>
+          ) : null}
+          {showPreviewUrlOverlay ? (
+            <div className="absolute right-3 top-3 z-10 rounded-xl border border-black/10 bg-white/80 px-3 py-2 text-xs text-black/70 shadow-sm backdrop-blur-sm">
+              <div className="flex items-center justify-between gap-3">
+                <details
+                  open={previewUrlDetailsOpen}
+                  onToggle={(e) => {
+                    const el = e.currentTarget as HTMLDetailsElement;
+                    setPreviewUrlDetailsOpen(Boolean(el.open));
                   }}
                 >
-                  Copy URL
+                  <summary className="cursor-pointer select-none">Embedded preview URL</summary>
+                  <div className="mt-2 max-w-[min(720px,90vw)] break-all font-mono text-[11px] text-black/80">
+                    {previewUrl}
+                  </div>
+                  <div className="mt-2">
+                    <a
+                      className="inline-flex items-center rounded-full border border-black/10 bg-white px-3 py-1 text-[11px] font-semibold text-black/70 shadow-sm hover:bg-black/5"
+                      href={previewUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open in new tab
+                    </a>
+                    <button
+                      type="button"
+                      className="ml-2 inline-flex items-center rounded-full border border-black/10 bg-white px-3 py-1 text-[11px] font-semibold text-black/70 shadow-sm hover:bg-black/5"
+                      onClick={() => {
+                        hardReloadPreview('manual_reload_button');
+                      }}
+                    >
+                      Reload preview
+                    </button>
+                    <button
+                      type="button"
+                      className="ml-2 inline-flex items-center rounded-full border border-black/10 bg-white px-3 py-1 text-[11px] font-semibold text-black/70 shadow-sm hover:bg-black/5"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(previewUrl);
+                        } catch {
+                          // ignore
+                        }
+                      }}
+                    >
+                      Copy URL
+                    </button>
+                  </div>
+                </details>
+
+                <button
+                  type="button"
+                  className="shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-md hover:bg-black/5"
+                  aria-label="Hide preview URL"
+                  onClick={() => {
+                    setPreviewUrlDetailsOpen(false);
+                    setShowPreviewUrlOverlay(false);
+                  }}
+                >
+                  ×
                 </button>
               </div>
-            </details> 
-          </div>
+            </div>
+          ) : null} */}
           <iframe
             key={iframeKey}
             src={previewUrl}
@@ -2295,19 +2692,22 @@ export default function NavBar() {
             title="App Preview"
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
             onLoad={() => {
-              console.log('Iframe loaded successfully - preview should now be active at:', previewUrl);
+              console.log('[WebContainerRunner] iframe onLoad (navigation complete):', previewUrl);
 
-              // Iframe load indicates the host is reachable (often a fallback UI).
-              // Only stop polling and mark "ready" when the backend contract says `ready === true`.
-              setError(null);
-              setCanRetry(false);
-              setIsLoading(false);
-              setConnectingToExisting(false);
-              setLoadingStatus('');
+              // Iframe load can be a real app OR a "Not Found"/fallback page.
+              // Only declare the preview "ready" when the backend contract says `ready === true`.
               iframeLoadedSuccessfullyRef.current = true;
               appLoadedSuccessfullyRef.current = true;
 
               if (backendReadyRef.current) {
+                setError(null);
+                setCanRetry(false);
+                setIsLoading(false);
+                setConnectingToExisting(false);
+                setLoadingStatus('');
+                // Once the app is actually running, hide the URL overlay for the remainder of this session.
+                setPreviewUrlDetailsOpen(false);
+                setShowPreviewUrlOverlay(false);
                 try { onPreviewReadyChange?.(true); } catch { }
                 stopAllTimers();
                 if (isPolling) setIsPolling(false);
@@ -2334,12 +2734,7 @@ export default function NavBar() {
                 iframeLoadTimeoutRef.current = null;
               }
 
-              // Add a small delay then try to validate the deployment
-              setTimeout(() => {
-                console.log('Machined Preview loaded successfully');
-                // For now, just log that the deployment seems to be working
-                // CORS prevents us from doing detailed content checks
-              }, 2000);
+              // No content validation here (CORS). Readiness comes from backend polling.
             }}
             onError={() => {
               console.log('Iframe failed to load - URL may be unreachable:', previewUrl);
