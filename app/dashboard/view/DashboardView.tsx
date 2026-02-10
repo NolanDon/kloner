@@ -5700,7 +5700,7 @@ export default function PreviewPage(): JSX.Element {
                                                 style={{ backgroundColor: ACCENT }}
                                             >
                                                 {appWizardBusy
-                                                    ? "Creating…"
+                                                    ? "Creating… This may take a minute."
                                                     : appWizardSource === "sample"
                                                         ? "Create app"
                                                         : appWizardSource === "website"

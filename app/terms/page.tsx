@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import NavBar from "@/components/NavBar";
+import Footer from "@/components/Footer";
 
 const ACCENT = "#f55f2a";
 
@@ -437,14 +438,22 @@ export default function TermsPage(): JSX.Element {
                                 18. Contact
                             </h2>
                             <p className="mt-2">
-                                If you have questions about these Terms, you can contact the
-                                service owner using the contact details provided on the
-                                website.
+                                If you have questions about these Terms, reach us via our{" "}
+                                <a
+                                    href="/contact"
+                                    className="font-medium underline underline-offset-2"
+                                    style={{ color: ACCENT }}
+                                >
+                                    contact page
+                                </a>
+                                .
                             </p>
                         </section>
                     </div>
                 </div>
             </div>
+
+            <Footer />
         </main>
     );
 }

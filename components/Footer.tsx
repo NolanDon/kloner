@@ -18,7 +18,7 @@ const FOOTER_SECTIONS: Array<{ title: string; items: LinkItem[]; note?: { atInde
       { label: "Pricing", href: "/price" },
       { label: "Blog", href: "/blog" },
       { label: "Community builds", href: "/community-builds" },
-      { label: "Docs", href: "/dashboard/docs" },
+      { label: "Compare", href: "/compare" },
     ],
   },
   {
@@ -34,7 +34,7 @@ const FOOTER_SECTIONS: Array<{ title: string; items: LinkItem[]; note?: { atInde
     title: "Compare",
     items: [
       { label: "Compare", href: "/compare" },
-      { label: "Docs", href: "/dashboard/docs" },
+      { label: "Pricing", href: "/price" },
     ],
   },
   {
@@ -124,13 +124,13 @@ export default function Footer() {
               </a>
             </li>
             <li>
-              <a href="/dashboard/docs" className="text-neutral-700 hover:text-neutral-900">
-                Docs
+              <a href="/blog" className="text-neutral-700 hover:text-neutral-900">
+                Blog
               </a>
             </li>
             <li>
-              <a href="/blog" className="text-neutral-700 hover:text-neutral-900">
-                Blog
+              <a href="/#how-it-works" className="text-neutral-700 hover:text-neutral-900">
+                How it works
               </a>
             </li>
             <li>

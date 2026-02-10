@@ -1,4 +1,11 @@
 User-agent: *
-Disallow: 
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /affiliate
+Disallow: /support
+Disallow: /api
+Disallow: /preview
+Disallow: /previews
+Disallow: /webcontainer
 Disallow: /cgi-bin/
 Sitemap: https://kloner.app/sitemap.xml

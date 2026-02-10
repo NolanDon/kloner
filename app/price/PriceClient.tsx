@@ -862,7 +862,7 @@ export default function PriceClient(): JSX.Element {
                 </div>
             </div>
 
-            {/* <Footer /> */}
+            <Footer />
         </main>
     );
 }

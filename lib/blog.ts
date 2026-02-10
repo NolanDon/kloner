@@ -73,7 +73,7 @@ Want to ship faster? [Create an account](/login?mode=signup) or jump into the [d
 export const BLOG_POSTS: BlogPost[] = [
   {
     slug: "ai-website-cloning-to-production",
-    title: "AI Website Cloning: From Inspiration to Production Without the Mess",
+    title: "AI Website Cloning: From Idea to Production",
     description:
       "A practical guide to cloning a website layout with AI, turning it into clean components, and shipping fast without copying brittle HTML.",
     publishedAt: "2026-02-10",
@@ -81,7 +81,7 @@ export const BLOG_POSTS: BlogPost[] = [
     markdown: `# AI Website Cloning: From Inspiration to Production Without the Mess
 
 If you’ve ever tried to “clone” a website by copying HTML/CSS from DevTools, you already know the problem: it looks right for a moment, then collapses the second you change content, swap fonts, or view it on a different screen size. **AI website cloning** works best when you treat it as _layout extraction + component design_, not raw source-code copying.
-
+    title: "Test Market Hypotheses With Realistic Demos",
 This guide outlines a production-friendly approach to cloning a website layout (for landing pages, marketing sites, and quick MVPs) while keeping your codebase maintainable.
 
 ## 1) Start with intent, not pixels
@@ -156,11 +156,11 @@ That’s the modern approach to AI website cloning: **speed with structure**.
 
 ---
 
-Next steps: start a project in [Kloner](/login?mode=signup), keep the workflow tight with the [Docs](/dashboard/docs), and sanity-check tradeoffs on [Compare](/compare).`,
+Next steps: start a project in [Kloner](/login?mode=signup), review the workflow in [How it works](/#how-it-works), and sanity-check tradeoffs on [Compare](/compare).`,
   },
   {
     slug: "market-hypotheses-with-cloned-demos",
-    title: "Testing Market Hypotheses With Cloned Demos That Feel Real",
+    title: "Test Market Hypotheses With Realistic Demos",
     description:
       "How founders can use cloned demos to test product hypotheses without building the backend yet.",
     publishedAt: "2026-02-10",
@@ -194,7 +194,7 @@ Cloned demos let you sense-check markets before building the backend. When you p
   },
   {
     slug: "app-cloner",
-    title: "App Cloner: Clone a Web App From a URL, Then Customize and Ship",
+    title: "App Cloner: Clone a Web App From a URL",
     description:
       "What an app cloner actually does, when to use one, and a practical workflow to clone a web app for prototypes, MVPs, and internal tools without building everything from scratch.",
     publishedAt: "2026-02-10",
@@ -202,14 +202,14 @@ Cloned demos let you sense-check markets before building the backend. When you p
     markdown: `# App Cloner: Clone a Web App From a URL, Then Customize and Ship
 
 If you searched for an **app cloner**, you’re probably trying to do one of these things:
-
+    title: "Validate a Market With a Fast MVP",
 - Recreate a product experience so you can test messaging, UX, or pricing.
 - Spin up an MVP without weeks of design and front-end work.
 - Build an internal tool quickly (dashboards, CRUD apps, admin panels).
 - Turn a competitor-inspired layout into your own original implementation.
 
 The good news: cloning the structure of an app is one of the fastest ways to get to a usable prototype. The bad news: “cloning” can mean wildly different things depending on the tool.
-
+    title: "AI Agents for Product Teams: Time-Saving Workflows",
 This guide explains what an app cloner should do, how to use it safely, and how to turn a cloned preview into something you can actually ship.
 
 ## What is an app cloner (and what it is not)
@@ -253,7 +253,7 @@ If you already have an inspiration URL, cloning gives you a strong baseline layo
 Try it now:
 
 - Create an account: [Sign up for Kloner](/login?mode=signup)
-- Learn the flow: [Kloner docs](/dashboard/docs)
+- Learn the flow: [How it works](/#how-it-works)
 
 ### Step 2: Replace content before you touch styling
 
@@ -314,7 +314,7 @@ When you’re ready to ship, check pricing and export options on [Pricing](/pric
 If you’re reading this because you want the fastest path to a working prototype, these are the three links that matter:
 
 - [Create an account](/login?mode=signup)
-- [Read the docs](/dashboard/docs)
+- [How it works](/#how-it-works)
 - [See pricing](/price)
 
 That’s the core loop: clone, customize, preview, and iterate.
@@ -322,7 +322,7 @@ That’s the core loop: clone, customize, preview, and iterate.
   },
   {
     slug: "validate-a-market-with-a-fast-mvp",
-    title: "How to Validate a Market With a Fast MVP (Without Burning Weeks)",
+    title: "Validate a Market With a Fast MVP",
     description:
       "A practical playbook for MVP validation: pick a niche, ship a credible demo fast, test messaging, and measure demand before building the full product.",
     publishedAt: "2026-02-10",
@@ -403,11 +403,11 @@ A quick MVP is not about shipping “version 0.1.” It’s about **testing dema
 
 ---
 
-Next steps: browse [Pricing](/price) to see how you might package offers, and keep your iteration loop short by using a reliable preview flow (see the [Docs](/dashboard/docs)). If you’re also cloning layouts, read [AI Website Cloning](/blog/ai-website-cloning-to-production).`,
+Next steps: browse [Pricing](/price) to see how you might package offers, and keep your iteration loop short by using a reliable preview flow (see [How it works](/#how-it-works)). If you’re also cloning layouts, read [AI Website Cloning](/blog/ai-website-cloning-to-production).`,
   },
   {
     slug: "ai-agents-for-product-and-growth-teams",
-    title: "AI Agents for Product Teams: Practical Workflows That Actually Save Time",
+    title: "AI Agents for Product Teams: Time-Saving Workflows",
     description:
       "What AI agents are good for today: drafting specs, generating UI variants, running QA checklists, and automating repetitive ops—without overpromising.",
     publishedAt: "2026-02-10",
@@ -481,7 +481,7 @@ If the answer is yes, agents can help. If not, keep humans in the driver’s sea
 ## The takeaway
 ---
 
-If you’re building agent-driven workflows, start from a shippable surface area (landing + demo) and keep your docs close to the product: [Docs](/dashboard/docs). For examples of what others are building, explore [Community builds](/community-builds).`,
+If you’re building agent-driven workflows, start from a shippable surface area (landing + demo) and keep the workflow close to the product: [How it works](/#how-it-works). For examples of what others are building, explore [Community builds](/community-builds).`,
   },
   {
     slug: "website-cloning-for-quick-mvps",
@@ -552,11 +552,11 @@ Website cloning is a speed tool. Treat it as pattern capture + fast iteration, a
 
 ---
 
-Want a structured approach to deployment and previews? Start with the [Docs](/dashboard/docs) and sanity-check tradeoffs on [Compare](/compare). For validation tactics, see [Fast MVP Market Validation](/blog/validate-a-market-with-a-fast-mvp).`,
+Want a structured approach to deployment and previews? Start with [How it works](/#how-it-works) and sanity-check tradeoffs on [Compare](/compare). For validation tactics, see [Fast MVP Market Validation](/blog/validate-a-market-with-a-fast-mvp).`,
   },
   {
     slug: "ai-landing-page-builder-best-practices",
-    title: "AI Landing Page Builder Best Practices for High-Converting Clones",
+    title: "AI Landing Page Builder: Best Practices",
     description:
       "A practical reference for designers and founders using AI to craft landing pages that stay responsive, fast, and on-brand.",
     publishedAt: "2026-02-10",
@@ -583,12 +583,12 @@ Run every clone through Lighthouse or your preferred performance checklist. Prio
 
 ## Keep iteration loops short
 
-Use your preview pipeline (see the [Docs](/dashboard/docs)) to try multiple variants in one session. Track which headline + CTA combination wins and document the wins in a small <code>/blog</code> note. That way, your AI landing page builder becomes a repeatable system, not a wild experiment.
+Use your preview pipeline (see [How it works](/#how-it-works)) to try multiple variants in one session. Track which headline + CTA combination wins and document the wins in a small <code>/blog</code> note. That way, your AI landing page builder becomes a repeatable system, not a wild experiment.
 `,
   },
   {
     slug: "ai-agent-feedback-loops",
-    title: "Build AI Agent Feedback Loops That Keep Clones Honest",
+    title: "Build AI Feedback Loops for Better Clones",
     description:
       "Practical advice for shipping AI agents that collect brief human feedback on cloned experiences.",
     publishedAt: "2026-02-10",
@@ -596,7 +596,7 @@ Use your preview pipeline (see the [Docs](/dashboard/docs)) to try multiple vari
     markdown: `# Build AI Agent Feedback Loops That Keep Clones Honest
 
 AI agents can suggest landing pages, QA checklists, and documentation rewrites, but without feedback loops their results drift. Create a simple cycle that surfaces human judgment so each clone stays aligned with your product.
-
+    title: "Productionize AI Clones Reliably",
 ## Instrument every agent suggestion
 
 Track agent proposals (headlines, flows, copy snippets) inside a lightweight log table. Record the user ID, timestamp, and whether the suggestion was accepted. That telemetry tells you which outputs are useful and reveals drift sooner.
@@ -615,12 +615,12 @@ Send weekly digests pairing agent outputs with human notes. This keeps the team 
 
 ## Keep the loop short
 
-Generate → validate → learn should fit into one session. Use the [Docs](/dashboard/docs) as shared context and a quick <code>/blog</code> memo to capture what worked. When feedback is visible, your clones stay dependable despite ever-smarter agents.
+Generate → validate → learn should fit into one session. Use [How it works](/#how-it-works) as shared context and a quick <code>/blog</code> memo to capture what worked. When feedback is visible, your clones stay dependable despite ever-smarter agents.
 `,
   },
   {
     slug: "productionizing-ai-clones-fast",
-    title: "Productionizing AI Clones Fast Without Sacrificing Reliability",
+    title: "Productionize AI Clones Reliably",
     description:
       "Checklist for shipping AI-generated clones to production, covering tests, deployments, and observability.",
     publishedAt: "2026-02-10",
@@ -639,7 +639,7 @@ Connect each clone to your analytics stack. Track conversions, error rates, and 
 
 ## Automate preview + QA checks
 
-Use your preview environment (see the [Docs](/dashboard/docs)) to spin up the clone, run Lighthouse tests, and capture screenshots. If a QA agent or test user flags issues, document them and rerun the pipeline before the public launch.
+Use your preview environment (see [How it works](/#how-it-works)) to spin up the clone, run Lighthouse tests, and capture screenshots. If a QA agent or test user flags issues, document them and rerun the pipeline before the public launch.
 
 ## Deploy incrementally
 
@@ -654,7 +654,7 @@ Productionizing clones is about systems, not miracles. Lock styling, ship instru
   },
   {
     slug: "performance-checklist-for-cloned-sites",
-    title: "Performance Checklist for Cloned Sites That Need Real Traffic",
+    title: "Cloned Site Performance Checklist",
     description:
       "A practical six-point checklist to keep cloned AI sites fast, accessible, and SEO-ready.",
     publishedAt: "2026-02-10",
@@ -662,7 +662,7 @@ Productionizing clones is about systems, not miracles. Lock styling, ship instru
     markdown: `# Performance Checklist for Cloned Sites That Need Real Traffic
 
 Fast clones stay relevant. This checklist keeps brittle AI generators honest so your traffic, SEO, and paid campaigns don’t suffer.
-
+    title: "Demo Ops Playbook for AI Experiences",
 ## 1) Serve optimized media
 
 Replace raw hero images with <code><Image /></code> or WebP/CDN versions. Preload critical imagery and lazy-load the rest. That keeps LCP in the green even when the AI output is media-heavy.
@@ -715,7 +715,7 @@ Pair sessions with short polls: “How believable is this experience?” “What
 
 ## 4) Iterate and re-test quickly
 
-Fix the top objection, rebuild the clone, and re-run the same question set. Your preview pipeline should let you deploy iterations within an hour. If you’re using the [Docs](/dashboard/docs) preview approach, keep a named branch for each study so stakeholders can replay the narrative.
+Fix the top objection, rebuild the clone, and re-run the same question set. Your preview pipeline should let you deploy iterations within an hour. If you’re using the [How it works](/#how-it-works) preview approach, keep a named branch for each study so stakeholders can replay the narrative.
 
 ## 5) Combine quantitative data
 
@@ -726,7 +726,7 @@ Cloned demos keep research lean. When you treat them as purposeful artifacts and
   },
   {
     slug: "demo-operations-playbook",
-    title: "Demo Operations Playbook for AI-Generated Experiences",
+    title: "Demo Ops Playbook for AI Experiences",
     description:
       "Run each cloned demo like a mini product launch with readiness checks, observability, and post-demo follow-up procedures.",
     publishedAt: "2026-02-14",
@@ -764,7 +764,7 @@ Review analytics weekly, pair them with research findings, and prioritize which 
   },
   {
     slug: "preview-infrastructure-for-ai-clones",
-    title: "Preview Infrastructure for AI Clones That Stakeholders Actually Use",
+    title: "Preview Infrastructure for AI Clones",
     description:
       "Architect a preview stack for AI clones, including routing, QR sharing, and automated snapshots so teams can validate quickly.",
     publishedAt: "2026-02-16",
@@ -798,7 +798,7 @@ With solid preview infrastructure, clones stop feeling like experiments and star
   },
   {
     slug: "analytics-for-ai-clone-ops",
-    title: "Analytics for AI Clone Ops: What to Track Before, During, and After a Demo",
+    title: "Analytics for AI Clone Ops: What to Track",
     description:
       "Guide to instrumenting AI clones so you monitor experience quality, identify drop-off, and prove demo impact.",
     publishedAt: "2026-02-18",
@@ -838,7 +838,7 @@ When analytics are baked into every clone, the team can move faster with confide
   },
   {
     slug: "how-to-clone-apps",
-    title: "How to Clone Apps (Responsibly) and Ship a Real MVP Fast",
+    title: "How to Clone Apps (Responsibly)",
     description:
       "A practical, high-intent guide to cloning web apps from a URL or prompt, then turning the preview into editable components you can ship.",
     publishedAt: "2026-02-19",
@@ -926,7 +926,7 @@ If you want to try it, start a project from a URL and iterate with an agent: [Cr
   },
   {
     slug: "clone-your-next-saas-in-minutes",
-    title: "Clone Your Next SaaS in Minutes: A High-CTR Workflow for Founders",
+    title: "Clone Your Next SaaS in Minutes",
     description:
       "A founder-focused workflow to clone a SaaS landing + dashboard, validate demand, and ship a believable MVP quickly without rebuilding everything.",
     publishedAt: "2026-02-19",
@@ -1001,7 +1001,7 @@ Want to do this fast? Start from a URL or prompt, iterate with an agent, and exp
   },
   {
     slug: "clone-a-website-from-a-url",
-    title: "Clone a Website From a URL: The Fastest Way to Get a Clean, Editable Landing Page",
+    title: "Clone a Website From a URL: Clean, Editable Pages",
     description:
       "Learn how to clone a website from a URL into a responsive, editable layout you can customize, export, and deploy — without brittle copy/paste HTML.",
     publishedAt: "2026-02-19",
@@ -1073,7 +1073,7 @@ If you want to do this in one sitting: start a preview from a URL, then ask the 
   },
   {
     slug: "best-ai-website-builder-for-cloning",
-    title: "Best AI Website Builder for Cloning? What to Look For (and What to Avoid)",
+    title: "Best AI Website Builder for Cloning",
     description:
       "A buyer’s guide for choosing an AI website builder or website cloner: editable components, export quality, SEO basics, and deployment workflows.",
     publishedAt: "2026-02-19",
