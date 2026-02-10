@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import AdminCommunityBuildsClient from "./AdminCommunityBuildsClient";
 
 export const metadata: Metadata = {
-    title: "Admin · Community builds | Kloner",
+    title: "Admin · Community builds",
     description: "Admin queue for approving community builds.",
 };
 

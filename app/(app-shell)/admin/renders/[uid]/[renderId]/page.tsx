@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import AdminRenderPreviewClient from "./AdminRenderPreviewClient";
 
 export const metadata: Metadata = {
-    title: "Admin · Render preview | Kloner",
+    title: "Admin · Render preview",
     description: "Admin preview for a user render.",
 };
 

@@ -4,7 +4,7 @@ import NavBar from "@/components/NavBar";
 const ACCENT = "#f55f2a";
 
 export const metadata: Metadata = {
-    title: "Terms | Kloner",
+    title: "Terms",
     description:
         "Kloner terms and conditions: account usage, credits, exports, and responsibility for third‑party content.",
     alternates: { canonical: "https://kloner.app/terms" },

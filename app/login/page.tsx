@@ -5,7 +5,7 @@ import LoginPage from "./LoginForm";
 import Footer from "@/components/Footer";
 
 export const metadata: Metadata = {
-    title: "Login | Kloner",
+    title: "Login",
     description: "Sign in to Kloner to generate editable previews and manage your projects.",
     alternates: { canonical: "https://kloner.app/login" },
     robots: { index: false, follow: true },

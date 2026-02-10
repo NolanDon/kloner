@@ -5,9 +5,9 @@ import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 
 export const metadata: Metadata = {
-    title: "Partnerships | Kloner",
+    title: "Partnerships",
     description:
-        "Partner with Kloner: creator programs, affiliates, and agency-friendly workflows.",
+        "Explore Kloner partnerships for creators, affiliates, and agencies. Earn commissions or deliver faster by cloning and refining sites with an AI agent.",
     alternates: { canonical: "https://kloner.app/partners" },
     openGraph: { url: "https://kloner.app/partners" },
 };

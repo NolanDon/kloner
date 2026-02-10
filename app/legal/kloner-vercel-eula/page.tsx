@@ -6,7 +6,7 @@ import Footer from "@/components/Footer";
 const ACCENT = "#f55f2a";
 
 export const metadata: Metadata = {
-    title: "Kloner + Vercel EULA | Kloner",
+    title: "Kloner + Vercel EULA",
     description:
         "End User License Agreement for the Kloner + Vercel integration. Usage terms for connecting Kloner to your Vercel account.",
     alternates: { canonical: "https://kloner.app/legal/kloner-vercel-eula" },

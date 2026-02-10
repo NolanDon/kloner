@@ -7,7 +7,7 @@ import Image from "next/image";
 import logo from "@/public/images/orange_logo.png";
 
 export const metadata: Metadata = {
-    title: "Community builds | Kloner",
+    title: "Community builds",
     description:
         "Browse approved Kloner community builds, preview live layouts, and remix approved projects shared by other creators.",
     alternates: {

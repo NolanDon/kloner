@@ -6,9 +6,9 @@ import Footer from "@/components/Footer";
 const ACCENT = "#f55f2a";
 
 export const metadata: Metadata = {
-    title: "Compare | Kloner",
+    title: "Compare",
     description:
-        "High-level comparisons: cloning vs rebuild, hosting options, and export tradeoffs.",
+        "Compare cloning vs rebuilding, hosting tradeoffs, and export options with practical guidance to choose the right approach for your project.",
     alternates: { canonical: "https://kloner.app/compare" },
     openGraph: { url: "https://kloner.app/compare" },
 };
