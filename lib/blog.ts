@@ -39,25 +39,32 @@ export function getReadingTimeMinutes(markdown: string): number {
   return Math.max(1, Math.round(words / wpm));
 }
 
-const BLOG_CTA_MARKER = "<!-- kloner-cta -->";
-
 function withKlonerCta(markdown: string): string {
   const md = String(markdown || "");
   if (!md.trim()) return md;
-  if (md.includes(BLOG_CTA_MARKER)) return md;
+
+  // Older builds injected an HTML comment marker which `react-markdown` renders
+  // as visible text (since raw HTML is not enabled). Always strip it.
+  const cleaned = md.replaceAll("<!-- kloner-cta -->", "").trimEnd();
+
+  // Detect CTA by content so we don't need a marker embedded in markdown.
+  const alreadyHasCta =
+    cleaned.includes("## Start cloning with Kloner") ||
+    cleaned.includes("/login?mode=signup") ||
+    cleaned.includes("[Create an account](/login?mode=signup)");
+
+  if (alreadyHasCta) return cleaned;
 
   const cta = `
 
 ---
-
-${BLOG_CTA_MARKER}
 
 ## Start cloning with Kloner
 
 Want to ship faster? [Create an account](/login?mode=signup) or jump into the [dashboard](/dashboard) to clone from a URL or start from a prompt.
 `;
 
-  return md.trimEnd() + cta;
+  return cleaned + cta;
 }
 
 export const BLOG_POSTS: BlogPost[] = [
