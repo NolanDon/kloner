@@ -48,10 +48,13 @@ function withKlonerCta(markdown: string): string {
   const cleaned = md.replaceAll("<!-- kloner-cta -->", "").trimEnd();
 
   // Detect CTA by content so we don't need a marker embedded in markdown.
+  // Important: do NOT key off common links like `/login?mode=signup` because
+  // posts may include those naturally; we only want to dedupe the injected block.
   const alreadyHasCta =
     cleaned.includes("## Start cloning with Kloner") ||
-    cleaned.includes("/login?mode=signup") ||
-    cleaned.includes("[Create an account](/login?mode=signup)");
+    cleaned.includes(
+      "Want to ship faster? [Create an account](/login?mode=signup) or jump into the [dashboard](/dashboard)"
+    );
 
   if (alreadyHasCta) return cleaned;
 
@@ -831,6 +834,312 @@ Pair analytics with the micro-feedback captured on the preview page. If a clone 
 Create a short ops report for each clone: preview link, top metrics, decisions made. Archive it alongside the clone history so you can prove impact and inform future generations.
 
 When analytics are baked into every clone, the team can move faster with confidence instead of hoping the next export works.
+`,
+  },
+  {
+    slug: "how-to-clone-apps",
+    title: "How to Clone Apps (Responsibly) and Ship a Real MVP Fast",
+    description:
+      "A practical, high-intent guide to cloning web apps from a URL or prompt, then turning the preview into editable components you can ship.",
+    publishedAt: "2026-02-19",
+    tags: ["how to clone apps", "app cloner", "MVP", "Next.js"],
+    markdown: `# How to Clone Apps (Responsibly) and Ship a Real MVP Fast
+
+If you’re searching **how to clone apps**, you’re usually not looking for a “copy source code” trick — you’re trying to get a working baseline so you can iterate on your own product.
+
+This post is the playbook for high-speed founders, agencies, and growth teams: clone the structure, keep it editable, and ship a credible MVP without turning your repo into a fragile mess.
+
+## What “clone an app” should mean in 2026
+
+Cloning an app should mean:
+
+- Recreate the *layout and flow* (navigation, key screens, sections)
+- Generate *reusable components* (cards, tables, forms, modals)
+- Produce a preview you can *edit with instructions*
+- Export code you can own and maintain
+
+Cloning should not mean copying proprietary business logic, data, or brand assets. Use cloning to learn and build faster — not to steal.
+
+## Step-by-step: clone → customize → ship
+
+### 1) Start with a URL or a prompt
+
+If you have a reference app or landing page, start from the URL. If you don’t, start from a prompt describing the app:
+
+- Who it’s for
+- What the main job is
+- What the core screens are (marketing page, onboarding, dashboard)
+
+Then generate a preview. The goal is a fast, convincing baseline.
+
+### 2) Make the clone “content-flexible” first
+
+Before you touch styling, stress-test the layout:
+
+- Make the headline twice as long
+- Remove a feature card
+- Add 10 rows to a table
+- Replace images with taller/wider ones
+
+If the UI breaks, it means the clone is too rigid. Fix responsiveness and spacing now. This is the difference between a demo and a product.
+
+### 3) Identify the 3 screens that matter
+
+Most MVPs only need three “truthy” screens:
+
+1. **The primary CTA path** (signup, request demo, trial start)
+2. **The main value screen** (dashboard/list/editor)
+3. **A trust screen** (pricing, FAQ, proof)
+
+Get these right and you can ship. Everything else can be a placeholder until you have demand.
+
+### 4) Add auth + database only when the workflow demands it
+
+It’s tempting to wire everything on day one. Instead:
+
+- Add auth when you need user-specific state
+- Add a database when you need persistence
+- Add integrations when you’ve validated the workflow
+
+This keeps you from building a full SaaS before you’ve proven conversion.
+
+### 5) Ship with SEO and sharing baked in
+
+If you want organic traffic or easy sharing, don’t skip:
+
+- Unique page titles and meta descriptions
+- Clean URLs
+- Internal links (so crawlers can reach the pages)
+- A sitemap
+
+These basics turn a clone into a growth asset.
+
+## The responsible cloning checklist
+
+- Replace branding, copy, and visuals
+- Use your own product logic
+- Don’t copy private data or proprietary rules
+- Treat a clone as inspiration plus structure, not a final product
+
+If you want to try it, start a project from a URL and iterate with an agent: [Create an account](/login?mode=signup). If you want tradeoffs, see [Compare](/compare) and [Pricing](/price).
+`,
+  },
+  {
+    slug: "clone-your-next-saas-in-minutes",
+    title: "Clone Your Next SaaS in Minutes: A High-CTR Workflow for Founders",
+    description:
+      "A founder-focused workflow to clone a SaaS landing + dashboard, validate demand, and ship a believable MVP quickly without rebuilding everything.",
+    publishedAt: "2026-02-19",
+    tags: ["clone saas", "SaaS MVP", "website cloning", "AI app builder"],
+    markdown: `# Clone Your Next SaaS in Minutes: A High-CTR Workflow for Founders
+
+“Clone your next SaaS in minutes” sounds like hype — until you define what you actually need for validation.
+
+Most SaaS ideas don’t fail because the UI wasn’t perfect. They fail because:
+
+- the value prop is unclear,
+- the onboarding doesn’t build trust,
+- the pricing story doesn’t match the market,
+- or nobody takes the next step.
+
+So the fastest path is to clone *proven structure* (not a brand), then iterate until conversion tells the truth.
+
+## The 30-minute SaaS clone blueprint
+
+### Part A: the landing page (first 15 minutes)
+
+Clone a landing layout that already converts in a similar category. Keep the skeleton:
+
+- Hero with one clear outcome
+- Proof section (logos, stats, testimonials)
+- Feature grid (benefit-first)
+- Pricing anchor
+- FAQ for objections
+
+Then immediately replace copy with your market:
+
+- “For who?”
+- “What outcome?”
+- “Why now?”
+
+If you can’t rewrite the headline in 3 versions, you’re not ready to build features.
+
+### Part B: the product screen (next 15 minutes)
+
+You don’t need a full app. You need one screen that demonstrates value.
+
+Pick one:
+
+- A dashboard with a table/list
+- An editor with a few controls
+- A results page with believable output
+
+Use placeholders that look real: loading states, empty states, success states. This makes the demo feel credible without backend work.
+
+## The “CTR first” checklist (what boosts clicks)
+
+If your goal is high CTR from social or search, your clone needs:
+
+- A specific, outcome-driven headline
+- Visual proof (screenshots, before/after, examples)
+- A low-friction CTA (start free preview, generate demo)
+- Clear next steps (what happens after click)
+
+## When to add real backend
+
+Only add backend when the demo converts. A good sequence:
+
+1. Clone landing + one product screen
+2. Drive traffic (search, communities, ads)
+3. Measure the primary action (signup, demo request)
+4. Add auth + database after consistent intent
+
+That’s how you avoid spending weeks building a product nobody wants.
+
+Want to do this fast? Start from a URL or prompt, iterate with an agent, and export clean code when it’s working: [Get started](/login?mode=signup). For tradeoffs, see [Compare](/compare).
+`,
+  },
+  {
+    slug: "clone-a-website-from-a-url",
+    title: "Clone a Website From a URL: The Fastest Way to Get a Clean, Editable Landing Page",
+    description:
+      "Learn how to clone a website from a URL into a responsive, editable layout you can customize, export, and deploy — without brittle copy/paste HTML.",
+    publishedAt: "2026-02-19",
+    tags: ["clone a website from a url", "website cloner", "landing page", "SEO"],
+    markdown: `# Clone a Website From a URL: The Fastest Way to Get a Clean, Editable Landing Page
+
+If you’ve ever tried to “clone a website” by copying HTML from DevTools, you’ve seen the problem: it looks okay until you change the copy, swap images, or open it on mobile.
+
+Cloning a website from a URL should produce **an editable layout**, not a fragile snapshot.
+
+This guide shows a practical workflow to go from URL → preview → clean components you can actually ship.
+
+## What you want as the output
+
+When you clone a website from a URL, you want:
+
+- A responsive page structure (containers, grids, spacing)
+- Reusable blocks (hero, features, testimonials, pricing)
+- Consistent buttons and typography
+- A preview link you can share
+- An export you can maintain
+
+If your “clone” is one giant div with fixed pixels, you didn’t clone — you took a screenshot in code.
+
+## The workflow
+
+### 1) Clone the structure, then normalize
+
+Good clones capture the structure quickly. Next, normalize:
+
+- Replace fixed widths with max-width containers
+- Convert repeated elements into components
+- Standardize spacing and radius tokens
+- Remove absolute positioning unless it’s essential
+
+### 2) Run the content stress test
+
+Change the copy before you polish. Try:
+
+- 2× longer headline
+- 3-line feature descriptions
+- Fewer or more cards
+
+If the page stays stable, it’s ready for styling.
+
+### 3) Make it yours
+
+Replace everything that makes it feel like someone else’s brand:
+
+- Colors + font choices
+- Images and icons
+- Microcopy and section ordering
+
+The goal is to borrow layout patterns, not identity.
+
+### 4) Ship with SEO basics
+
+If you want the clone to rank, you need:
+
+- One H1 and sensible H2s
+- Unique title/description
+- Internal links to key pages
+- A sitemap
+
+These are small changes with big compounding effects.
+
+If you want to do this in one sitting: start a preview from a URL, then ask the agent for specific edits like “tighten the hero”, “add a pricing section”, and “make it more premium”. Start here: [Create an account](/login?mode=signup).
+`,
+  },
+  {
+    slug: "best-ai-website-builder-for-cloning",
+    title: "Best AI Website Builder for Cloning? What to Look For (and What to Avoid)",
+    description:
+      "A buyer’s guide for choosing an AI website builder or website cloner: editable components, export quality, SEO basics, and deployment workflows.",
+    publishedAt: "2026-02-19",
+    tags: ["best ai website builder", "website cloning", "AI website builder", "export"],
+    markdown: `# Best AI Website Builder for Cloning? What to Look For (and What to Avoid)
+
+People searching “best AI website builder” are usually trying to move fast. But if your real goal is cloning and iterating on proven layouts, the checklist is different than a typical template tool.
+
+Here’s what actually matters if you want an AI builder that produces clones you can maintain.
+
+## 1) Editable output (not a frozen template)
+
+The best tool gives you a preview you can change with instructions:
+
+- “Add a pricing section with 3 tiers”
+- “Shorten the hero and make the CTA primary”
+- “Turn this into a SaaS landing page”
+
+If every change requires rewriting a huge blob of markup, you’ll churn.
+
+## 2) Component quality and reuse
+
+High-quality clones have reusable parts:
+
+- Feature cards
+- Testimonials
+- Navigation
+- Buttons and forms
+
+This is what keeps the site consistent as it grows.
+
+## 3) Export quality (ownership)
+
+If you’re building a real business, you need to own the code:
+
+- Clean files and predictable structure
+- No weird inline styling sprawl
+- Easy to move into your repo
+
+If export is an afterthought, you’ll pay for it later.
+
+## 4) SEO basics built in
+
+Even simple clones should ship with:
+
+- Unique metadata
+- Sitemap support
+- Internal linking
+
+SEO isn’t magic — it’s hygiene.
+
+## 5) Deployment workflow
+
+The best tools make shipping boring:
+
+- Preview links
+- One-click deploy
+- Clear rollback path
+
+If your workflow is “generate, screenshot, rebuild from scratch”, you’re not saving time.
+
+## The takeaway
+
+Choose an AI website builder that optimizes for iteration and ownership. If you can clone from a URL, edit quickly with an agent, and export clean code, you’re in the right category.
+
+If you want to test this workflow: [Create an account](/login?mode=signup), then compare plans on [Pricing](/price) and understand tradeoffs on [Compare](/compare).
 `,
   },
 ];
