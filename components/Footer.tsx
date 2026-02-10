@@ -41,7 +41,12 @@ const FOOTER_SECTIONS: Array<{ title: string; items: LinkItem[]; note?: { atInde
     title: "Resources",
     items: [
       { label: "YouTube", href: "https://www.youtube.com/@klonerapp", external: true },
-      { label: "Vercel", href: "https://vercel.com", external: true },
+      { label: "Next.js Docs", href: "https://nextjs.org/docs", external: true },
+      { label: "Vercel Docs", href: "https://vercel.com/docs", external: true },
+      { label: "Tailwind CSS", href: "https://tailwindcss.com/docs", external: true },
+      { label: "MDN Web Docs", href: "https://developer.mozilla.org/", external: true },
+      { label: "Supabase", href: "https://supabase.com/docs", external: true },
+      { label: "Stripe", href: "https://stripe.com/docs", external: true },
     ],
   },
 ];
@@ -114,6 +119,11 @@ export default function Footer() {
               </a>
             </li>
             <li>
+              <a href="/compare" className="text-neutral-700 hover:text-neutral-900">
+                Compare
+              </a>
+            </li>
+            <li>
               <a href="/dashboard/docs" className="text-neutral-700 hover:text-neutral-900">
                 Docs
               </a>
@@ -121,6 +131,16 @@ export default function Footer() {
             <li>
               <a href="/blog" className="text-neutral-700 hover:text-neutral-900">
                 Blog
+              </a>
+            </li>
+            <li>
+              <a href="/contact" className="text-neutral-700 hover:text-neutral-900">
+                Contact
+              </a>
+            </li>
+            <li>
+              <a href="/partners" className="text-neutral-700 hover:text-neutral-900">
+                Partners
               </a>
             </li>
             <li>
@@ -136,6 +156,11 @@ export default function Footer() {
             <li>
               <a href="/terms" className="text-neutral-700 hover:text-neutral-900">
                 Terms
+              </a>
+            </li>
+            <li>
+              <a href="/legal/kloner-vercel-eula" className="text-neutral-700 hover:text-neutral-900">
+                EULA
               </a>
             </li>
           </ul>

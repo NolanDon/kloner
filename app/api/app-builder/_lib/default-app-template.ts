@@ -23,14 +23,14 @@ export const DEFAULT_APP_TEMPLATE_FILES: TemplateFiles = {
                     lint: "next lint",
                 },
                 dependencies: {
-          next: "^14.2.35",
+          next: "^16.1.6",
           react: "18.3.1",
           "react-dom": "18.3.1",
                     "@supabase/supabase-js": "^2.49.0",
                 },
                 devDependencies: {
           eslint: "^8.57.0",
-          "eslint-config-next": "^14.2.35",
+          "eslint-config-next": "^16.1.6",
                 },
             },
             null,

@@ -14,8 +14,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${site}/partners`, lastModified: now, priority: 0.5 },
     { url: `${site}/terms`, lastModified: now, priority: 0.5 },
     { url: `${site}/legal/kloner-vercel-eula`, lastModified: now, priority: 0.5 },
-    // Keep docs in the sitemap since it’s a real route.
-    { url: `${site}/dashboard/docs`, lastModified: now, priority: 0.6 },
     { url: getBlogIndexUrl(), lastModified: now, priority: 0.7 },
     { url: `${site}/blog/rss.xml`, lastModified: now, priority: 0.3 },
   ];

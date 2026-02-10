@@ -21,12 +21,12 @@ function UrlInputModal() {
         </span>
       </div>
       <div className="mt-3 flex gap-2">
-        <button
+        {/* <button
           aria-disabled
           className="pointer-events-none inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm text-neutral-400"
         >
           Rescan
-        </button>
+        </button> */}
         <button
           aria-disabled
           className="pointer-events-none inline-flex items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-sm text-white"
@@ -129,48 +129,133 @@ function DeployModal({
 /* ------------------------- EditBlocksModal (simple) ------------------------- */
 
 function EditBlocksModal() {
+  const scrollerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) return;
+
+    let direction: 1 | -1 = 1;
+    let rafId = 0;
+    let lastTs = performance.now();
+    const speedPxPerSec = 18;
+
+    const tick = (ts: number) => {
+      const dt = Math.min(0.05, Math.max(0, (ts - lastTs) / 1000));
+      lastTs = ts;
+
+      const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+      if (maxScroll > 0) {
+        el.scrollTop += direction * speedPxPerSec * dt;
+
+        if (el.scrollTop >= maxScroll - 1) direction = -1;
+        if (el.scrollTop <= 1) direction = 1;
+      }
+
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, []);
+
   return (
-    <div className="w-full min-w-[250px] rounded-2xl border border-black/10 bg-white shadow-md p-4 md:p-5 min-h-60">
+    <div className="w-full h-40 md:h-56 min-w-[250px] rounded-2xl border border-black/10 bg-white shadow-md p-4 md:p-5 min-h-60 overflow-hidden flex flex-col">
       <div className="flex items-center justify-between mb-3">
-        <div className="inline-flex items-center gap-1 text-emerald-700 text-xs font-medium">
-          <CheckCircle2 className="h-4 w-4" />
-          Changes saved
+        <div className="inline-flex items-center gap-2 text-xs font-medium text-neutral-600">
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500" />
+          <span>AI Agent</span>
         </div>
+
+        <span className="rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-neutral-700 shadow-sm">
+          Live editing
+        </span>
       </div>
 
-      <div>
-        {[0].map((i) => (
-          <div
-            key={i}
-            className="rounded-xl border border-neutral-200 bg-neutral-50 p-2 mb-6"
-          >
-            <div className="h-4 w-5/6 rounded-md bg-neutral-200 mb-2" />
-            <div className="grid grid-cols-2 gap-1">
-              <div className="h-8 rounded-md bg-neutral-200" />
-              <div className="h-8 rounded-md bg-neutral-200" />
+      <div className="flex-1 rounded-xl border border-neutral-200 bg-neutral-50 p-3 overflow-hidden flex flex-col">
+        <div className="relative flex-1 overflow-hidden">
+          <div ref={scrollerRef} className="h-full space-y-2 overflow-y-auto pr-1">
+            <div className="flex items-start gap-2">
+              <div className="mt-0.5 h-6 w-6 rounded-full bg-neutral-900 text-white grid place-items-center text-[11px] font-semibold">
+                U
+              </div>
+              <div className="flex-1 rounded-xl bg-white border border-neutral-200 px-3 py-2">
+                <div className="text-[11px] font-semibold text-neutral-600">You</div>
+                <div className="text-sm text-neutral-800 leading-5">
+                  Make the hero headline shorter, add a pricing section, and connect the CTA to signup.
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2">
+              <div className="mt-0.5 h-6 w-6 rounded-full bg-[rgba(245,95,42,1)] text-white grid place-items-center text-[11px] font-semibold">
+                K
+              </div>
+              <div className="flex-1 rounded-xl bg-white border border-[rgba(245,95,42,0.22)] px-3 py-2">
+                <div className="text-[11px] font-semibold text-[rgba(245,95,42,1)]">Kloner Agent</div>
+                <div className="text-sm text-neutral-800 leading-5">
+                  Done. I tightened the headline, generated a pricing section, and wired the primary CTA to your signup flow.
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <span className="rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[11px] font-medium text-neutral-700">
+                    Updated copy
+                  </span>
+                  <span className="rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[11px] font-medium text-neutral-700">
+                    Added section
+                  </span>
+                  <span className="rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[11px] font-medium text-neutral-700">
+                    CTA linked
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2">
+              <div className="mt-0.5 h-6 w-6 rounded-full bg-neutral-900 text-white grid place-items-center text-[11px] font-semibold">
+                U
+              </div>
+              <div className="flex-1 rounded-xl bg-white border border-neutral-200 px-3 py-2">
+                <div className="text-[11px] font-semibold text-neutral-600">You</div>
+                <div className="text-sm text-neutral-800 leading-5">
+                  Also add auth and a database, and make it look more premium.
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2">
+              <div className="mt-0.5 h-6 w-6 rounded-full bg-[rgba(245,95,42,1)] text-white grid place-items-center text-[11px] font-semibold">
+                K
+              </div>
+              <div className="flex-1 rounded-xl bg-white border border-[rgba(245,95,42,0.22)] px-3 py-2">
+                <div className="text-[11px] font-semibold text-[rgba(245,95,42,1)]">Kloner Agent</div>
+                <div className="text-sm text-neutral-800 leading-5">
+                  Added login, a simple DB model, and updated the UI spacing/typography for a cleaner look.
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <span className="rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[11px] font-medium text-neutral-700">
+                    Auth added
+                  </span>
+                  <span className="rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[11px] font-medium text-neutral-700">
+                    DB connected
+                  </span>
+                  <span className="rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[11px] font-medium text-neutral-700">
+                    UI refined
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
-        ))}
 
-        <div className="flex my-2 gap-2">
-          <button
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium bg-amber-50 text-amber-700 ring-1 ring-amber-200 pointer-events-none"
-            aria-label="Edit block"
-          >
-            <span>✏️</span>
-            <span>Edit</span>
-          </button>
-          <button
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium bg-rose-50 text-rose-700 ring-1 ring-rose-200 pointer-events-none"
-            aria-label="Delete block"
-          >
-            <span>🗑️</span>
-            <span>Delete</span>
-          </button>
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-neutral-50 to-transparent" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-neutral-50 to-transparent" />
+        </div>
+
+        <div className="mt-3 rounded-xl border border-neutral-200 bg-white px-3 py-2">
+          <div className="text-[11px] text-neutral-500">Ask the agent…</div>
+          <div className="mt-1 h-4 w-5/6 rounded-md bg-neutral-200" />
         </div>
       </div>
-
-      <div className="mt-3 flex items-center justify-between" />
     </div>
   );
 }
@@ -190,14 +275,14 @@ const items = [
   },
   {
     title: "Preview",
-    text: "Begin generating previews from that structure.",
+    text: "Choose to generate a web app, simple html page or start from a sentence describing your ideal website.",
     step: 2,
     Modal: PreviewGridModal as ModalPlain,
     needsProgress: false,
   },
   {
     title: "Customize",
-    text: "When your preview is complete, open it in the editor to fine-tune it to your liking.",
+    text: "When your preview is complete, our agent will fine-tine it to you liking with your simple instruction.",
     step: 3,
     Modal: EditBlocksModal as ModalPlain,
     needsProgress: false,

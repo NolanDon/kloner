@@ -826,6 +826,42 @@ export default function PriceClient(): JSX.Element {
                 </section>
             </div>
 
+            <div className="mx-auto max-w-6xl px-6 pb-10">
+                <div className="rounded-2xl border border-neutral-200 bg-white px-5 py-4 text-xs text-neutral-600">
+                    <p className="font-semibold text-neutral-800">Helpful resources</p>
+                    <p className="mt-1 leading-5">
+                        Learn more about the underlying stack: {" "}
+                        <a
+                            className="text-neutral-700 hover:text-neutral-900 underline underline-offset-2"
+                            href="https://nextjs.org/docs"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            Next.js
+                        </a>
+                        {" · "}
+                        <a
+                            className="text-neutral-700 hover:text-neutral-900 underline underline-offset-2"
+                            href="https://vercel.com/docs"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            Vercel
+                        </a>
+                        {" · "}
+                        <a
+                            className="text-neutral-700 hover:text-neutral-900 underline underline-offset-2"
+                            href="https://stripe.com/docs"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            Stripe
+                        </a>
+                        .
+                    </p>
+                </div>
+            </div>
+
             {/* <Footer /> */}
         </main>
     );

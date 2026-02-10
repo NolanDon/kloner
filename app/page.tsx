@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   description:
     "Clone, customize, and deploy high‑fidelity website layouts. Paste a URL to generate an editable preview, export clean HTML, and ship faster.",
   alternates: {
-    canonical: "https://kloner.app",
+    canonical: "https://kloner.app/",
   },
 };
 
