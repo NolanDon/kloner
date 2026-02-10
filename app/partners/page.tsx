@@ -1,9 +1,8 @@
 // app/partners/page.tsx
 import type { Metadata } from "next";
+import Link from "next/link";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
-
-const ACCENT = "#f55f2a";
 
 export const metadata: Metadata = {
     title: "Partnerships | Kloner",
@@ -15,54 +14,100 @@ export const metadata: Metadata = {
 
 export default function PartnersPage(): JSX.Element {
     return (
-        <main className="min-h-screen bg-white text-neutral-900">
+        <main className="min-h-screen bg-neutral-50 text-neutral-900">
             <NavBar />
-            <section className="pt-[calc(var(--header-h,56px)+40px)] pb-16 px-6">
-                <div className="max-w-4xl mx-auto">
-                    <h1 className="text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight">
-                        Partnerships
-                    </h1>
-                    <p className="mt-3 text-sm md:text-base text-neutral-600 max-w-prose">
-                        Ways to work with Kloner without touching internal systems. All
-                        programs keep ownership and responsibility for URLs, exports, and
-                        campaigns with you or your clients.
-                    </p>
 
-                    <section id="creators" className="mt-10 space-y-3">
-                        <h2 className="text-xl md:text-2xl font-semibold">For creators</h2>
-                        <p className="text-sm md:text-base text-neutral-600">
-                            Use Kloner to spin up landing pages for products, launches, and
-                            sponsorships. You keep full control of your domains, mailing
-                            lists, and analytics.
-                        </p>
-                    </section>
+            <section className="pt-28 pb-20 px-4">
+                <div className="mx-auto max-w-6xl">
+                    <header className="mb-10 max-w-3xl">
+                        <div className="inline-flex items-center gap-2 rounded-full bg-accent text-neutral-50 px-3 py-1 text-[11px] mb-4">
+                            <span>Kloner · Partnerships</span>
+                        </div>
 
-                    <section id="affiliates" className="mt-10 space-y-3">
-                        <h2 className="text-xl md:text-2xl font-semibold">Affiliates</h2>
-                        <p className="text-sm md:text-base text-neutral-600">
-                            Earn a recurring commission when teams you refer upgrade to paid
-                            plans. We provide tracking links and simple, non-technical
-                            marketing copy.
-                        </p>
-                    </section>
+                        <div className="rounded-3xl border border-neutral-200 bg-gradient-to-br from-white via-neutral-50 to-neutral-100 px-6 py-7 sm:px-8 sm:py-9 shadow-sm">
+                            <h1 className="text-3xl sm:text-4xl tracking-tight text-neutral-900">
+                                Partnerships
+                            </h1>
+                            <p className="mt-1 max-w-2xl text-sm text-neutral-600">
+                                Ways to work with Kloner without touching internal systems. You (or your clients) keep ownership
+                                of domains, URLs, exports, and campaigns.
+                            </p>
 
-                    <section id="business" className="mt-10 space-y-3">
-                        <h2 className="text-xl md:text-2xl font-semibold">
-                            For agencies and businesses
-                        </h2>
-                        <p className="text-sm md:text-base text-neutral-600">
-                            Agencies can standardize on Kloner for capture and preview, then
-                            move exported code into their own repos and CI. You own the client
-                            relationship end-to-end.
-                        </p>
-                        <a
-                            href="/contact"
-                            className="inline-flex mt-2 text-sm font-medium"
-                            style={{ color: ACCENT }}
+                            <div className="mt-4 flex flex-wrap gap-2">
+                                <a
+                                    href="#creators"
+                                    className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm hover:border-[rgba(245,95,42,0.35)]"
+                                >
+                                    Creators
+                                </a>
+                                <a
+                                    href="#affiliates"
+                                    className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm hover:border-[rgba(245,95,42,0.35)]"
+                                >
+                                    Affiliates
+                                </a>
+                                <a
+                                    href="#business"
+                                    className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm hover:border-[rgba(245,95,42,0.35)]"
+                                >
+                                    Agencies & businesses
+                                </a>
+                            </div>
+                        </div>
+                    </header>
+
+                    <div className="grid gap-5">
+                        <section
+                            id="creators"
+                            className="rounded-2xl border border-black/10 bg-white p-6 shadow-sm"
                         >
-                            Talk to us about custom usage
-                        </a>
-                    </section>
+                            <h2 className="text-lg sm:text-xl font-semibold tracking-tight">
+                                For creators
+                            </h2>
+                            <p className="mt-2 text-sm text-neutral-600 leading-6 max-w-3xl">
+                                Use Kloner to spin up landing pages for products, launches, and sponsorships. You keep full control
+                                of your domains, mailing lists, and analytics.
+                            </p>
+                        </section>
+
+                        <section
+                            id="affiliates"
+                            className="rounded-2xl border border-black/10 bg-white p-6 shadow-sm"
+                        >
+                            <h2 className="text-lg sm:text-xl font-semibold tracking-tight">Affiliates</h2>
+                            <p className="mt-2 text-sm text-neutral-600 leading-6 max-w-3xl">
+                                Earn a recurring commission when teams you refer upgrade to paid plans. We provide tracking links and
+                                simple, non-technical copy.
+                            </p>
+                        </section>
+
+                        <section
+                            id="business"
+                            className="rounded-2xl border border-black/10 bg-white p-6 shadow-sm"
+                        >
+                            <h2 className="text-lg sm:text-xl font-semibold tracking-tight">
+                                For agencies and businesses
+                            </h2>
+                            <p className="mt-2 text-sm text-neutral-600 leading-6 max-w-3xl">
+                                Agencies can standardize on Kloner for capture and preview, then move exported code into their own
+                                repos and CI. You own the client relationship end-to-end.
+                            </p>
+                            <div className="mt-3 flex flex-wrap items-center gap-3">
+                                <Link
+                                    href="/contact"
+                                    className="inline-flex items-center rounded-full border border-[rgba(245,95,42,0.22)] bg-[rgba(245,95,42,0.08)] px-3 py-1.5 text-xs font-semibold text-[rgba(245,95,42,1)]"
+                                >
+                                    Talk to us about custom usage
+                                </Link>
+                                <Link
+                                    href="/login?mode=signup"
+                                    className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm hover:border-[rgba(245,95,42,0.35)]"
+                                >
+                                    Create an account
+                                </Link>
+                            </div>
+                        </section>
+                    </div>
                 </div>
             </section>
             <Footer />

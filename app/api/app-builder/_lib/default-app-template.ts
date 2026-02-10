@@ -10,7 +10,7 @@ export const DEFAULT_APP_TEMPLATE_FILES: TemplateFiles = {
     "package.json": {
         content: JSON.stringify(
             {
-                name: "kloner-app",
+                name: "my-app",
                 version: "0.1.0",
                 private: true,
                 engines: {
