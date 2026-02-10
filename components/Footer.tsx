@@ -16,8 +16,9 @@ const FOOTER_SECTIONS: Array<{ title: string; items: LinkItem[]; note?: { atInde
       { label: "Examples", href: "/#examples" },
       { label: "FAQ", href: "/#faq" },
       { label: "Pricing", href: "/price" },
+      { label: "Blog", href: "/blog" },
       { label: "Community builds", href: "/community-builds" },
-      { label: "Docs", href: "dashboard/docs" },
+      { label: "Docs", href: "/dashboard/docs" },
     ],
   },
   {
@@ -115,6 +116,11 @@ export default function Footer() {
             <li>
               <a href="/dashboard/docs" className="text-neutral-700 hover:text-neutral-900">
                 Docs
+              </a>
+            </li>
+            <li>
+              <a href="/blog" className="text-neutral-700 hover:text-neutral-900">
+                Blog
               </a>
             </li>
             <li>

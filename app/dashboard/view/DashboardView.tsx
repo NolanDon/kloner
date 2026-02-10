@@ -1341,7 +1341,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                     </div>
 
                                                     <div className="text-xs text-neutral-600">
-                                                        Full web app sites with auth, databases, and integrations.
+                                                        Clone apps or start from a prompt with full web app support, including auth, databases, and integrations.
                                                     </div>
                                                     <div className="mt-1 text-[11px] leading-4 text-neutral-500">
                                                         Best for: user accounts, AI features, dashboards, CRUD apps, paid tools.

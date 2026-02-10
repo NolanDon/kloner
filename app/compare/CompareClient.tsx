@@ -54,7 +54,7 @@ export default function CompareClient(): JSX.Element {
               any additional libraries, frameworks, and hosting providers.
             </p>
             <a
-              href="dashboard/docs"
+              href="/dashboard/docs"
               className="inline-flex mt-2 text-sm font-medium"
               style={{ color: ACCENT }}
             >

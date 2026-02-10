@@ -98,6 +98,7 @@ export default function NavBar(): JSX.Element {
   const extraNav: NavItem[] = [
     { label: "Community", href: "/community-builds" },
     { label: "Docs", href: "/dashboard/docs" },
+    { label: "Blog", href: "/blog" },
     { label: "Pricing", href: "/price" },
   ];
 
@@ -111,7 +112,7 @@ export default function NavBar(): JSX.Element {
       }
     }
     return merged;
-  }, [baseNav]);
+  }, [baseNav, extraNav]);
 
   const resolveNavIcon = (label: string): React.ComponentType<
     React.SVGProps<SVGSVGElement>
@@ -255,7 +256,7 @@ export default function NavBar(): JSX.Element {
                         <div className="h-px bg-neutral-200/70" />
                         <div className="py-1 text-sm">
                           <MenuLink href="/dashboard" label="Dashboard" />
-                          <MenuLink href="dashboard/settings" label="Settings" />
+                          <MenuLink href="/dashboard/settings" label="Settings" />
                           <button
                             onClick={() => void onSignOut()}
                             className="w-full text-left px-4 py-2 text-sm text-neutral-800 hover:bg-neutral-100 transition"
