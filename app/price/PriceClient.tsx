@@ -143,7 +143,7 @@ function clampPct(v: number): number {
 }
 
 export default function PriceClient(): JSX.Element {
-    const BILLING_COMING_SOON = true;
+    const TOPUP_COMING_SOON = true;
     const [loadingPlan, setLoadingPlan] = useState<null | "pro" | "agency">(null);
     const [loadingTopup, setLoadingTopup] = useState(false);
     const [topupCredits, setTopupCredits] = useState<number>(500);
@@ -395,10 +395,6 @@ export default function PriceClient(): JSX.Element {
     }, []);
 
     async function startCheckout(plan: "pro" | "agency") {
-        if (BILLING_COMING_SOON) {
-            await showAlert("Billing is coming soon. For now, subscriptions are disabled.", "Coming soon");
-            return;
-        }
         if (loadingPlan) return;
         setLoadingPlan(plan);
 
@@ -439,7 +435,7 @@ export default function PriceClient(): JSX.Element {
     }
 
     async function startTopup() {
-        if (BILLING_COMING_SOON) {
+        if (TOPUP_COMING_SOON) {
             await showAlert("Credit top-ups are coming soon. For now, purchases are disabled.", "Coming soon");
             return;
         }
@@ -549,9 +545,11 @@ export default function PriceClient(): JSX.Element {
                                 </div>
 
                                 <div className="inline-flex items-center gap-2">
-                                    <span className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800">
-                                        Coming soon
-                                    </span>
+                                    {TOPUP_COMING_SOON ? (
+                                        <span className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800">
+                                            Coming soon
+                                        </span>
+                                    ) : null}
                                     <a
                                         href="#topup"
                                         className="inline-flex items-center justify-center rounded-full px-3 py-1.5 text-xs font-semibold text-white hover:brightness-95"
@@ -676,17 +674,17 @@ export default function PriceClient(): JSX.Element {
                                     <button
                                         type="button"
                                         onClick={() => handleClick(tier.name)}
-                                        disabled={isLoading || BILLING_COMING_SOON}
+                                        disabled={isLoading}
                                         className={
                                             "mt-2 w-full rounded-full px-4 py-2.5 text-sm font-semibold transition " +
                                             (tier.highlight
                                                 ? "text-white"
                                                 : "text-neutral-900 border border-neutral-300 bg-white hover:bg-neutral-50") +
-                                            (isLoading || BILLING_COMING_SOON ? " opacity-70 cursor-not-allowed" : "")
+                                            (isLoading ? " opacity-70 cursor-not-allowed" : "")
                                         }
                                         style={tier.highlight ? { backgroundColor: ACCENT } : undefined}
                                     >
-                                        {BILLING_COMING_SOON ? "Coming soon" : isLoading ? "Redirecting to Stripe…" : tier.cta}
+                                        {isLoading ? "Redirecting to Stripe…" : tier.cta}
                                     </button>
 
                                     {isPro ? (
@@ -733,7 +731,7 @@ export default function PriceClient(): JSX.Element {
                                 <p className="mt-1 text-[12px] text-neutral-600">One-time checkout. Credits apply after Stripe confirms.</p>
                             </div>
 
-                            {BILLING_COMING_SOON ? (
+                            {TOPUP_COMING_SOON ? (
                                 <span className="inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-[11px] font-semibold text-neutral-700">
                                     Coming soon
                                 </span>
@@ -798,7 +796,7 @@ export default function PriceClient(): JSX.Element {
                                         disabled={
                                             loadingTopup ||
                                             authLoading ||
-                                            BILLING_COMING_SOON ||
+                                            TOPUP_COMING_SOON ||
                                             (!!user && !(userTier === "pro" || userTier === "agency"))
                                         }
                                         onClick={() => void startTopup()}
@@ -807,7 +805,7 @@ export default function PriceClient(): JSX.Element {
                                         }
                                         style={{ backgroundColor: ACCENT }}
                                     >
-                                        {BILLING_COMING_SOON ? "Coming soon" : loadingTopup ? "Redirecting to Stripe…" : "Top up credits"}
+                                        {TOPUP_COMING_SOON ? "Coming soon" : loadingTopup ? "Redirecting to Stripe…" : "Top up credits"}
                                     </button>
 
                                     {user ? null : (

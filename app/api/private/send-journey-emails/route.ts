@@ -1,7 +1,7 @@
 // app/api/private/send-journey-emails/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
-import { getAdminDb } from "../../_lib/auth";
+import { getAdminAuth, getAdminDb } from "../../_lib/auth";
 import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
@@ -11,8 +11,98 @@ export const runtime = "nodejs";
 
 const JOURNEY_EMAIL_COOLDOWN_MS = 72 * 60 * 60 * 1000; // 72 hours
 
+// Keep well under Resend's 100/day cap.
+const RESEND_DAILY_LIMIT = 90;
+
+// Make sure we only ever email a subset per run.
+const MAX_JOURNEY_SENDS_PER_RUN = 25;
+const MAX_PRODUCT_SENDS_PER_RUN = 90;
+
+// Firestore documents for operational counters.
+const EMAIL_LIMITS_COLLECTION = "internal_email_limits";
+
 // Resend limit: 2 req / second
 const RESEND_MIN_INTERVAL_MS = 550;
+
+function baseUrl() {
+    const v = (process.env.FRONTEND_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || "").trim();
+    if (v) return v.replace(/\/$/, "");
+    return "https://kloner.app";
+}
+
+function dayKeyUtc(ms = Date.now()): string {
+    const d = new Date(ms);
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(d.getUTCDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+}
+
+function getEmailLinkSecret(): string {
+    const s = (process.env.EMAIL_LINK_SECRET || "").trim();
+    if (!s) throw new Error("EMAIL_LINK_SECRET env not set");
+    return s;
+}
+
+function hmacBase64Url(secret: string, msg: string): string {
+    return crypto.createHmac("sha256", secret).update(msg).digest("base64url");
+}
+
+function makeSignedToken(payload: Record<string, any>): string {
+    const secret = getEmailLinkSecret();
+    const body = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+    const sig = hmacBase64Url(secret, body);
+    return `${body}.${sig}`;
+}
+
+function makeClickUrl(params: { uid: string; campaign: string; destUrl: string; step?: string | null }) {
+    const u = new URL(`${baseUrl()}/api/email/click`);
+    const token = makeSignedToken({
+        uid: params.uid,
+        c: params.campaign,
+        d: params.destUrl,
+        s: params.step || null,
+        ts: Date.now(),
+    });
+    u.searchParams.set("t", token);
+    return u.toString();
+}
+
+function makeUnsubUrl(params: { uid: string; kind: "journey" | "product" | "all" }) {
+    const u = new URL(`${baseUrl()}/api/email/unsubscribe`);
+    const token = makeSignedToken({ uid: params.uid, k: params.kind, ts: Date.now() });
+    u.searchParams.set("t", token);
+    return u.toString();
+}
+
+async function consumeDailyQuota(db: FirebaseFirestore.Firestore, howMany = 1): Promise<boolean> {
+    const n = Math.max(1, Math.floor(howMany));
+    const key = dayKeyUtc();
+    const ref = db.collection(EMAIL_LIMITS_COLLECTION).doc(`resend_${key}`);
+    try {
+        const ok = await db.runTransaction(async (tx) => {
+            const snap = await tx.get(ref);
+            const used = snap.exists && typeof snap.data()?.used === "number" ? (snap.data()!.used as number) : 0;
+            if (used + n > RESEND_DAILY_LIMIT) return false;
+            tx.set(
+                ref,
+                {
+                    used: used + n,
+                    limit: RESEND_DAILY_LIMIT,
+                    dayKey: key,
+                    updatedAtMs: Date.now(),
+                },
+                { merge: true },
+            );
+            return true;
+        });
+        return ok;
+    } catch (e) {
+        console.error("consumeDailyQuota failed", e);
+        // Fail closed: if we can't verify quota, don't send.
+        return false;
+    }
+}
 
 function getResend() {
     const key = process.env.RESEND_API_KEY;
@@ -35,6 +125,15 @@ function buildUtm(url: string, tier: number, step: string) {
     u.searchParams.set("utm_medium", "email");
     u.searchParams.set("utm_campaign", "journey_nudge");
     u.searchParams.set("utm_content", `tier${tier}_${step}`);
+    return u.toString();
+}
+
+function buildUtmGeneric(url: string, args: { source: string; campaign: string; content?: string }) {
+    const u = new URL(url);
+    u.searchParams.set("utm_source", args.source);
+    u.searchParams.set("utm_medium", "email");
+    u.searchParams.set("utm_campaign", args.campaign);
+    if (args.content) u.searchParams.set("utm_content", args.content);
     return u.toString();
 }
 
@@ -156,6 +255,15 @@ async function getJourneyState(db: FirebaseFirestore.Firestore, uid: string): Pr
     };
 }
 
+async function userHasAnyDeployment(db: FirebaseFirestore.Firestore, uid: string): Promise<boolean> {
+    try {
+        const snap = await db.collection("kloner_users").doc(uid).collection("deployments").limit(1).get();
+        return !snap.empty;
+    } catch {
+        return false;
+    }
+}
+
 function deriveTier(state: JourneyState): 1 | 2 | 3 | 4 {
     if (state.hasStripeCustomer) return 1;
     if (state.hasVercelIntegration) return 2;
@@ -240,89 +348,255 @@ export async function POST(req: NextRequest) {
     const denied = requireInternal(req);
     if (denied) return denied;
 
-    const ONLY_TEST_EMAIL = false;
-    const TEST_TO = "nolan796@live.ca";
+    // Safety: default to test-only mode until explicitly enabled.
+    // Set EMAIL_SEND_MODE=all to send to real users.
+    const SEND_MODE = (process.env.EMAIL_SEND_MODE || "test").toLowerCase();
+    const ONLY_TEST_EMAIL = SEND_MODE !== "all";
+    const TEST_TO = (process.env.EMAIL_TEST_TO || "nolan796@live.ca").trim().toLowerCase();
+
+    // Which campaigns are allowed to run.
+    const ENABLE_JOURNEY = (process.env.EMAIL_ENABLE_JOURNEY || "true").toLowerCase() !== "false";
+    const ENABLE_PRODUCT_LAUNCH = (process.env.EMAIL_ENABLE_PRODUCT_LAUNCH || "true").toLowerCase() !== "false";
 
     try {
         const db = getAdminDb();
+        const auth = getAdminAuth();
         const resend = getResend();
 
         // IMPORTANT: sender identity
-        const from = "Nolan from Kloner <hello@kloner.app>";
+        const from = (process.env.JOURNEY_EMAIL_FROM || "Nolan from Kloner <nolan@kloner.app>").trim();
 
         const usersSnap = await db.collection("kloner_users").get();
 
+        let sent = 0;
+        let sentJourney = 0;
+        let sentProduct = 0;
+        let skippedNoEmail = 0;
+        let skippedPrefs = 0;
+        let skippedHasDeployment = 0;
+        let skippedCooldown = 0;
+        let skippedAlreadySentCampaign = 0;
+        let skippedQuota = 0;
+        let errors = 0;
+
+        const productCampaignId = "nextjs16_app_cloning_launch_2026_02";
+
         for (const doc of usersSnap.docs) {
+            if (sent >= RESEND_DAILY_LIMIT) break;
+
             const uid = doc.id;
             const data = doc.data() || {};
-            const email = typeof data.email === "string" ? data.email : "";
+            let email = typeof data.email === "string" ? data.email : "";
             const name = typeof data.name === "string" ? data.name : null;
 
-            if (!email) continue;
-
-            const prefs = data.notificationPrefs || {};
-            if (prefs.journeyEmails === false) continue;
-
-            const lastSentAt =
-                typeof data.lastJourneyEmailSentAt === "number"
-                    ? data.lastJourneyEmailSentAt
-                    : null;
-
-            if (!isCooldownElapsed(lastSentAt)) continue;
-
-            const state = await getJourneyState(db, uid);
-            const tierNum = deriveTier(state);
-            const copy = makeCopy(tierNum);
-
-            const unsubToken = ensureUnsubToken(data.notificationUnsubToken);
-            if (unsubToken !== data.notificationUnsubToken) {
-                await doc.ref.set({ notificationUnsubToken: unsubToken }, { merge: true });
+            // Try to backfill email from Firebase Auth when missing.
+            if (!email) {
+                try {
+                    const u = await auth.getUser(uid);
+                    if (u?.email) {
+                        email = u.email;
+                        await doc.ref.set(
+                            {
+                                email: u.email,
+                                emailLower: u.email.toLowerCase(),
+                                emailUpdatedAtMs: Date.now(),
+                            },
+                            { merge: true },
+                        );
+                    }
+                } catch {
+                    // ignore
+                }
             }
 
-            const ctaUrl = buildUtm(
-                `https://kloner.app${copy.ctaPath}`,
-                tierNum,
-                copy.step,
-            );
+            if (!email) {
+                skippedNoEmail++;
+                continue;
+            }
 
-            const unsubUrl = buildUtm(
-                `https://kloner.app/dashboard/settings?tab=notifications&uid=${encodeURIComponent(uid)}&t=${encodeURIComponent(unsubToken)}`,
-                tierNum,
-                "unsub",
-            );
+            const emailLower = email.trim().toLowerCase();
+            // In test mode, ONLY send + record state for the test account.
+            if (ONLY_TEST_EMAIL && emailLower !== TEST_TO) {
+                continue;
+            }
 
-            const to = ONLY_TEST_EMAIL ? TEST_TO : email;
+            const prefs = data.notificationPrefs || {};
 
-            await sendWithRateLimit(resend, {
-                from,
-                to,
-                subject: "Quick note from Nolan",
-                html: buildJourneyHtml({
-                    name,
-                    body: copy.body,
-                    ctaLabel: copy.ctaLabel,
-                    ctaUrl,
-                    unsubUrl,
-                }),
-                text: buildJourneyText({
-                    name,
-                    body: copy.body,
-                    ctaUrl,
-                    unsubUrl,
-                }),
-            });
+            // Avoid spamming: at most one email per user per run.
+            let didSendToUserThisRun = false;
 
-            await doc.ref.set(
-                {
-                    lastJourneyEmailSentAt: Date.now(),
-                    lastJourneyEmailTier: tierNum,
-                    lastJourneyEmailStep: copy.step,
-                },
-                { merge: true },
-            );
+            // -----------------
+            // Campaign 1: Product launch (one-time)
+            // -----------------
+            if (
+                ENABLE_PRODUCT_LAUNCH &&
+                !didSendToUserThisRun &&
+                sentProduct < MAX_PRODUCT_SENDS_PER_RUN &&
+                prefs.productEmails !== false
+            ) {
+                const alreadySentAt = (data.emailCampaigns && (data.emailCampaigns as any)[productCampaignId]?.sentAtMs) || null;
+                if (alreadySentAt) {
+                    skippedAlreadySentCampaign++;
+                } else {
+                    const quotaOk = await consumeDailyQuota(db, 1);
+                    if (!quotaOk) {
+                        skippedQuota++;
+                    } else {
+                        const dest = buildUtmGeneric(`${baseUrl()}/dashboard`, {
+                            source: "product_email",
+                            campaign: productCampaignId,
+                            content: "cta",
+                        });
+                        const clickUrl = makeClickUrl({ uid, campaign: productCampaignId, destUrl: dest, step: "cta" });
+                        const unsubUrl = makeUnsubUrl({ uid, kind: "product" });
+                        const to = ONLY_TEST_EMAIL ? TEST_TO : email;
+
+                        const body =
+                            "Quick update: you can now clone entire apps (not just pages) with our new Next.js 16 workflow. " +
+                            "It’s much better for interactive sites and gives you cleaner, more maintainable output.";
+
+                        const result = await sendWithRateLimit(resend, {
+                            from,
+                            to,
+                            subject: "New: App cloning (Next.js 16) is live",
+                            html: buildJourneyHtml({
+                                name,
+                                body,
+                                ctaLabel: "Try app cloning",
+                                ctaUrl: clickUrl,
+                                unsubUrl,
+                            }),
+                            text: buildJourneyText({
+                                name,
+                                body,
+                                ctaUrl: clickUrl,
+                                unsubUrl,
+                            }),
+                            headers: {
+                                "List-Unsubscribe": `<${unsubUrl}>`,
+                            },
+                        });
+
+                        // best-effort store send metadata
+                        const resendId = (result as any)?.data?.id ?? null;
+                        await doc.ref.set(
+                            {
+                                emailCampaigns: {
+                                    [productCampaignId]: {
+                                        sentAtMs: Date.now(),
+                                        to: ONLY_TEST_EMAIL ? TEST_TO : email,
+                                        resendId,
+                                    },
+                                },
+                            },
+                            { merge: true },
+                        );
+
+                        sent++;
+                        sentProduct++;
+                        didSendToUserThisRun = true;
+                    }
+                }
+            }
+
+            // -----------------
+            // Campaign 2: Journey nudge (only users w/ no deployments)
+            // -----------------
+            if (
+                ENABLE_JOURNEY &&
+                !didSendToUserThisRun &&
+                sentJourney < MAX_JOURNEY_SENDS_PER_RUN &&
+                prefs.journeyEmails !== false
+            ) {
+                const hasDeployment = await userHasAnyDeployment(db, uid);
+                if (hasDeployment) {
+                    skippedHasDeployment++;
+                } else {
+                    const lastSentAt = typeof data.lastJourneyEmailSentAt === "number" ? data.lastJourneyEmailSentAt : null;
+                    if (!isCooldownElapsed(lastSentAt)) {
+                        skippedCooldown++;
+                    } else {
+                        const quotaOk = await consumeDailyQuota(db, 1);
+                        if (!quotaOk) {
+                            skippedQuota++;
+                        } else {
+                            const state = await getJourneyState(db, uid);
+                            const tierNum = deriveTier(state);
+                            const copy = makeCopy(tierNum);
+
+                            const unsubUrl = makeUnsubUrl({ uid, kind: "journey" });
+                            const dest = buildUtm(
+                                `${baseUrl()}${copy.ctaPath}`,
+                                tierNum,
+                                copy.step,
+                            );
+                            const clickUrl = makeClickUrl({ uid, campaign: "journey_nudge", destUrl: dest, step: copy.step });
+                            const to = ONLY_TEST_EMAIL ? TEST_TO : email;
+
+                            await sendWithRateLimit(resend, {
+                                from,
+                                to,
+                                subject: "Quick note from Nolan",
+                                html: buildJourneyHtml({
+                                    name,
+                                    body: copy.body,
+                                    ctaLabel: copy.ctaLabel,
+                                    ctaUrl: clickUrl,
+                                    unsubUrl,
+                                }),
+                                text: buildJourneyText({
+                                    name,
+                                    body: copy.body,
+                                    ctaUrl: clickUrl,
+                                    unsubUrl,
+                                }),
+                                headers: {
+                                    "List-Unsubscribe": `<${unsubUrl}>`,
+                                },
+                            });
+
+                            await doc.ref.set(
+                                {
+                                    lastJourneyEmailSentAt: Date.now(),
+                                    lastJourneyEmailTier: tierNum,
+                                    lastJourneyEmailStep: copy.step,
+                                },
+                                { merge: true },
+                            );
+
+                            sent++;
+                            sentJourney++;
+                            didSendToUserThisRun = true;
+                        }
+                    }
+                }
+            }
+
+            if (!didSendToUserThisRun) {
+                // Track prefs skips for observability
+                if (prefs.journeyEmails === false || prefs.productEmails === false) skippedPrefs++;
+            }
         }
 
-        return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
+        return NextResponse.json(
+            {
+                ok: true,
+                mode: ONLY_TEST_EMAIL ? "test" : "all",
+                sent,
+                sentJourney,
+                sentProduct,
+                skipped: {
+                    noEmail: skippedNoEmail,
+                    prefs: skippedPrefs,
+                    hasDeployment: skippedHasDeployment,
+                    cooldown: skippedCooldown,
+                    alreadySentCampaign: skippedAlreadySentCampaign,
+                    quota: skippedQuota,
+                },
+                errors,
+            },
+            { headers: { "Cache-Control": "no-store" } },
+        );
     } catch (err: any) {
         console.error("send-journey-emails failed:", err);
         return NextResponse.json(
