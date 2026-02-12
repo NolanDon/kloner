@@ -120,7 +120,12 @@ export function rendersEqual(a: RenderWithId[], b: RenderWithId[]): boolean {
 
 export function useCooldown(initialUntil = 0) {
     const [until, setUntil] = useState<number>(initialUntil);
-    const [now, setNow] = useState<number>(Date.now());
+    // Keep render-phase pure: don't call Date.now() during render.
+    const [now, setNow] = useState<number>(0);
+
+    useEffect(() => {
+        setNow(Date.now());
+    }, []);
 
     useEffect(() => {
         if (until <= Date.now()) return;
@@ -131,7 +136,7 @@ export function useCooldown(initialUntil = 0) {
         return () => clearInterval(t);
     }, [until]);
 
-    const remaining = Math.max(0, Math.ceil((until - now) / 1000));
+    const remaining = now === 0 ? 0 : Math.max(0, Math.ceil((until - now) / 1000));
     const start = useCallback((ms: number) => setUntil(Date.now() + ms), []);
     const clear = useCallback(() => setUntil(0), []);
 

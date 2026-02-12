@@ -5,6 +5,7 @@
 // - Always includes a non-collapsible "Quick links" row for crawlers and users.
 
 import React from "react";
+import Link from "next/link";
 
 type LinkItem = { label: string; href: string; external?: boolean };
 
@@ -74,9 +75,9 @@ function FooterLink({ item }: { item: LinkItem }) {
     );
   }
   return (
-    <a href={item.href} className="hover:text-neutral-800 text-neutral-800 text-[15px] md:text-[inherit]">
+    <Link href={item.href} className="hover:text-neutral-800 text-neutral-800 text-[15px] md:text-[inherit]">
       {item.label}
-    </a>
+    </Link>
   );
 }
 
@@ -109,59 +110,59 @@ export default function Footer() {
         <nav aria-label="Footer quick links" className="mt-6 md:mt-8">
           <ul className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm">
             <li>
-              <a href="/" className="text-neutral-700 hover:text-neutral-900">
+              <Link href="/" className="text-neutral-700 hover:text-neutral-900">
                 Home
-              </a>
+              </Link>
             </li>
             <li>
-              <a href="/price" className="text-neutral-700 hover:text-neutral-900">
+              <Link href="/price" className="text-neutral-700 hover:text-neutral-900">
                 Pricing
-              </a>
+              </Link>
             </li>
             <li>
-              <a href="/compare" className="text-neutral-700 hover:text-neutral-900">
+              <Link href="/compare" className="text-neutral-700 hover:text-neutral-900">
                 Compare
-              </a>
+              </Link>
             </li>
             <li>
-              <a href="/blog" className="text-neutral-700 hover:text-neutral-900">
+              <Link href="/blog" className="text-neutral-700 hover:text-neutral-900">
                 Blog
-              </a>
+              </Link>
             </li>
             <li>
-              <a href="/#how-it-works" className="text-neutral-700 hover:text-neutral-900">
+              <Link href="/#how-it-works" className="text-neutral-700 hover:text-neutral-900">
                 How it works
-              </a>
+              </Link>
             </li>
             <li>
-              <a href="/contact" className="text-neutral-700 hover:text-neutral-900">
+              <Link href="/contact" className="text-neutral-700 hover:text-neutral-900">
                 Contact
-              </a>
+              </Link>
             </li>
             <li>
-              <a href="/partners" className="text-neutral-700 hover:text-neutral-900">
+              <Link href="/partners" className="text-neutral-700 hover:text-neutral-900">
                 Partners
-              </a>
+              </Link>
             </li>
             <li>
-              <a href="/login" className="text-neutral-700 hover:text-neutral-900">
+              <Link href="/login" className="text-neutral-700 hover:text-neutral-900">
                 Login
-              </a>
+              </Link>
             </li>
             <li>
-              <a href="/community-builds" className="text-neutral-700 hover:text-neutral-900">
+              <Link href="/community-builds" className="text-neutral-700 hover:text-neutral-900">
                 Community
-              </a>
+              </Link>
             </li>
             <li>
-              <a href="/terms" className="text-neutral-700 hover:text-neutral-900">
+              <Link href="/terms" className="text-neutral-700 hover:text-neutral-900">
                 Terms
-              </a>
+              </Link>
             </li>
             <li>
-              <a href="/legal/kloner-vercel-eula" className="text-neutral-700 hover:text-neutral-900">
+              <Link href="/legal/kloner-vercel-eula" className="text-neutral-700 hover:text-neutral-900">
                 EULA
-              </a>
+              </Link>
             </li>
           </ul>
         </nav>
