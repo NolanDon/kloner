@@ -42,10 +42,11 @@ function verifySignedToken(t: string): any | null {
     }
 }
 
-function redirectTo(status: "ok" | "invalid" | "missing") {
+function redirectTo(status: "ok" | "invalid" | "missing", kind?: "journey" | "product" | "all") {
     const u = new URL(`${baseUrl()}/settings`);
     u.searchParams.set("tab", "notifications");
     u.searchParams.set("unsub", status);
+    if (status === "ok" && kind) u.searchParams.set("k", kind);
     return u.toString();
 }
 
@@ -85,7 +86,7 @@ export async function GET(req: NextRequest) {
             { merge: true },
         );
 
-        return NextResponse.redirect(redirectTo("ok"), 302);
+        return NextResponse.redirect(redirectTo("ok", kind), 302);
     } catch (e) {
         console.error("[email-unsubscribe] failed", e);
         return NextResponse.redirect(redirectTo("invalid"), 302);

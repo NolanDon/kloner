@@ -222,6 +222,7 @@ export default function SettingsPage(): JSX.Element {
     const [prefsLoading, setPrefsLoading] = useState(false);
     const [prefsError, setPrefsError] = useState<string | null>(null);
     const [prefsSaved, setPrefsSaved] = useState<string | null>(null);
+    const [prefsLoaded, setPrefsLoaded] = useState(false);
 
     useEffect(() => {
         const t = (searchParams.get("tab") || "").toLowerCase();
@@ -284,7 +285,7 @@ export default function SettingsPage(): JSX.Element {
             sp.set("unsub", "missing");
             sp.delete("uid");
             sp.delete("t");
-            window.history.replaceState({}, "", `/settings?${sp.toString()}`);
+            window.history.replaceState({}, "", `/dashboard/settings?${sp.toString()}`);
             return;
         }
 
@@ -327,7 +328,7 @@ export default function SettingsPage(): JSX.Element {
                 sp.set("unsub", "ok");
                 sp.delete("uid");
                 sp.delete("t");
-                window.history.replaceState({}, "", `/settings?${sp.toString()}`);
+                window.history.replaceState({}, "", `/dashboard/settings?${sp.toString()}`);
             } catch {
                 if (cancelled) return;
 
@@ -336,7 +337,7 @@ export default function SettingsPage(): JSX.Element {
                 sp.set("unsub", "invalid");
                 sp.delete("uid");
                 sp.delete("t");
-                window.history.replaceState({}, "", `/settings?${sp.toString()}`);
+                window.history.replaceState({}, "", `/dashboard/settings?${sp.toString()}`);
             }
         })();
 
@@ -349,8 +350,12 @@ export default function SettingsPage(): JSX.Element {
         setPrefsLoading(true);
         setPrefsError(null);
         setPrefsSaved(null);
+        setPrefsLoaded(false);
 
         try {
+            // Make sure we have a backend session cookie for authed API routes.
+            await ensureSessionAndCsrf();
+
             const res = await fetch("/api/notifications/prefs", {
                 method: "GET",
                 credentials: "include",
@@ -370,6 +375,7 @@ export default function SettingsPage(): JSX.Element {
             setPrefsError("Unable to load notification preferences.");
         } finally {
             setPrefsLoading(false);
+            setPrefsLoaded(true);
         }
     };
 
@@ -767,6 +773,21 @@ export default function SettingsPage(): JSX.Element {
         cancelAtPeriodEnd === true;
 
     const unsubStatus = (searchParams.get("unsub") || "").toLowerCase();
+    const unsubKindRaw = (searchParams.get("k") || "").toLowerCase();
+    const unsubKind: "journey" | "product" | "all" =
+        unsubKindRaw === "journey" || unsubKindRaw === "product" || unsubKindRaw === "all"
+            ? (unsubKindRaw as any)
+            : "journey";
+
+    const canEvaluateUnsub = unsubStatus === "ok" && prefsLoaded && !prefsLoading && !prefsError;
+
+    const unsubConfirmed =
+        canEvaluateUnsub &&
+        ((unsubKind === "journey" && prefs.journeyEmails === false) ||
+            (unsubKind === "product" && prefs.productEmails === false) ||
+            (unsubKind === "all" && prefs.journeyEmails === false && prefs.productEmails === false));
+
+    const unsubMismatch = canEvaluateUnsub && !unsubConfirmed;
 
     return (
         <main className="min-h-screen bg-white pb-[30px] overflow-y-auto">
@@ -837,8 +858,28 @@ export default function SettingsPage(): JSX.Element {
                             Journey emails are triggered by where you stopped: scanned a URL, created a render, connected Vercel, or hit the paywall.
                         </p>
 
-                        {unsubStatus === "ok" && (
-                            <p className="mt-2 text-xs text-emerald-600">You are unsubscribed from journey emails.</p>
+                        {unsubStatus === "ok" && (prefsLoading || !prefsLoaded) && !prefsError && !unsubConfirmed && (
+                            <p className="mt-2 text-xs text-neutral-600">Updating your notification preferences…</p>
+                        )}
+
+                        {unsubConfirmed && (
+                            <p className="mt-2 text-xs text-emerald-600">
+                                {unsubKind === "journey" && "You are unsubscribed from journey emails."}
+                                {unsubKind === "product" && "You are unsubscribed from product updates."}
+                                {unsubKind === "all" && "You are unsubscribed from journey emails and product updates."}
+                            </p>
+                        )}
+
+                        {unsubMismatch && (
+                            <p className="mt-2 text-xs text-amber-700">
+                                Unsubscribe was processed, but this account still has
+                                {unsubKind === "product"
+                                    ? " product updates"
+                                    : unsubKind === "all"
+                                      ? " journey emails and/or product updates"
+                                      : " journey emails"} enabled.
+                                You may be signed into a different account than the email link.
+                            </p>
                         )}
                         {unsubStatus === "invalid" && (
                             <p className="mt-2 text-xs text-red-600">Unsubscribe link was invalid.</p>
