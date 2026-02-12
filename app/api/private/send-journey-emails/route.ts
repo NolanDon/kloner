@@ -348,10 +348,10 @@ export async function POST(req: NextRequest) {
     const denied = requireInternal(req);
     if (denied) return denied;
 
-    // Safety: default to test-only mode until explicitly enabled.
-    // Set EMAIL_SEND_MODE=all to send to real users.
-    const SEND_MODE = (process.env.EMAIL_SEND_MODE || "test").toLowerCase();
-    const ONLY_TEST_EMAIL = SEND_MODE !== "all";
+    // Default to sending to real users.
+    // Set EMAIL_SEND_MODE=test to run a safe test-only send to EMAIL_TEST_TO.
+    const SEND_MODE = (process.env.EMAIL_SEND_MODE || "all").toLowerCase();
+    const ONLY_TEST_EMAIL = SEND_MODE === "test";
     const TEST_TO = (process.env.EMAIL_TEST_TO || "nolan796@live.ca").trim().toLowerCase();
 
     // Which campaigns are allowed to run.
@@ -453,7 +453,8 @@ export async function POST(req: NextRequest) {
 
                         const body =
                             "Quick update: you can now clone entire apps (not just pages) with our new Next.js 16 workflow. " +
-                            "It’s much better for interactive sites and gives you cleaner, more maintainable output.";
+                            "With the incredible power of Supabase, we'll connect you to your own database to continue building your app seamlessly. " +
+                            "It’s much better for interactive sites, and gives you cleaner, more maintainable output, ideal for those needing a full-stack solution.";
 
                         const result = await sendWithRateLimit(resend, {
                             from,
