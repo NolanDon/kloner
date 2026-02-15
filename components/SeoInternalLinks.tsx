@@ -24,6 +24,7 @@ const AFFECTED_BLOG_POSTS: LinkItem[] = [
   { label: "Best AI website builder for cloning", href: "/blog/best-ai-website-builder-for-cloning" },
   { label: "Website cloning for quick MVPs", href: "/blog/website-cloning-for-quick-mvps" },
   { label: "App cloner", href: "/blog/app-cloner" },
+  { label: "AI app cloner", href: "/blog/ai-app-cloner" },
   { label: "How to clone apps", href: "/blog/how-to-clone-apps" },
   {
     label: "AI landing page builder best practices",
