@@ -139,8 +139,8 @@ export default function HeroContent({
         </h1>
 
         <p className="mt-5 sm:mt-6 text-white/90 text-base sm:text-lg md:text-xl max-w-xl mx-auto font-medium">
-          The ingenuity of cloning, automated. Paste a URL to generate your next
-          ready-to-ship project.
+          The ingenuity of cloning, automated — a website clone AI. Paste a URL
+          to generate your next ready-to-ship project.
         </p>
 
         <form onSubmit={onSubmit} className="mt-8 sm:mt-10 w-full max-w-2xl mx-auto">
