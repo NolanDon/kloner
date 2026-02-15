@@ -64,7 +64,11 @@ function InlineLinks({ links }: { links: LinkItem[] }) {
     <ul className="flex flex-wrap items-center gap-x-3 gap-y-2">
       {links.map((l) => (
         <li key={l.href}>
-          <a href={l.href} className="text-neutral-600 hover:text-neutral-900 underline-offset-4 hover:underline">
+          <a
+            href={l.href}
+            tabIndex={-1}
+            className="text-neutral-600 hover:text-neutral-900 underline-offset-4 hover:underline"
+          >
             {l.label}
           </a>
         </li>
@@ -75,7 +79,7 @@ function InlineLinks({ links }: { links: LinkItem[] }) {
 
 export default function SeoInternalLinks() {
   return (
-    <aside className="border-t border-neutral-200 bg-white">
+    <aside aria-hidden="true" className="sr-only">
       <div className="container-soft py-6">
         <div className="text-xs text-neutral-500">Quick links</div>
         <div className="mt-2 text-sm">
