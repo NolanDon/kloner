@@ -198,7 +198,11 @@ export default function HeroContent({
         </h1>
 
         <p className="mt-5 sm:mt-6 text-white/90 text-base sm:text-lg md:text-xl max-w-xl mx-auto font-medium">
+<<<<<<< HEAD
           The ingenuity of cloning, automated. Drop a link or enter a description
+=======
+          The ingenuity of cloning, automated — a website cloner. Paste a URL
+>>>>>>> 1357eefcc72274d4d085785f3f3690f011babeae
           to generate your next ready-to-ship project.
         </p>
 

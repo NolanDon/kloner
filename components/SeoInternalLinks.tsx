@@ -24,6 +24,7 @@ const AFFECTED_BLOG_POSTS: LinkItem[] = [
   { label: "Best AI website builder for cloning", href: "/blog/best-ai-website-builder-for-cloning" },
   { label: "Website cloning for quick MVPs", href: "/blog/website-cloning-for-quick-mvps" },
   { label: "App cloner", href: "/blog/app-cloner" },
+  { label: "AI app cloner", href: "/blog/ai-app-cloner" },
   { label: "How to clone apps", href: "/blog/how-to-clone-apps" },
   {
     label: "AI landing page builder best practices",
@@ -66,6 +67,10 @@ function InlineLinks({ links }: { links: LinkItem[] }) {
         <li key={l.href}>
           <a
             href={l.href}
+<<<<<<< HEAD
+=======
+            tabIndex={-1}
+>>>>>>> 1357eefcc72274d4d085785f3f3690f011babeae
             className="text-neutral-600 hover:text-neutral-900 underline-offset-4 hover:underline"
           >
             {l.label}
@@ -90,8 +95,13 @@ export default function SeoInternalLinks({
     variant === "standalone" ? "container-soft py-6" : "";
 
   return (
+<<<<<<< HEAD
     <div className={shellClassName}>
       <div className={containerClassName}>
+=======
+    <aside aria-hidden="true" className="sr-only">
+      <div className="container-soft py-6">
+>>>>>>> 1357eefcc72274d4d085785f3f3690f011babeae
         <div className="text-xs text-neutral-500">Quick links</div>
         <div className="mt-2 text-sm">
           <InlineLinks links={CORE_LINKS} />

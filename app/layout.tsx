@@ -20,7 +20,7 @@ export const metadata: Metadata = {
     template: "%s | Kloner",
   },
   description:
-    "Kloner lets you capture, edit, and redeploy high-fidelity website layouts with AI. Start a free preview, customize sections, and launch production-ready sites quickly.",
+    "Kloner is a website cloner that lets you capture, edit, and redeploy high-fidelity website layouts with AI. Start a free preview, customize sections, and launch production-ready sites quickly.",
   metadataBase: new URL("https://kloner.app"),
   alternates: {
     canonical: "https://kloner.app",
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Kloner – AI Website Builder and Preview Tool",
     description:
-      "Capture, edit, and redeploy high-fidelity website layouts with AI. Start a free preview and launch sites faster.",
+      "Website cloner for high-fidelity layouts: capture, edit, and redeploy fast. Start a free preview and launch sites faster.",
     url: "https://kloner.app",
     siteName: "Kloner",
     type: "website",
@@ -45,7 +45,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Kloner – AI Website Builder and Preview Tool",
     description:
-      "Capture, edit, and redeploy high-fidelity website layouts with AI. Start a free preview and launch sites faster.",
+      "Website cloner for high-fidelity layouts: capture, edit, and redeploy fast. Start a free preview and launch sites faster.",
     images: ["/opengraph-image"],
   },
   robots: {
