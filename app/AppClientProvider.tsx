@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, Suspense } from "react";
 import { UrlOverlayProvider } from "@/components/UrlOverlayProvider";
 import { ModalProvider } from "@/components/ui/ModalContext";
 import MixpanelClient from "@/components/MixpanelClient";
@@ -10,7 +10,9 @@ export function AppClientProviders({ children }: { children: ReactNode }) {
     return (
         <UrlOverlayProvider>
             <ModalProvider>
-                <MixpanelClient />
+                <Suspense fallback={null}>
+                    <MixpanelClient />
+                </Suspense>
                 <MixpanelAutocapture />
                 {children}
             </ModalProvider>

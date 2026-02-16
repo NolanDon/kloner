@@ -67,10 +67,6 @@ function InlineLinks({ links }: { links: LinkItem[] }) {
         <li key={l.href}>
           <a
             href={l.href}
-<<<<<<< HEAD
-=======
-            tabIndex={-1}
->>>>>>> 1357eefcc72274d4d085785f3f3690f011babeae
             className="text-neutral-600 hover:text-neutral-900 underline-offset-4 hover:underline"
           >
             {l.label}
@@ -95,13 +91,8 @@ export default function SeoInternalLinks({
     variant === "standalone" ? "container-soft py-6" : "";
 
   return (
-<<<<<<< HEAD
     <div className={shellClassName}>
       <div className={containerClassName}>
-=======
-    <aside aria-hidden="true" className="sr-only">
-      <div className="container-soft py-6">
->>>>>>> 1357eefcc72274d4d085785f3f3690f011babeae
         <div className="text-xs text-neutral-500">Quick links</div>
         <div className="mt-2 text-sm">
           <InlineLinks links={CORE_LINKS} />
