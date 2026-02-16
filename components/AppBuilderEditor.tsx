@@ -430,7 +430,18 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                 },
             );
 
-            return () => unsub();
+            let didCleanup = false;
+            return () => {
+                if (didCleanup) return;
+                didCleanup = true;
+                try {
+                    unsub();
+                } catch (err) {
+                    // Firestore can throw internal assertion errors in rare edge cases
+                    // (e.g. rapid subscribe/unsubscribe or React strict-mode double-invoke).
+                    console.warn("Supabase integration listener unsubscribe error:", err);
+                }
+            };
         }, [checkSupabaseDbHealth, refreshSupabaseStatusFromApi, user?.uid, verifySupabaseConnection]);
 
         useEffect(() => {
@@ -1726,7 +1737,15 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
             }
         );
 
-        return () => unsubscribe();
+        return () => {
+            try {
+                unsubscribe();
+            } catch (err) {
+                // Firestore can throw internal assertion errors in rare edge cases
+                // (e.g. rapid subscribe/unsubscribe or React strict-mode double-invoke).
+                console.warn("Firebase listener unsubscribe error:", err);
+            }
+        };
     }, [appId, previewMode, user?.uid, queuePreviewApply, queuePreviewReloadFromFirebase]);
 
     // Load panel width from localStorage on mount

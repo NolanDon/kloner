@@ -50,8 +50,8 @@ export default function KlonerVercelDocs() {
                                         Capture and edit a page inside the Kloner dashboard.
                                     </p>
                                     <p className="text-xs text-neutral-600">
-                                        You paste a URL, Kloner captures screenshots and generates editable HTML. No code
-                                        is pushed to Vercel until you explicitly hit Deploy.
+                                        You drop a link (or enter a description), Kloner captures screenshots and generates editable HTML.
+                                        No code is pushed to Vercel until you explicitly hit Deploy.
                                     </p>
                                 </div>
                             </li>

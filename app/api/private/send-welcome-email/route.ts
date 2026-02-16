@@ -159,7 +159,7 @@ export async function POST(req: NextRequest) {
         const html = buildWelcomeHtml(email, name);
         const text =
           `Hi ${name || "there"},\n\n` +
-          `Thanks for signing up for Kloner. You can now paste a URL, generate a base screenshot, create an editable preview, and deploy with one click.\n\n` +
+          `Thanks for signing up for Kloner. You can now drop a link (or enter a description), generate a base screenshot, create an editable preview, and deploy with one click.\n\n` +
           `Open your dashboard: https://kloner.app/dashboard\n\n` +
           `If you have any questions, email support@kloner.app.\n\n` +
           `– The Kloner team`;
@@ -206,6 +206,6 @@ export async function POST(req: NextRequest) {
         );
       }
     },
-    { methods: ["POST"], csrf: true }
+    { methods: ["POST"], csrf: false }
   );
 }

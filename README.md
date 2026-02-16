@@ -9,6 +9,23 @@ pnpm i   # or npm i / yarn
 pnpm dev # http://localhost:3000
 ```
 
+## Mixpanel (product analytics)
+
+Kloner can send product analytics to Mixpanel (page views + custom UI events).
+
+Client environment variables:
+- `NEXT_PUBLIC_MIXPANEL_TOKEN` — your Mixpanel project token
+- `NEXT_PUBLIC_MIXPANEL_DISABLED=1` — disables Mixpanel entirely
+
+Session Replay (web):
+- `NEXT_PUBLIC_MIXPANEL_RECORD_SESSIONS_PERCENT` — `1` to `100` (0 disables replay)
+- `NEXT_PUBLIC_MIXPANEL_RECORD_HEATMAP_DATA=1` — optional (requires Session Replay enabled)
+
+To track specific clicks without wiring handlers, add attributes:
+- `data-mp-event="My Event Name"`
+- optional `data-mp-prop-location="hero"` (any `data-mp-prop-*` becomes an event prop)
+- optional `data-mp-props='{"foo":"bar"}'` (JSON object)
+
 ## Supabase MCP Integration
 
 Kloner uses Supabase with Model Context Protocol (MCP) for AI-powered database operations. This enables the AI agent to:

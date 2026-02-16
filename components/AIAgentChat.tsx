@@ -224,33 +224,47 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         }
 
         const supabaseRef = doc(db, "kloner_users", user.uid, "integrations", "supabase");
-        const unsub = onSnapshot(
-            supabaseRef,
-            (snap) => {
-                if (!snap.exists()) {
+        let unsub: null | (() => void) = null;
+        try {
+            unsub = onSnapshot(
+                supabaseRef,
+                (snap) => {
+                    if (!snap.exists()) {
+                        setIsSupabaseConnected(false);
+                        setSupabaseDbReachable(null);
+                        setSupabaseDbStatusText(null);
+                        setSupabaseDbLastCheckedAt(null);
+                        return;
+                    }
+
+                    const data = snap.data() as any;
+                    const projectRef = typeof data?.projectRef === "string" ? data.projectRef.trim() : "";
+                    const connected = !!projectRef || snap.exists();
+                    setIsSupabaseConnected(connected);
+                },
+                (err) => {
+                    console.error("Firestore listener error (supabase integration)", err);
+                    // If we can't read the integration doc (offline/rules), don't force the popup open.
+                    // Default to false so the user can still choose to connect.
                     setIsSupabaseConnected(false);
                     setSupabaseDbReachable(null);
                     setSupabaseDbStatusText(null);
                     setSupabaseDbLastCheckedAt(null);
-                    return;
-                }
+                },
+            );
+        } catch (err) {
+            console.error("Failed to subscribe to supabase integration (Firestore)", err);
+            setIsSupabaseConnected(false);
+        }
 
-                const data = snap.data() as any;
-                const projectRef = typeof data?.projectRef === "string" ? data.projectRef.trim() : "";
-                const connected = !!projectRef || snap.exists();
-                setIsSupabaseConnected(connected);
-            },
-            () => {
-                // If we can't read the integration doc (offline/rules), don't force the popup open.
-                // Default to false so the user can still choose to connect.
-                setIsSupabaseConnected(false);
-                setSupabaseDbReachable(null);
-                setSupabaseDbStatusText(null);
-                setSupabaseDbLastCheckedAt(null);
-            },
-        );
-
-        return () => unsub();
+        return () => {
+            if (!unsub) return;
+            try {
+                unsub();
+            } catch (err) {
+                console.warn("Firestore unsubscribe error (supabase integration)", err);
+            }
+        };
     }, [user?.uid]);
 
     useEffect(() => {
@@ -271,21 +285,38 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
     useEffect(() => {
         if (!user?.uid) return;
+
         const userRef = doc(db, "kloner_users", user.uid);
-        const unsub = onSnapshot(
-            userRef,
-            (snap) => {
-                const data = snap.exists() ? (snap.data() as any) : null;
-                const bucket = data?.["credits.aiEdits"] || data?.credits?.aiEdits || null;
-                const remaining = typeof bucket?.remaining === "number" ? bucket.remaining : null;
-                setAiCreditsRemaining(Number.isFinite(remaining) ? remaining : null);
-            },
-            () => {
-                // If Firestore read fails (rules/offline), don't block usage.
-                setAiCreditsRemaining(null);
+        let unsub: null | (() => void) = null;
+
+        try {
+            unsub = onSnapshot(
+                userRef,
+                (snap) => {
+                    const data = snap.exists() ? (snap.data() as any) : null;
+                    const bucket = data?.["credits.aiEdits"] || data?.credits?.aiEdits || null;
+                    const remaining = typeof bucket?.remaining === "number" ? bucket.remaining : null;
+                    setAiCreditsRemaining(Number.isFinite(remaining) ? remaining : null);
+                },
+                (err) => {
+                    console.error("Firestore listener error (ai edits credits)", err);
+                    // If Firestore read fails (rules/offline), don't block usage.
+                    setAiCreditsRemaining(null);
+                },
+            );
+        } catch (err) {
+            console.error("Failed to subscribe to ai edits credits (Firestore)", err);
+            setAiCreditsRemaining(null);
+        }
+
+        return () => {
+            if (!unsub) return;
+            try {
+                unsub();
+            } catch (err) {
+                console.warn("Firestore unsubscribe error (ai edits credits)", err);
             }
-        );
-        return () => unsub();
+        };
     }, [user?.uid]);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);

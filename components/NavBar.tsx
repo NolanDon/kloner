@@ -145,12 +145,12 @@ export default function NavBar(): JSX.Element {
             href="/"
             className="ml-5 flex items-center gap-2 font-black tracking-tight text-xl md:text-2xl shrink-0"
           >
-            <div className="relative h-[80px] w-[80px]">
+            <div className="relative h-[44px] w-[44px] sm:h-[56px] sm:w-[56px] md:h-[72px] md:w-[72px]">
               <Image
                 src={logo}
                 alt="kloner logo"
                 fill
-                sizes="80px"
+                sizes="72px"
                 priority
                 className="object-contain"
               />
@@ -617,7 +617,7 @@ function MegaPanel({ active }: { active: NavItem | null }): JSX.Element {
           <AnimatedPromoCard />
           <div className="p-4">
             <div className="text-xs text-neutral-500">Clone any site</div>
-            <div className="mt-1 text-sm">Paste a URL. Customize. Deploy.</div>
+            <div className="mt-1 text-sm">Drop a link or describe it. Customize. Deploy.</div>
           </div>
         </Link>
 

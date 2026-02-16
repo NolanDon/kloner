@@ -420,8 +420,9 @@ export default function LoginPage(): JSX.Element {
 
     const [acceptedTerms, setAcceptedTerms] = useState<boolean>(false);
     const [pendingUrl, setPendingUrl] = useState<string>("");
+    const [pendingPrompt, setPendingPrompt] = useState<string>("");
 
-    // Initialize pendingUrl from query or localStorage
+    // Initialize pendingUrl/pendingPrompt from query or localStorage
     useEffect(() => {
         let initial = search.get("u") || "";
         if (!initial) {
@@ -432,6 +433,16 @@ export default function LoginPage(): JSX.Element {
             }
         }
         setPendingUrl(initial);
+
+        let initialPrompt = search.get("prompt") || search.get("p") || "";
+        if (!initialPrompt) {
+            try {
+                initialPrompt = localStorage.getItem("kloner.pendingPrompt") || "";
+            } catch {
+                // ignore
+            }
+        }
+        setPendingPrompt(initialPrompt);
     }, [search]);
 
     const clearPendingUrl = () => {
@@ -447,6 +458,20 @@ export default function LoginPage(): JSX.Element {
         router.replace(qs ? `/login?${qs}` : "/login");
     };
 
+    const clearPendingPrompt = () => {
+        setPendingPrompt("");
+        try {
+            localStorage.removeItem("kloner.pendingPrompt");
+        } catch {
+            // ignore
+        }
+        const params = new URLSearchParams(search.toString());
+        params.delete("prompt");
+        params.delete("p");
+        const qs = params.toString();
+        router.replace(qs ? `/login?${qs}` : "/login");
+    };
+
     useEffect(() => {
         const unsub = onAuthStateChanged(auth, async (u) => {
             if (!u) return;
@@ -456,6 +481,23 @@ export default function LoginPage(): JSX.Element {
                 // Ensure createdAt exists (and keep updatedAt fresh) for any signed-in user.
                 // This fixes the "createdAt didn't seem to work" issue when other flows created the doc first.
                 await ensureUserCreatedAt(u);
+
+                const pendingP = pendingPrompt?.trim();
+                if (pendingP) {
+                    try {
+                        try {
+                            localStorage.removeItem("kloner.pendingPrompt");
+                        } catch {
+                            // ignore
+                        }
+                        router.replace(
+                            `/dashboard/view?wizard=1&source=prompt&prompt=${encodeURIComponent(pendingP)}`,
+                        );
+                        return;
+                    } catch (e) {
+                        console.error("failed to redirect with pending prompt", e);
+                    }
+                }
 
                 const pending = pendingUrl?.trim();
                 if (pending) {
@@ -490,7 +532,7 @@ export default function LoginPage(): JSX.Element {
             }
         });
         return () => unsub();
-    }, [router, search, pendingUrl]);
+    }, [router, search, pendingUrl, pendingPrompt]);
 
     const signInWithGoogle = async (): Promise<void> => {
         setErr("");
@@ -630,6 +672,24 @@ export default function LoginPage(): JSX.Element {
                             : "Clone websites in minutes. Quick signup with email or Google, then one-click deploy."}
                     </p>
                 </div>
+
+                {pendingPrompt ? (
+                    <div className="mb-3 flex items-start justify-between gap-2 rounded-lg bg-indigo-50 px-3 py-2.5 text-xs text-indigo-900 ring-1 ring-indigo-200">
+                        <div>
+                            We will start from this prompt after you{" "}
+                            {mode === "signin" ? "sign in" : "sign up"}:{" "}
+                            <span className="font-medium break-words">{pendingPrompt}</span>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={clearPendingPrompt}
+                            className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full border border-indigo-500 text-[11px] leading-none text-indigo-800 hover:bg-indigo-600 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                            aria-label="Do not auto-add this prompt"
+                        >
+                            ×
+                        </button>
+                    </div>
+                ) : null}
 
                 {pendingUrl ? (
                     <div className="mb-4 flex items-start justify-between gap-2 rounded-lg bg-emerald-50 px-3 py-2.5 text-xs text-emerald-800 ring-1 ring-emerald-200">

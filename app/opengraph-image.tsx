@@ -58,7 +58,7 @@ export default function Image() {
           </div>
 
           <div style={{ fontSize: 30, opacity: 0.9, maxWidth: 820, lineHeight: 1.35, display: "flex" }}>
-            Paste a URL to generate an editable preview, export clean HTML, and ship faster.
+            Drop a link or enter a description to generate an editable preview, export clean HTML, and ship faster.
           </div>
 
           <div

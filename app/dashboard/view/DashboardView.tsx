@@ -678,9 +678,9 @@ function RenderCardInner({
                                                 ? "View and manage this deployment"
                                                 : !r.html?.trim()
                                                     ? "This preview's HTML isn't available yet. Click Customize to finish generating it, then deploy."
-                                                : deployLocked
-                                                    ? "Upgrade to publish live sites"
-                                                    : "Deploy current HTML to Vercel"
+                                                    : deployLocked
+                                                        ? "Upgrade to publish live sites"
+                                                        : "Deploy current HTML to Vercel"
                                     }
                                 >
                                     {isDeploying ? (
@@ -721,7 +721,7 @@ function RenderCardInner({
                                                         ? "Retry the render operation"
                                                         : !r.html?.trim()
                                                             ? "Open the editor to finish preparing this preview"
-                                                        : "Open editor to customize"
+                                                            : "Open editor to customize"
                                         }
                                     >
                                         {isBuilding || isQueued
@@ -1124,7 +1124,7 @@ function AppCard({
                             className="group inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-[#f55f2a] text-white shadow-sm px-3 py-2 font-medium disabled:opacity-60"
                             title="Open app in editor"
                         >
-                            <span>Customize App</span>
+                            <span>Customize Website</span>
                             <BrushIcon className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
                         </button>
 
@@ -1238,11 +1238,11 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                         className={`grid ${iconWrapperSize} place-items-center rounded-full border border-neutral-200 bg-neutral-50 transition group-hover:scale-105`}
                         aria-hidden
                     >
-                            {effectiveLocked ? (
-                                <Hammer className="h-7 w-7 text-neutral-600 ghost-hammer-swing" />
-                            ) : (
-                                <Plus className="h-7 w-7 text-neutral-600" />
-                            )}
+                        {effectiveLocked ? (
+                            <Hammer className="h-7 w-7 text-neutral-600 ghost-hammer-swing" />
+                        ) : (
+                            <Plus className="h-7 w-7 text-neutral-600" />
+                        )}
                     </div>
                     <div className="mt-4 px-2 text-sm font-semibold text-neutral-800">{title}</div>
                     <div className="mt-1 px-2 text-sm text-neutral-500">{subtitle}</div>
@@ -1673,6 +1673,10 @@ export default function PreviewPage(): JSX.Element {
     const [lockUntilByKey, setLockUntilByKey] = useState<
         Record<string, number>
     >({});
+    const lockUntilByKeyRef = useRef(lockUntilByKey);
+    useEffect(() => {
+        lockUntilByKeyRef.current = lockUntilByKey;
+    }, [lockUntilByKey]);
     const [lockUntilByRender, setLockUntilByRender] = useState<
         Record<string, number>
     >({});
@@ -1701,7 +1705,16 @@ export default function PreviewPage(): JSX.Element {
             setApps(appList.filter((a: any) => a?.archived !== true));
         });
 
-        return () => unsub();
+        let didCleanup = false;
+        return () => {
+            if (didCleanup) return;
+            didCleanup = true;
+            try {
+                unsub();
+            } catch (err) {
+                console.warn("[firestore] apps onSnapshot unsubscribe failed", err);
+            }
+        };
     }, [user]);
 
     useEffect(() => {
@@ -1826,6 +1839,39 @@ export default function PreviewPage(): JSX.Element {
             }
         })();
     }, [search, user, router, deployWizardProjectName]);
+
+    // Open the web app wizard from query params.
+    // Example: /dashboard/view?wizard=1&source=prompt&prompt=...
+    useEffect(() => {
+        if (!user) return;
+        const wizardParam = search.get("wizard");
+        const sourceParam = (search.get("source") || "").toLowerCase();
+        const promptParam = search.get("prompt") || "";
+
+        if (wizardParam !== "1") return;
+        if (sourceParam !== "prompt") return;
+        if (!promptParam.trim()) return;
+
+        setAppWizardOpen(true);
+        setAppWizardBusy(false);
+        setAppWizardError(null);
+        setAppWizardSource("prompt");
+        setAppWizardPrompt(promptParam);
+
+        // best-effort: clear wizard params so refresh doesn't re-open
+        try {
+            const url = new URL(window.location.href);
+            const params = url.searchParams;
+            params.delete("wizard");
+            params.delete("source");
+            params.delete("prompt");
+            const qs = params.toString();
+            const next = qs ? `${url.pathname}?${qs}` : url.pathname;
+            router.replace(next, { scroll: false });
+        } catch {
+            // ignore
+        }
+    }, [search, user, router]);
 
     const closeAppDeployWizard = useCallback(() => {
         setAppDeployWizardOpen(false);
@@ -2004,11 +2050,6 @@ export default function PreviewPage(): JSX.Element {
     ) => {
         if (!user) return;
 
-        if (!isAdmin && mode === "prompt") {
-            push("Coming soon.", "err");
-            return null;
-        }
-
         try {
             function appNameFromUrl(raw: string): string {
                 try {
@@ -2129,7 +2170,7 @@ export default function PreviewPage(): JSX.Element {
             push("Failed to create app. Please try again.", "err");
             return null;
         }
-    }, [user, router, push, activeRenderId, isAdmin]);
+    }, [user, router, push, activeRenderId]);
 
     const startWebAppWizard = useCallback(
         (opts?: { seedRenderId?: string | null; url?: string | null }) => {
@@ -2205,10 +2246,6 @@ export default function PreviewPage(): JSX.Element {
 
     const submitAppWizardPrompt = useCallback(async () => {
         if (appWizardBusy) return;
-        if (!isAdmin) {
-            setAppWizardError("Coming soon.");
-            return;
-        }
         const prompt = (appWizardPrompt || "").trim();
         if (!prompt) {
             setAppWizardError("Enter a prompt to continue.");
@@ -2233,7 +2270,7 @@ export default function PreviewPage(): JSX.Element {
         } finally {
             setAppWizardBusy(false);
         }
-    }, [appWizardBusy, appWizardPrompt, handleCreateApp, isAdmin]);
+    }, [appWizardBusy, appWizardPrompt, handleCreateApp]);
 
     // New: create an app from the starter template (free)
     const handleCreateTemplateApp = useCallback(async () => {
@@ -2270,6 +2307,11 @@ export default function PreviewPage(): JSX.Element {
     const [optimisticByKey, setOptimisticByKey] = useState<
         Record<string, { id: string } & RenderDoc>
     >({});
+
+    const optimisticByKeyRef = useRef<Record<string, { id: string } & RenderDoc>>({});
+    useEffect(() => {
+        optimisticByKeyRef.current = optimisticByKey;
+    }, [optimisticByKey]);
 
     const didAutoSelectRef = useRef(false);
 
@@ -3051,6 +3093,9 @@ export default function PreviewPage(): JSX.Element {
         )
 
         const unsub = onSnapshot(qs, (snap) => {
+            const optimisticNow = optimisticByKeyRef.current;
+            const lockUntilNow = lockUntilByKeyRef.current || {};
+
             // Important: don't filter `archived` at the query level.
             // Many older render docs may have no `archived` field at all,
             // and Firestore queries won't match missing fields.
@@ -3059,7 +3104,7 @@ export default function PreviewPage(): JSX.Element {
                 all,
                 targetUrl,
                 targetHash,
-                optimisticKeys: Object.keys(optimisticByKey),
+                optimisticKeys: Object.keys(optimisticNow),
                 extractHashFromKey,
             });
 
@@ -3068,14 +3113,14 @@ export default function PreviewPage(): JSX.Element {
                 const key = r.key || "";
                 if (
                     key &&
-                    lockUntilByKey[key] &&
-                    lockUntilByKey[key] > now
+                    lockUntilNow[key] &&
+                    lockUntilNow[key] > now
                 ) {
                     setLockUntilByRender((m) => ({
                         ...m,
                         [r.id]: Math.max(
                             m[r.id] || 0,
-                            lockUntilByKey[key]
+                            lockUntilNow[key]
                         ),
                     }));
                 }
@@ -3083,9 +3128,8 @@ export default function PreviewPage(): JSX.Element {
 
             const withOptimistic = [...filtered];
 
-            for (const [k, opt] of Object.entries(
-                optimisticByKey
-            )) {
+            for (const k in optimisticNow) {
+                const opt = optimisticNow[k];
                 // Only treat the optimistic render as "replaced" once we see a *new* server render
                 // in a non-terminal state. Older completed renders for the same key should not
                 // evict the optimistic placeholder (this was causing the ghost card to re-enable).
@@ -3126,8 +3170,8 @@ export default function PreviewPage(): JSX.Element {
                     // Respect hard lock window so we don't flicker enabled/disabled.
                     if (
                         key &&
-                        lockUntilByKey[key] &&
-                        lockUntilByKey[key] > now3
+                        lockUntilNow[key] &&
+                        lockUntilNow[key] > now3
                     ) {
                         continue;
                     }
@@ -3160,13 +3204,20 @@ export default function PreviewPage(): JSX.Element {
             });
         });
 
-        return () => unsub();
+        let didCleanup = false;
+        return () => {
+            if (didCleanup) return;
+            didCleanup = true;
+            try {
+                unsub();
+            } catch (err) {
+                console.warn("[firestore] renders onSnapshot unsubscribe failed", err);
+            }
+        };
     }, [
         user,
         targetUrl,
         targetHash,
-        optimisticByKey,
-        lockUntilByKey,
     ]);
 
     /* ───────── actions ───────── */
@@ -5555,7 +5606,7 @@ export default function PreviewPage(): JSX.Element {
                                 >
                                     <div className="flex items-start justify-between gap-4 border-b border-neutral-200 px-5 py-4">
                                         <div className="space-y-1">
-                                            <div className="text-sm font-semibold text-neutral-900">Create a Web App</div>
+                                            <div className="text-sm font-semibold text-neutral-900">Create a Website</div>
                                             <div className="text-xs text-neutral-600">
                                                 Start building now. You’ll only need Vercel when you deploy.
                                             </div>
@@ -5594,103 +5645,87 @@ export default function PreviewPage(): JSX.Element {
 
                                         <div className="space-y-3">
                                             <div className="grid gap-2">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setAppWizardSource("website");
-                                                            setAppWizardPrompt("");
-                                                            setAppWizardUrl((prev) => (prev || targetUrl || ""));
-                                                            setAppWizardShotsUrl((prev) => (prev || targetUrl || ""));
-                                                        }}
-                                                        className={`relative w-full rounded-xl border p-4 text-left transition ${appWizardSource === "website"
-                                                            ? "border-[#f55f2a] bg-[#f55f2a]/5"
-                                                            : "border-neutral-200 bg-white hover:bg-neutral-50"
-                                                            }`}
-                                                    >
-                                                        <div className="text-sm font-semibold text-neutral-900">Clone from URL</div>
-                                                        <div className="mt-1 text-xs text-neutral-600 break-all">
-                                                            High-fidelity clone using your saved screenshots when available.
-                                                        </div>
-                                                        <div className="mt-1 text-xs text-neutral-500 break-all">
-                                                            {appWizardUrl || targetUrl || "(no URL selected)"}
-                                                        </div>
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setAppWizardSource("sample")}
-                                                        className={`w-full rounded-xl border p-4 text-left transition ${appWizardSource === "sample"
-                                                            ? "border-[#f55f2a] bg-[#f55f2a]/5"
-                                                            : "border-neutral-200 bg-white hover:bg-neutral-50"
-                                                            }`}
-                                                    >
-                                                        <div className="text-sm font-semibold text-neutral-900">Quick start</div>
-                                                        <div className="mt-1 text-xs text-neutral-600">Start from a Kloner sample app. You&apos;ll still be able to customize it</div>
-                                                    </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setAppWizardSource("website");
+                                                        setAppWizardPrompt("");
+                                                        setAppWizardUrl((prev) => (prev || targetUrl || ""));
+                                                        setAppWizardShotsUrl((prev) => (prev || targetUrl || ""));
+                                                    }}
+                                                    className={`relative w-full rounded-xl border p-4 text-left transition ${appWizardSource === "website"
+                                                        ? "border-[#f55f2a] bg-[#f55f2a]/5"
+                                                        : "border-neutral-200 bg-white hover:bg-neutral-50"
+                                                        }`}
+                                                >
+                                                    <div className="text-sm font-semibold text-neutral-900">Clone from URL</div>
+                                                    <div className="mt-1 text-xs text-neutral-600 break-all">
+                                                        High-fidelity clone using your saved screenshots when available.
+                                                    </div>
+                                                    <div className="mt-1 text-xs text-neutral-500 break-all">
+                                                        {appWizardUrl || targetUrl || "(no URL selected)"}
+                                                    </div>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setAppWizardSource("sample")}
+                                                    className={`w-full rounded-xl border p-4 text-left transition ${appWizardSource === "sample"
+                                                        ? "border-[#f55f2a] bg-[#f55f2a]/5"
+                                                        : "border-neutral-200 bg-white hover:bg-neutral-50"
+                                                        }`}
+                                                >
+                                                    <div className="text-sm font-semibold text-neutral-900">Quick start</div>
+                                                    <div className="mt-1 text-xs text-neutral-600">Start from a Kloner sample app. You&apos;ll still be able to customize it</div>
+                                                </button>
 
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            if (!isAdmin) return;
-                                                            setAppWizardSource("prompt");
-                                                        }}
-                                                        disabled={!isAdmin}
-                                                        className={`relative w-full rounded-xl border p-4 text-left transition ${!isAdmin
-                                                            ? "cursor-not-allowed border-neutral-200 bg-neutral-50 opacity-60"
-                                                            : appWizardSource === "prompt"
-                                                                ? "border-[#f55f2a] bg-[#f55f2a]/5"
-                                                                : "border-neutral-200 bg-white hover:bg-neutral-50"
-                                                            }`}
-                                                    >
-                                                        {!isAdmin ? (
-                                                            <span className="absolute right-3 top-3 rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-neutral-700">
-                                                                Coming soon
-                                                            </span>
-                                                        ) : null}
-                                                        <div className="text-sm font-semibold text-neutral-900">Build from a prompt</div>
-                                                        <div className="mt-1 text-xs text-neutral-600">Describe the app and we’ll generate the first version.</div>
-                                                    </button>
-                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setAppWizardSource("prompt")}
+                                                    className={`relative w-full rounded-xl border p-4 text-left transition ${appWizardSource === "prompt"
+                                                        ? "border-[#f55f2a] bg-[#f55f2a]/5"
+                                                        : "border-neutral-200 bg-white hover:bg-neutral-50"
+                                                        }`}
+                                                >
+                                                    <div className="text-sm font-semibold text-neutral-900">Build from a prompt</div>
+                                                    <div className="mt-1 text-xs text-neutral-600">Describe the app and we’ll generate the first version.</div>
+                                                </button>
+                                            </div>
 
-                                                {appWizardSource === "website" ? (
-                                                    <div className="mt-2 space-y-2">
-                                                        <label className="text-xs font-semibold text-neutral-700">
-                                                            URL
-                                                        </label>
-                                                        <input
-                                                            value={appWizardUrl}
-                                                            onChange={(e) => setAppWizardUrl(e.target.value)}
-                                                            placeholder={targetUrl || "https://example.com"}
-                                                            className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-[#f55f2a]/20"
-                                                        />
-                                                        {/* <div className="text-[11px] leading-4 text-neutral-500">
+                                            {appWizardSource === "website" ? (
+                                                <div className="mt-2 space-y-2">
+                                                    <label className="text-xs font-semibold text-neutral-700">
+                                                        URL
+                                                    </label>
+                                                    <input
+                                                        value={appWizardUrl}
+                                                        onChange={(e) => setAppWizardUrl(e.target.value)}
+                                                        placeholder={targetUrl || "https://example.com"}
+                                                        className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-[#f55f2a]/20"
+                                                    />
+                                                    {/* <div className="text-[11px] leading-4 text-neutral-500">
                                                             Tip: for best fidelity, we’ll use your stored full-page screenshots for the selected URL.
                                                         </div> */}
-                                                    </div>
-                                                ) : null}
+                                                </div>
+                                            ) : null}
 
-                                                {appWizardSource === "prompt" && isAdmin ? (
-                                                    <div className="mt-2 space-y-2">
-                                                        <label className="text-xs font-semibold text-neutral-700">
-                                                            Prompt
-                                                        </label>
-                                                        <textarea
-                                                            value={appWizardPrompt}
-                                                            onChange={(e) => setAppWizardPrompt(e.target.value)}
-                                                            rows={5}
-                                                            className="w-full resize-none rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-[#f55f2a]/20"
-                                                            placeholder="Describe what you want to build…"
-                                                        />
-                                                    </div>
-                                                ) : null}
+                                            {appWizardSource === "prompt" ? (
+                                                <div className="mt-2 space-y-2">
+                                                    <label className="text-xs font-semibold text-neutral-700">
+                                                        Prompt
+                                                    </label>
+                                                    <textarea
+                                                        value={appWizardPrompt}
+                                                        onChange={(e) => setAppWizardPrompt(e.target.value)}
+                                                        rows={5}
+                                                        className="w-full resize-none rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-[#f55f2a]/20"
+                                                        placeholder="Describe what you want to build…"
+                                                    />
+                                                </div>
+                                            ) : null}
 
                                             <button
                                                 type="button"
                                                 onClick={() => {
-                                                    if (appWizardSource === "prompt" && !isAdmin) {
-                                                        setAppWizardError("Coming soon.");
-                                                        return;
-                                                    }
-
                                                     if (appWizardSource === "sample") return void submitAppWizardSample();
                                                     if (appWizardSource === "website") return void submitAppWizardWebsite();
                                                     return void submitAppWizardPrompt();
@@ -5767,7 +5802,7 @@ export default function PreviewPage(): JSX.Element {
                                                 </div>
                                                 <div>
                                                     <p className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
-                                                        Web app deploy
+                                                        Website deploy
                                                     </p>
                                                     <p className="text-lg font-semibold text-neutral-900">
                                                         {appDeployWizardAppName ? `Deploy ${appDeployWizardAppName}` : "Deploy your web app"}
@@ -5821,7 +5856,7 @@ export default function PreviewPage(): JSX.Element {
                                                                 }}
                                                                 className="rounded-xl bg-white px-3 py-2 text-sm font-semibold text-neutral-900 shadow-sm hover:bg-neutral-50"
                                                             >
-                                                                Customize app
+                                                                Customize website
                                                             </button>
                                                             <button
                                                                 type="button"

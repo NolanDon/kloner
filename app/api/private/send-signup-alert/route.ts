@@ -229,6 +229,6 @@ export async function POST(req: NextRequest) {
         );
       }
     },
-    { methods: ["POST"], csrf: true }
+    { methods: ["POST"], csrf: false }
   );
 }

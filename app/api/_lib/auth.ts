@@ -1,8 +1,8 @@
 // src/app/api/_lib/auth.ts
 import { NextRequest, NextResponse } from "next/server";
-import { cert, getApps, initializeApp } from "firebase-admin/app";
+import { cert, getApp, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, initializeFirestore } from "firebase-admin/firestore";
 import crypto from "node:crypto";
 import admin from "firebase-admin";
 
@@ -127,6 +127,24 @@ export async function verifySession(req: NextRequest) {
 /** Use in any server route that needs Firestore. */
 export function getAdminDb() {
     initAdmin();
+
+    // Firestore Admin SDK uses gRPC by default. In local dev, gRPC can be flaky
+    // (VPN/proxy/IPv6/port exhaustion) and produce errors like:
+    //   "Received RST_STREAM" / "read EADDRNOTAVAIL".
+    // The REST fallback is slower but much more reliable.
+    const raw = (process.env.FIRESTORE_PREFER_REST || "").toLowerCase().trim();
+    const preferRestExplicit = raw === "1" || raw === "true" ? true : raw === "0" || raw === "false" ? false : null;
+    const preferRest = preferRestExplicit ?? (process.env.NODE_ENV !== "production");
+
+    if (preferRest) {
+        try {
+            return initializeFirestore(getApp(), { preferRest: true });
+        } catch {
+            // If Firestore was already initialized elsewhere, fall back.
+            return getFirestore();
+        }
+    }
+
     return getFirestore();
 }
 

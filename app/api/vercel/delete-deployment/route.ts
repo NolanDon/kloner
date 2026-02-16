@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import admin from "firebase-admin";
 import type { Bucket } from "@google-cloud/storage";
-import { getFirestore } from "firebase-admin/firestore";
+import { getAdminDb } from "../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "@/app/api/_lib/route-guard";
 
 export const runtime = "nodejs";
@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
         async ({ uid }) => {
             try {
                 initAdminIfNeeded();
-                const db = getFirestore();
+                const db = getAdminDb();
                 const bucket = getBucket(); // kept in case screenshot cleanup is re-enabled
 
                 const body = (await req.json().catch(() => ({}))) as DeleteBody;

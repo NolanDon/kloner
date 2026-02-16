@@ -1,7 +1,7 @@
 // app/api/vercel/redeploy/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import admin from "firebase-admin";
-import { getFirestore } from "firebase-admin/firestore";
+import { getAdminDb } from "../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "@/app/api/_lib/route-guard";
 
 export const runtime = "nodejs";
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
                     );
                 }
 
-                const db = getFirestore();
+                const db = getAdminDb();
                 const integRef = db
                     .collection("kloner_users")
                     .doc(uid)

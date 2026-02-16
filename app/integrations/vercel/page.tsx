@@ -61,7 +61,7 @@ export default function KlonerVercelLanding() {
                                             <span>Step 1</span>
                                         </div>
                                         <p className="mt-1 text-sm font-medium text-white">
-                                            Paste a URL inside Kloner and capture a pixel-perfect snapshot.
+                                            Drop a link (or enter a description) inside Kloner and capture a pixel-perfect snapshot.
                                         </p>
                                     </div>
                                     <div className="rounded-xl bg-neutral-900/60 border border-neutral-800 px-4 py-3 text-xs">

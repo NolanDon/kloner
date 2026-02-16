@@ -1,7 +1,7 @@
 // app/api/vercel/deployments/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import admin from "firebase-admin";
-import { getFirestore } from "firebase-admin/firestore";
+import { getAdminDb } from "../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "@/app/api/_lib/route-guard";
 
 export const runtime = "nodejs";
@@ -79,7 +79,7 @@ function normalizeCreatedAt(raw: any): number | null {
 export async function GET(req: NextRequest) {
     return requireSessionAndMaybeCsrf(req, async ({ uid }) => {
         try {
-            const db = getFirestore();
+            const db = getAdminDb();
             const depCol = db
                 .collection("kloner_users")
                 .doc(uid)

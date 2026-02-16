@@ -1,7 +1,5 @@
 // app/api/app-builder/[appId]/rename/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { getAuth } from "firebase-admin/auth";
-import { getFirestore } from "firebase-admin/firestore";
 import { getAdminDb } from "../../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../../../_lib/route-guard";
 import { assertAppBuilderScope } from "../../../_lib/appBuilderScope";
@@ -13,32 +11,32 @@ export async function POST(
     return requireSessionAndMaybeCsrf(
         request,
         async ({ uid, req: authedReq }) => {
-        const db = getAdminDb();
-        const appId = params.appId;
+            const db = getAdminDb();
+            const appId = params.appId;
 
-        assertAppBuilderScope(authedReq, uid, appId);
+            assertAppBuilderScope(authedReq, uid, appId);
 
-        const { name } = await request.json();
+            const { name } = await request.json();
 
-        if (!name || typeof name !== "string" || name.trim().length === 0) {
-            return NextResponse.json({ error: "Invalid name" }, { status: 400 });
-        }
+            if (!name || typeof name !== "string" || name.trim().length === 0) {
+                return NextResponse.json({ error: "Invalid name" }, { status: 400 });
+            }
 
-        // Check if the app belongs to the user
-        const appRef = db.collection("kloner_users").doc(uid).collection("kloner_apps").doc(appId);
-        const appDoc = await appRef.get();
+            // Check if the app belongs to the user
+            const appRef = db.collection("kloner_users").doc(uid).collection("kloner_apps").doc(appId);
+            const appDoc = await appRef.get();
 
-        if (!appDoc.exists) {
-            return NextResponse.json({ error: "App not found" }, { status: 404 });
-        }
+            if (!appDoc.exists) {
+                return NextResponse.json({ error: "App not found" }, { status: 404 });
+            }
 
-        // Update the app name
-        await appRef.update({
-            name: name.trim(),
-            updatedAt: new Date(),
-        });
+            // Update the app name
+            await appRef.update({
+                name: name.trim(),
+                updatedAt: new Date(),
+            });
 
-        return NextResponse.json({ success: true });
+            return NextResponse.json({ success: true });
         },
         { csrf: true, methods: ["POST"] }
     );

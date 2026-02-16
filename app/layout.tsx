@@ -8,7 +8,6 @@ import AffiliateRefCapture from "@/components/AffiliateRefCapture";
 import { Suspense } from "react";
 import StyledJsxRegistry from "./registry";
 import Script from "next/script";
-import SeoInternalLinks from "@/components/SeoInternalLinks";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -74,13 +73,6 @@ export default function RootLayout({
             </AppClientProviders>
           </AuthProviderServer>
         </StyledJsxRegistry>
-
-        {/*
-          Always-rendered internal links for crawlers.
-          This protects against "dead end" + "orphan" flags when a crawler doesn't execute JS
-          or misses navigation that is conditionally rendered.
-        */}
-        <SeoInternalLinks />
 
         {/* Google Analytics */}
         <Script

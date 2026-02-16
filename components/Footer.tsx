@@ -6,6 +6,7 @@
 
 import React from "react";
 import Link from "next/link";
+import SeoInternalLinks from "@/components/SeoInternalLinks";
 
 type LinkItem = { label: string; href: string; external?: boolean };
 
@@ -172,6 +173,9 @@ export default function Footer() {
             <FooterSection key={sec.title} title={sec.title} items={sec.items} note={sec.note} />
           ))}
         </div>
+
+        {/* Crawlable internal links for SEO, styled to match the footer */}
+        <SeoInternalLinks variant="footer" />
 
         <div className="mt-8 md:mt-10 text-xs text-neutral-500">
           © {new Date().getFullYear()} Kloner, Inc. All rights reserved.

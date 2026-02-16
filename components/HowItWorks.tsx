@@ -12,7 +12,7 @@ function UrlInputModal() {
     <div className="w-full h-40 md:h-56 rounded-2xl border border-black/10 bg-white shadow-md p-4 md:p-5 min-h-60">
       <div className="text-xs text-neutral-500 mb-2 flex items-center gap-2">
         <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500" />
-        <span>Paste a URL</span>
+        <span>Drop a link or describe it</span>
       </div>
       <div className="rounded-xl ring-1 ring-neutral-200 bg-neutral-50 px-3 py-3 text-sm text-neutral-700 flex items-center gap-2">
         <span className="text-neutral-400">URL:</span>
@@ -267,7 +267,7 @@ type ModalPlain = React.ComponentType;
 
 const items = [
   {
-    title: "Paste a URL",
+    title: "Link or description",
     text: "Point us at any site. We'll analyze the structure and create you a base layout.",
     step: 1,
     Modal: UrlInputModal as ModalPlain,
@@ -275,14 +275,14 @@ const items = [
   },
   {
     title: "Preview",
-    text: "Choose to generate a web app, simple html page or start from a sentence describing your ideal website.",
+    text: "Choose to generate a simple html page or start from a sentence describing your ideal website.",
     step: 2,
     Modal: PreviewGridModal as ModalPlain,
     needsProgress: false,
   },
   {
     title: "Customize",
-    text: "When your preview is complete, our agent will fine-tine it to you liking with your simple instruction.",
+    text: "When your preview is complete, our agent will fine-tune it to your liking with your simple instruction.",
     step: 3,
     Modal: EditBlocksModal as ModalPlain,
     needsProgress: false,

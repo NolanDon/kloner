@@ -64,7 +64,10 @@ function InlineLinks({ links }: { links: LinkItem[] }) {
     <ul className="flex flex-wrap items-center gap-x-3 gap-y-2">
       {links.map((l) => (
         <li key={l.href}>
-          <a href={l.href} className="text-neutral-600 hover:text-neutral-900 underline-offset-4 hover:underline">
+          <a
+            href={l.href}
+            className="text-neutral-600 hover:text-neutral-900 underline-offset-4 hover:underline"
+          >
             {l.label}
           </a>
         </li>
@@ -73,10 +76,22 @@ function InlineLinks({ links }: { links: LinkItem[] }) {
   );
 }
 
-export default function SeoInternalLinks() {
+export default function SeoInternalLinks({
+  variant = "footer",
+}: {
+  variant?: "footer" | "standalone";
+}) {
+  const shellClassName =
+    variant === "standalone"
+      ? "border-t border-neutral-200 bg-white"
+      : "mt-8 md:mt-10 pt-6 border-t border-neutral-200/70";
+
+  const containerClassName =
+    variant === "standalone" ? "container-soft py-6" : "";
+
   return (
-    <aside className="border-t border-neutral-200 bg-white">
-      <div className="container-soft py-6">
+    <div className={shellClassName}>
+      <div className={containerClassName}>
         <div className="text-xs text-neutral-500">Quick links</div>
         <div className="mt-2 text-sm">
           <InlineLinks links={CORE_LINKS} />
@@ -87,6 +102,6 @@ export default function SeoInternalLinks() {
           <InlineLinks links={AFFECTED_BLOG_POSTS} />
         </div>
       </div>
-    </aside>
+    </div>
   );
 }
