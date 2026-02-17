@@ -3368,6 +3368,63 @@ export default function PreviewPage(): JSX.Element {
         ],
     );
 
+    const buildFromUrl = useCallback(async () => {
+        if (!user) return;
+        if (!targetUrl || !isHttpUrl(targetUrl)) {
+            push("Enter a valid URL first.", "err");
+            return;
+        }
+
+        if (!canUsePreviewCredit()) {
+            push(
+                "You have used all available preview credits for today on this plan.",
+                "warn",
+            );
+            setShowCreditsPaywall("preview");
+            return;
+        }
+
+        try {
+            const body: any = {
+                url: targetUrl,
+                urlHash: hash64(targetUrl),
+                nameHint: (() => {
+                    try {
+                        return new URL(targetUrl).hostname;
+                    } catch {
+                        return undefined;
+                    }
+                })(),
+            };
+
+            const r = await fetch("/api/preview/render", {
+                method: "POST",
+                headers: {
+                    "content-type": "application/json",
+                },
+                credentials: "include",
+                body: JSON.stringify(body),
+            });
+
+            const j = (await r.json().catch(() => ({}))) as any;
+
+            if (r.status === 202) {
+                push("Started generating your website…", "ok");
+                await refreshRenders();
+                return;
+            }
+
+            if (!r.ok || !j?.ok) {
+                throw new Error(j?.error || "Render failed");
+            }
+
+            await refreshRenders();
+        } catch (e: any) {
+            console.error("buildFromUrl failed", e);
+            push(e?.message || "Failed to start website generation.", "err");
+        }
+    }, [user, targetUrl, canUsePreviewCredit, push, refreshRenders, setShowCreditsPaywall]);
+
     const continueRender = useCallback(
         async (renderId: string) => {
             if (!user) return;
@@ -5234,25 +5291,8 @@ export default function PreviewPage(): JSX.Element {
                                                 const collectionKeys = firstGroup.items.map((s) => s.path);
                                                 buildFromCollection(collectionKeys);
                                             } else {
-                                                // Start with blank website
-                                                setEditorMode("website");
-                                                setEditorOpen(true);
-                                                setEditorHtml(`<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>New Website</title>
-</head>
-<body>
-    <h1>Welcome to your new website</h1>
-    <p>Start editing to customize it.</p>
-</body>
-</html>`);
-                                                setEditorRefImg("");
-                                                setActiveRenderId(undefined);
-                                                setActiveSeoMetaByPage(null);
-                                                setActiveArchivedPageIds([]);
+                                                // No screenshots yet; use the url-only flow which triggers screenshot generation server-side.
+                                                void buildFromUrl();
                                             }
                                         }}
                                         onAppClick={() => {

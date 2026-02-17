@@ -152,10 +152,14 @@ service cloud.firestore {
 
     /* ---------- COMMUNITY BUILDS ---------- */
     match /kloner_community/{docId} {
-      allow read: if resource.data.approved == true
-                  || (isSignedIn() && request.auth.uid == resource.data.author);
+      // Important: allow `get` on a not-yet-created docId for the signed-in author
+      // so the client can check existence without hitting a permissions error.
+      allow read: if (resource != null && resource.data.approved == true)
+                  || (resource != null && isSignedIn() && request.auth.uid == resource.data.author)
+                  || (resource == null && isSignedIn() && docId.startsWith(request.auth.uid + "_"));
 
       allow create: if isSignedIn()
+                    && docId.startsWith(request.auth.uid + "_")
                     && request.resource.data.author == request.auth.uid
                     && request.resource.data.html is string
                     && request.resource.data.name is string
