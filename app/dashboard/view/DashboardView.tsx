@@ -1304,16 +1304,10 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                 {/* 1) Website (Next.js) */}
                                 <div className="space-y-3">
                                     <div className="relative">
-                                        <span
-                                            className="pointer-events-none absolute right-3 top-3 z-10 inline-flex items-center rounded-full border border-neutral-200 bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-neutral-700 shadow-sm backdrop-blur"
-                                            aria-hidden
-                                        >
-                                            New
-                                        </span>
                                         <button
                                             type="button"
                                             onClick={handleAppGeneration}
-                                            className="w-full rounded-xl border border-neutral-200 bg-white p-4 text-left transition hover:bg-neutral-50 hover:border-neutral-300"
+                                            className="w-full rounded-xl border border-[rgba(245,95,42,0.45)] bg-[linear-gradient(180deg,rgba(245,95,42,0.06),rgba(255,255,255,0))] p-4 text-left shadow-sm transition hover:bg-[rgba(245,95,42,0.05)] hover:border-[rgba(245,95,42,0.65)]"
                                         >
                                             <div className="flex items-start gap-3">
                                                 <div
@@ -1335,8 +1329,11 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                         <div className="text-sm font-semibold text-neutral-900">
                                                             Website (Next.js)
                                                         </div>
-                                                        <span className="inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800">
+                                                        <span className="inline-flex whitespace-nowrap items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800">
                                                             15 preview credits
+                                                        </span>
+                                                        <span className="inline-flex items-center rounded-full border border-[rgba(245,95,42,0.35)] bg-[rgba(245,95,42,0.08)] px-2 py-0.5 text-xs font-semibold text-[rgba(245,95,42,1)]">
+                                                            Recommended
                                                         </span>
                                                     </div>
 
@@ -1375,7 +1372,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                     <div className="text-sm font-semibold text-neutral-900">
                                                         Website (HTML)
                                                     </div>
-                                                    <span className="inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800">
+                                                    <span className="inline-flex whitespace-nowrap items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800">
                                                         15 preview credits
                                                     </span>
                                                 </div>
@@ -1416,9 +1413,9 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                     <div className="text-sm font-semibold text-neutral-900">
                                                         Website template (HTML)
                                                     </div>
-                                                    <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                                                    {/* <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
                                                         Free
-                                                    </span>
+                                                    </span> */}
                                                 </div>
                                                 <div className="text-xs text-neutral-600">
                                                     Start from a polished HTML template, then customize.
@@ -1459,6 +1456,12 @@ export default function PreviewPage(): JSX.Element {
     const search = useSearchParams();
     const { toasts, push } = useToasts();
     const { showConfirm, showAlert } = useModal();
+
+    const deepLinkRenderId = useMemo(() => {
+        const raw = search.get("render") || "";
+        const s = String(raw).trim();
+        return s || "";
+    }, [search]);
 
     const [user, setUser] = useState<FirebaseUser | null>(null);
     const [userTier, setUserTier] = useState<UserTier>("unknown");
@@ -2911,6 +2914,44 @@ export default function PreviewPage(): JSX.Element {
         };
     }
 
+    function mapRenderData(id: string, data: any): { id: string } & RenderDoc {
+        const progressFromBackend =
+            typeof data?.progressPercent === "number"
+                ? data.progressPercent
+                : typeof data?.progress === "number"
+                    ? data.progress
+                    : null;
+
+        return {
+            id,
+            url: data?.url ?? null,
+            source: data?.source ?? null,
+            urlHash: data?.urlHash ?? null,
+            key: data?.key ?? data?.referenceImage ?? null,
+            referenceImage: data?.referenceImage ?? null,
+            html: data?.html ?? "",
+            status: (data?.status as RenderDoc["status"]) ?? "ready",
+            reason: (data?.reason as string | null) ?? null,
+            nameHint: data?.nameHint ?? null,
+            archived: data?.archived ?? false,
+            createdAt: data?.createdAt,
+            updatedAt: data?.updatedAt,
+            siteConfigId: data?.siteConfigId ?? null,
+            model: data?.model ?? null,
+            version: data?.version ?? null,
+            controllerVersion: data?.controllerVersion ?? null,
+            lastExportedAt: data?.lastExportedAt ?? null,
+            vercelProjectId: data?.vercelProjectId ?? null,
+            vercelProjectName: data?.vercelProjectName ?? null,
+            lastDeployUrl: data?.lastDeployUrl ?? null,
+            seoMetaByPage: data?.seoMetaByPage ?? null,
+            progress:
+                typeof data?.progress === "number"
+                    ? data.progress
+                    : progressFromBackend,
+        };
+    }
+
 
     const refreshRenders = useCallback(
         async () => {
@@ -3078,8 +3119,18 @@ export default function PreviewPage(): JSX.Element {
     );
 
     useEffect(() => {
-        if (!user || !targetUrl || !isHttpUrl(targetUrl)) {
+        if (!user) {
             setRenders([]);
+            return;
+        }
+
+        // When landing via a deep link (e.g. community remix -> /dashboard/view?render=...)
+        // there may be no active URL context yet. In that case, keep any pinned render
+        // rather than blanking the dashboard.
+        if (!targetUrl || !isHttpUrl(targetUrl)) {
+            if (!deepLinkRenderId) {
+                setRenders([]);
+            }
             return;
         }
 
@@ -3222,7 +3273,37 @@ export default function PreviewPage(): JSX.Element {
         user,
         targetUrl,
         targetHash,
+        deepLinkRenderId,
     ]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        (async () => {
+            if (!user) return;
+            if (!deepLinkRenderId) return;
+
+            try {
+                const renderRef = doc(db, "kloner_users", user.uid, "kloner_renders", deepLinkRenderId);
+                const snap = await getDoc(renderRef);
+                if (!snap.exists()) return;
+                const data = snap.data() as any;
+                const mapped = mapRenderData(snap.id, data);
+
+                if (cancelled) return;
+                setRenders((prev) => {
+                    if (prev.some((r) => r.id === mapped.id)) return prev;
+                    return [mapped, ...prev].slice(0, 100);
+                });
+            } catch (err) {
+                console.warn("[dashboard] failed to load deep-linked render", err);
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [user, deepLinkRenderId]);
 
     /* ───────── actions ───────── */
 
