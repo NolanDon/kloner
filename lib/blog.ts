@@ -1361,7 +1361,7 @@ Ready to try it? Start in the [dashboard](/dashboard) or compare plans on [Prici
   },
   {
     slug: "free-ai-website-builder",
-    title: "Free AI Website Builder: What You Actually Get (and How to Avoid Lock‑In)",
+    title: "Free AI Website Builders: What You Get (Avoid Lock-In)",
     description:
       "What “free AI website builder” really means, what you can ship for $0, and how to keep performance and code ownership as you grow.",
     publishedAt: "2026-02-12",
@@ -1441,7 +1441,7 @@ Want to build something real? Start from a URL in the [dashboard](/dashboard).
   },
   {
     slug: "wix-website-builder-vs-kloner",
-    title: "Wix Website Builder vs Kloner: A Performance‑First Alternative",
+    title: "Wix vs Kloner: Performance-First Builder Comparison",
     description:
       "A practical comparison for people searching Wix website builder or Wix AI website builder — especially if you care about performance, SEO, and code ownership.",
     publishedAt: "2026-02-12",
@@ -1503,7 +1503,7 @@ If you want to test Kloner quickly, start from a URL in the [dashboard](/dashboa
   },
   {
     slug: "squarespace-website-builder-vs-kloner",
-    title: "Squarespace Website Builder vs Kloner: Templates vs Cloning Workflows",
+    title: "Squarespace vs Kloner: Templates vs Cloning Workflow",
     description:
       "For people evaluating Squarespace website builder: when templates are perfect, and when a performance-first cloning workflow makes more sense.",
     publishedAt: "2026-02-12",
@@ -1556,7 +1556,7 @@ Try Kloner from a URL in the [dashboard](/dashboard).
   },
   {
     slug: "webflow-website-builder-vs-kloner",
-    title: "Webflow Website Builder vs Kloner: Control vs Speed",
+    title: "Webflow vs Kloner: Design Control vs Speed",
     description:
       "A grounded comparison for Webflow website builder searches: when design control wins, and when an AI cloning workflow is faster to ship and iterate.",
     publishedAt: "2026-02-12",
@@ -1598,7 +1598,7 @@ Start from a URL in the [dashboard](/dashboard) and see how fast you can get to 
   },
   {
     slug: "framer-ai-website-builder-vs-kloner",
-    title: "Framer AI Website Builder vs Kloner: AI Sites vs Exportable Projects",
+    title: "Framer vs Kloner: Exportable AI Sites vs Hosted Pages",
     description:
       "Comparing Framer AI website builder workflows to Kloner for founders who care about performance, iteration speed, and long-term code ownership.",
     publishedAt: "2026-02-12",
@@ -1636,7 +1636,7 @@ Try starting from a URL in the [dashboard](/dashboard).
   },
   {
     slug: "durable-ai-website-builder-vs-kloner",
-    title: "Durable AI Website Builder vs Kloner: One‑Click vs Real Ownership",
+    title: "Durable vs Kloner: One-Click AI Builder vs Ownership",
     description:
       "A practical comparison for Durable AI website builder searches: what you get from one-click sites, and when you want a performance-first code workflow instead.",
     publishedAt: "2026-02-12",
@@ -1674,7 +1674,7 @@ Start in the [dashboard](/dashboard) if you want to generate and iterate.
   },
   {
     slug: "hostinger-ai-website-builder-vs-kloner",
-    title: "Hostinger AI Website Builder vs Kloner: Hosted Builder vs Ship‑Fast Workflow",
+    title: "Hostinger vs Kloner: Hosted AI Builder vs Ship-Fast",
     description:
       "Comparing Hostinger AI website builder to Kloner for founders who want speed now and performance/ownership later.",
     publishedAt: "2026-02-12",
@@ -1716,7 +1716,7 @@ Start from a URL in the [dashboard](/dashboard).
   },
   {
     slug: "how-to-create-a-website-for-free",
-    title: "How to Create a Website for Free (That Doesn’t Load Like a Brick)",
+    title: "How to Create a Website for Free (Fast + SEO-Friendly)",
     description:
       "A practical guide for people searching how to create a website for free: options, tradeoffs, and a performance-first path that scales.",
     publishedAt: "2026-02-12",
@@ -1774,7 +1774,7 @@ If you want to move fast, start in the [dashboard](/dashboard) and iterate.
   },
   {
     slug: "best-website-builder-for-small-business",
-    title: "Best Website Builder for Small Business: A Practical Checklist (2026)",
+    title: "Best Website Builder for Small Business (2026 Checklist)",
     description:
       "A buyer’s checklist for choosing the best website builder for small business: speed, SEO, ownership, and how to avoid expensive plugin ecosystems.",
     publishedAt: "2026-02-12",
