@@ -46,6 +46,11 @@ export function initMixpanel() {
         // Set NEXT_PUBLIC_MIXPANEL_RECORD_SESSIONS_PERCENT to a value 1-100.
         record_sessions_percent: recordSessionsPercent,
         record_heatmap_data: recordSessionsPercent > 0 ? getRecordHeatmapData() : false,
+
+        // Uncensor Session Replay recordings (shows text + inputs).
+        // Note: rrweb/Mixpanel will still avoid recording password fields.
+        record_mask_all_text: false,
+        record_mask_all_inputs: false,
     });
 }
 

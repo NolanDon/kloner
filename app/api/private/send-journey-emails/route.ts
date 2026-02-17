@@ -323,6 +323,75 @@ function sleep(ms: number) {
     return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
+function pickJourneySubject(args: { uid: string; step: string }) {
+    const subjectsByStep: Record<string, string[]> = {
+        paywall: [
+            "Want to ship this live?",
+            "One step away from going live",
+            "Quick idea to get this deployed",
+        ],
+        vercel: [
+            "Ready for your first deploy?",
+            "Let’s get one deploy out",
+            "Your Vercel setup is done — next step",
+        ],
+        render: [
+            "A small tweak, then deploy",
+            "You’re close — want to ship it?",
+            "Turn that render into a live app",
+        ],
+        start: [
+            "Want a fresh preview in minutes?",
+            "Pick a URL and I’ll help you ship",
+            "A quick path to a working preview",
+        ],
+    };
+
+    const step = (args.step || "start").toLowerCase();
+    const candidates = subjectsByStep[step] || subjectsByStep.start;
+
+    // Deterministic rotation per user per day per step (avoids feeling like the same blast).
+    const h = crypto.createHash("sha256").update(`${args.uid}:${dayKeyUtc()}:${step}`).digest();
+    const idx = h[0] % candidates.length;
+    return candidates[idx];
+}
+
+function pickJourneyBody(args: { uid: string; step: string; tier: 1 | 2 | 3 | 4 }) {
+    const bodiesByStep: Record<string, string[]> = {
+        paywall: [
+            "If your goal is a live app, the fastest loop is: deploy something small, then iterate. Starting a trial unlocks the full deploy path so you can focus on product, not setup.",
+            "A lot of people get stuck right before the ‘live’ moment. The quickest way through is to ship one tiny deploy, then improve it. Trial → deploy → iterate.",
+            "If you want to keep momentum, aim for one simple deploy first. Once it’s live, everything else (polish, features, SEO) becomes way easier to reason about.",
+        ],
+        vercel: [
+            "You’ve already done the hard part by connecting Vercel. Next, push a simple deploy — even a boring one — just to establish the workflow. After that, editing feels 10× faster.",
+            "A small tip: treat your first deploy as a ‘hello world’ for the pipeline. Once you’ve seen it live, you can focus on the parts that matter (copy, UX, features).",
+            "If you’re feeling stuck, do a single deploy to validate the loop end-to-end. You can always refactor later — the big win is making it real.",
+        ],
+        render: [
+            "Nice — you’ve got a render. The next win is turning it into something you can share. One or two small edits + a deploy is usually enough to unlock the ‘this is real’ feeling.",
+            "Here’s the shortcut: don’t perfect it in the editor. Get it live, then iterate with real feedback. Shipping early makes every next decision easier.",
+            "If you want momentum, pick one small change (headline, CTA, layout), then deploy. Small cycles beat big rewrites.",
+        ],
+        start: [
+            "If you want a quick win, start from a URL or template and aim for a usable preview first. Kloner is best when it removes the setup so you can spend your time on the actual product.",
+            "A simple approach that works: clone → tweak the key sections → deploy. You’ll get more clarity from something live than from another hour of setup.",
+            "If you’re not sure what to build first, start by cloning the flow you want (landing → signup → dashboard). Once the skeleton exists, filling it in is straightforward.",
+        ],
+    };
+
+    const step = (args.step || "start").toLowerCase();
+    const candidates = bodiesByStep[step] || bodiesByStep.start;
+
+    // Deterministic rotation per user per day per step.
+    const h = crypto
+        .createHash("sha256")
+        .update(`${args.uid}:${dayKeyUtc()}:${step}:body:t${args.tier}`)
+        .digest();
+    const idx = h[0] % candidates.length;
+    return candidates[idx];
+}
+
 /**
  * Serialize Resend sends to respect 2 req/sec.
  * - Even if you later add parallelism, this keeps outbound sends spaced.
@@ -524,6 +593,7 @@ export async function POST(req: NextRequest) {
                             const state = await getJourneyState(db, uid);
                             const tierNum = deriveTier(state);
                             const copy = makeCopy(tierNum);
+                            const body = pickJourneyBody({ uid, step: copy.step, tier: tierNum });
 
                             const unsubUrl = makeUnsubUrl({ uid, kind: "journey" });
                             const dest = buildUtm(
@@ -537,17 +607,17 @@ export async function POST(req: NextRequest) {
                             await sendWithRateLimit(resend, {
                                 from,
                                 to,
-                                subject: "Quick note from Nolan",
+                                subject: pickJourneySubject({ uid, step: copy.step }),
                                 html: buildJourneyHtml({
                                     name,
-                                    body: copy.body,
+                                    body,
                                     ctaLabel: copy.ctaLabel,
                                     ctaUrl: clickUrl,
                                     unsubUrl,
                                 }),
                                 text: buildJourneyText({
                                     name,
-                                    body: copy.body,
+                                    body,
                                     ctaUrl: clickUrl,
                                     unsubUrl,
                                 }),
