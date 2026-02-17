@@ -2615,8 +2615,10 @@ export default function PreviewPage(): JSX.Element {
 
     /* ───────── url + tier ───────── */
 
+    const urlParam = search.get("u") || "";
+
     const targetUrl = useMemo(() => {
-        let raw = search.get("u");
+        let raw = urlParam;
 
         if (!raw) {
             try {
@@ -2634,7 +2636,7 @@ export default function PreviewPage(): JSX.Element {
         } catch {
             return normUrl(ensureHttp(raw));
         }
-    }, [search]);
+    }, [urlParam]);
 
     const [urlMenuOpen, setUrlMenuOpen] = useState(false);
     const urlMenuRef = useRef<HTMLDivElement | null>(null);
@@ -2942,6 +2944,7 @@ export default function PreviewPage(): JSX.Element {
                     targetHash,
                     optimisticKeys: Object.keys(optimisticByKey),
                     extractHashFromKey,
+                    strict: true,
                 });
 
                 const now = Date.now();
@@ -3106,6 +3109,7 @@ export default function PreviewPage(): JSX.Element {
                 targetHash,
                 optimisticKeys: Object.keys(optimisticNow),
                 extractHashFromKey,
+                strict: true,
             });
 
             const now = Date.now();
@@ -4738,13 +4742,13 @@ export default function PreviewPage(): JSX.Element {
     }, [shots]);
 
     useEffect(() => {
-        const current = search.get("u");
-        if (current) {
-            try {
-                localStorage.setItem("kloner:lastUrl", current);
-            } catch { }
+        if (!urlParam) return;
+        try {
+            localStorage.setItem("kloner:lastUrl", urlParam);
+        } catch {
+            // ignore
         }
-    }, [search]);
+    }, [urlParam]);
 
 
     // somewhere above the JSX return in this component:
@@ -5185,7 +5189,7 @@ export default function PreviewPage(): JSX.Element {
                         <div
                             role="listbox"
                             aria-activedescendant={activeUrlDoc?.id}
-                            className="absolute z-40 mt-2 w-[min(640px,90vw)] overflow-hidden rounded-md border border-neutral-200 bg-white shadow-lg"
+                            className="absolute z-[9999] mt-2 w-[min(640px,90vw)] overflow-hidden rounded-md border border-neutral-200 bg-white shadow-lg"
                         >
                             <ul className="max-h-[280px] overflow-auto py-1">
                                 {orderedUrls.map((u) => {
@@ -5395,7 +5399,7 @@ export default function PreviewPage(): JSX.Element {
                             </div> */}
 
                             <div
-                                className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                                className="mt-4 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4"
                                 aria-label="Editable previews list"
                             >
                                 {renders.length === 0 && (

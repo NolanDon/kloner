@@ -31,6 +31,28 @@ describe("filterRendersForBuilder", () => {
     expect(out.map((r) => r.id)).toEqual(["r1"]);
   });
 
+  it("strict mode: hides the only render if it doesn't match targetUrl", () => {
+    const all: R[] = [
+      {
+        id: "r1",
+        url: null,
+        urlHash: null,
+        key: null,
+        source: "webapp",
+        archived: false,
+      },
+    ];
+
+    const out = filterRendersForBuilder({
+      all,
+      targetUrl: "https://example.com",
+      targetHash: "abc123",
+      strict: true,
+    });
+
+    expect(out.map((r) => r.id)).toEqual([]);
+  });
+
   it("matches by normalized url (trailing slash)", () => {
     const all: R[] = [
       { id: "r1", url: "https://example.com/", archived: false },
@@ -64,6 +86,28 @@ describe("filterRendersForBuilder", () => {
     });
 
     expect(out.map((r) => r.id)).toEqual(["r1"]);
+  });
+
+  it("strict mode: excludes community remixes", () => {
+    const all: R[] = [
+      {
+        id: "r1",
+        url: null,
+        urlHash: null,
+        key: null,
+        source: "community_remix",
+        archived: false,
+      },
+    ];
+
+    const out = filterRendersForBuilder({
+      all,
+      targetUrl: "https://example.com",
+      targetHash: "zzz",
+      strict: true,
+    });
+
+    expect(out.map((r) => r.id)).toEqual([]);
   });
 
   it("excludes archived renders", () => {

@@ -12,7 +12,18 @@ function getToken(): string | undefined {
 }
 
 function isDisabled(): boolean {
-    return process.env.NEXT_PUBLIC_MIXPANEL_DISABLED === "1";
+    if (process.env.NEXT_PUBLIC_MIXPANEL_DISABLED === "1") return true;
+
+    // Never run Mixpanel on local dev servers.
+    // (Avoids polluting analytics and recording local session replays.)
+    try {
+        const host = typeof window !== "undefined" ? window.location.hostname : "";
+        if (host === "localhost" || host === "127.0.0.1" || host === "::1") return true;
+    } catch {
+        // ignore
+    }
+
+    return false;
 }
 
 function getRecordSessionsPercent(): number {

@@ -54,11 +54,17 @@ export function filterRendersForBuilder<T extends RenderForBuilder>(params: {
     targetHash?: string | null;
     optimisticKeys?: string[];
     extractHashFromKey?: (key: string) => string | null;
+    /**
+     * When true, only include renders that match the selected URL (by url/urlHash/key hash).
+     * This disables the lenient "show the only render" fallback and excludes community remixes.
+     */
+    strict?: boolean;
 }): T[] {
     const allNonArchived = (params.all || []).filter((r) => !r?.archived);
     const targetUrlNorm = normalizeUrlForMatch(params.targetUrl || "");
     const targetHash = (params.targetHash || "").trim();
     const optimistic = new Set(params.optimisticKeys || []);
+    const strict = params.strict === true;
 
     const filtered = allNonArchived.filter((r) => {
         const rUrl = typeof r.url === "string" ? r.url : "";
@@ -74,16 +80,16 @@ export function filterRendersForBuilder<T extends RenderForBuilder>(params: {
 
         const byOptimisticKey = typeof r.key === "string" && optimistic.has(r.key);
 
-        // Community remixes don't have url/urlHash; show them regardless.
-        const byCommunityRemix = r.source === "community_remix";
+        // Community remixes don't have url/urlHash; show them regardless (lenient mode only).
+        const byCommunityRemix = !strict && r.source === "community_remix";
 
         return byUrl || byHash || byKeyHash || byOptimisticKey || byCommunityRemix;
     });
 
-    // Severity-1 guardrail: if the user only has one render, never hide it.
+    // Severity-1 guardrail (lenient mode only): if the user only has one render, never hide it.
     // This catches cases where the stored render fields don't match the current
     // targetUrl (http/https, trailing slash, missing urlHash, etc.).
-    if (filtered.length === 0 && allNonArchived.length === 1) {
+    if (!strict && filtered.length === 0 && allNonArchived.length === 1) {
         return allNonArchived;
     }
 
