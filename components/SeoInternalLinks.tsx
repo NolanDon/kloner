@@ -14,9 +14,10 @@ const CORE_LINKS: LinkItem[] = [
   { label: "Kloner Vercel EULA", href: "/legal/kloner-vercel-eula" },
 ];
 
-// These are the blog URLs Ahrefs reported as orphans.
-// Keeping them here ensures they have guaranteed incoming internal links even if a crawler
-// misses the blog index for any reason.
+// Keeping key blog URLs here ensures they have guaranteed incoming internal links
+// (via the footer) even if a crawler misses the blog index for any reason.
+//
+// Includes the URLs reported as orphans in recent SEO audits.
 const AFFECTED_BLOG_POSTS: LinkItem[] = [
   { label: "Clone a website from a URL", href: "/blog/clone-a-website-from-a-url" },
   { label: "Clone your next SaaS in minutes", href: "/blog/clone-your-next-saas-in-minutes" },
@@ -58,6 +59,34 @@ const AFFECTED_BLOG_POSTS: LinkItem[] = [
     href: "/blog/validate-a-market-with-a-fast-mvp",
   },
   { label: "Demo operations playbook", href: "/blog/demo-operations-playbook" },
+  { label: "Wix Website Builder vs Kloner", href: "/blog/wix-website-builder-vs-kloner" },
+  { label: "Webflow Website Builder vs Kloner", href: "/blog/webflow-website-builder-vs-kloner" },
+  {
+    label: "How to Create a Website for Free",
+    href: "/blog/how-to-create-a-website-for-free",
+  },
+  { label: "Free AI Website Builder", href: "/blog/free-ai-website-builder" },
+  { label: "AI Website Builder", href: "/blog/ai-website-builder" },
+  {
+    label: "Best Website Builder for Small Business",
+    href: "/blog/best-website-builder-for-small-business",
+  },
+  {
+    label: "Durable AI Website Builder vs Kloner",
+    href: "/blog/durable-ai-website-builder-vs-kloner",
+  },
+  {
+    label: "Hostinger AI Website Builder vs Kloner",
+    href: "/blog/hostinger-ai-website-builder-vs-kloner",
+  },
+  {
+    label: "Framer AI Website Builder vs Kloner",
+    href: "/blog/framer-ai-website-builder-vs-kloner",
+  },
+  {
+    label: "Squarespace Website Builder vs Kloner",
+    href: "/blog/squarespace-website-builder-vs-kloner",
+  },
 ];
 
 function InlineLinks({ links }: { links: LinkItem[] }) {

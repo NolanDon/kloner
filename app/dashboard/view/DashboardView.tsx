@@ -6237,7 +6237,7 @@ export default function PreviewPage(): JSX.Element {
                                                     className="space-y-4"
                                                 >
                                                     <p className="text-sm text-neutral-600">
-                                                        Name your Vercel project. This becomes the base for your live URL and deployment.
+                                                        Name your Website. This becomes the base for your live URL and deployment.
                                                     </p>
 
                                                     <div className="space-y-1">
