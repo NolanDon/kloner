@@ -119,6 +119,77 @@ function csrfHeaders(csrf: unknown): HeadersInit | undefined {
     return undefined;
 }
 
+function detectNextAppDir(files: AppData["files"] | null | undefined): "src/app" | "app" | null {
+    if (!files) return null;
+    const keys = Object.keys(files);
+    if (keys.some((k) => k === "src/app/layout.tsx" || k.startsWith("src/app/"))) return "src/app";
+    if (keys.some((k) => k === "app/layout.tsx" || k.startsWith("app/"))) return "app";
+    return null;
+}
+
+function buildHeadTsxWithFavicon(faviconUrl: string): string {
+    const urlLiteral = JSON.stringify(faviconUrl);
+    return (
+        `export default function Head() {\n` +
+        `  return (\n` +
+        `    <>\n` +
+        `      {/* kloner:favicon */}\n` +
+        `      <link rel="icon" href=${urlLiteral} />\n` +
+        `    </>\n` +
+        `  );\n` +
+        `}\n`
+    );
+}
+
+function upsertFaviconInHeadTsx(existing: string, faviconUrl: string): string {
+    const nextHref = JSON.stringify(faviconUrl);
+
+    // Prefer updating our marker line if present.
+    if (existing.includes("kloner:favicon")) {
+        const lines = existing.split(/\r?\n/);
+        let changed = false;
+        const out = lines.map((line) => {
+            if (line.includes("kloner:favicon")) {
+                changed = true;
+                return line;
+            }
+            if (changed && /<link\s+[^>]*rel=["']icon["'][^>]*>/i.test(line)) {
+                return `      <link rel="icon" href=${nextHref} />`;
+            }
+            return line;
+        });
+        return out.join("\n");
+    }
+
+    // Replace an existing rel="icon" href="..." in either attribute order.
+    const r1 = /(<link\s+[^>]*rel=["']icon["'][^>]*href=["'])([^"']*)(["'][^>]*>)/i;
+    if (r1.test(existing)) {
+        return existing.replace(r1, `$1${faviconUrl}$3`);
+    }
+    const r2 = /(<link\s+[^>]*href=["'])([^"']*)(["'][^>]*rel=["']icon["'][^>]*>)/i;
+    if (r2.test(existing)) {
+        return existing.replace(r2, `$1${faviconUrl}$3`);
+    }
+
+    // If it's a TSX file with a return fragment, insert our link near the top.
+    const insertAfter = existing.indexOf("return (");
+    if (insertAfter !== -1) {
+        const idx = existing.indexOf("<>", insertAfter);
+        if (idx !== -1) {
+            const before = existing.slice(0, idx + 2);
+            const after = existing.slice(idx + 2);
+            return (
+                before +
+                `\n      {/* kloner:favicon */}\n      <link rel=\"icon\" href=${nextHref} />` +
+                after
+            );
+        }
+    }
+
+    // Fallback: preserve existing and append a safe link.
+    return existing + `\n\n{/* kloner:favicon */}\n<link rel=\"icon\" href=${nextHref} />\n`;
+}
+
 function addCacheBust(url: string, token: string | number): string {
     try {
         const u = new URL(url);
@@ -185,6 +256,10 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
 }) {
     const { user } = useAuth();
     const { showConfirm, showAlert } = useModal();
+
+    const faviconInputRef = useRef<HTMLInputElement | null>(null);
+    const [faviconUploading, setFaviconUploading] = useState(false);
+    const [faviconUrl, setFaviconUrl] = useState<string | null>(null);
     const [supabaseConnected, setSupabaseConnected] = useState<boolean | null>(null);
     const [supabaseProjectName, setSupabaseProjectName] = useState<string | null>(null);
     const [supabaseProjectRef, setSupabaseProjectRef] = useState<string | null>(null);
@@ -1642,6 +1717,54 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
         loadApp();
     }, [appId, onClose]);
 
+    // Derive current favicon URL from head.tsx if we created/updated one.
+    useEffect(() => {
+        const files = app?.files;
+        const appDir = detectNextAppDir(files);
+        if (!files || !appDir) {
+            setFaviconUrl(null);
+            return;
+        }
+
+        const headPath = `${appDir}/head.tsx`;
+        const head = (files as any)?.[headPath]?.content;
+        if (typeof head !== "string") {
+            setFaviconUrl(null);
+            return;
+        }
+
+        const m = head.match(/rel=["']icon["'][^>]*href=["']([^"']+)["']/i) ||
+            head.match(/href=["']([^"']+)["'][^>]*rel=["']icon["']/i);
+        const next = m && m[1] ? String(m[1]).trim() : "";
+        setFaviconUrl(next || null);
+    }, [app?.files]);
+
+    const handlePickFavicon = useCallback(() => {
+        if (faviconUploading) return;
+        faviconInputRef.current?.click();
+    }, [faviconUploading]);
+
+    const uploadFaviconToUserBlob = useCallback(async (file: globalThis.File): Promise<{ url: string; path?: string }> => {
+        const csrf = await ensureSessionAndCsrf().catch(() => null);
+        const url = `/api/user-blob/upload-url?filename=${encodeURIComponent("favicon.ico")}&renderId=${encodeURIComponent(appId)}`;
+
+        const res = await fetch(url, {
+            method: "POST",
+            headers: {
+                "content-type": file.type || "application/octet-stream",
+                ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
+            },
+            credentials: "include",
+            body: file,
+        });
+
+        const j = await res.json().catch(() => ({} as any));
+        if (!res.ok || !j?.url) {
+            throw new Error(j?.error || `upload_failed_${res.status}`);
+        }
+        return { url: String(j.url), path: typeof j.path === "string" ? j.path : undefined };
+    }, [appId]);
+
     // Firebase real-time listener for instant UI updates when files change
     useEffect(() => {
         if (!appId || !user?.uid) return;
@@ -2119,6 +2242,58 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
             return false;
         }
     }, [appId, queuePreviewApply, showAlert]);
+
+    const applyFaviconToApp = useCallback(async (nextUrl: string) => {
+        const files = appRef.current?.files;
+        const appDir = detectNextAppDir(files);
+
+        if (!files || !appDir) {
+            await showAlert(
+                "This project doesn’t look like a Next.js App Router project (no app/ or src/app/ folder found). I can upload the icon, but can’t auto-wire it into your code.",
+                "Favicon",
+            );
+            return;
+        }
+
+        const headPath = `${appDir}/head.tsx`;
+        const existing = (files as any)?.[headPath]?.content;
+
+        const content =
+            typeof existing === "string" && existing.trim().length > 0
+                ? upsertFaviconInHeadTsx(existing, nextUrl)
+                : buildHeadTsxWithFavicon(nextUrl);
+
+        // Update local state immediately
+        setApp((prev) => prev ? {
+            ...prev,
+            files: {
+                ...prev.files,
+                [headPath]: { content, lastModified: Date.now() },
+            },
+        } : prev);
+
+        await saveFileToServer(headPath, content, { afterSave: "apply", interactive: true });
+        setFaviconUrl(nextUrl);
+    }, [saveFileToServer, showAlert]);
+
+    const handleFaviconFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        try {
+            setFaviconUploading(true);
+
+            const { url } = await uploadFaviconToUserBlob(file);
+            await applyFaviconToApp(url);
+            void showAlert("Favicon updated.", "Favicon");
+        } catch (err: any) {
+            console.error("Favicon upload failed", err);
+            void showAlert("Failed to upload favicon. Please try again.", "Favicon");
+        } finally {
+            setFaviconUploading(false);
+            e.target.value = "";
+        }
+    }, [applyFaviconToApp, showAlert, uploadFaviconToUserBlob]);
 
     const handleFileChangeFromContainer = useCallback((path: string, content: string) => {
         // While we are in generation-processing state we may be running a placeholder template.
@@ -2861,8 +3036,49 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                     >
                                         View live
                                     </button>
+
+                                    <a
+                                        href="https://vercel.com/dashboard/domains"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-xs text-gray-600 underline hover:text-gray-900"
+                                        title="Attach a custom domain in Vercel"
+                                    >
+                                        Attach custom domain
+                                    </a>
                                 </div>
                             ) : null}
+
+                            <div className="ml-3 flex items-center gap-2 text-xs">
+                                <button
+                                    type="button"
+                                    onClick={handlePickFavicon}
+                                    disabled={faviconUploading}
+                                    className="px-3 py-1 rounded-full border border-gray-300 hover:bg-gray-50 disabled:opacity-60"
+                                    title="Upload a favicon.ico for this app"
+                                >
+                                    {faviconUploading ? "Uploading favicon…" : "Upload favicon"}
+                                </button>
+
+                                {faviconUrl ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => window.open(faviconUrl, "_blank", "noopener,noreferrer")}
+                                        className="text-xs text-gray-600 underline hover:text-gray-900"
+                                        title="Open current favicon"
+                                    >
+                                        View favicon
+                                    </button>
+                                ) : null}
+
+                                <input
+                                    ref={faviconInputRef}
+                                    type="file"
+                                    accept=".ico,image/x-icon,image/vnd.microsoft.icon,image/png,image/svg+xml"
+                                    className="hidden"
+                                    onChange={handleFaviconFileChange}
+                                />
+                            </div>
 
                             {showDeploySuccess ? (
                                 <div className="ml-auto text-xs font-semibold text-emerald-700 flex items-center gap-1">
