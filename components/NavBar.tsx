@@ -145,7 +145,7 @@ export default function NavBar(): JSX.Element {
             href="/"
             className="ml-5 flex items-center gap-2 font-black tracking-tight text-xl md:text-2xl shrink-0"
           >
-            <div className="relative h-[44px] w-[44px] sm:h-[56px] sm:w-[56px] md:h-[72px] md:w-[72px]">
+            <div className="relative h-[65px] w-[65px] md:h-[72px] md:w-[72px]">
               <Image
                 src={logo}
                 alt="kloner logo"

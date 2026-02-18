@@ -65,10 +65,10 @@ export default function RootLayout({
         <StyledJsxRegistry>
           <AuthProviderServer>
             <AppClientProviders>
-              <Suspense>
+              <Suspense fallback={null}>
                 <AffiliateRefCapture />
-                {children}
               </Suspense>
+              {children}
               <ChatWidgetProvider />
             </AppClientProviders>
           </AuthProviderServer>
