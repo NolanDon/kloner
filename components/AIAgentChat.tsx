@@ -256,7 +256,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         return () => document.removeEventListener("keydown", onKey);
     }, [topupModalOpen]);
     const makeWelcomeMessage = useCallback((ctx?: AIAgentChatProps["welcomeContext"]) => {
-        const base = "Welcome to your app builder! I'm here to help you create amazing applications. 🚀";
+        const base = "Welcome to your website builder! I'm here to help you create amazing applications. 🚀";
 
         const cleanOneLine = (v: unknown, max = 180) => {
             const raw = typeof v === "string" ? v : "";
