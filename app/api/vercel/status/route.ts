@@ -28,29 +28,13 @@ export async function GET(req: NextRequest) {
             const snap = await ref.get();
 
             if (!snap.exists) {
-                return NextResponse.json(
-                    {
-                        connected: false,
-                        uid,
-                        exists: false,
-                        reason: "no_integration_doc",
-                    },
-                    { status: 200 },
-                );
+                return NextResponse.json({ connected: false }, { status: 200 });
             }
 
             const data = snap.data() || {};
             const connected = Boolean((data as any).connected);
 
-            return NextResponse.json(
-                {
-                    connected,
-                    uid,
-                    exists: true,
-                    reason: connected ? "connected_true" : "connected_false",
-                },
-                { status: 200 },
-            );
+            return NextResponse.json({ connected }, { status: 200 });
         },
         {
             methods: ["GET"],
