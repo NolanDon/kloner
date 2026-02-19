@@ -111,7 +111,7 @@ const tiers: Tier[] = [
         ],
         allFeatures: [
             "1200 monthly AI credits",
-            "Up to 30 pages in every generation",
+            "Up to 15 pages in every generation",
             "Team seats and client projects",
             "Change tracking and audit history",
             "Priority to new design tools",

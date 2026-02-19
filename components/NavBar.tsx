@@ -210,10 +210,10 @@ export default function NavBar(): JSX.Element {
             {/* Auth (desktop) */}
             {!user ? (
               <a
-                href="/login"
+                href="/login?mode=signup"
                 className="hidden lg:inline text-[15px] text-white/85 hover:text-white"
               >
-                Login
+                Sign up
               </a>
             ) : (
               <>
