@@ -6160,7 +6160,7 @@ export default function PreviewPage(): JSX.Element {
                                                             <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
                                                                 ✓
                                                             </span>
-                                                            <span className="leading-snug">Publish live web apps (production URLs)</span>
+                                                            <span className="leading-snug">Publish full-stack live websites</span>
                                                         </div>
 
                                                         <div className="flex items-start gap-3 text-[14px] text-neutral-800">
