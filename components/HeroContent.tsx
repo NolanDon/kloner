@@ -5,72 +5,10 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
 import { ArrowRightSquare, Send } from "lucide-react";
+import { PROMPT_PLACEHOLDERS } from "@/src/lib/promptPlaceholders";
+import { useRotatingPlaceholderIndex } from "@/src/hooks/useRotatingPlaceholderIndex";
+import { stripProtocol, validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
 
-function toAbsolute(u: string) {
-  const s = u.trim();
-  if (!s) return "";
-  try {
-    return new URL(s).toString();
-  } catch {
-    try {
-      return new URL(`https://${s}`).toString();
-    } catch {
-      return "";
-    }
-  }
-}
-
-function stripProtocol(input: string) {
-  return input.replace(/^\s*https?:\/\//i, "").trim();
-}
-
-const DOMAIN_RE = /^(?!-)(?:[a-z0-9-]{1,63}\.)+[a-z]{2,63}$/i;
-
-const PROMPT_PLACEHOLDERS = [
-  "Generate me a website for a dental clinic",
-  "Generate me a website for a veterinary clinic",
-  "Generate me a website for group sessions",
-  "Generate me a website for a yoga retreat",
-  "Generate me a website for a coffee shop",
-];
-
-function validateAndNormalize(u: string): string | null {
-  const s = u.trim();
-  if (!s) return null;
-  if (s.length > 2083) return null;
-
-  const lower = s.toLowerCase();
-  if (lower === "http" || lower === "https") return null;
-
-  const abs = toAbsolute(s);
-  if (!abs) return null;
-
-  try {
-    const parsed = new URL(abs);
-    const proto = parsed.protocol.toLowerCase();
-    if (proto !== "http:" && proto !== "https:") return null;
-
-    const hostLower = parsed.hostname.toLowerCase();
-    if (
-      hostLower === "localhost" ||
-      hostLower === "::1" ||
-      hostLower === "0.0.0.0" ||
-      /^127(?:\.\d{1,3}){0,3}$/.test(hostLower) ||
-      /^10\./.test(hostLower) ||
-      /^192\.168\./.test(hostLower) ||
-      /^169\.254\./.test(hostLower) ||
-      /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostLower)
-    ) {
-      return null;
-    }
-
-    if (!DOMAIN_RE.test(hostLower)) return null;
-
-    return parsed.toString();
-  } catch {
-    return null;
-  }
-}
 
 export default function HeroContent({
   displayClassName,
@@ -84,19 +22,15 @@ export default function HeroContent({
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const [isFocused, setIsFocused] = useState(false);
-  const [promptPlaceholderIdx, setPromptPlaceholderIdx] = useState(0);
+  const promptPlaceholderIdx = useRotatingPlaceholderIndex({
+    enabled: mode === "prompt",
+    length: PROMPT_PLACEHOLDERS.length,
+    intervalMs: 3200,
+  });
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
-
-  useEffect(() => {
-    if (mode !== "prompt") return;
-    const t = window.setInterval(() => {
-      setPromptPlaceholderIdx((i) => (i + 1) % PROMPT_PLACEHOLDERS.length);
-    }, 3200);
-    return () => window.clearInterval(t);
-  }, [mode]);
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -123,7 +57,7 @@ export default function HeroContent({
     }
 
     const stripped = stripProtocol(url);
-    const normalized = validateAndNormalize(stripped);
+    const normalized = validateAndNormalizePublicHttpUrl(stripped);
 
     if (!normalized) {
       setError("Please enter a valid public http(s) URL.");
@@ -133,7 +67,7 @@ export default function HeroContent({
     setError(null);
 
     if (user) {
-      router.push(`/dashboard?u=${encodeURIComponent(normalized)}`);
+      router.push(`/dashboard/view?u=${encodeURIComponent(normalized)}&start=1`);
       return;
     }
 
@@ -156,7 +90,7 @@ export default function HeroContent({
     const cleaned = stripProtocol(e.target.value);
     setUrl(cleaned);
     setError(
-      cleaned && !validateAndNormalize(cleaned)
+      cleaned && !validateAndNormalizePublicHttpUrl(cleaned)
         ? "Please enter a valid public http(s) URL."
         : null
     );
@@ -177,7 +111,7 @@ export default function HeroContent({
     const cleaned = stripProtocol(pasted);
     setUrl(cleaned);
     setError(
-      !validateAndNormalize(cleaned)
+      !validateAndNormalizePublicHttpUrl(cleaned)
         ? "Please enter a valid public http(s) URL."
         : null
     );

@@ -78,8 +78,7 @@ const BASE_NAV_SECTIONS: NavSectionConfig[] = [
     {
         label: "Preview",
         items: [
-            { href: "/dashboard", label: "Dashboard", icon: LayoutTemplate },
-            { href: "/dashboard/view", label: "Builder", icon: Hammer },
+            { href: "/dashboard/view", label: "Dashboard", icon: LayoutTemplate },
         ],
     },
     {

@@ -55,9 +55,11 @@ import {
     ChevronDown,
     Hammer,
     CheckCircle2,
+    Clock3,
     Crown,
     BrushIcon,
     Clock10,
+    Loader2,
     MessageCircleWarning,
     Archive,
     Share2,
@@ -72,6 +74,8 @@ import {
     ClockPlus,
     RotateCcw,
     X,
+    Send,
+    Trash2,
 } from "lucide-react";
 import {
     isHttpUrl,
@@ -94,11 +98,370 @@ import { recordDeployAnalytics } from "@/components/analytics";
 import Footer from "@/components/Footer";
 import { useModal } from "@/components/ui/ModalContext";
 import AppBuilderEditor from "@/components/AppBuilderEditor";
+import { PROMPT_PLACEHOLDERS } from "@/src/lib/promptPlaceholders";
+import { useRotatingPlaceholderIndex } from "@/src/hooks/useRotatingPlaceholderIndex";
+import { validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
 
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
 
 const ACCENT = "#f55f2a";
+
+type UrlStatusUi = "queued" | "processing" | "ready" | "stale" | "error" | "unknown";
+
+function normalizeUrlStatus(
+    raw?: UrlDoc["status"],
+    shotCount?: number,
+    updatedAt?: any
+): UrlStatusUi {
+    const s = String(raw || "unknown").toLowerCase();
+
+    if (s === "stale") return "stale";
+    if (s === "error") return "error";
+    if (s === "uploaded" || s === "done" || s === "ready") return "ready";
+    if (s === "in_progress" || s === "processing") return "processing";
+
+    if (s === "queued") {
+        const STALE_MIN_MS = 6 * 60 * 1000;
+        const ts =
+            typeof updatedAt?.toMillis === "function"
+                ? updatedAt.toMillis()
+                : Date.parse(updatedAt || "");
+        if (Number.isFinite(ts) && Date.now() - ts > STALE_MIN_MS) return "stale";
+        return (shotCount || 0) > 0 ? "processing" : "queued";
+    }
+
+    return "unknown";
+}
+
+type MiniDashboardEntryProps = {
+    onSubmitUrl: (rawUrl: string) => void;
+    onSubmitPrompt: (prompt: string) => void;
+    planLabel?: string;
+    userTier?: UserTier | "unknown";
+    screenshotRemaining?: number | null;
+    screenshotLimitDisplay?: string | number | null;
+    previewRemaining?: number | null;
+    previewLimitDisplay?: string | number | null;
+    onManagePlan?: () => void;
+    size?: "compact" | "full";
+    disabled?: boolean;
+    captureStatus?: UrlStatusUi | null;
+};
+
+function MiniDashboardEntry({
+    onSubmitUrl,
+    onSubmitPrompt,
+    planLabel,
+    userTier = "unknown",
+    screenshotRemaining = null,
+    screenshotLimitDisplay = null,
+    previewRemaining = null,
+    previewLimitDisplay = null,
+    onManagePlan,
+    size = "compact",
+    disabled = false,
+    captureStatus = null,
+}: MiniDashboardEntryProps) {
+    const isCompact = size === "compact";
+    const [mode, setMode] = useState<"url" | "prompt">("url");
+    const [url, setUrl] = useState("");
+    const [prompt, setPrompt] = useState("");
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+    const [isFocused, setIsFocused] = useState(false);
+    const promptPlaceholderIdx = useRotatingPlaceholderIndex({
+        enabled: mode === "prompt",
+        length: PROMPT_PLACEHOLDERS.length,
+        intervalMs: 3200,
+    });
+
+    async function handleSubmit(e: React.FormEvent) {
+        e.preventDefault();
+        if (busy || disabled) return;
+
+        setError(null);
+        setBusy(true);
+        try {
+            if (mode === "url") {
+                const v = (url || "").trim();
+                if (!v) {
+                    setError("Enter a URL to continue.");
+                    return;
+                }
+                const normalized = validateAndNormalizePublicHttpUrl(v);
+                if (!normalized) {
+                    setError("Please enter a valid public http(s) URL.");
+                    return;
+                }
+                onSubmitUrl(normalized);
+                return;
+            }
+
+            const p = (prompt || "").trim();
+            if (!p) {
+                setError("Enter a prompt to continue.");
+                return;
+            }
+            onSubmitPrompt(p);
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    return (
+        <div
+            className={
+                "rounded-3xl border border-neutral-200 bg-gradient-to-br from-white via-neutral-50 to-neutral-100 shadow-sm " +
+                (isCompact ? "px-5 py-6 sm:px-6 sm:py-7" : "px-6 py-8 sm:px-8 sm:py-10")
+            }
+        >
+            <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                    <div
+                        className={
+                            "inline-flex items-center gap-2 rounded-full bg-accent text-neutral-50 px-3 py-1 mb-4 " +
+                            (isCompact ? "text-[10px] mb-3" : "text-[11px] mb-4")
+                        }
+                    >
+                        <span>Kloner · Dashboard</span>
+                    </div>
+
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-3">
+                        <h2
+                            className={
+                                "tracking-tight text-neutral-900 " +
+                                (isCompact ? "text-2xl sm:text-3xl" : "text-3xl sm:text-4xl")
+                            }
+                        >
+                            Dashboard
+                        </h2>
+                        {userTier !== "unknown" && planLabel ? (
+                            <div className="inline-flex items-center">
+                                <div className="inline-flex items-center gap-1 rounded-full border border-accent bg-accent-50 px-2 py-1">
+                                    <Crown className="h-2.5 w-2.5 text-accent" />
+                                    <span className="text-[9px] font-semibold uppercase tracking-wide text-accent">
+                                        {planLabel}
+                                    </span>
+                                </div>
+                                {onManagePlan ? (
+                                    <span className="inline-flex">
+                                        <button
+                                            type="button"
+                                            onClick={onManagePlan}
+                                            title={userTier === "free" ? "Upgrade plan" : "Manage plan"}
+                                            aria-label={userTier === "free" ? "Upgrade plan" : "Manage plan"}
+                                            className="group inline-flex items-center justify-center rounded-md p-1 transition-all duration-150 hover:bg-white/10 hover:scale-[1.06] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[#C6F44D]/60 focus:ring-offset-2 focus:ring-offset-transparent"
+                                        >
+                                            <Edit2 className="h-3 w-3 opacity-80 transition-opacity group-hover:opacity-100" />
+                                        </button>
+                                    </span>
+                                ) : null}
+                            </div>
+                        ) : null}
+                    </div>
+
+                    <div className={"my-4 flex flex-wrap gap-2 " + (isCompact ? "text-[11px]" : "text-xs")}>
+                        <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-neutral-700">
+                            Screenshot credits:&nbsp;
+                            <span className="font-semibold text-neutral-900">
+                                {screenshotRemaining === null || !screenshotLimitDisplay
+                                    ? "-"
+                                    : `${screenshotRemaining}/${screenshotLimitDisplay}`}
+                            </span>
+                        </span>
+
+                        <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-neutral-700">
+                            Preview credits:&nbsp;
+                            <span className="font-semibold text-neutral-900">
+                                {previewRemaining === null || !previewLimitDisplay
+                                    ? "-"
+                                    : `${previewRemaining}/${previewLimitDisplay}`}
+                            </span>
+                        </span>
+                    </div>
+
+            
+                </div>
+            </div>
+
+            <div className={"mt-6 inline-flex rounded-full border border-neutral-200 bg-white p-1 " + (isCompact ? "text-[11px]" : "text-xs")}>
+                <button
+                    type="button"
+                    onClick={() => {
+                        setMode("url");
+                        setError(null);
+                        setTimeout(() => inputRef.current?.focus(), 0);
+                    }}
+                    disabled={disabled}
+                    className="rounded-full px-3 py-1.5 transition text-white"
+                    style={mode === "url" ? { backgroundColor: ACCENT } : { backgroundColor: "transparent", color: "#404040" }}
+                >
+                    URL
+                </button>
+                <button
+                    type="button"
+                    onClick={() => {
+                        setMode("prompt");
+                        setError(null);
+                        setTimeout(() => inputRef.current?.focus(), 0);
+                    }}
+                    disabled={disabled}
+                    className="rounded-full px-3 py-1.5 transition text-white"
+                    style={mode === "prompt" ? { backgroundColor: ACCENT } : { backgroundColor: "transparent", color: "#404040" }}
+                >
+                    Prompt
+                </button>
+            </div>
+
+            <form onSubmit={(e) => void handleSubmit(e)} className="mt-4">
+                <div
+                    className={
+                        "relative flex items-center bg-white/95 backdrop-blur-md p-2 pl-4 sm:pl-6 shadow-[0_12px_30px_rgba(0,0,0,0.08)] ring-1 ring-neutral-200 transition-all duration-300 ease-out " +
+                        (mode === "prompt"
+                            ? isCompact
+                                ? "rounded-3xl h-[84px] sm:h-[92px]"
+                                : "rounded-3xl h-[116px] sm:h-[116px]"
+                            : isCompact
+                                ? "rounded-full h-[48px] sm:h-[52px]"
+                                : "rounded-full h-[64px] sm:h-[72px]")
+                    }
+                >
+                    {mode === "url" ? (
+                        <span className={"hidden sm:inline text-neutral-400 font-medium mr-1 " + (isCompact ? "text-sm" : "text-lg")}>
+                            https://
+                        </span>
+                    ) : null}
+
+                    {mode === "prompt" ? (
+                        <textarea
+                            ref={inputRef as any}
+                            value={prompt}
+                            onChange={(e) => {
+                                const v = e.target.value;
+                                setPrompt(v);
+                                setError(null);
+                            }}
+                            onPaste={(e) => {
+                                const pasted = e.clipboardData.getData("text");
+                                if (!pasted) return;
+                                e.preventDefault();
+                                setPrompt(pasted);
+                                setError(null);
+                            }}
+                            placeholder=""
+                            rows={3}
+                            onFocus={() => setIsFocused(true)}
+                            onBlur={() => setIsFocused(false)}
+                            disabled={disabled}
+                            className={
+                                "flex-1 bg-transparent outline-none text-neutral-700 placeholder:text-neutral-400 font-medium resize-none h-full leading-snug " +
+                                (isCompact ? "text-[13px] sm:text-sm py-2" : "text-base sm:text-lg py-3")
+                            }
+                            autoComplete="off"
+                        />
+                    ) : (
+                        <input
+                            ref={inputRef as any}
+                            value={url}
+                            onChange={(e) => {
+                                setUrl(e.target.value);
+                                setError(null);
+                            }}
+                            onPaste={(e) => {
+                                const pasted = e.clipboardData.getData("text");
+                                if (!pasted) return;
+                                e.preventDefault();
+                                setUrl(pasted);
+                                setError(null);
+                            }}
+                            placeholder="example.com"
+                            onFocus={() => setIsFocused(true)}
+                            onBlur={() => setIsFocused(false)}
+                            disabled={disabled}
+                            className={
+                                "flex-1 bg-transparent outline-none text-neutral-700 placeholder:text-neutral-400 font-medium " +
+                                (isCompact ? "text-[13px] sm:text-sm" : "text-base sm:text-lg")
+                            }
+                            autoComplete="off"
+                        />
+                    )}
+
+                    {mode === "prompt" && !prompt ? (
+                        <div
+                            className={
+                                "pointer-events-none absolute left-0 right-0 top-0 pl-4 sm:pl-6 pr-[72px] sm:pr-[80px] pt-4 text-left " +
+                                (isFocused ? "opacity-60" : "opacity-100")
+                            }
+                            aria-hidden
+                        >
+                            <AnimatePresence mode="wait">
+                                <motion.span
+                                    key={promptPlaceholderIdx}
+                                    initial={{ opacity: 0, y: 6 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -6 }}
+                                    transition={{ duration: 0.35, ease: "easeOut" }}
+                                    className={
+                                        "block ml-[0.65ch] text-neutral-400/90 font-medium leading-snug max-h-[4.4em] overflow-hidden " +
+                                        (isCompact ? "text-[13px] sm:text-sm" : "text-base sm:text-lg")
+                                    }
+                                >
+                                    {PROMPT_PLACEHOLDERS[promptPlaceholderIdx]}
+                                </motion.span>
+                            </AnimatePresence>
+                        </div>
+                    ) : null}
+
+                    <button
+                        type="submit"
+                        disabled={disabled || busy || (mode === "prompt" ? !prompt.trim() : !url.trim())}
+                        className={
+                            "shrink-0 rounded-full text-white transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed " +
+                            (mode === "prompt" ? "h-11 w-11 grid place-items-center" : "h-full px-6 sm:px-10")
+                        }
+                        style={{ backgroundColor: ACCENT }}
+                        aria-label={mode === "prompt" ? "Create from prompt" : "Preview from URL"}
+                    >
+                        {disabled ? (
+                            mode === "prompt" ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : captureStatus === "queued" ? (
+                                "Queued"
+                            ) : (
+                                "Processing"
+                            )
+                        ) : mode === "prompt" ? (
+                            <>
+                                <Send className="h-4 w-4" />
+                                <span className="sr-only">Preview</span>
+                            </>
+                        ) : (
+                            "Preview"
+                        )}
+                    </button>
+                </div>
+
+                {error ? <div className="mt-2 text-sm text-red-700">{error}</div> : null}
+
+                {disabled && captureStatus ? (
+                    <div className="mt-2 inline-flex items-center gap-2 text-xs text-neutral-600">
+                        {captureStatus === "queued" ? (
+                            <Clock3 className="h-3.5 w-3.5" />
+                        ) : (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        )}
+                        {captureStatus === "queued"
+                            ? "Queued snapshot job…"
+                            : "Processing snapshots…"}
+                    </div>
+                ) : null}
+
+            </form>
+        </div>
+    );
+}
 
 /* ───────── types ───────── */
 
@@ -649,7 +1012,7 @@ function RenderCardInner({
                     <div className="pointer-events-auto flex max-w-xs flex-col items-stretch rounded-xl border border-neutral-200 bg-white/80 p-3 text-xs shadow-lg backdrop-blur-sm md:max-w-sm">
                         {/* top row: deploy / customize */}
                         {!shareOpen && (
-                            <div className="flex w-full flex-col font-semibold gap-2 sm:flex-row">
+                            <div className="flex w-full flex-row flex-nowrap items-stretch font-semibold gap-2">
                                 <button
                                     onClick={
                                         isDeployedFlag
@@ -665,7 +1028,7 @@ function RenderCardInner({
                                         isDeploying ||
                                         isThisCardLockedForBuild
                                     }
-                                    className={`group inline-flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-xs ${isArchivedFlag
+                                    className={`group inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 overflow-hidden whitespace-nowrap rounded-full px-3 py-1.5 text-xs ${isArchivedFlag
                                         ? "cursor-not-allowed bg-neutral-50 text-neutral-400"
                                         : isDeployedFlag
                                             ? "bg-emerald-500 text-white shadow-sm hover:bg-green-700"
@@ -685,18 +1048,18 @@ function RenderCardInner({
                                 >
                                     {isDeploying ? (
                                         <>
-                                            <span>Deploying…</span>
-                                            <Rocket className="h-4 w-4 animate-pulse" />
+                                            <span className="shrink-0">Deploying…</span>
+                                            <Rocket className="h-4 w-4 shrink-0 animate-pulse" />
                                         </>
                                     ) : isDeployedFlag ? (
                                         <>
-                                            <span>✓ Deployed</span>
-                                            <ExternalLink className="h-4 w-4" />
+                                            <span className="shrink-0">Deployed</span>
+                                            <ExternalLink className="h-4 w-4 shrink-0" />
                                         </>
                                     ) : (
                                         <>
-                                            <span>Deploy</span>
-                                            <Rocket className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
+                                            <span className="shrink-0">Deploy</span>
+                                            <Rocket className="h-4 w-4 shrink-0 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
                                         </>
                                     )}
                                 </button>
@@ -711,7 +1074,7 @@ function RenderCardInner({
                                             }
                                         }}
                                         disabled={(disableOpen || isDeleting || !r.html) && !isFailed}
-                                        className="group inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-neutral-500 px-3 py-1.5 text-neutral-800 shadow-sm disabled:opacity-60"
+                                            className="group inline-flex min-w-0 flex-1 items-center justify-center gap-2 overflow-hidden whitespace-nowrap rounded-full border border-neutral-500 px-3 py-1.5 text-neutral-800 shadow-sm disabled:opacity-60"
                                         title={
                                             isArchivedFlag
                                                 ? "Unarchive to customize this preview"
@@ -724,19 +1087,21 @@ function RenderCardInner({
                                                             : "Open editor to customize"
                                         }
                                     >
-                                        {isBuilding || isQueued
-                                            ? "Building…"
-                                            : isFailed
-                                                ? "Retry"
-                                                : "Customize"}
+                										<span className="shrink-0">
+                                                {isBuilding || isQueued
+                                                    ? "Building…"
+                                                    : isFailed
+                                                        ? "Retry"
+                                                        : "Edit"}
+                                            </span>
 
                                         {isFailed ? (
-                                            <WrenchIcon className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
+                                            <WrenchIcon className="h-4 w-4 shrink-0 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
                                         ) : (
                                             (isBuilding || isQueued) ?
-                                                <Hammer className="ghost-hammer-swing h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
+                                                <Hammer className="ghost-hammer-swing h-4 w-4 shrink-0 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
                                                 :
-                                                <BrushIcon className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
+                                                <BrushIcon className="h-4 w-4 shrink-0 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
                                         )}
                                     </button>
                                 )}
@@ -812,7 +1177,7 @@ function RenderCardInner({
                                                 isQueued ||
                                                 isFailed
                                             }
-                                            className="inline-flex items-center gap-1.5 rounded-full border border-neutral-300 bg-white/60 px-2.5 py-1 text-[11px] text-neutral-600 hover:border-neutral-400 disabled:opacity-50"
+                                            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-neutral-300 bg-white/60 px-2.5 py-1 text-[11px] text-neutral-600 hover:border-neutral-400 disabled:opacity-50"
                                             title={
                                                 alreadyShared
                                                     ? "This build is already shared to the community gallery"
@@ -824,7 +1189,7 @@ function RenderCardInner({
                                                     ? "Shared"
                                                     : shareOpen
                                                         ? "Cancel sharing"
-                                                        : "Community share"}
+                                                        : "Share"}
                                             </span>
                                             <Share2 className="h-3.5 w-3.5" />
                                         </button>
@@ -838,7 +1203,7 @@ function RenderCardInner({
                                                 isQueued ||
                                                 isFailed
                                             }
-                                            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] shadow-sm disabled:opacity-50 disabled:cursor-not-allowed ${isArchivedFlag
+                                            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] shadow-sm disabled:opacity-50 disabled:cursor-not-allowed ${isArchivedFlag
                                                 ? "border-amber-500 bg-amber-50 text-amber-900 hover:bg-amber-100"
                                                 : "border-neutral-300 bg-white/60 text-neutral-700 hover:border-neutral-400"
                                                 }`}
@@ -1073,16 +1438,20 @@ function AppCard({
     isArchiving,
     onCustomize,
     onArchive,
+    onDeploy,
     onDelete,
 }: {
-    app: { id: string; name: string; createdAt: any; updatedAt: any };
+    app: { id: string; name: string; createdAt: any; updatedAt: any; isDeployed?: boolean; productionUrl?: string | null; lastDeployUrl?: string | null };
     isDeleting: boolean;
     isArchiving: boolean;
     onCustomize: (appId: string) => void;
     onArchive: (appId: string) => void;
+    onDeploy: (app: { id: string; name: string }) => void;
     onDelete: (appId: string) => void;
 }) {
     const router = useRouter();
+
+    const isDeployedFlag = Boolean((app as any)?.isDeployed) || Boolean((app as any)?.productionUrl) || Boolean((app as any)?.lastDeployUrl);
 
     return (
         <div className="relative flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm hover:shadow-md transition-shadow">
@@ -1118,15 +1487,48 @@ function AppCard({
                 {/* Action buttons overlay */}
                 <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
                     <div className="pointer-events-auto flex max-w-xs flex-col items-stretch rounded-xl border border-neutral-200 bg-white/80 p-3 text-xs shadow-lg backdrop-blur-sm">
-                        <button
-                            onClick={() => onCustomize(app.id)}
-                            disabled={isDeleting}
-                            className="group inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-[#f55f2a] text-white shadow-sm px-3 py-2 font-medium disabled:opacity-60"
-                            title="Open app in editor"
-                        >
-                            <span>Customize Website</span>
-                            <BrushIcon className="h-4 w-4 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
-                        </button>
+                        <div className="flex w-full flex-row flex-nowrap items-stretch font-semibold gap-2">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (isDeployedFlag) {
+                                        router.push("/dashboard/deployments");
+                                        return;
+                                    }
+                                    onDeploy({ id: app.id, name: app.name });
+                                }}
+                                disabled={isDeleting || isArchiving}
+                                className={`group inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 overflow-hidden whitespace-nowrap rounded-full px-3 py-2 text-xs ${
+                                    isDeployedFlag
+                                        ? "bg-emerald-500 text-white shadow-sm hover:bg-green-700"
+                                        : "bg-accent text-white shadow-sm hover:bg-accent/90 disabled:opacity-60"
+                                }`}
+                                title={isDeployedFlag ? "View and manage deployments" : "Deploy this app to Vercel"}
+                            >
+                                {isDeployedFlag ? (
+                                    <>
+                                        <span className="shrink-0">Deployed</span>
+                                        <ExternalLink className="h-4 w-4 shrink-0" />
+                                    </>
+                                ) : (
+                                    <>
+                                        <span className="shrink-0">Deploy</span>
+                                        <Rocket className="h-4 w-4 shrink-0 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
+                                    </>
+                                )}
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => onCustomize(app.id)}
+                                disabled={isDeleting}
+                                className="group inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 overflow-hidden whitespace-nowrap rounded-full border border-neutral-500 px-3 py-2 text-xs font-semibold text-neutral-800 shadow-sm disabled:opacity-60"
+                                title="Open app in editor"
+                            >
+                                <span className="shrink-0">Edit</span>
+                                <BrushIcon className="h-4 w-4 shrink-0 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
+                            </button>
+                        </div>
 
                         <button
                             type="button"
@@ -1151,6 +1553,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     locked,
     onClick,
     onAppClick,
+    sourceUrl,
     isAdmin: _isAdmin,
     onStartFromTemplate,
     onStartFromCommunityBuild,
@@ -1159,6 +1562,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     locked: boolean;
     onClick: () => void;
     onAppClick?: () => void;
+    sourceUrl?: string | null;
     isAdmin: boolean;
     onStartFromTemplate?: () => void;
     onStartFromCommunityBuild?: () => void;
@@ -1169,17 +1573,35 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     const [localDisabled, setLocalDisabled] = useState(false);
     const [showGenerationModal, setShowGenerationModal] = useState(false);
 
+    const sourceUrlDisplay = useMemo(() => {
+        const raw = (sourceUrl || "").trim();
+        if (!raw) return "";
+        try {
+            const u = new URL(raw);
+            return `${u.host}${u.pathname}${u.search || ""}`;
+        } catch {
+            return raw.replace(/^https?:\/\//i, "");
+        }
+    }, [sourceUrl]);
+
+    const canGenerateHtmlFromUrl = useMemo(() => {
+        const raw = (sourceUrl || "").trim();
+        return /^https?:\/\//i.test(raw);
+    }, [sourceUrl]);
+
     // Consider the card disabled if either the parent says so or we've just been clicked.
     const effectiveLocked = locked || localDisabled;
 
     const handleClick = () => {
-        if (effectiveLocked) return;
+        if (localDisabled) return;
 
-        // Show modal for all users to choose between website and web app
+        // Even when locked (e.g. snapshots processing), allow opening the modal
+        // but disable the options inside so users understand what's happening.
         setShowGenerationModal(true);
     };
 
     const handleWebsiteGeneration = () => {
+        if (effectiveLocked) return;
         setShowGenerationModal(false);
 
         // Immediately prevent further clicks to avoid double-generation.
@@ -1198,6 +1620,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     };
 
     const handleAppGeneration = () => {
+        if (effectiveLocked) return;
         setShowGenerationModal(false);
 
         if (onAppClick) {
@@ -1217,10 +1640,12 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
         }
     };
 
-    const title = effectiveLocked ? "Generating website…" : "Generate website";
+    const title = effectiveLocked ? "Processing…" : "Generate website";
     const subtitle = effectiveLocked
-        ? "Building an editable website."
-        : "Create an editable website.";
+        ? "You have a pending job."
+        : sourceUrlDisplay
+            ? "Generate from your selected URL."
+            : "Create an editable website.";
 
     const iconWrapperSize = "h-14 w-14";
 
@@ -1230,7 +1655,8 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                 <button
                     type="button"
                     onClick={handleClick}
-                    disabled={effectiveLocked}
+                    disabled={localDisabled}
+                    aria-disabled={effectiveLocked}
                     className={`group flex aspect-square w-full flex-col items-center justify-center rounded-lg border-2 border-dashed bg-white px-5 py-6 text-center transition ${effectiveLocked ? "opacity-70 cursor-wait" : "hover:border-neutral-400 cursor-pointer"} border-neutral-300`}
                     aria-label="Generate a new website or app"
                 >
@@ -1277,6 +1703,15 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                     <div className="text-xs text-neutral-600">
                                         Select what you&apos;d like to create.
                                     </div>
+                                    {sourceUrlDisplay ? (
+                                        <div className="mt-2 text-[11px] text-neutral-500">
+                                            Selected URL: <span className="font-mono text-neutral-700">{sourceUrlDisplay}</span>
+                                        </div>
+                                    ) : (
+                                        <div className="mt-2 text-[11px] text-neutral-500">
+                                            Selected URL: <span className="font-mono text-neutral-700">(none)</span>
+                                        </div>
+                                    )}
                                 </div>
 
                                 <button
@@ -1301,13 +1736,20 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                             </div>
 
                             <div className="space-y-3 px-5 py-4">
+                                {effectiveLocked ? (
+                                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                                        Snapshots are still processing. Generation options are temporarily disabled.
+                                    </div>
+                                ) : null}
+
                                 {/* 1) Website (Next.js) */}
                                 <div className="space-y-3">
                                     <div className="relative">
                                         <button
                                             type="button"
                                             onClick={handleAppGeneration}
-                                            className="w-full rounded-xl border border-[rgba(245,95,42,0.45)] bg-[linear-gradient(180deg,rgba(245,95,42,0.06),rgba(255,255,255,0))] p-4 text-left shadow-sm transition hover:bg-[rgba(245,95,42,0.05)] hover:border-[rgba(245,95,42,0.65)]"
+                                            disabled={effectiveLocked}
+                                            className="w-full rounded-xl border border-[rgba(245,95,42,0.45)] bg-[linear-gradient(180deg,rgba(245,95,42,0.06),rgba(255,255,255,0))] p-4 text-left shadow-sm transition hover:bg-[rgba(245,95,42,0.05)] hover:border-[rgba(245,95,42,0.65)] disabled:opacity-60 disabled:cursor-not-allowed"
                                         >
                                             <div className="flex items-start gap-3">
                                                 <div
@@ -1338,10 +1780,10 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                     </div>
 
                                                     <div className="text-xs text-neutral-600">
-                                                        Clone apps or start from a prompt with full web app support, including auth, databases, and integrations.
+                                                        Clone websites and web applications or start from a prompt, includes options for user login, and integrations.
                                                     </div>
                                                     <div className="mt-1 text-[11px] leading-4 text-neutral-500">
-                                                        Best for: user accounts, AI features, dashboards, CRUD apps, paid tools.
+                                                        Best for: user accounts, AI features, dashboards, web games, stores, or product-heavy websites.
                                                     </div>
                                                 </div>
                                             </div>
@@ -1354,7 +1796,8 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                     <button
                                         type="button"
                                         onClick={handleWebsiteGeneration}
-                                        className="w-full rounded-xl border border-neutral-200 bg-white p-4 text-left transition hover:bg-neutral-50 hover:border-neutral-300"
+                                        disabled={effectiveLocked || !canGenerateHtmlFromUrl}
+                                        className="w-full rounded-xl border border-neutral-200 bg-white p-4 text-left transition hover:bg-neutral-50 hover:border-neutral-300 disabled:opacity-60 disabled:cursor-not-allowed"
                                     >
                                         <div className="flex items-start gap-3">
                                             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#e34f26]/10" aria-hidden>
@@ -1377,7 +1820,10 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                     </span>
                                                 </div>
                                                 <div className="text-xs text-neutral-600">
-                                                    Clone a URL into a fast, editable multi‑page HTML website.
+                                                    Generate a fast, editable multi‑page HTML website from your selected URL.
+                                                </div>
+                                                <div className="mt-1 text-[11px] leading-4 text-neutral-500">
+                                                    From: <span className="font-mono text-neutral-700">{sourceUrlDisplay || "(no URL selected)"}</span>
                                                 </div>
                                                 <div className="mt-1 text-[11px] leading-4 text-neutral-500">
                                                     Best for: landing pages, marketing sites, performance-first pages. Not for auth / AI / databases.
@@ -1392,10 +1838,12 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                     <button
                                         type="button"
                                         onClick={() => {
+                                            if (effectiveLocked) return;
                                             setShowGenerationModal(false);
                                             router.push("/community-builds");
                                         }}
-                                        className="w-full rounded-xl border border-neutral-200 bg-white p-4 text-left transition hover:bg-neutral-50 hover:border-neutral-300"
+                                        disabled={effectiveLocked}
+                                        className="w-full rounded-xl border border-neutral-200 bg-white p-4 text-left transition hover:bg-neutral-50 hover:border-neutral-300 disabled:opacity-60 disabled:cursor-not-allowed"
                                     >
                                         <div className="flex items-start gap-3">
                                             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10" aria-hidden>
@@ -1573,6 +2021,7 @@ export default function PreviewPage(): JSX.Element {
 
     const [err, setErr] = useState<string>("");
     const [info, setInfo] = useState<string>("");
+    const [success, setSuccess] = useState<string>("");
 
     const [loading, setLoading] = useState<boolean>(true);
 
@@ -1604,6 +2053,18 @@ export default function PreviewPage(): JSX.Element {
 
     const [appBuilderOpen, setAppBuilderOpen] = useState(false);
     const [currentAppId, setCurrentAppId] = useState<string | null>(null);
+
+    const [agentWelcomeContextByAppId, setAgentWelcomeContextByAppId] = useState<
+        Record<
+            string,
+            {
+                source?: "prompt" | "url" | "quickstart" | "template" | "sample" | "unknown";
+                prompt?: string | null;
+                url?: string | null;
+                templateName?: string | null;
+            }
+        >
+    >({});
 
     // ───────── app deploy wizard (first deploy) ─────────
     const [appDeployWizardOpen, setAppDeployWizardOpen] = useState(false);
@@ -1919,24 +2380,41 @@ export default function PreviewPage(): JSX.Element {
         setAppDeployWizardLiveUrl(null);
 
         try {
-            const csrfRes = await fetch("/api/auth/csrf", {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                credentials: "include",
-                cache: "no-store",
-            });
-            const csrfData = csrfRes.ok ? await csrfRes.json().catch(() => null) : null;
-            const csrf = csrfData?.csrf ?? null;
+            const csrf = await ensureSessionAndCsrf().catch(() => null);
 
-            const res = await fetch(`/api/app-builder/${appDeployWizardAppId}/deploy`, {
-                method: "POST",
-                headers: {
-                    ...(csrf ? { "x-csrf": csrf } : {}),
-                },
-                credentials: "include",
-            });
+            const ensureScope = async () => {
+                await fetch(`/api/app-builder/${appDeployWizardAppId}/scope`, {
+                    method: "GET",
+                    credentials: "include",
+                    cache: "no-store",
+                }).catch(() => null);
+            };
 
-            const data = await res.json().catch(() => ({} as any));
+            const doDeploy = async () => {
+                const res = await fetch(`/api/app-builder/${appDeployWizardAppId}/deploy`, {
+                    method: "POST",
+                    headers: {
+                        ...(csrf ? { "x-csrf": csrf } : {}),
+                    },
+                    credentials: "include",
+                });
+                const data = await res.json().catch(() => ({} as any));
+                return { res, data };
+            };
+
+            // App deploy requires an httpOnly app-scope cookie. Obtain it here so users can deploy
+            // directly from the dashboard without opening the App Builder (machine/webcontainer).
+            await ensureScope();
+
+            let { res, data } = await doDeploy();
+
+            const code = String((data as any)?.code || "").trim();
+            const isScopeProblem = code === "MISSING_APP_SCOPE" || code === "INVALID_APP_SCOPE";
+            if ((!res.ok || !data?.ok) && isScopeProblem) {
+                await ensureScope();
+                ({ res, data } = await doDeploy());
+            }
+
             if (!res.ok || !data?.ok) {
                 throw new Error(data?.error || `Deploy failed (HTTP ${res.status})`);
             }
@@ -2161,6 +2639,19 @@ export default function PreviewPage(): JSX.Element {
             setActiveSeoMetaByPage(null);
             setActiveArchivedPageIds([]);
 
+            // Tailor the AI agent's first message for this new app (unobtrusive; only affects the default welcome).
+            setAgentWelcomeContextByAppId((prev) => {
+                const next = { ...prev };
+                if (mode === "prompt") {
+                    next[appId] = { source: "prompt", prompt: (prompt || "").trim() || null };
+                } else if (mode === "url") {
+                    next[appId] = { source: "url", url: (url || "").trim() || null };
+                } else {
+                    // leave as-is
+                }
+                return next;
+            });
+
             // Open app builder as overlay
             setCurrentAppId(appId);
             setAppBuilderOpen(true);
@@ -2300,6 +2791,11 @@ export default function PreviewPage(): JSX.Element {
             // Open app builder overlay
             setCurrentAppId(appId);
             setAppBuilderOpen(true);
+
+            setAgentWelcomeContextByAppId((prev) => ({
+                ...prev,
+                [appId]: { source: "template", templateName: "Starter Template" },
+            }));
         } catch (error) {
             console.error("Failed to create template app:", error);
             push("Failed to start from template. Please try again.", "err");
@@ -2494,6 +2990,24 @@ export default function PreviewPage(): JSX.Element {
 
     async function listAllDeep(root: StorageReference): Promise<StorageReference[]> { const out: StorageReference[] = []; async function walk(ref: StorageReference) { const l = await listAll(ref); out.push(...l.items); await Promise.all(l.prefixes.map(walk)); } await walk(root); return out; }
 
+    async function listAllDeepSafe(root: StorageReference): Promise<StorageReference[]> {
+        const out: StorageReference[] = [];
+
+        async function walk(ref: StorageReference) {
+            let l: any;
+            try {
+                l = await listAll(ref);
+            } catch {
+                return;
+            }
+            out.push(...(l?.items || []));
+            await Promise.all((l?.prefixes || []).map(walk));
+        }
+
+        await walk(root);
+        return out;
+    }
+
     async function loadShotsForDoc(
         u: FirebaseUser,
         targetUrl: string,
@@ -2503,12 +3017,41 @@ export default function PreviewPage(): JSX.Element {
             data.screenshotsPrefix ||
             `kloner-screenshots/${u.uid}/${data.urlHash || hash64(targetUrl)}`;
 
-        let fileRefs: StorageReference[] = [];
+        // Prefer explicit paths/keys from Firestore. Avoid Storage folder listing while queued.
+        const screenshotPaths = Array.isArray(data.screenshotPaths)
+            ? data.screenshotPaths.filter((p): p is string => typeof p === "string" && !!p)
+            : [];
 
-        if (Array.isArray(data.screenshotPaths) && data.screenshotPaths.length) {
-            fileRefs = data.screenshotPaths.map((p) => sRef(storage, p));
+        const screenshotKeys = Array.isArray(data.screenshots)
+            ? Array.from(
+                new Set(
+                    data.screenshots
+                        .map((s: any) => (typeof s?.key === "string" ? s.key : ""))
+                        .filter((k: string) => !!k)
+                )
+            )
+            : [];
+
+        const statusUi = normalizeUrlStatus(
+            data.status,
+            screenshotPaths.length + screenshotKeys.length,
+            data.updatedAt
+        );
+
+        let fileRefs: StorageReference[] = [];
+        if (screenshotPaths.length > 0) {
+            fileRefs = screenshotPaths.map((p) => sRef(storage, p));
+        } else if (screenshotKeys.length > 0) {
+            fileRefs = screenshotKeys.map((k) => sRef(storage, k));
         } else {
-            fileRefs = await listAllDeep(sRef(storage, prefix));
+            // Nothing to load yet; do not trigger noisy Storage errors.
+            if (statusUi === "queued" || statusUi === "unknown") {
+                setShots([]);
+                return;
+            }
+
+            // Legacy fallback (best-effort): older docs without paths/keys.
+            fileRefs = await listAllDeepSafe(sRef(storage, prefix));
         }
 
         // NEW: build metadata index from Firestore screenshots[]
@@ -2521,27 +3064,32 @@ export default function PreviewPage(): JSX.Element {
             }
         }
 
-        const entries: Shot[] = await Promise.all(
-            fileRefs.map(async (r) => {
-                const url = await getDownloadURL(r);
-                const name = r.name || r.fullPath.split("/").pop() || "image";
+        const entries: Shot[] = (
+            await Promise.all(
+                fileRefs.map(async (r) => {
+                    try {
+                        const url = await getDownloadURL(r);
+                        const name = r.name || r.fullPath.split("/").pop() || "image";
 
-                const meta = metaByKey.get(r.fullPath);
+                        const meta = metaByKey.get(r.fullPath);
 
-                return {
-                    path: r.fullPath,
-                    url,
-                    fileName: name,
-
-                    // attach grouping metadata
-                    snapshotId: meta?.snapshotId,
-                    snapshotCreatedAt: meta?.snapshotCreatedAt,
-                    sourceUrl: meta?.sourceUrl,
-                    status: meta?.status,
-                    bytes: meta?.bytes,
-                };
-            })
-        );
+                        return {
+                            path: r.fullPath,
+                            url,
+                            fileName: name,
+                            snapshotId: meta?.snapshotId,
+                            snapshotCreatedAt: meta?.snapshotCreatedAt,
+                            sourceUrl: meta?.sourceUrl,
+                            status: meta?.status,
+                            bytes: meta?.bytes,
+                        } as Shot;
+                    } catch {
+                        // If any single URL fails to resolve (rules / race / deleted object), just skip it.
+                        return null;
+                    }
+                })
+            )
+        ).filter(Boolean) as Shot[];
 
         // keep your existing sort – newest first by filename
         entries.sort((a, b) =>
@@ -2619,6 +3167,8 @@ export default function PreviewPage(): JSX.Element {
     /* ───────── url + tier ───────── */
 
     const urlParam = search.get("u") || "";
+    const startParam = (search.get("start") || "").toLowerCase();
+    const startRequested = startParam === "1" || startParam === "true";
 
     const targetUrl = useMemo(() => {
         let raw = urlParam;
@@ -2633,16 +3183,243 @@ export default function PreviewPage(): JSX.Element {
 
         if (!raw) return "";
 
+        let dec = raw;
         try {
-            const dec = decodeURIComponent(raw);
-            return normUrl(ensureHttp(dec));
+            dec = decodeURIComponent(raw);
         } catch {
-            return normUrl(ensureHttp(raw));
+            dec = raw;
         }
+
+        // Validate strictly: only public http(s) URLs with a real domain.
+        const normalized = validateAndNormalizePublicHttpUrl(dec);
+        return normalized ? normUrl(normalized) : "";
     }, [urlParam]);
+
+    // If someone deep-links an invalid URL, fail gracefully (no Firestore errors / snapshot retries).
+    useEffect(() => {
+        if (!urlParam) return;
+        if (targetUrl) return;
+
+        setErr("Please enter a valid public http(s) URL.");
+        try {
+            const url = new URL(window.location.href);
+            url.searchParams.delete("u");
+            url.searchParams.delete("start");
+            const qs = url.searchParams.toString();
+            const next = qs ? `${url.pathname}?${qs}` : url.pathname;
+            router.replace(next, { scroll: false });
+        } catch {
+            // ignore
+        }
+    }, [urlParam, targetUrl, router]);
+
+    const submitMiniUrl = useCallback(
+        (raw: string) => {
+            const normalized = validateAndNormalizePublicHttpUrl(raw);
+            if (!normalized) return;
+            router.push(`/dashboard/view?u=${encodeURIComponent(normalized)}&start=1`, { scroll: false });
+        },
+        [router]
+    );
+
+    const submitMiniPrompt = useCallback(
+        (prompt: string) => {
+            const p = (prompt || "").trim();
+            if (!p) return;
+            router.push(`/dashboard/view?wizard=1&source=prompt&prompt=${encodeURIComponent(p)}`, { scroll: false });
+        },
+        [router]
+    );
 
     const [urlMenuOpen, setUrlMenuOpen] = useState(false);
     const urlMenuRef = useRef<HTMLDivElement | null>(null);
+
+    const [urlDocReloadNonce, setUrlDocReloadNonce] = useState(0);
+    const startRequestedHandledRef = useRef<string>("");
+    const [captureLockUrl, setCaptureLockUrl] = useState<string | null>(null);
+
+    // When a URL is entered from the mini-dashboard entry panel (or deep-linked with start=1),
+    // ensure the UrlDoc exists and queue the screenshot capture job. The existing loader stages
+    // in this page will then take over (docData + shots + groupedShots + preview generation).
+    useEffect(() => {
+        if (!startRequested) return;
+        if (!user || !targetUrl) return;
+        if (!isHttpUrl(targetUrl)) return;
+        if (startRequestedHandledRef.current === targetUrl) return;
+        startRequestedHandledRef.current = targetUrl;
+        setCaptureLockUrl(targetUrl);
+
+        let cancelled = false;
+        (async () => {
+            try {
+                await ensureSessionAndCsrf().catch(() => null);
+
+                const colRef = collection(db, "kloner_users", user.uid, "kloner_urls");
+                const qy = query(colRef, where("url", "==", targetUrl));
+                const snap = await getDocs(qy);
+                if (cancelled) return;
+
+                if (snap.empty) {
+                    const urlHash = hash64(targetUrl);
+                    await addDoc(colRef, {
+                        url: targetUrl,
+                        urlHash,
+                        createdAt: serverTimestamp(),
+                        updatedAt: serverTimestamp(),
+                        status: "queued",
+                        screenshotsPrefix: `kloner-screenshots/${user.uid}/${urlHash}`,
+                        screenshotPaths: [],
+                    } as UrlDoc);
+
+                    // Trigger the url-doc loader effect to re-run immediately.
+                    setUrlDocReloadNonce((n) => n + 1);
+
+                    // Best-effort: keep dropdown list fresh even before the next fetch.
+                    setUrls((prev) => {
+                        if (prev.some((u) => normUrl(u.url) === normUrl(targetUrl))) return prev;
+                        return [{ id: `local_${urlHash}`, url: targetUrl, urlHash } as any, ...prev].slice(0, 50);
+                    });
+                }
+
+                const res = await fetch("/api/private/generate", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ url: targetUrl }),
+                });
+
+                if (cancelled) return;
+
+                if (!res.ok) {
+                    const j: any = await res.json().catch(() => ({}));
+                    setErr(j?.error || "Failed to queue screenshot job.");
+                    setCaptureLockUrl(null);
+                }
+            } catch (e: any) {
+                if (!cancelled) setErr(e?.message || "Failed to start capture.");
+                setCaptureLockUrl(null);
+            } finally {
+                // Clear start=1 so refresh doesn't re-trigger capture.
+                try {
+                    const url = new URL(window.location.href);
+                    url.searchParams.delete("start");
+                    const qs = url.searchParams.toString();
+                    const next = qs ? `${url.pathname}?${qs}` : url.pathname;
+                    router.replace(next, { scroll: false });
+                } catch {
+                    // ignore
+                }
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [startRequested, user, targetUrl, router]);
+
+    const startLockRequested = !!startRequested && !!targetUrl;
+
+    const shotMetaCount = useMemo(() => {
+        if (!docData) return 0;
+        return (
+            (docData.screenshotPaths?.length || 0) +
+            (Array.isArray(docData.screenshots) ? docData.screenshots.length : 0)
+        );
+    }, [docData]);
+
+    const activeUrlStatus = useMemo<UrlStatusUi | null>(() => {
+        if (!docData) return null;
+        return normalizeUrlStatus(docData.status, shotMetaCount, docData.updatedAt);
+    }, [docData, shotMetaCount]);
+
+    const lockMatches = useMemo(() => {
+        return !!targetUrl && (startLockRequested || captureLockUrl === targetUrl);
+    }, [targetUrl, startLockRequested, captureLockUrl]);
+
+    const captureStatus = useMemo<UrlStatusUi | null>(() => {
+
+        // If we are in an in-flight capture, don't let an "unknown" doc status remove the UX lock.
+        if (lockMatches) {
+            const stable = activeUrlStatus;
+            if (stable === "ready" || stable === "error" || stable === "stale") return stable;
+            if (stable === "queued" || stable === "processing") return stable;
+
+            // Infer from screenshot metadata: once any screenshot key/path exists, we're processing.
+            return shotMetaCount > 0 ? "processing" : "queued";
+        }
+
+        return activeUrlStatus;
+    }, [activeUrlStatus, lockMatches, shotMetaCount]);
+
+    const captureLocked =
+        lockMatches || captureStatus === "queued" || captureStatus === "processing";
+
+    useEffect(() => {
+        if (!captureLockUrl) return;
+        if (!targetUrl || captureLockUrl !== targetUrl) return;
+
+        if (err) {
+            setCaptureLockUrl(null);
+            return;
+        }
+
+        if (captureStatus && captureStatus !== "queued" && captureStatus !== "processing") {
+            setCaptureLockUrl(null);
+        }
+    }, [captureLockUrl, targetUrl, captureStatus, err]);
+
+    useEffect(() => {
+        // Avoid stale/duplicate legacy notifications after capture finishes (e.g. during hot reload).
+        if (info !== "Queued snapshot job…") return;
+        if (!captureStatus) return;
+        if (captureStatus === "queued" || captureStatus === "processing") return;
+        setInfo("");
+    }, [info, captureStatus]);
+
+    const capturePrevStatusRef = useRef<UrlStatusUi | null>(null);
+    const captureSuccessShownForUrlRef = useRef<string>("");
+    const captureSuccessTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        const urlKey = targetUrl ? normUrl(targetUrl) : "";
+        const prev = capturePrevStatusRef.current;
+        capturePrevStatusRef.current = captureStatus;
+
+        // Clear on URL change / navigation.
+        if (!urlKey) {
+            setSuccess("");
+            captureSuccessShownForUrlRef.current = "";
+            return;
+        }
+
+        // If a new capture starts, clear any prior success.
+        if (captureStatus === "queued" || captureStatus === "processing") {
+            setSuccess("");
+            return;
+        }
+
+        if (err) return;
+        if (!lockMatches) return;
+
+        const wasInFlight = prev === "queued" || prev === "processing";
+        const isNowReady = captureStatus === "ready";
+        if (!wasInFlight || !isNowReady) return;
+
+        if (captureSuccessShownForUrlRef.current === urlKey) return;
+        captureSuccessShownForUrlRef.current = urlKey;
+
+        setSuccess("Url added successfully!");
+        if (captureSuccessTimeoutRef.current) clearTimeout(captureSuccessTimeoutRef.current);
+        captureSuccessTimeoutRef.current = setTimeout(() => setSuccess(""), 6000);
+    }, [captureStatus, targetUrl, lockMatches, err]);
+
+    useEffect(() => {
+        return () => {
+            if (captureSuccessTimeoutRef.current) {
+                clearTimeout(captureSuccessTimeoutRef.current);
+            }
+        };
+    }, []);
 
     useEffect(() => {
         function onDocClick(e: MouseEvent) {
@@ -2657,19 +3434,117 @@ export default function PreviewPage(): JSX.Element {
 
     const activeUrlDoc = useMemo(() => {
         if (!urls.length) return null;
-        const match = targetUrl
-            ? urls.find(
-                (u) => normUrl(u.url) === normUrl(targetUrl)
-            )
-            : null;
-        return match ?? urls[0];
+
+        const valid = urls.filter((u) => !!validateAndNormalizePublicHttpUrl(u.url));
+        if (targetUrl) {
+            const match = valid.find((u) => normUrl(u.url) === normUrl(targetUrl));
+            if (match) return match;
+        }
+
+        return valid[0] ?? null;
     }, [urls, targetUrl]);
 
     const orderedUrls = useMemo(() => {
-        if (!activeUrlDoc) return [];
+        // Keep invalid URLs visible in the menu so they can be deleted.
+        if (!urls.length) return [];
+        if (!activeUrlDoc) return urls;
         const rest = urls.filter((u) => u.id !== activeUrlDoc.id);
         return [activeUrlDoc, ...rest];
     }, [urls, activeUrlDoc]);
+
+    const countRendersForUrl = useCallback(
+        async (uid: string, url: string, urlHash: string) => {
+            const rendersCol = collection(db, "kloner_users", uid, "kloner_renders");
+            const qHash = query(rendersCol, where("urlHash", "==", urlHash));
+            const qUrl = query(rendersCol, where("url", "==", url));
+            const [snapHash, snapUrl] = await Promise.all([getDocs(qHash), getDocs(qUrl)]);
+            const ids = new Set<string>();
+            snapHash.forEach((d) => ids.add(d.id));
+            snapUrl.forEach((d) => ids.add(d.id));
+            return ids.size;
+        },
+        [db]
+    );
+
+    const deleteTrackedUrl = useCallback(
+        async (r: { id: string } & UrlDoc) => {
+            if (!user) return;
+
+            const urlHash = r.urlHash || hash64(r.url);
+
+            // Block deletion if there are renders referencing this URL.
+            try {
+                const renderCount = await countRendersForUrl(user.uid, r.url, urlHash);
+                if (renderCount > 0) {
+                    await showAlert(
+                        `This URL has ${renderCount} preview(s) associated with it. Archive/delete those previews first, then retry deleting the URL.`,
+                        "Delete URL",
+                    );
+                    return;
+                }
+            } catch {
+                await showAlert(
+                    "Unable to verify whether previews exist for this URL, so deletion was blocked for safety.",
+                    "Delete URL",
+                );
+                return;
+            }
+
+            const ok = await showConfirm(
+                `Delete this tracked URL?\n\n${r.url}\n\nThis removes the URL and its screenshots.`,
+                "Delete URL"
+            );
+            if (!ok) return;
+
+            setErr("");
+            setInfo("Deleting URL…");
+            try {
+                const prefix =
+                    r.screenshotsPrefix ||
+                    `kloner-screenshots/${user.uid}/${urlHash}`;
+
+                if (Array.isArray(r.screenshotPaths) && r.screenshotPaths.length > 0) {
+                    await Promise.allSettled(
+                        r.screenshotPaths.map((p) => deleteObject(sRef(storage, p)))
+                    );
+                } else {
+                    const refs = await listAllDeep(sRef(storage, prefix)).catch(() => []);
+                    await Promise.allSettled(refs.map((it) => deleteObject(it)));
+                }
+
+                await deleteDoc(doc(db, "kloner_users", user.uid, "kloner_urls", r.id));
+
+                setUrls((prev) => prev.filter((u) => u.id !== r.id));
+                setUrlMenuOpen(false);
+
+                // If we just deleted the currently selected URL, route to the next valid URL (or clear selection).
+                if (activeUrlDoc?.id === r.id) {
+                    const remaining = urls.filter((u) => u.id !== r.id);
+                    const nextValid = remaining.find((u) => !!validateAndNormalizePublicHttpUrl(u.url))?.url || "";
+                    if (nextValid) {
+                        router.replace(`/dashboard/view?u=${encodeURIComponent(nextValid)}`, { scroll: false });
+                    } else {
+                        router.replace(`/dashboard/view`, { scroll: false });
+                    }
+                }
+            } catch (e: any) {
+                setErr(e?.message || "Delete failed.");
+            } finally {
+                setInfo("");
+            }
+        },
+        [
+            user,
+            activeUrlDoc?.id,
+            urls,
+            router,
+            storage,
+            db,
+            showAlert,
+            showConfirm,
+            countRendersForUrl,
+        ]
+    );
 
     const targetHash = useMemo(
         () => (isHttpUrl(targetUrl) ? hash64(targetUrl) : null),
@@ -2830,9 +3705,14 @@ export default function PreviewPage(): JSX.Element {
                 lastDocShotsKeyRef.current = JSON.stringify({
                     paths: initial.screenshotPaths || [],
                     prefix: initial.screenshotsPrefix || "",
+                    keys: Array.isArray(initial.screenshots)
+                        ? initial.screenshots
+                            .map((s: any) => (typeof s?.key === "string" ? s.key : ""))
+                            .filter((k: string) => !!k)
+                        : [],
                 });
 
-                await loadShotsForDoc(user, targetUrl, initial);
+                await loadShotsForDoc(user, targetUrl, initial).catch(() => null);
 
                 unsubUrlDoc = onSnapshot(
                     first.ref,
@@ -2843,13 +3723,18 @@ export default function PreviewPage(): JSX.Element {
                         const currentKey = JSON.stringify({
                             paths: data.screenshotPaths || [],
                             prefix: data.screenshotsPrefix || "",
+                            keys: Array.isArray(data.screenshots)
+                                ? data.screenshots
+                                    .map((s: any) => (typeof s?.key === "string" ? s.key : ""))
+                                    .filter((k: string) => !!k)
+                                : [],
                         });
 
                         if (
                             currentKey !== lastDocShotsKeyRef.current
                         ) {
                             lastDocShotsKeyRef.current = currentKey;
-                            await loadShotsForDoc(user, targetUrl, data);
+                            await loadShotsForDoc(user, targetUrl, data).catch(() => null);
                         }
                     }
                 );
@@ -2865,7 +3750,7 @@ export default function PreviewPage(): JSX.Element {
         return () => {
             unsubUrlDoc?.();
         };
-    }, [user, targetUrl]);
+    }, [user, targetUrl, urlDocReloadNonce]);
 
     /* ───────── renders (editable previews) ───────── */
 
@@ -3358,7 +4243,7 @@ export default function PreviewPage(): JSX.Element {
                 status: "queued",
                 url: targetUrl || null,
                 urlHash: targetUrl ? hash64(targetUrl) : null,
-                nameHint: targetUrl ? new URL(targetUrl).hostname : null,
+                nameHint: isHttpUrl(targetUrl) ? new URL(targetUrl).hostname : null,
                 model: null,
                 archived: false,
                 version: 1,
@@ -3389,7 +4274,7 @@ export default function PreviewPage(): JSX.Element {
                 if (isHttpUrl(targetUrl)) {
                     body.url = targetUrl;
                     body.urlHash = hash64(targetUrl);
-                    body.nameHint = new URL(targetUrl).hostname;
+                    body.nameHint = isHttpUrl(targetUrl) ? new URL(targetUrl).hostname : undefined;
                 }
 
                 const r = await fetch("/api/preview/render", {
@@ -3475,7 +4360,7 @@ export default function PreviewPage(): JSX.Element {
                 urlHash: hash64(targetUrl),
                 nameHint: (() => {
                     try {
-                        return new URL(targetUrl).hostname;
+                        return isHttpUrl(targetUrl) ? new URL(targetUrl).hostname : "";
                     } catch {
                         return undefined;
                     }
@@ -4176,7 +5061,7 @@ export default function PreviewPage(): JSX.Element {
 
             const safeNameHint =
                 trimmedNameHint ||
-                (targetUrl ? new URL(targetUrl).hostname : null);
+                (isHttpUrl(targetUrl) ? new URL(targetUrl).hostname : null);
 
             const safeArchivedPageIds = Array.isArray(
                 payload.meta?.archivedPageIds
@@ -5163,155 +6048,127 @@ export default function PreviewPage(): JSX.Element {
         <main className="min-h-screen bg-white">
             <div className="mx-auto max-w-[1200px] px-4 sm:px-6 lg:px-10 py-8">
                 <section className="mb-10">
-                    <div className="inline-flex items-center gap-2 rounded-full bg-accent text-neutral-50 px-3 py-1 text-[11px] mb-4">
-                        <span>Kloner · Builder</span>
-                    </div>
-
-                    <div className="rounded-3xl border border-neutral-200 bg-gradient-to-br from-white via-neutral-50 to-neutral-100 px-6 py-8 sm:px-8 sm:py-10 shadow-sm">
-                        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                            <div className="min-w-0">
-                                <div className="flex items-end gap-2">
-                                    <h1 className="text-3xl sm:text-4xl tracking-tight text-neutral-900">
-                                        Builder
-                                    </h1>
-                                    {userTier !== "unknown" && (
-                                        <div className="inline-flex items-center">
-                                            <div className="inline-flex items-center gap-1 rounded-full border border-accent bg-accent-50 px-2 py-1">
-                                                <Crown className="h-2.5 w-2.5 text-accent" />
-                                                <span className="text-[9px] font-semibold uppercase tracking-wide text-accent">
-                                                    {planLabel}
-                                                </span>
-
-                                            </div>
-                                            <span className="inline-flex">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => router.push("/price")}
-                                                    title={userTier === "free" ? "Upgrade plan" : "Manage plan"}
-                                                    aria-label={userTier === "free" ? "Upgrade plan" : "Manage plan"}
-                                                    className="group inline-flex items-center justify-center rounded-md p-1 transition-all duration-150
-               hover:bg-white/10 hover:scale-[1.06] active:scale-[0.98]
-               focus:outline-none focus:ring-2 focus:ring-[#C6F44D]/60 focus:ring-offset-2 focus:ring-offset-transparent"
-                                                >
-                                                    <Edit2 className="h-3 w-3 opacity-80 transition-opacity group-hover:opacity-100" />
-                                                    <span
-                                                        className="pointer-events-none absolute z-50 -translate-y-8 scale-95 rounded-md bg-black/80 px-2 py-1
-                 text-[11px] text-white opacity-0 shadow-lg ring-1 ring-white/10 transition
-                 group-hover:opacity-100 group-hover:scale-100"
-                                                        style={{ marginLeft: 0 }}
-                                                    >
-                                                        {userTier === "free" ? "Upgrade" : "Manage"}
-                                                    </span>
-                                                </button>
-                                            </span>
-
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="mt-3 flex flex-wrap gap-2 text-xs gap-2">
-                                    <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-neutral-700">
-                                        Screenshot credits:&nbsp;
-                                        <span className="font-semibold text-neutral-900">
-                                            {screenshotRemaining === null || !screenshotLimitDisplay
-                                                ? "-"
-                                                : `${screenshotRemaining}/${screenshotLimitDisplay}`}
-                                        </span>
-                                    </span>
-
-                                    <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-neutral-700">
-                                        Preview credits:&nbsp;
-                                        <span className="font-semibold text-neutral-900">
-                                            {previewRemaining === null || !previewLimitDisplay
-                                                ? "-"
-                                                : `${previewRemaining}/${previewLimitDisplay}`}
-                                        </span>
-                                    </span>
-                                </div>
-
-                                {userTier === "free" && (
-                                    <p className="mt-2 text-sm text-neutral-600 pl-2">
-                                        Upgrade for higher limits and one click deploy, credits reset monthly.
-                                    </p>
-                                )}
-                            </div>
-
-                            {/* <div className="flex flex-col items-start gap-2 sm:items-end sm:flex-row sm:mt-1">
-                                <button
-                                    type="button"
-                                    onClick={() => router.push("/price")}
-                                    className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-800 hover:bg-amber-100 hover:border-amber-300 transition-colors"
-                                >
-                                    <Crown className="h-3 w-3 text-amber-500" />
-                                    <span>{userTier === "free" ? "View upgrades" : "Manage plan"}</span>
-                                </button>
-                            </div> */}
-                        </div>
-                    </div>
+                    <MiniDashboardEntry
+                        onSubmitUrl={submitMiniUrl}
+                        onSubmitPrompt={submitMiniPrompt}
+                        planLabel={planLabel}
+                        userTier={userTier}
+                        screenshotRemaining={screenshotRemaining}
+                        screenshotLimitDisplay={screenshotLimitDisplay}
+                        previewRemaining={previewRemaining}
+                        previewLimitDisplay={previewLimitDisplay}
+                        onManagePlan={() => router.push("/price")}
+                        size="compact"
+                        disabled={captureLocked}
+                        captureStatus={captureStatus}
+                    />
                 </section>
 
                 {/* Step 1: URL selection */}
                 <section className="mb-8 rounded-3xl border border-neutral-200 bg-white/70 px-4 py-4 sm:px-5 sm:py-5 shadow-sm">
-                    <button
-                        type="button"
-                        onClick={() => setUrlMenuOpen((v) => !v)}
-                        className="inline-flex max-w-[540px] items-center gap-2 truncate rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-800 hover:bg-neutral-50"
-                        title={activeUrlDoc?.url}
-                        aria-haspopup="listbox"
-                        aria-expanded={urlMenuOpen}
-                    >
-                        <span className="truncate">
-                            {activeUrlDoc?.url || "Select a URL"}
-                        </span>
-                        <ChevronDown className="h-4 w-4 shrink-0 text-neutral-500" />
-                    </button>
-
-                    {urlMenuOpen && (
-                        <div
-                            role="listbox"
-                            aria-activedescendant={activeUrlDoc?.id}
-                            className="absolute z-[9999] mt-2 w-[min(640px,90vw)] overflow-hidden rounded-md border border-neutral-200 bg-white shadow-lg"
+                    <div ref={urlMenuRef} className="relative">
+                        <button
+                            type="button"
+                            onClick={() => setUrlMenuOpen((v) => !v)}
+                            className="inline-flex max-w-[540px] items-center gap-2 truncate rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-800 hover:bg-neutral-50"
+                            title={activeUrlDoc?.url}
+                            aria-haspopup="listbox"
+                            aria-expanded={urlMenuOpen}
                         >
-                            <ul className="max-h-[280px] overflow-auto py-1">
-                                {orderedUrls.map((u) => {
-                                    const isActive =
-                                        activeUrlDoc?.id === u.id;
-                                    return (
-                                        <li key={u.id}>
-                                            <button
-                                                role="option"
-                                                aria-selected={isActive}
-                                                onClick={() => {
-                                                    setUrlMenuOpen(false);
-                                                    selectUrl(u.url);
-                                                }}
-                                                title={u.url}
-                                                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm ${isActive
-                                                    ? "bg-neutral-100 text-neutral-700"
-                                                    : "text-neutral-800 hover:bg-neutral-50"
-                                                    }`}
-                                            >
-                                                <span
-                                                    className={`inline-block h-2.5 w-2.5 rounded-full ${isActive
-                                                        ? "bg-neutral-800"
-                                                        : "bg-neutral-300"
+                            <span className="truncate">
+                                {activeUrlDoc?.url || "Select a URL"}
+                            </span>
+                            <ChevronDown className="h-4 w-4 shrink-0 text-neutral-500" />
+                        </button>
+
+                        {urlMenuOpen && (
+                            <div
+                                role="listbox"
+                                aria-activedescendant={activeUrlDoc?.id ? String(activeUrlDoc.id) : undefined}
+                                className="absolute left-0 z-[9999] mt-2 w-[min(640px,90vw)] overflow-hidden rounded-md border border-neutral-200 bg-white shadow-lg"
+                            >
+                                <ul className="max-h-[280px] overflow-auto py-1">
+                                    {orderedUrls.map((u) => {
+                                        const isActive = activeUrlDoc?.id === u.id;
+                                        const normalized = validateAndNormalizePublicHttpUrl(u.url);
+                                        const isValid = !!normalized;
+
+                                        return (
+                                            <li key={u.id}>
+                                                <div
+                                                    className={`flex w-full items-center gap-2 px-3 py-2 text-sm ${isActive
+                                                        ? "bg-neutral-100 text-neutral-700"
+                                                        : "text-neutral-800 hover:bg-neutral-50"
                                                         }`}
-                                                />
-                                                <span className="truncate">
-                                                    {u.url}
-                                                </span>
-                                            </button>
-                                        </li>
-                                    );
-                                })}
-                            </ul>
-                        </div>
-                    )}
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        role="option"
+                                                        aria-selected={isActive}
+                                                        onClick={() => {
+                                                            if (!normalized) {
+                                                                setUrlMenuOpen(false);
+                                                                setErr(
+                                                                    "That saved URL looks invalid. Delete it from the list to continue."
+                                                                );
+                                                                return;
+                                                            }
+                                                            setErr("");
+                                                            setUrlMenuOpen(false);
+                                                            selectUrl(normalized);
+                                                        }}
+                                                        title={u.url}
+                                                        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                                                    >
+                                                        <span
+                                                            className={`inline-block h-2.5 w-2.5 rounded-full ${isActive
+                                                                ? "bg-neutral-800"
+                                                                : "bg-neutral-300"
+                                                                }`}
+                                                        />
+                                                        <span className="min-w-0 truncate">
+                                                            {u.url}
+                                                        </span>
+                                                        {!isValid ? (
+                                                            <span className="ml-2 shrink-0 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700">
+                                                                Invalid
+                                                            </span>
+                                                        ) : null}
+                                                    </button>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                            deleteTrackedUrl(u);
+                                                        }}
+                                                        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900"
+                                                        title="Delete URL"
+                                                        aria-label={`Delete ${u.url}`}
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </button>
+                                                </div>
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
+                            </div>
+                        )}
+                    </div>
                 </section>
 
                 {err ? (
                     <div className="mt-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
                         {err}
+                    </div>
+                ) : null}
+
+                {success ? (
+                    <div className="mt-2 flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                        <span>{success}</span>
                     </div>
                 ) : null}
 
@@ -5364,12 +6221,13 @@ export default function PreviewPage(): JSX.Element {
                             </div> */}
 
                             <div
-                                className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                                className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
                                 aria-label="Editable previews list"
                             >
                                 {groupedShots.length === 0 ? (
                                     <GhostGeneratePreviewCard
-                                        locked={false}
+                                        locked={captureLocked}
+                                        sourceUrl={targetUrl}
                                         onClick={() => {
                                             if (groupedShots.length > 0) {
                                                 const firstGroup = groupedShots[0];
@@ -5412,7 +6270,8 @@ export default function PreviewPage(): JSX.Element {
                                         return (
                                             <GhostGeneratePreviewCard
                                                 key={`ghost-${group.snapshotId || first.path}`}
-                                                locked={locked}
+                                                locked={captureLocked || locked}
+                                                sourceUrl={targetUrl}
                                                 onClick={() => buildFromCollection(collectionKeys)}
                                                 onAppClick={() => {
                                                     startWebAppWizard({ seedRenderId: null, url: targetUrl || "" });
@@ -5437,6 +6296,7 @@ export default function PreviewPage(): JSX.Element {
                                             setAppBuilderOpen(true);
                                         }}
                                         onArchive={handleArchiveApp}
+                                        onDeploy={(app) => openAppDeployWizard(app)}
                                         onDelete={handleDeleteApp}
                                     />
                                 ))}
@@ -5486,10 +6346,11 @@ export default function PreviewPage(): JSX.Element {
                                 {renders.length === 0 && (
                                     <>
                                         {(() => {
-                                            const locked = false;
+                                            const locked = captureLocked;
                                             return (
                                                 <GhostGeneratePreviewCard
                                                     locked={locked}
+                                                    sourceUrl={targetUrl}
                                                     onClick={() => {
                                                         if (groupedShots.length > 0) {
                                                             const firstGroup = groupedShots[0];
@@ -5566,6 +6427,7 @@ export default function PreviewPage(): JSX.Element {
                                             setAppBuilderOpen(true);
                                         }}
                                         onArchive={handleArchiveApp}
+                                        onDeploy={(app) => openAppDeployWizard(app)}
                                         onDelete={handleDeleteApp}
                                     />
                                 ))}
@@ -5591,7 +6453,8 @@ export default function PreviewPage(): JSX.Element {
                                     return (
                                         <GhostGeneratePreviewCard
                                             key={`ghost-${group.snapshotId || first.path}`}
-                                            locked={locked}
+                                            locked={captureLocked || locked}
+                                            sourceUrl={targetUrl}
                                             onClick={() => buildFromCollection(collectionKeys)}
                                             onAppClick={() => {
                                                 // Find the most recent render from this group (optional seed)
@@ -5697,6 +6560,7 @@ export default function PreviewPage(): JSX.Element {
                             setCurrentAppId(null);
                         }}
                         onDeploy={(app) => openAppDeployWizard(app)}
+                        agentWelcomeContext={agentWelcomeContextByAppId[currentAppId]}
                     />
                 )}
 
@@ -6182,7 +7046,7 @@ export default function PreviewPage(): JSX.Element {
                                                     {appDeployWizardBusy
                                                         ? "Deploying to Vercel…"
                                                         : appDeployWizardLiveUrl
-                                                            ? "Your app is live."
+                                                            ? "Your website is live."
                                                             : "Ready to deploy."}
                                                 </p>
 
@@ -6233,7 +7097,7 @@ export default function PreviewPage(): JSX.Element {
                                                             className="group flex flex-inline items-center gap-1 rounded-full px-3 py-1.5 text-sm text-white"
                                                             style={{ backgroundColor: ACCENT }}
                                                         >
-                                                            <span>View App</span>
+                                                            <span>View Website</span>
                                                             <Rocket className="h-4 w-4 transform transition-transform duration-150 group-hover:translate-x-0.5" />
                                                         </a>
                                                     ) : (
@@ -6542,7 +7406,7 @@ export default function PreviewPage(): JSX.Element {
                                                                     className="group flex flex-inline items-center gap-1 rounded-full px-3 py-1.5 text-sm text-white"
                                                                     style={{ backgroundColor: ACCENT }}
                                                                 >
-                                                                    <span>View Site</span>
+                                                                    <span>View Website</span>
                                                                     <Rocket className="h-4 w-4 transform transition-transform duration-150 group-hover:translate-x-0.5" />
                                                                 </a>
                                                             )}

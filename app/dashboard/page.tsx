@@ -312,6 +312,14 @@ function UrlForm({ uid, onAdded, disabled }: UrlFormProps) {
             await addAndStart(uid, normalized);
             onAdded?.();
             setUrl("");
+
+            // Combined flow: jump to DashboardView so the user sees the staged loader + previews.
+            try {
+                const next = `/dashboard/view?u=${encodeURIComponent(normalized)}&start=1`;
+                window.location.href = next;
+            } catch {
+                // ignore
+            }
         } catch (e: any) {
             setErr(e?.message || "Could not start capture.");
         } finally {

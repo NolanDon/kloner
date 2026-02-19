@@ -249,10 +249,16 @@ function FileTree({ nodes, onFileSelect, prefix = "" }: {
     );
 }
 
-export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
+export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcomeContext }: {
     appId: string;
     onClose: () => void;
     onDeploy?: (app: { id: string; name: string }) => void;
+    agentWelcomeContext?: {
+        source?: "prompt" | "url" | "quickstart" | "template" | "sample" | "unknown";
+        prompt?: string | null;
+        url?: string | null;
+        templateName?: string | null;
+    };
 }) {
     const { user } = useAuth();
     const { showConfirm, showAlert } = useModal();
@@ -2465,16 +2471,37 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
             }
 
             const csrf = await ensureSessionAndCsrf().catch(() => null);
-            const res = await fetch(`/api/app-builder/${appId}/deploy`, {
-                method: "POST",
-                headers: csrfHeaders(csrf),
-                credentials: "include",
-            });
+            const doDeploy = async () => {
+                const res = await fetch(`/api/app-builder/${appId}/deploy`, {
+                    method: "POST",
+                    headers: csrfHeaders(csrf),
+                    credentials: "include",
+                });
+                const data = await res.json().catch(() => ({} as any));
+                return { res, data };
+            };
 
-            const data = await res.json().catch(() => ({} as any));
+            let { res, data } = await doDeploy();
+
+            const code = String((data as any)?.code || "").trim();
+            const isScopeProblem = code === "MISSING_APP_SCOPE" || code === "INVALID_APP_SCOPE";
+
+            if ((!res.ok || !data?.ok) && isScopeProblem) {
+                await fetch(`/api/app-builder/${appId}/scope`, {
+                    method: "GET",
+                    credentials: "include",
+                }).catch(() => null);
+
+                ({ res, data } = await doDeploy());
+            }
+
             if (!res.ok || !data?.ok) {
                 const msg = (data as any)?.error || `Deploy failed (HTTP ${res.status})`;
-                throw new Error(msg);
+                const debugBits = [
+                    (data as any)?.code ? `code=${String((data as any).code)}` : "",
+                    (data as any)?.reqId ? `reqId=${String((data as any).reqId)}` : "",
+                ].filter(Boolean);
+                throw new Error(debugBits.length ? `${msg} (${debugBits.join(", ")})` : msg);
             }
 
             const url = (data?.url || data?.previewUrl || "").toString().trim();
@@ -2974,6 +3001,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy }: {
                                     onRestoreApplied={handleRestoreApplied}
                                     creditError={agentCreditError}
                                     previewReady={previewMode !== "webcontainer" ? true : isWebPreviewReady}
+                                    welcomeContext={agentWelcomeContext}
                                 />
                             ) : (
                                 // Code View - File Tree and Editor

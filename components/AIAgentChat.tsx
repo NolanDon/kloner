@@ -63,6 +63,12 @@ type AIAgentChatProps = {
     }) => void | Promise<void>;
     creditError?: string | null;
     previewReady?: boolean;
+    welcomeContext?: {
+        source?: "prompt" | "url" | "quickstart" | "template" | "sample" | "unknown";
+        prompt?: string | null;
+        url?: string | null;
+        templateName?: string | null;
+    };
 };
 
 type RestorePointItem = {
@@ -132,21 +138,64 @@ function renderTextWithLinks(text: string): React.ReactNode {
     });
 }
 
-export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady }: AIAgentChatProps) {
+export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, welcomeContext }: AIAgentChatProps) {
     const { user, userTier } = useAuth();
     const { showConfirm, showAlert } = useModal();
     const AI_EDIT_COST = 5;
     // Supabase OAuth setup is safe to expose in production (still requires session + CSRF on the server).
     const allowDatabaseSetupUi = true;
     const [aiCreditsRemaining, setAiCreditsRemaining] = useState<number | null>(null);
-    const [messages, setMessages] = useState<Message[]>([
+    const makeWelcomeMessage = useCallback((ctx?: AIAgentChatProps["welcomeContext"]) => {
+        const base = "Welcome to your app builder! I'm here to help you create amazing applications. 🚀";
+
+        const cleanOneLine = (v: unknown, max = 180) => {
+            const raw = typeof v === "string" ? v : "";
+            const collapsed = raw.replace(/\s+/g, " ").trim();
+            if (!collapsed) return "";
+            return collapsed.length > max ? `${collapsed.slice(0, max - 1)}…` : collapsed;
+        };
+
+        const prompt = cleanOneLine(ctx?.prompt);
+        const urlRaw = cleanOneLine(ctx?.url, 220);
+        const templateName = cleanOneLine(ctx?.templateName, 80);
+
+        let contextLine = "";
+        if (prompt) {
+            contextLine = `I saw your request: “${prompt}”`;
+        } else if (urlRaw) {
+            const nice = urlRaw.replace(/^https?:\/\//i, "");
+            contextLine = `I saw you're cloning: ${nice}`;
+        } else if (templateName) {
+            contextLine = `You're starting from the ${templateName} template.`;
+        }
+
+        const help =
+            "I can help you with:\n" +
+            "• Adding new features and pages\n" +
+            "• Styling and customizing your design\n" +
+            "• Moving and repositioning elements\n" +
+            "• Adding or removing images and visual assets\n" +
+            "• Updating colors, fonts, and layouts\n" +
+            "• Integrating APIs and external services\n" +
+            "• Fixing bugs and optimizing performance";
+
+        const question = prompt
+            ? "Want me to start implementing that, or refine the plan first?"
+            : urlRaw
+                ? "Do you want to match it 1:1, or start customizing right away?"
+                : "What would you like to build or improve today?";
+
+        return [base, contextLine, "", help, "", question].filter(Boolean).join("\n");
+    }, []);
+
+    const [messages, setMessages] = useState<Message[]>(() => [
         {
             id: "welcome",
             role: "assistant",
-            content: "Welcome to your app builder! I'm here to help you create amazing applications. 🚀\n\nI can help you with:\n• Adding new features and pages\n• Styling and customizing your design\n• Moving and repositioning elements\n• Adding or removing images and visual assets\n• Updating colors, fonts, and layouts\n• Integrating APIs and external services\n• Fixing bugs and optimizing performance\n\nWhat would you like to build or improve today?",
+            content: makeWelcomeMessage(welcomeContext),
             timestamp: new Date(),
-            type: "text"
-        }
+            type: "text",
+        },
     ]);
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);

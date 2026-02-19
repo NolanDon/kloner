@@ -63,12 +63,37 @@ export async function POST(
         const docRef = db.collection("kloner_users").doc(uid).collection("kloner_apps").doc(appId);
         const doc = await docRef.get();
         if (!doc.exists) {
-            return NextResponse.json({ error: "App not found" }, { status: 404 });
+            return NextResponse.json({ ok: false, error: "App not found" }, { status: 404 });
         }
 
         const data = doc.data();
-        if (data?.userId !== uid) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+        if (!data) {
+            return NextResponse.json({ ok: false, error: "App data not found" }, { status: 404 });
+        }
+        // Source of truth for ownership is the document path:
+        // `kloner_users/{uid}/kloner_apps/{appId}` is already user-scoped.
+        // Some legacy/cloned apps may have a stale `userId` field that doesn't match,
+        // which should not block deploy.
+        const storedUserId = typeof (data as any)?.userId === "string" ? String((data as any).userId).trim() : "";
+        if (storedUserId && storedUserId !== uid) {
+            const originalUserId = typeof (data as any)?.originalUserId === "string" ? String((data as any).originalUserId).trim() : "";
+            console.warn("[app-builder/deploy] app doc userId mismatch; self-healing", {
+                uid,
+                appId,
+                storedUserId,
+            });
+            try {
+                await docRef.set(
+                    {
+                        userId: uid,
+                        ...(originalUserId ? {} : { originalUserId: storedUserId }),
+                        updatedAt: new Date(),
+                    },
+                    { merge: true },
+                );
+            } catch (e) {
+                console.warn("[app-builder/deploy] failed to self-heal app doc userId", { uid, appId, e });
+            }
         }
 
         // Server-side tier guard (never trust client)

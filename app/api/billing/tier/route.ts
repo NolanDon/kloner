@@ -7,11 +7,10 @@ import {
 } from "../../_lib/billing";
 import { monthlyLimitFor } from "@/src/lib/credits";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
+import { getAdminDb } from "../../_lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const db = admin.firestore();
 
 function toFirestoreTsOrDate(date: Date): any {
     const ts = (admin as any)?.firestore?.Timestamp;
@@ -94,6 +93,7 @@ export async function GET(req: NextRequest) {
         req,
         async ({ uid }) => {
             try {
+                const db = getAdminDb();
                 const { searchParams } = new URL(req.url);
                 const refresh = searchParams.get("refresh") === "1";
 
@@ -131,6 +131,8 @@ export async function GET(req: NextRequest) {
                 const stripeSubId = typeof userData.stripeSubscriptionId === "string" ? userData.stripeSubscriptionId : "";
                 const storedTier = (userData.tier as UserTier) || "free";
 
+                let stripeRefreshError: string | null = null;
+
                 // Self-heal: if Stripe shows an active/trialing subscription but Firestore tier is still free,
                 // force a refresh from Stripe. This is critical for redirect flows (checkout success → resume wizard)
                 // and for production env misconfig incidents.
@@ -146,9 +148,18 @@ export async function GET(req: NextRequest) {
                     !source || // no source set yet
                     source !== "stripe" // make Stripe the source of truth
                 ) {
-                    tier = await refreshTierFromStripeForUid(uid);
-                    const freshSnap = await userRef.get();
-                    userData = freshSnap.exists ? freshSnap.data() : {};
+                    try {
+                        tier = await refreshTierFromStripeForUid(uid);
+                        const freshSnap = await userRef.get();
+                        userData = freshSnap.exists ? freshSnap.data() : {};
+                    } catch (e: any) {
+                        // Stripe refresh is best-effort; never hard-fail the UI.
+                        tier = storedTier;
+                        stripeRefreshError =
+                            typeof e?.message === "string" && e.message
+                                ? e.message
+                                : "stripe_refresh_failed";
+                    }
                 } else {
                     tier = (userData.tier as UserTier) || "free";
                 }
@@ -213,6 +224,7 @@ export async function GET(req: NextRequest) {
                         currentPeriodEnd: userData.stripeCurrentPeriodEnd ?? null,
                         cancelAtPeriodEnd: userData.stripeCancelAtPeriodEnd ?? null,
                         source: userData.tierSource ?? "stripe",
+                        stripeRefreshError,
                         credits: {
                             aiEdits: serializeAiEditsCredits(userData),
                         },

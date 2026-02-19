@@ -202,7 +202,7 @@ export default function UrlOverlay({ open, onClose }: UrlOverlayProps) {
 
         const user = auth.currentUser;
         if (user) {
-            router.push(`/dashboard?u=${encodeURIComponent(normalized)}`);
+            router.push(`/dashboard/view?u=${encodeURIComponent(normalized)}&start=1`);
             onClose();
             return;
         }
