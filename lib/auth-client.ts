@@ -154,7 +154,7 @@ export async function ensureSessionAndCsrf(): Promise<string | null> {
             if (r.status === 401 && auth?.currentUser) {
                 const ok = await bootstrapServerSession({
                     forceRefresh: false,
-                    minIntervalMs: 5_000,
+                    minIntervalMs: 10 * 60_000,
                     timeoutMs: 12_000,
                     reason: "csrf_401",
                 });
