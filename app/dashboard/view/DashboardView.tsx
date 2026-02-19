@@ -5428,6 +5428,95 @@ export default function PreviewPage(): JSX.Element {
         void (async () => {
             await refreshVercelStatus();
 
+            // If the user was in the *App Deploy* wizard when they connected Vercel,
+            // resume that flow even if the callback landed on the legacy `vercel=connected` param.
+            // This protects against older return URLs and cross-flow connects.
+            let pendingAppDeploy:
+                | { appId?: string | null; appName?: string | null; startedAt?: number | null }
+                | null = null;
+            try {
+                const raw = localStorage.getItem("kloner_vercel_pending_app_deploy");
+                if (raw) pendingAppDeploy = JSON.parse(raw);
+            } catch {
+                pendingAppDeploy = null;
+            }
+
+            // Ignore very old pending markers (e.g. user aborted OAuth days ago).
+            try {
+                const startedAt = Number((pendingAppDeploy as any)?.startedAt || 0);
+                const MAX_AGE_MS = 15 * 60 * 1000;
+                if (startedAt && Number.isFinite(startedAt) && Date.now() - startedAt > MAX_AGE_MS) {
+                    pendingAppDeploy = null;
+                    localStorage.removeItem("kloner_vercel_pending_app_deploy");
+                }
+            } catch {
+                // ignore
+            }
+
+            const flow = searchParams.get("flow") || "";
+            const appIdFromQuery = searchParams.get("appId");
+            const appDeployWizardHasId = !!appDeployWizardAppId;
+            const isAppDeployFlow =
+                (appDeployWizardOpen && appDeployWizardHasId) ||
+                flow === "appDeploy" ||
+                !!pendingAppDeploy?.appId;
+
+            if (isAppDeployFlow) {
+                const nextAppId =
+                    (typeof pendingAppDeploy?.appId === "string" && pendingAppDeploy.appId) ||
+                    (appDeployWizardHasId ? appDeployWizardAppId : null) ||
+                    (flow === "appDeploy" && typeof appIdFromQuery === "string" ? appIdFromQuery : null) ||
+                    null;
+
+                if (nextAppId) {
+                    const nextAppName =
+                        (typeof pendingAppDeploy?.appName === "string" && pendingAppDeploy.appName) ||
+                        appDeployWizardAppName ||
+                        "";
+
+                    setAppWizardOpen(false);
+                    setAppWizardError(null);
+                    setAppWizardBusy(false);
+
+                    setAppDeployWizardAppId(nextAppId);
+                    setAppDeployWizardAppName(nextAppName);
+                    setAppDeployWizardError(null);
+                    setAppDeployWizardBusy(false);
+                    setAppDeployWizardLiveUrl(null);
+                    setAppDeployWizardOpen(true);
+
+                    try {
+                        localStorage.removeItem("kloner_vercel_pending_app_deploy");
+                    } catch {
+                        // ignore
+                    }
+
+                    const tierNow = await refreshUserTierNow();
+                    if (tierNow === "free") {
+                        setAppDeployWizardStep(2);
+                    } else {
+                        setAppDeployWizardStep(3);
+                        autoAppDeployTriggeredRef.current = true;
+                    }
+
+                    // Clean up callback params so refresh/back doesn't re-run.
+                    try {
+                        const url = new URL(window.location.href);
+                        const params = url.searchParams;
+                        params.delete("vercel");
+                        params.delete("flow");
+                        params.delete("appId");
+                        const qs = params.toString();
+                        const next = qs ? `${url.pathname}?${qs}` : url.pathname;
+                        router.replace(next, { scroll: false });
+                    } catch {
+                        // ignore
+                    }
+
+                    return;
+                }
+            }
+
             // If we were connecting Vercel from App Builder preview, restore that overlay.
             let pendingApp: { appId?: string } | null = null;
             try {
@@ -5462,13 +5551,33 @@ export default function PreviewPage(): JSX.Element {
             setDeployWizardOpen(true);
             setDeployWizardStep(2);
 
+            // Clean up callback param so refresh/back doesn't re-run.
+            try {
+                const url = new URL(window.location.href);
+                const params = url.searchParams;
+                params.delete("vercel");
+                const qs = params.toString();
+                const next = qs ? `${url.pathname}?${qs}` : url.pathname;
+                router.replace(next, { scroll: false });
+            } catch {
+                // ignore
+            }
+
             try {
                 localStorage.removeItem("kloner_vercel_pending_deploy");
             } catch {
                 // ignore
             }
         })();
-    }, [searchParams, refreshVercelStatus, router]);
+    }, [
+        searchParams,
+        refreshVercelStatus,
+        refreshUserTierNow,
+        router,
+        appDeployWizardOpen,
+        appDeployWizardAppId,
+        appDeployWizardAppName,
+    ]);
 
     // ───────── on OAuth callback (?appVercel=connected) restore *app* wizard only ─────────
 
