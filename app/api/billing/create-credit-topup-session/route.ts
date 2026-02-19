@@ -39,6 +39,19 @@ function normalizeCredits(input: unknown): number | null {
     return Math.max(0, Math.floor(n));
 }
 
+function normalizeNextPath(input: unknown): string | null {
+    const raw = typeof input === "string" ? input.trim() : "";
+    if (!raw) return null;
+    if (raw.length > 2048) return null;
+
+    // Only allow same-origin relative paths to avoid open redirects.
+    if (!raw.startsWith("/")) return null;
+    if (raw.startsWith("//")) return null; // protocol-relative
+    if (raw.includes("://")) return null;
+
+    return raw;
+}
+
 async function handler(req: NextRequest, uid: string, sessionClaims?: Record<string, unknown>) {
     const db = getAdminDb();
 
@@ -105,8 +118,17 @@ async function handler(req: NextRequest, uid: string, sessionClaims?: Record<str
     }
 
     const origin = new URL(req.url).origin;
-    const successUrl = new URL("/price?topup=success&session_id={CHECKOUT_SESSION_ID}#topup", origin).toString();
-    const cancelUrl = new URL("/price?topup=cancel#topup", origin).toString();
+    const nextPath = normalizeNextPath(body?.next) || "/price#topup";
+
+    const successUrlObj = new URL(nextPath, origin);
+    successUrlObj.searchParams.set("topup", "success");
+    successUrlObj.searchParams.set("session_id", "{CHECKOUT_SESSION_ID}");
+
+    const cancelUrlObj = new URL(nextPath, origin);
+    cancelUrlObj.searchParams.set("topup", "cancel");
+
+    const successUrl = successUrlObj.toString();
+    const cancelUrl = cancelUrlObj.toString();
 
     const session = await stripe.checkout.sessions.create({
         mode: "payment",

@@ -6,15 +6,16 @@ const API_VERSION = "2025-10-29.clover" as Stripe.LatestApiVersion;
 function resolveStripeSecretKey(): string | null {
     const isProd = process.env.NODE_ENV === "production";
 
-    const key = isProd
-        ? process.env.STRIPE_SECRET_KEY_PROD || null
-        : process.env.STRIPE_SECRET_KEY_TEST || null;
+    if (isProd) {
+        return (
+            process.env.STRIPE_SECRET_KEY_LIVE ||
+            process.env.STRIPE_SECRET_KEY_PROD ||
+            process.env.STRIPE_SECRET_KEY ||
+            null
+        );
+    }
 
-
-    // delete-me
-    // const key =  process.env.STRIPE_SECRET_KEY_TEST || null;
-
-    return key;
+    return process.env.STRIPE_SECRET_KEY_TEST || process.env.STRIPE_SECRET_KEY || null;
 }
 
 let stripeSingleton: Stripe | null = null;

@@ -142,9 +142,119 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     const { user, userTier } = useAuth();
     const { showConfirm, showAlert } = useModal();
     const AI_EDIT_COST = 5;
+    const TOPUP_COMING_SOON = process.env.NEXT_PUBLIC_AI_EDIT_TOPUPS_DISABLED === "1";
     // Supabase OAuth setup is safe to expose in production (still requires session + CSRF on the server).
     const allowDatabaseSetupUi = true;
     const [aiCreditsRemaining, setAiCreditsRemaining] = useState<number | null>(null);
+    const [topupBusy, setTopupBusy] = useState(false);
+    const [topupModalOpen, setTopupModalOpen] = useState(false);
+    const [topupCredits, setTopupCredits] = useState<number>(500);
+    const [topupConfig, setTopupConfig] = useState<
+        | {
+              currency: string;
+              unitPriceCents: number;
+              minCredits: number;
+              maxCredits: number;
+              stepCredits: number;
+          }
+        | null
+    >(null);
+
+    const topupOptions = (() => {
+        const cfg = topupConfig;
+        const min = cfg?.minCredits ?? 50;
+        const max = cfg?.maxCredits ?? 5000;
+
+        const parseEnv = (raw: string | undefined): number[] => {
+            const s = (raw || "").trim();
+            if (!s) return [];
+            const parts = s.split(",").map((p) => p.trim()).filter(Boolean);
+            const nums = parts
+                .map((p) => Number.parseInt(p, 10))
+                .filter((n) => Number.isFinite(n) && n > 0);
+            return Array.from(new Set(nums)).sort((a, b) => a - b);
+        };
+
+        const override = parseEnv(process.env.NEXT_PUBLIC_AI_EDIT_TOPUP_OPTIONS);
+        const base = override.length
+            ? override
+            : [50, 100, 200, 400, 800, 1200, 2000, 3000, 4000, 5000, 7500, 10000];
+
+        const filtered = base.filter((n) => n >= min && n <= max);
+        if (filtered.length) return filtered;
+
+        const step = cfg?.stepCredits ?? 50;
+        const values: number[] = [];
+        for (let v = min; v <= max && values.length < 20; v += Math.max(1, step)) values.push(v);
+        return values.length ? values : [min];
+    })();
+
+    useEffect(() => {
+        if (!topupModalOpen) return;
+        if (TOPUP_COMING_SOON) return;
+        if (topupConfig) return;
+
+        let cancelled = false;
+        void (async () => {
+            try {
+                const res = await fetch("/api/billing/credit-topup-config", { cache: "no-store" });
+                if (!res.ok) return;
+                const data = (await res.json().catch(() => null)) as any;
+                if (!data || cancelled) return;
+
+                const unitPriceCents =
+                    typeof data.unitPriceCents === "number" && Number.isFinite(data.unitPriceCents)
+                        ? Math.max(1, Math.floor(data.unitPriceCents))
+                        : 3;
+                const minCredits =
+                    typeof data.minCredits === "number" && Number.isFinite(data.minCredits)
+                        ? Math.max(1, Math.floor(data.minCredits))
+                        : 50;
+                const maxCredits =
+                    typeof data.maxCredits === "number" && Number.isFinite(data.maxCredits)
+                        ? Math.max(minCredits, Math.floor(data.maxCredits))
+                        : 5000;
+                const stepCredits =
+                    typeof data.stepCredits === "number" && Number.isFinite(data.stepCredits)
+                        ? Math.max(1, Math.floor(data.stepCredits))
+                        : 50;
+                const currency = typeof data.currency === "string" ? data.currency : "usd";
+
+                setTopupConfig({ currency, unitPriceCents, minCredits, maxCredits, stepCredits });
+
+                setTopupCredits((prev) => {
+                    const options = topupOptions.length ? topupOptions : [minCredits];
+                    const clamped = Math.min(Math.max(prev, minCredits), maxCredits);
+                    let best = options[0]!;
+                    let bestDist = Math.abs(best - clamped);
+                    for (const n of options) {
+                        const d = Math.abs(n - clamped);
+                        if (d < bestDist) {
+                            best = n;
+                            bestDist = d;
+                        }
+                    }
+                    return best;
+                });
+            } catch {
+                // ignore
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [topupModalOpen]);
+
+    useEffect(() => {
+        if (!topupModalOpen) return;
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === "Escape") setTopupModalOpen(false);
+        };
+        document.addEventListener("keydown", onKey);
+        return () => document.removeEventListener("keydown", onKey);
+    }, [topupModalOpen]);
     const makeWelcomeMessage = useCallback((ctx?: AIAgentChatProps["welcomeContext"]) => {
         const base = "Welcome to your app builder! I'm here to help you create amazing applications. 🚀";
 
@@ -435,6 +545,113 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         if (csrf) headers["x-csrf"] = String(csrf);
         return headers;
     }, []);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        if (!user?.uid) return;
+
+        const url = new URL(window.location.href);
+        const topup = url.searchParams.get("topup");
+        const sessionId = url.searchParams.get("session_id");
+        if (topup !== "success" || !sessionId) return;
+
+        let cancelled = false;
+
+        void (async () => {
+            try {
+                const headers = await withCsrfHeaders();
+                const res = await fetch("/api/billing/confirm-credit-topup", {
+                    method: "POST",
+                    headers,
+                    credentials: "include",
+                    cache: "no-store",
+                    body: JSON.stringify({ sessionId }),
+                });
+
+                const data = (await res.json().catch(() => ({}))) as any;
+                if (cancelled) return;
+
+                if (res.ok) {
+                    const credits = typeof data?.credits === "number" ? data.credits : null;
+                    await showAlert(
+                        credits ? `Added ${credits.toLocaleString()} AI credits to your account.` : "Top-up confirmed.",
+                        "Credits added",
+                    );
+                } else {
+                    console.warn("confirm-credit-topup failed", data);
+                }
+
+                // Clean up query params so refresh doesn't re-confirm.
+                url.searchParams.delete("topup");
+                url.searchParams.delete("session_id");
+                window.history.replaceState({}, "", url.toString());
+            } catch {
+                // ignore
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [showAlert, user?.uid, withCsrfHeaders]);
+
+    const startCreditTopup = useCallback(async (credits: number) => {
+        if (TOPUP_COMING_SOON) {
+            window.location.href = "/price#topup";
+            return;
+        }
+
+        if (topupBusy) return;
+        if (typeof window === "undefined") return;
+
+        const nextPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
+        if (!user?.uid) {
+            window.location.href = `/login?next=${encodeURIComponent(nextPath)}`;
+            return;
+        }
+
+        if (!(userTier === "pro" || userTier === "agency")) {
+            window.location.href = "/price";
+            return;
+        }
+
+        const creditsInt = Number.isFinite(credits) ? Math.max(1, Math.floor(credits)) : 0;
+        if (!creditsInt) return;
+
+        setTopupBusy(true);
+        try {
+            const cfg = topupConfig;
+            const unitPriceCents = typeof cfg?.unitPriceCents === "number" ? cfg.unitPriceCents : 3;
+            const currency = typeof cfg?.currency === "string" ? cfg.currency : "usd";
+            void unitPriceCents;
+            void currency;
+
+            const headers = await withCsrfHeaders();
+            const res = await fetch("/api/billing/create-credit-topup-session", {
+                method: "POST",
+                headers,
+                credentials: "include",
+                body: JSON.stringify({ credits: creditsInt, next: nextPath }),
+            });
+
+            if (res.status === 401) {
+                window.location.href = `/login?next=${encodeURIComponent(nextPath)}`;
+                return;
+            }
+
+            const data = (await res.json().catch(() => ({}))) as any;
+            const url = typeof data?.url === "string" ? data.url : "";
+            if (!res.ok || !url) {
+                await showAlert(data?.error || "Unable to start top-up checkout. Please try again.", "Top up");
+                return;
+            }
+
+            window.location.href = url;
+        } finally {
+            setTopupBusy(false);
+        }
+    }, [TOPUP_COMING_SOON, showAlert, topupBusy, topupConfig, user?.uid, userTier, withCsrfHeaders]);
 
     const checkSupabaseDbHealth = useCallback(async (opts?: { silent?: boolean }) => {
         if (!user?.uid) {
@@ -2594,14 +2811,112 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                     </div>
                     <button
                         type="button"
-                        className="px-3 py-1 text-xs font-semibold bg-accent text-white rounded-full hover:bg-accent-dark"
+                        className="px-3 py-1 text-xs font-semibold bg-accent text-white rounded-full hover:bg-accent-dark disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
                         onClick={() => {
-                            window.location.href = "/price#topup";
+                            if (topupBusy) return;
+                            setTopupModalOpen(true);
                         }}
+                        disabled={topupBusy}
                     >
-                        Add credits
+                        <span>{topupBusy ? "Redirecting…" : "Add credits"}</span>
+                        <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
                     </button>
                 </div>
+
+                {topupModalOpen ? (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+                        <div className="w-full max-w-lg rounded-2xl border border-black/10 bg-white shadow-xl">
+                            <div className="flex items-center justify-between gap-3 border-b px-6 py-4">
+                                <div>
+                                    <div className="text-lg font-semibold text-neutral-900">Top up AI credits</div>
+                                    <div className="mt-0.5 text-xs text-neutral-600">
+                                        1 AI edit costs {AI_EDIT_COST} credits.
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setTopupModalOpen(false)}
+                                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50"
+                                    aria-label="Close"
+                                >
+                                    <X className="h-4 w-4" />
+                                </button>
+                            </div>
+
+                            <div className="px-6 py-5">
+                                {TOPUP_COMING_SOON ? (
+                                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                                        Credit top-ups are currently disabled.
+                                    </div>
+                                ) : null}
+
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                    <div>
+                                        <label className="block text-[11px] font-semibold text-neutral-600">Credits</label>
+                                        <select
+                                            value={topupCredits}
+                                            onChange={(e) => setTopupCredits(Number(e.target.value))}
+                                            className="mt-2 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm font-semibold text-neutral-900 focus:outline-none focus:ring-2 focus:ring-black/5"
+                                            disabled={TOPUP_COMING_SOON || topupBusy}
+                                        >
+                                            {topupOptions.map((n) => (
+                                                <option key={n} value={n}>
+                                                    {n.toLocaleString()} credits
+                                                </option>
+                                            ))}
+                                        </select>
+
+                                        <div className="mt-2 text-[12px] text-neutral-700">
+                                            ≈ {Math.max(1, Math.floor(topupCredits / AI_EDIT_COST)).toLocaleString()} AI edits
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
+                                        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+                                            Total
+                                        </div>
+                                        <div className="mt-2 text-2xl font-semibold text-neutral-900">
+                                            {(() => {
+                                                const unit = topupConfig?.unitPriceCents ?? 3;
+                                                const currency = (topupConfig?.currency ?? "usd").toLowerCase();
+                                                const amount = ((topupCredits * unit) / 100).toFixed(2);
+                                                return currency === "usd" ? `$${amount}` : `${currency.toUpperCase()} ${amount}`;
+                                            })()}
+                                        </div>
+                                        <div className="mt-2 text-[11px] text-neutral-600">
+                                            Top-ups never expire. Applied after Stripe confirms payment.
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="mt-5 flex flex-col gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setTopupModalOpen(false);
+                                            void startCreditTopup(topupCredits);
+                                        }}
+                                        className="w-full rounded-full bg-accent text-white px-4 py-3 text-sm font-semibold hover:bg-accent-dark disabled:opacity-60 disabled:cursor-not-allowed"
+                                        disabled={TOPUP_COMING_SOON || topupBusy}
+                                    >
+                                        Continue to Stripe
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setTopupModalOpen(false);
+                                            window.location.href = "/price#topup";
+                                        }}
+                                        className="w-full rounded-full border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-neutral-900 hover:bg-neutral-50"
+                                    >
+                                        View pricing
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                ) : null}
 
                 {chatDisabled ? (
                     <div className="mb-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">

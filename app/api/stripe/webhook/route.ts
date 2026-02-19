@@ -18,7 +18,10 @@ export const dynamic = "force-dynamic";
 const STRIPE_API_VERSION: Stripe.LatestApiVersion = "2025-10-29.clover";
 
 const STRIPE_LIVE_KEY =
-    process.env.STRIPE_SECRET_KEY_LIVE || process.env.STRIPE_SECRET_KEY || "";
+    process.env.STRIPE_SECRET_KEY_LIVE ||
+    process.env.STRIPE_SECRET_KEY_PROD ||
+    process.env.STRIPE_SECRET_KEY ||
+    "";
 const STRIPE_TEST_KEY =
     process.env.STRIPE_SECRET_KEY_TEST || process.env.STRIPE_SECRET_KEY || "";
 
@@ -43,6 +46,7 @@ function stripeForMode(livemode: boolean): Stripe {
 // Webhook secrets (support test + live; verify against both)
 const WH_LIVE =
     process.env.STRIPE_WEBHOOK_SECRET_LIVE ||
+    process.env.STRIPE_WEBHOOK_SECRET_PROD ||
     process.env.STRIPE_WEBHOOK_SECRET ||
     "";
 const WH_TEST =

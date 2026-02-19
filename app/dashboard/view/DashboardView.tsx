@@ -143,6 +143,8 @@ type MiniDashboardEntryProps = {
     screenshotLimitDisplay?: string | number | null;
     previewRemaining?: number | null;
     previewLimitDisplay?: string | number | null;
+    editRemaining?: number | null;
+    editLimitDisplay?: string | number | null;
     onManagePlan?: () => void;
     size?: "compact" | "full";
     disabled?: boolean;
@@ -158,6 +160,8 @@ function MiniDashboardEntry({
     screenshotLimitDisplay = null,
     previewRemaining = null,
     previewLimitDisplay = null,
+    editRemaining = null,
+    editLimitDisplay = null,
     onManagePlan,
     size = "compact",
     disabled = false,
@@ -278,6 +282,17 @@ function MiniDashboardEntry({
                                 {previewRemaining === null || !previewLimitDisplay
                                     ? "-"
                                     : `${previewRemaining}/${previewLimitDisplay}`}
+                            </span>
+                        </span>
+
+                        <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-neutral-700">
+                            AI credits:&nbsp;
+                            <span className="font-semibold text-neutral-900">
+                                {editRemaining === null
+                                    ? "-"
+                                    : editLimitDisplay
+                                        ? `${editRemaining}/${editLimitDisplay}`
+                                        : `${editRemaining}`}
                             </span>
                         </span>
                     </div>
@@ -2860,6 +2875,8 @@ export default function PreviewPage(): JSX.Element {
         previewUsed: number;
         screenshotRemaining: number | null;
         previewRemaining: number | null;
+        editUsed: number;
+        editRemaining: number | null;
     };
 
     const [credits, setCredits] = useState<UICredits>({
@@ -2867,6 +2884,8 @@ export default function PreviewPage(): JSX.Element {
         previewUsed: 0,
         screenshotRemaining: null,
         previewRemaining: null,
+        editUsed: 0,
+        editRemaining: null,
     });
 
     // derived limits for denominator (fallback only)
@@ -2880,6 +2899,9 @@ export default function PreviewPage(): JSX.Element {
             ? tierLimits.previewMonthly
             : null;
 
+    const editLimitDisplay =
+        tierLimits.editMonthly && tierLimits.editMonthly > 0 ? tierLimits.editMonthly : null;
+
     /* ───────── credits (read from Firestore) ───────── */
 
     // Watch kloner_users/{uid} and derive credits from the canonical buckets:
@@ -2892,6 +2914,8 @@ export default function PreviewPage(): JSX.Element {
                 previewUsed: 0,
                 screenshotRemaining: null,
                 previewRemaining: null,
+                editUsed: 0,
+                editRemaining: null,
             });
             return;
         }
@@ -2908,20 +2932,29 @@ export default function PreviewPage(): JSX.Element {
                     tierLimits.previewMonthly && tierLimits.previewMonthly > 0
                         ? tierLimits.previewMonthly
                         : 0;
+                const editLimit =
+                    tierLimits.editMonthly && tierLimits.editMonthly > 0
+                        ? tierLimits.editMonthly
+                        : 0;
 
                 setCredits({
                     screenshotUsed: 0,
                     previewUsed: 0,
                     screenshotRemaining: screenshotLimit || null,
                     previewRemaining: previewLimit || null,
+                    editUsed: 0,
+                    editRemaining: editLimit || null,
                 });
                 return;
             }
 
             const creditsMap = (snap.data() as any) || {};
-            // ONLY read nested buckets under `credits`
-            const previewBucket = (creditsMap['credits.preview'] as any) || {};
-            const snapshotBucket = (creditsMap['credits.snapshot'] as any) || {};
+            const previewBucket =
+                creditsMap?.["credits.preview"] || creditsMap?.credits?.preview || {};
+            const snapshotBucket =
+                creditsMap?.["credits.snapshot"] || creditsMap?.credits?.snapshot || {};
+            const editBucket =
+                creditsMap?.["credits.aiEdits"] || creditsMap?.credits?.aiEdits || {};
 
             const previewLimit =
                 typeof previewBucket.monthlyLimit === "number" &&
@@ -2934,6 +2967,11 @@ export default function PreviewPage(): JSX.Element {
                     snapshotBucket.monthlyLimit >= 0
                     ? snapshotBucket.monthlyLimit
                     : tierLimits.screenshotMonthly || 0;
+
+            const editLimit =
+                typeof editBucket.monthlyLimit === "number" && editBucket.monthlyLimit >= 0
+                    ? editBucket.monthlyLimit
+                    : tierLimits.editMonthly || 0;
 
             const previewRemaining =
                 previewLimit === 0
@@ -2949,6 +2987,13 @@ export default function PreviewPage(): JSX.Element {
                         ? snapshotBucket.remaining
                         : screenshotLimit;
 
+            const editRemaining =
+                editLimit === 0
+                    ? null
+                    : typeof editBucket.remaining === "number"
+                        ? editBucket.remaining
+                        : editLimit;
+
             setCredits({
                 screenshotUsed:
                     screenshotRemaining === null || screenshotLimit === 0
@@ -2960,6 +3005,11 @@ export default function PreviewPage(): JSX.Element {
                         : Math.max(previewLimit - previewRemaining, 0),
                 screenshotRemaining,
                 previewRemaining,
+                editUsed:
+                    editRemaining === null || editLimit === 0
+                        ? 0
+                        : Math.max(editLimit - editRemaining, 0),
+                editRemaining,
             });
         });
 
@@ -2974,6 +3024,7 @@ export default function PreviewPage(): JSX.Element {
     // Simple accessors for UI
     const screenshotRemaining = credits.screenshotRemaining;
     const previewRemaining = credits.previewRemaining;
+    const editRemaining = credits.editRemaining;
 
     function canUseScreenshotCredit(): boolean {
         if (screenshotRemaining === null) return true; // unlimited
@@ -6057,6 +6108,8 @@ export default function PreviewPage(): JSX.Element {
                         screenshotLimitDisplay={screenshotLimitDisplay}
                         previewRemaining={previewRemaining}
                         previewLimitDisplay={previewLimitDisplay}
+                        editRemaining={editRemaining}
+                        editLimitDisplay={editLimitDisplay}
                         onManagePlan={() => router.push("/price")}
                         size="compact"
                         disabled={captureLocked}

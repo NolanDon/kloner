@@ -40,6 +40,16 @@ jest.mock("../../_lib/route-guard", () => {
     };
 });
 
+jest.mock("../../_lib/auth", () => {
+    return {
+        __esModule: true,
+        getAdminDb: () => {
+            const admin = require("firebase-admin").default;
+            return admin.firestore();
+        },
+    };
+});
+
 type Snap = { exists: boolean; data: () => any };
 
 function snap(data: any): Snap {

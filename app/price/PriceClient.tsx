@@ -143,7 +143,7 @@ function clampPct(v: number): number {
 }
 
 export default function PriceClient(): JSX.Element {
-    const TOPUP_COMING_SOON = true;
+    const TOPUP_COMING_SOON = process.env.NEXT_PUBLIC_AI_EDIT_TOPUPS_DISABLED === "1";
     const [loadingPlan, setLoadingPlan] = useState<null | "pro" | "agency">(null);
     const [loadingTopup, setLoadingTopup] = useState(false);
     const [topupCredits, setTopupCredits] = useState<number>(500);
@@ -313,6 +313,22 @@ export default function PriceClient(): JSX.Element {
         const min = cfg?.minCredits ?? 50;
         const max = cfg?.maxCredits ?? 5000;
 
+        const parseEnv = (raw: string | undefined): number[] => {
+            const s = (raw || "").trim();
+            if (!s) return [];
+            const parts = s.split(",").map((p) => p.trim()).filter(Boolean);
+            const nums = parts
+                .map((p) => Number.parseInt(p, 10))
+                .filter((n) => Number.isFinite(n) && n > 0);
+            return Array.from(new Set(nums)).sort((a, b) => a - b);
+        };
+
+        const override = parseEnv(process.env.NEXT_PUBLIC_AI_EDIT_TOPUP_OPTIONS);
+        if (override.length) {
+            const filtered = override.filter((n) => n >= min && n <= max);
+            if (filtered.length) return filtered;
+        }
+
         // Curated options (wide range, simple dropdown). Filter to config bounds.
         const base = [
             50,
@@ -452,7 +468,7 @@ export default function PriceClient(): JSX.Element {
                     ...(csrf ? { "x-csrf": csrf } : {}),
                 },
                 credentials: "include",
-                body: JSON.stringify({ credits: topupCredits }),
+                body: JSON.stringify({ credits: topupCredits, next: "/price#topup" }),
             });
 
             if (res.status === 401) {
