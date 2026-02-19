@@ -4,7 +4,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { getUserRenders, RenderRecord, unarchiveRender, useResolvedImg } from "@/src/lib/renders";
 import { Trash2 as DeleteIcon } from "lucide-react";
-import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
+import { ensureSessionAndCsrf } from "@/lib/auth-client";
 import Image from 'next/image'
 import { useModal } from "@/components/ui/ModalContext";
 import { onAuthStateChanged, User as FirebaseUser } from "firebase/auth";

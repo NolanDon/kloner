@@ -1,6 +1,6 @@
 "use client";
 
-import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
+import { ensureSessionAndCsrf } from "@/lib/auth-client";
 import { useEffect, useRef, useState } from "react";
 import { Image as ImageIcon, Info, ArrowUpRight, Loader2, Rocket } from "lucide-react";
 

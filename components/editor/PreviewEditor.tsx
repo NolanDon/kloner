@@ -1,7 +1,7 @@
 // src/components/PreviewEditor.tsx
 "use client";
 
-import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
+import { ensureSessionAndCsrf } from "@/lib/auth-client";
 import { useEffect, useMemo, useRef, useState, useCallback, ChangeEvent } from "react";
 import { motion, AnimatePresence, useDragControls } from "framer-motion";
 import Image from 'next/image'

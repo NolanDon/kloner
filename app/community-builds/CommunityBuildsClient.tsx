@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import KlonerLoader from "@/components/KlonerLoader";
-import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
+import { ensureSessionAndCsrf } from "@/lib/auth-client";
 import { auth } from "@/lib/firebase";
 import type { User } from "firebase/auth";
 import { getIdToken, onAuthStateChanged } from "firebase/auth";

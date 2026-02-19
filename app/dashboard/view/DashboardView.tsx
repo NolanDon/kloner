@@ -83,7 +83,7 @@ import {
     rendersEqual,
 } from "./page.helpers";
 import { CREDIT_LIMITS, UserTier } from "@/src/lib/credits";
-import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
+import { ensureSessionAndCsrf } from "@/lib/auth-client";
 import { UrlDoc } from "../page";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 import { archiveRender, filterRendersForBuilder, resolveStorageUrl, useResolvedImg } from "@/src/lib/renders";
@@ -4406,35 +4406,7 @@ export default function PreviewPage(): JSX.Element {
             ].join("; ");
 
             // tell callback where to send the user back to
-            const project = (deployWizardProjectName || "").trim();
-            let returnTo = "/dashboard/view?vercel=connected";
-            try {
-                const url = new URL(window.location.href);
-                const params = url.searchParams;
-
-                // Remove any stale flags but preserve the current dashboard context (e.g. `u`).
-                params.delete("billing");
-                params.delete("upgraded");
-                params.delete("wizard");
-                params.delete("step");
-                params.delete("render");
-                params.delete("project");
-                params.delete("vercel");
-                params.delete("appVercel");
-                params.delete("flow");
-                params.delete("appId");
-
-                params.set("vercel", "connected");
-                params.set("wizard", "1");
-                params.set("step", "2");
-                if (deployWizardRenderId) params.set("render", deployWizardRenderId);
-                if (project) params.set("project", project);
-
-                const qs = params.toString();
-                returnTo = qs ? `${url.pathname}?${qs}` : url.pathname;
-            } catch {
-                // ignore
-            }
+            const returnTo = `/dashboard/view?vercel=connected`;
             document.cookie = [
                 `vercel_oauth_return=${encodeURIComponent(returnTo)}`,
                 "Path=/",
@@ -4543,22 +4515,9 @@ export default function PreviewPage(): JSX.Element {
                 pending = null;
             }
 
-            // Fallback: localStorage can be unavailable (private mode / blocked storage).
-            const renderIdFromQuery = (searchParams.get("render") || "").trim();
-            const projectFromQuery = (searchParams.get("project") || "").trim();
-
-            const nextRenderId =
-                (pending?.renderId || "").trim() ||
-                renderIdFromQuery;
-            const nextProject =
-                (pending?.projectName || "").trim() ||
-                projectFromQuery;
-
-            if (nextRenderId) {
-                setDeployWizardRenderId(nextRenderId);
-            }
-            if (nextProject) {
-                setDeployWizardProjectName(nextProject);
+            if (pending?.renderId) {
+                setDeployWizardRenderId(pending.renderId);
+                setDeployWizardProjectName(pending.projectName || "");
             }
 
             autoDeployTriggeredRef.current = false;
@@ -4569,22 +4528,6 @@ export default function PreviewPage(): JSX.Element {
 
             try {
                 localStorage.removeItem("kloner_vercel_pending_deploy");
-            } catch {
-                // ignore
-            }
-
-            // Clean up callback params so refresh/back doesn't reopen flows.
-            try {
-                const url = new URL(window.location.href);
-                const params = url.searchParams;
-                params.delete("vercel");
-                params.delete("wizard");
-                params.delete("step");
-                params.delete("render");
-                params.delete("project");
-                const qs = params.toString();
-                const next = qs ? `${url.pathname}?${qs}` : url.pathname;
-                router.replace(next, { scroll: false });
             } catch {
                 // ignore
             }
@@ -6508,12 +6451,6 @@ export default function PreviewPage(): JSX.Element {
                                                         </>
                                                     )}
 
-                                                    {vercelStatus === "connected" && !deployWizardRenderId ? (
-                                                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
-                                                            We lost track of which preview to deploy. Close this wizard and click Deploy again from your preview card.
-                                                        </div>
-                                                    ) : null}
-
                                                     {vercelStatus !== "connected" && (
                                                         <div className="mt-4 flex items-center justify-between gap-2">
                                                             <button
@@ -6532,31 +6469,6 @@ export default function PreviewPage(): JSX.Element {
                                                                 style={{ backgroundColor: ACCENT }}
                                                             >
                                                                 Connect Vercel
-                                                            </button>
-                                                        </div>
-                                                    )}
-
-                                                    {vercelStatus === "connected" && (
-                                                        <div className="mt-4 flex items-center justify-between gap-2">
-                                                            <button
-                                                                type="button"
-                                                                onClick={closeDeployWizard}
-                                                                disabled={deployWizardBusy}
-                                                                className="rounded-full border border-neutral-200 px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                            >
-                                                                Close
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    if (!deployWizardRenderId) return;
-                                                                    setDeployWizardStep(3);
-                                                                }}
-                                                                disabled={deployWizardBusy || !deployWizardRenderId}
-                                                                className="rounded-full px-3 py-1.5 text-sm text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                                                                style={{ backgroundColor: ACCENT }}
-                                                            >
-                                                                Continue to deploy
                                                             </button>
                                                         </div>
                                                     )}

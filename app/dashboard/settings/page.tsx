@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
-import { ensureSessionAndCsrf } from "../../login/LoginForm";
+import { ensureSessionAndCsrf } from "@/lib/auth-client";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { useModal } from "@/components/ui/ModalContext";
 

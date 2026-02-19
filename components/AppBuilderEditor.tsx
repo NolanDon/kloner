@@ -7,7 +7,7 @@ import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateC
 import AIAgentChat from "./AIAgentChat";
 import KlonerLoader from "./KlonerLoader";
 import WebContainerRunner from "./WebContainerRunner";
-import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
+import { ensureSessionAndCsrf } from "@/lib/auth-client";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 import { db } from "@/lib/firebase";
 import { doc, onSnapshot } from "firebase/firestore";

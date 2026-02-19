@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import { onIdTokenChanged, getIdTokenResult, type User } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
+import { bootstrapServerSession } from "@/lib/auth-client";
 
 export type UserTier = "free" | "pro" | "agency" | "enterprise" | null;
 
@@ -22,8 +23,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [isAdmin, setIsAdmin] = useState(false);
     const [userTier, setUserTier] = useState<UserTier>(null);
 
-    const lastTokenRef = useRef<string | null>(null);
-    const syncingRef = useRef<Promise<any> | null>(null);
+    const bootstrappedOnceRef = useRef(false);
 
     useEffect(() => {
         if (!auth) {
@@ -46,37 +46,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     setIsAdmin(!!tokenResult.claims?.admin);
                     setUserTier((tokenResult.claims?.userTier as UserTier) || "free");
 
-                    const idToken = await authUser.getIdToken(); // no-force
-                    if (idToken && idToken !== lastTokenRef.current) {
-                        lastTokenRef.current = idToken;
-                        if (!syncingRef.current) {
-                            syncingRef.current = (async () => {
-                                // Establish session
-                                await fetch("/api/auth/session", {
-                                    method: "POST",
-                                    credentials: "include",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ idToken }),
-                                });
-
-                                // Also fetch CSRF token to ensure it's available
-                                try {
-                                    await fetch("/api/auth/csrf", {
-                                        method: "POST",
-                                        credentials: "include",
-                                        headers: { "Content-Type": "application/json" },
-                                    });
-                                } catch (error) {
-                                    console.warn("Failed to fetch CSRF token:", error);
-                                }
-                            })().finally(() => setTimeout(() => (syncingRef.current = null), 0));
-                        }
+                    // Establish the server session cookie at most once per page load
+                    // (and then rely on the global de-dupe + throttle in bootstrapServerSession).
+                    if (!bootstrappedOnceRef.current) {
+                        bootstrappedOnceRef.current = true;
+                        void bootstrapServerSession({
+                            forceRefresh: false,
+                            minIntervalMs: 30 * 60 * 1000,
+                            timeoutMs: 12_000,
+                            reason: "auth_provider_init",
+                        });
                     }
                 } else {
                     setUser(null);
                     setIsAdmin(false);
                     setUserTier(null);
-                    lastTokenRef.current = null;
+                    bootstrappedOnceRef.current = false;
                 }
             } finally {
                 setLoading(false);

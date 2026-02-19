@@ -34,7 +34,7 @@ import {
 } from "lucide-react";
 import type { Device, SeoMeta, ViewMode } from "@/components/editor/PreviewEditor";
 import PreviewEditorManager from "@/components/editor/PreviewEditorManager";
-import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
+import { ensureSessionAndCsrf } from "@/lib/auth-client";
 import {
     extractArchivedPageIdsFromRender,
     fetchRenderForDeployment,

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Loader2, ArrowUpRight, ImageIcon, Info, X, Rocket } from "lucide-react";
-import { ensureSessionAndCsrf } from "@/app/login/LoginForm";
+import { ensureSessionAndCsrf } from "@/lib/auth-client";
 
 export interface AiEditSuggestion {
     id: string;
