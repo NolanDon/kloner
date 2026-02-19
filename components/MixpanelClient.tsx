@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { initMixpanel, identifyMixpanel, resetMixpanel, trackMixpanel } from "@/lib/mixpanel";
+import { applyMixpanelPrivacyForUid, initMixpanel, identifyMixpanel, resetMixpanel, trackMixpanel } from "@/lib/mixpanel";
 import { useAuth } from "@/src/hooks/useAuth";
 
 function safeSearchParams(sp: ReturnType<typeof useSearchParams> | null): string {
@@ -26,6 +26,7 @@ export default function MixpanelClient() {
 
     const lastTrackedUrlRef = useRef<string | null>(null);
     const lastIdentifiedUidRef = useRef<string | null>(null);
+    const isBlockedRef = useRef<boolean>(false);
 
     useEffect(() => {
         initMixpanel();
@@ -33,6 +34,13 @@ export default function MixpanelClient() {
 
     useEffect(() => {
         const uid = user?.uid || null;
+
+        isBlockedRef.current = applyMixpanelPrivacyForUid(uid);
+        if (isBlockedRef.current) {
+            // Avoid identify/reset churn while blocked.
+            lastIdentifiedUidRef.current = null;
+            return;
+        }
 
         if (!uid) {
             if (lastIdentifiedUidRef.current) {
@@ -53,6 +61,7 @@ export default function MixpanelClient() {
 
     useEffect(() => {
         if (!urlKey) return;
+        if (isBlockedRef.current) return;
         if (urlKey === lastTrackedUrlRef.current) return;
         lastTrackedUrlRef.current = urlKey;
 
