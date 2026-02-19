@@ -23,7 +23,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [userTier, setUserTier] = useState<UserTier>(null);
 
     const lastTokenRef = useRef<string | null>(null);
-    const syncingRef = useRef<Promise<any> | null>(null);
+    const syncingRef = useRef<{ startedAt: number } | null>(null);
+
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const fetchWithTimeout = async (url: string, init: RequestInit & { timeoutMs?: number }) => {
+        const timeoutMs = typeof init.timeoutMs === "number" ? init.timeoutMs : 12_000;
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), timeoutMs);
+        try {
+            const { timeoutMs: _omit, ...rest } = init;
+            return await fetch(url, { ...rest, signal: ctrl.signal });
+        } finally {
+            clearTimeout(t);
+        }
+    };
 
     useEffect(() => {
         if (!auth) {
@@ -49,27 +63,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     const idToken = await authUser.getIdToken(); // no-force
                     if (idToken && idToken !== lastTokenRef.current) {
                         lastTokenRef.current = idToken;
-                        if (!syncingRef.current) {
-                            syncingRef.current = (async () => {
-                                // Establish session
-                                await fetch("/api/auth/session", {
-                                    method: "POST",
-                                    credentials: "include",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ idToken }),
-                                });
 
-                                // Also fetch CSRF token to ensure it's available
+                        const now = Date.now();
+                        const inFlight = syncingRef.current;
+                        const stale = inFlight && now - inFlight.startedAt > 20_000;
+                        if (!inFlight || stale) {
+                            syncingRef.current = { startedAt: now };
+
+                            void (async () => {
+                                // Establish session (best-effort, with timeout).
                                 try {
-                                    await fetch("/api/auth/csrf", {
-                                        method: "POST",
-                                        credentials: "include",
-                                        headers: { "Content-Type": "application/json" },
-                                    });
-                                } catch (error) {
-                                    console.warn("Failed to fetch CSRF token:", error);
+                                    await fetchWithTimeout(
+                                        "/api/auth/session",
+                                        {
+                                            method: "POST",
+                                            credentials: "include",
+                                            headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({ idToken }),
+                                            cache: "no-store",
+                                            timeoutMs: 20_000,
+                                        }
+                                    );
+                                } catch (e) {
+                                    console.warn("Session bootstrap failed (timed out or errored)", e);
                                 }
-                            })().finally(() => setTimeout(() => (syncingRef.current = null), 0));
+
+                                // Fetch CSRF token to ensure it's available for POST routes.
+                                // If the session cookie isn't ready yet, this may 401; retry once shortly after.
+                                for (let attempt = 0; attempt < 2; attempt++) {
+                                    try {
+                                        const res = await fetchWithTimeout(
+                                            "/api/auth/csrf",
+                                            {
+                                                method: "POST",
+                                                credentials: "include",
+                                                headers: { "Content-Type": "application/json" },
+                                                cache: "no-store",
+                                                timeoutMs: 12_000,
+                                            }
+                                        );
+                                        if (res.ok) break;
+                                    } catch (error) {
+                                        // ignore and retry once
+                                    }
+                                    await sleep(500);
+                                }
+                            })().finally(() => {
+                                // Always clear so we can retry later if needed.
+                                syncingRef.current = null;
+                            });
                         }
                     }
                 } else {
@@ -77,6 +119,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     setIsAdmin(false);
                     setUserTier(null);
                     lastTokenRef.current = null;
+                    syncingRef.current = null;
                 }
             } finally {
                 setLoading(false);

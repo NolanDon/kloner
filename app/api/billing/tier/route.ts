@@ -139,6 +139,8 @@ export async function GET(req: NextRequest) {
                     !!stripeSubId &&
                     (stripeStatus === "active" || stripeStatus === "trialing");
 
+                let stripeRefreshError: string | null = null;
+
                 // force refresh, or if we don't yet trust that Firestore tier
                 if (
                     refresh ||
@@ -146,9 +148,17 @@ export async function GET(req: NextRequest) {
                     !source || // no source set yet
                     source !== "stripe" // make Stripe the source of truth
                 ) {
-                    tier = await refreshTierFromStripeForUid(uid);
-                    const freshSnap = await userRef.get();
-                    userData = freshSnap.exists ? freshSnap.data() : {};
+                    try {
+                        tier = await refreshTierFromStripeForUid(uid);
+                        const freshSnap = await userRef.get();
+                        userData = freshSnap.exists ? freshSnap.data() : {};
+                    } catch (e: any) {
+                        // If Stripe is temporarily unavailable or env is misconfigured, do not 500.
+                        // Fall back to stored tier so the UI can still function.
+                        tier = storedTier;
+                        stripeRefreshError = typeof e?.message === "string" ? e.message : "stripe_refresh_failed";
+                        console.error("billing/tier stripe refresh failed", e);
+                    }
                 } else {
                     tier = (userData.tier as UserTier) || "free";
                 }
@@ -213,6 +223,7 @@ export async function GET(req: NextRequest) {
                         currentPeriodEnd: userData.stripeCurrentPeriodEnd ?? null,
                         cancelAtPeriodEnd: userData.stripeCancelAtPeriodEnd ?? null,
                         source: userData.tierSource ?? "stripe",
+                        stripeRefreshError,
                         credits: {
                             aiEdits: serializeAiEditsCredits(userData),
                         },

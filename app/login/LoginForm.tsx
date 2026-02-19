@@ -242,20 +242,13 @@ export async function ensureSessionAndCsrf(): Promise<string | null> {
             // Bootstrap it from Firebase auth, then retry CSRF.
             if (r.status === 401 && auth.currentUser) {
                 try {
-                    const idToken = await getIdToken(auth.currentUser, true);
-                    const s = await fetch("/api/auth/session", {
-                        method: "POST",
-                        headers: { "content-type": "application/json" },
-                        body: JSON.stringify({ idToken }),
-                        credentials: "include",
-                        cache: "no-store",
-                    });
-
-                    if (s.ok) {
+                    // Do not force-refresh tokens here; it can add noticeable latency on cold starts.
+                    const ok = await setSessionCookie({ timeoutMs: 8_000, forceRefresh: false });
+                    if (ok) {
                         r = await fetchCsrfWithStatus();
                         if (r.token) return r.token;
                     } else {
-                        console.warn("Session bootstrap failed:", s.status, s.statusText);
+                        console.warn("Session bootstrap failed");
                     }
                 } catch (e) {
                     console.warn("Session bootstrap error:", e);
@@ -279,26 +272,57 @@ export async function ensureSessionAndCsrf(): Promise<string | null> {
 
 /* ───────── Session cookie with CSRF ───────── */
 
-async function setSessionCookie(): Promise<void> {
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function setSessionCookie(opts?: { timeoutMs?: number; forceRefresh?: boolean }): Promise<boolean> {
     const u: User | null = auth.currentUser;
-    if (!u) return;
+    if (!u) return false;
 
-    const idToken = await getIdToken(u, true);
+        // IMPORTANT: this runs on cold starts and can be slow in production.
+        // Use a relatively generous timeout, but never block navigation on it.
+        const timeoutMs = typeof opts?.timeoutMs === "number" ? opts.timeoutMs : 25_000;
+    const forceRefresh = opts?.forceRefresh === true;
 
-    // The session endpoint does not require CSRF; it *creates* the server session cookie.
-    // Fetching CSRF before establishing a session causes a 401 loop.
-    const res = await fetch("/api/auth/session", {
-        method: "POST",
-        headers: {
-            "content-type": "application/json",
-        },
-        body: JSON.stringify({ idToken }),
-        credentials: "include",
-        cache: "no-store",
-    });
+    let idToken = "";
+    try {
+        // Forcing refresh can add 10s+ on some new-user flows; only do it if you must.
+        idToken = await getIdToken(u, forceRefresh);
+    } catch (e) {
+        console.warn("Failed to get Firebase ID token for session bootstrap", e);
+        return false;
+    }
 
-    if (!res.ok) {
-        console.warn("Failed to set session cookie:", res.status, res.statusText);
+    const ctrl = new AbortController();
+    const t = globalThis.setTimeout(() => ctrl.abort(), timeoutMs);
+
+    try {
+        // The session endpoint does not require CSRF; it *creates* the server session cookie.
+        // Fetching CSRF before establishing a session causes a 401 loop.
+        const res = await fetch("/api/auth/session", {
+            method: "POST",
+            headers: {
+                "content-type": "application/json",
+            },
+            body: JSON.stringify({ idToken }),
+            credentials: "include",
+            cache: "no-store",
+            signal: ctrl.signal,
+        });
+
+        if (!res.ok) {
+            console.warn("Failed to set session cookie:", res.status, res.statusText);
+            return false;
+        }
+        return true;
+    } catch (e) {
+        // AbortError here typically means the endpoint hung (network/cold start).
+        console.warn("Failed to set session cookie (request failed or timed out)", e);
+        return false;
+    } finally {
+        globalThis.clearTimeout(t);
+                        const ok = await setSessionCookie({ timeoutMs: 25_000, forceRefresh: false });
     }
 }
 
@@ -476,11 +500,14 @@ export default function LoginPage(): JSX.Element {
         const unsub = onAuthStateChanged(auth, async (u) => {
             if (!u) return;
             try {
-                await setSessionCookie();
+                // If the auth state is established, stop showing the UI as "stuck".
+                setLoading(false);
 
-                // Ensure createdAt exists (and keep updatedAt fresh) for any signed-in user.
-                // This fixes the "createdAt didn't seem to work" issue when other flows created the doc first.
-                await ensureUserCreatedAt(u);
+                // Bootstrap server session cookie, but do not block navigation indefinitely.
+                const sessionPromise = setSessionCookie({ timeoutMs: 25_000, forceRefresh: false });
+
+                // createdAt is not required for redirect; do this in the background.
+                void ensureUserCreatedAt(u);
 
                 const pendingP = pendingPrompt?.trim();
                 if (pendingP) {
@@ -490,6 +517,9 @@ export default function LoginPage(): JSX.Element {
                         } catch {
                             // ignore
                         }
+
+                        // Give the session cookie a moment to establish (best-effort), then redirect.
+                        await Promise.race([sessionPromise, sleep(4_000)]);
                         router.replace(
                             `/dashboard/view?wizard=1&source=prompt&prompt=${encodeURIComponent(pendingP)}`,
                         );
@@ -501,31 +531,36 @@ export default function LoginPage(): JSX.Element {
 
                 const pending = pendingUrl?.trim();
                 if (pending) {
-                    try {
-                        // Ensure doc exists, then fire generate in background
-                        const cleaned = await ensureUrlDoc(u.uid, pending);
+                    // Don’t block login on Firestore queries; redirect immediately.
+                    router.replace("/dashboard");
 
+                    void (async () => {
                         try {
-                            localStorage.removeItem("kloner.pendingUrl");
-                        } catch {
-                            // ignore
+                            // Best-effort: wait a bit for session so CSRF/generate calls succeed.
+                            await Promise.race([sessionPromise, sleep(4_000)]);
+
+                            // Ensure doc exists, then fire generate in background.
+                            const cleaned = await ensureUrlDoc(u.uid, pending);
+
+                            try {
+                                localStorage.removeItem("kloner.pendingUrl");
+                            } catch {
+                                // ignore
+                            }
+
+                            void queueGenerate(cleaned).catch((e) => {
+                                console.error("generate failed after signup", e);
+                            });
+                        } catch (e) {
+                            console.error("failed to auto-add pending url", e);
                         }
+                    })();
 
-                        // fire-and-forget generate; do NOT block navigation
-                        void queueGenerate(cleaned).catch((e) => {
-                            console.error("generate failed after signup", e);
-                        });
-
-                        router.replace("/dashboard");
-
-                        return;
-                    } catch (e) {
-                        console.error("failed to auto-add pending url", e);
-                        // fall through to normal redirect
-                    }
+                    return;
                 }
 
                 const next = search.get("next") || "/dashboard";
+                await Promise.race([sessionPromise, sleep(4_000)]);
                 router.replace(next);
             } catch {
                 router.replace("/dashboard");
@@ -561,12 +596,14 @@ export default function LoginPage(): JSX.Element {
             const cred = await signInWithPopup(auth, provider);
             const isNew = !!getAdditionalUserInfo(cred)?.isNewUser;
 
-            await setSessionCookie();
-
+            // Best-effort session bootstrap; onAuthStateChanged will also do this.
+            void setSessionCookie({ timeoutMs: 8_000, forceRefresh: false });
+                        void setSessionCookie({ timeoutMs: 25_000, forceRefresh: false });
+                            void setSessionCookie({ timeoutMs: 25_000, forceRefresh: false });
             if (isNew) {
-                await ensureUserCreatedAt(cred.user);
-                await attachAffiliateToUserDoc(cred.user);
-                await notifyKlonerSignup(cred.user, "google");
+                void ensureUserCreatedAt(cred.user);
+                void attachAffiliateToUserDoc(cred.user);
+                void notifyKlonerSignup(cred.user, "google");
             }
         } catch (e) {
             setErr(normalizeError(e));
@@ -598,13 +635,14 @@ export default function LoginPage(): JSX.Element {
 
             if (mode === "signin") {
                 await signInWithEmailAndPassword(auth, email.trim(), pw);
-                await setSessionCookie();
             } else {
                 const cred = await createUserWithEmailAndPassword(auth, email.trim(), pw);
-                await setSessionCookie();
-                await ensureUserCreatedAt(cred.user);
-                await attachAffiliateToUserDoc(cred.user);
-                await notifyKlonerSignup(cred.user, "email");
+
+                // Don’t block UI on session/Firestore/email side effects.
+                void setSessionCookie({ timeoutMs: 8_000, forceRefresh: false });
+                void ensureUserCreatedAt(cred.user);
+                void attachAffiliateToUserDoc(cred.user);
+                void notifyKlonerSignup(cred.user, "email");
             }
         } catch (e2) {
             setErr(normalizeError(e2));
@@ -694,8 +732,8 @@ export default function LoginPage(): JSX.Element {
                 {pendingUrl ? (
                     <div className="mb-4 flex items-start justify-between gap-2 rounded-lg bg-emerald-50 px-3 py-2.5 text-xs text-emerald-800 ring-1 ring-emerald-200">
                         <div>
-                            We will add this URL after you{" "}
-                            {mode === "signin" ? "sign in" : "sign up"}:{" "}
+                            We will add this URL after you {" "}
+                            {mode === "signin" ? "sign in\n" : "sign up\n"}:{" "}
                             <span className="font-medium break-all">{pendingUrl}</span>
                         </div>
                         <button
