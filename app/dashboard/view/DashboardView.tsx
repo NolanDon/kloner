@@ -1043,7 +1043,7 @@ function RenderCardInner({
                                         isDeploying ||
                                         isThisCardLockedForBuild
                                     }
-                                    className={`group inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 overflow-hidden whitespace-nowrap rounded-full px-3 py-1.5 text-xs ${isArchivedFlag
+                                    className={`group inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 overflow-hidden whitespace-nowrap rounded-full px-4 py-1.5 text-xs ${isArchivedFlag
                                         ? "cursor-not-allowed bg-neutral-50 text-neutral-400"
                                         : isDeployedFlag
                                             ? "bg-emerald-500 text-white shadow-sm hover:bg-green-700"
@@ -1513,7 +1513,7 @@ function AppCard({
                                     onDeploy({ id: app.id, name: app.name });
                                 }}
                                 disabled={isDeleting || isArchiving}
-                                className={`group inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 overflow-hidden whitespace-nowrap rounded-full px-3 py-2 text-xs ${
+                                className={`group inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 overflow-hidden whitespace-nowrap rounded-full px-4 py-2 text-xs ${
                                     isDeployedFlag
                                         ? "bg-emerald-500 text-white shadow-sm hover:bg-green-700"
                                         : "bg-accent text-white shadow-sm hover:bg-accent/90 disabled:opacity-60"
@@ -7259,7 +7259,7 @@ export default function PreviewPage(): JSX.Element {
                                                             className="group flex flex-inline items-center gap-1 rounded-full px-3 py-1.5 text-sm text-white"
                                                             style={{ backgroundColor: ACCENT }}
                                                         >
-                                                            <span>View Website</span>
+                                                            <span>View site</span>
                                                             <Rocket className="h-4 w-4 transform transition-transform duration-150 group-hover:translate-x-0.5" />
                                                         </a>
                                                     ) : (
@@ -7568,7 +7568,7 @@ export default function PreviewPage(): JSX.Element {
                                                                     className="group flex flex-inline items-center gap-1 rounded-full px-3 py-1.5 text-sm text-white"
                                                                     style={{ backgroundColor: ACCENT }}
                                                                 >
-                                                                    <span>View Website</span>
+                                                                    <span>View site</span>
                                                                     <Rocket className="h-4 w-4 transform transition-transform duration-150 group-hover:translate-x-0.5" />
                                                                 </a>
                                                             )}
