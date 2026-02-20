@@ -373,6 +373,37 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         return () => window.removeEventListener("kloner:open-db-connect", onOpen as EventListener);
     }, [allowDatabaseSetupUi, isSupabaseConnected]);
 
+    const refreshSupabaseStatusFromApi = useCallback(async (): Promise<boolean> => {
+        try {
+            const res = await fetch("/api/supabase/project-status", {
+                method: "GET",
+                cache: "no-store",
+                credentials: "include",
+            });
+
+            if (!res.ok) return false;
+
+            const data: any = await res.json().catch(() => null);
+            const connected = !!(data && data.completed && data.ok);
+
+            setIsSupabaseConnected(connected);
+            if (!connected) {
+                setSupabaseDbReachable(null);
+                setSupabaseDbStatusText(null);
+                setSupabaseDbLastCheckedAt(null);
+            }
+
+            return connected;
+        } catch {
+            // Network/offline: do not spam logs; just treat as disconnected.
+            setIsSupabaseConnected(false);
+            setSupabaseDbReachable(null);
+            setSupabaseDbStatusText(null);
+            setSupabaseDbLastCheckedAt(null);
+            return false;
+        }
+    }, []);
+
     useEffect(() => {
         if (!user?.uid) {
             setIsSupabaseConnected(false);
@@ -382,49 +413,29 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             return;
         }
 
-        const supabaseRef = doc(db, "kloner_users", user.uid, "integrations", "supabase");
-        let unsub: null | (() => void) = null;
-        try {
-            unsub = onSnapshot(
-                supabaseRef,
-                (snap) => {
-                    if (!snap.exists()) {
-                        setIsSupabaseConnected(false);
-                        setSupabaseDbReachable(null);
-                        setSupabaseDbStatusText(null);
-                        setSupabaseDbLastCheckedAt(null);
-                        return;
-                    }
-
-                    const data = snap.data() as any;
-                    const projectRef = typeof data?.projectRef === "string" ? data.projectRef.trim() : "";
-                    const connected = !!projectRef || snap.exists();
-                    setIsSupabaseConnected(connected);
-                },
-                (err) => {
-                    console.error("Firestore listener error (supabase integration)", err);
-                    // If we can't read the integration doc (offline/rules), don't force the popup open.
-                    // Default to false so the user can still choose to connect.
-                    setIsSupabaseConnected(false);
-                    setSupabaseDbReachable(null);
-                    setSupabaseDbStatusText(null);
-                    setSupabaseDbLastCheckedAt(null);
-                },
-            );
-        } catch (err) {
-            console.error("Failed to subscribe to supabase integration (Firestore)", err);
+        // If DB setup UI is disabled, don't even check status.
+        if (!allowDatabaseSetupUi) {
             setIsSupabaseConnected(false);
+            setSupabaseDbReachable(null);
+            setSupabaseDbStatusText(null);
+            setSupabaseDbLastCheckedAt(null);
+            return;
         }
 
+        let cancelled = false;
+        void refreshSupabaseStatusFromApi();
+
+        // Lightweight polling so we update after OAuth completes.
+        const t = window.setInterval(() => {
+            if (cancelled) return;
+            void refreshSupabaseStatusFromApi();
+        }, 20_000);
+
         return () => {
-            if (!unsub) return;
-            try {
-                unsub();
-            } catch (err) {
-                console.warn("Firestore unsubscribe error (supabase integration)", err);
-            }
+            cancelled = true;
+            window.clearInterval(t);
         };
-    }, [user?.uid]);
+    }, [user?.uid, allowDatabaseSetupUi, refreshSupabaseStatusFromApi]);
 
     useEffect(() => {
         isSupabaseConnectedRef.current = isSupabaseConnected;

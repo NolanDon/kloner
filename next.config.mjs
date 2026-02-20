@@ -26,6 +26,20 @@ const nextConfig = {
             },
         ];
     },
+    async redirects() {
+        return [
+            {
+                source: '/blog/app/sitemap.ts',
+                destination: '/sitemap.xml',
+                permanent: true,
+            },
+            {
+                source: '/blog/app/sitemap.ts/',
+                destination: '/sitemap.xml',
+                permanent: true,
+            },
+        ];
+    },
     webpack: (config, { isServer }) => {
         if (isServer) {
             // Keep server chunks under the default `chunks/` folder.

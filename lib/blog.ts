@@ -799,7 +799,7 @@ Don’t let the AI dump divs everywhere. Use proper headings, landmarks, and ari
 
 ## 6) Ship a sitemap + canonical tags
 
-Every clone should point to the same <code>/blog</code> canonical or landing canonical; keep robots happy with sitemaps (see [app/sitemap.ts](app/sitemap.ts)). That strengthens your SEO signals and prevents duplication penalties.
+Every clone should point to the same <code>/blog</code> canonical or landing canonical; keep robots happy with sitemaps (see [sitemap.xml](/sitemap.xml)). That strengthens your SEO signals and prevents duplication penalties.
 
 Fast clones behave like production-grade sites when they treat performance as a feature. Run this checklist after every generation and you’ll keep visitors and search engines satisfied.
 `,
