@@ -404,21 +404,23 @@ export default function LoginPage(): JSX.Element {
                 const pending = pendingUrl?.trim();
                 if (pending) {
                     try {
-                        // Ensure doc exists, then fire generate in background
-                        const cleaned = await ensureUrlDoc(u.uid, pending);
-
                         try {
                             localStorage.removeItem("kloner.pendingUrl");
                         } catch {
                             // ignore
                         }
 
-                        // fire-and-forget generate; do NOT block navigation
-                        void queueGenerate(cleaned).catch((e) => {
-                            console.error("generate failed after signup", e);
-                        });
+                        // Send the user to the consolidated dashboard view and let it
+                        // own the url-doc creation + capture queueing (start=1).
+                        const cleaned = normUrl(pending);
+                        if (isHttpUrl(cleaned)) {
+                            router.replace(
+                                `/dashboard/view?u=${encodeURIComponent(cleaned)}&start=1`,
+                            );
+                            return;
+                        }
 
-                        router.replace("/dashboard");
+                        // If the pending URL is invalid for any reason, fall through to normal redirect.
 
                         return;
                     } catch (e) {
@@ -427,10 +429,10 @@ export default function LoginPage(): JSX.Element {
                     }
                 }
 
-                const next = search.get("next") || "/dashboard";
+                const next = search.get("next") || "/dashboard/view";
                 router.replace(next);
             } catch {
-                router.replace("/dashboard");
+                router.replace("/dashboard/view");
             }
         });
         return () => unsub();

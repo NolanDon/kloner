@@ -88,7 +88,7 @@ import {
 } from "./page.helpers";
 import { CREDIT_LIMITS, UserTier } from "@/src/lib/credits";
 import { ensureSessionAndCsrf } from "@/lib/auth-client";
-import { UrlDoc } from "../page";
+import type { UrlDoc } from "@/app/dashboard/types";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 import { archiveRender, filterRendersForBuilder, resolveStorageUrl, useResolvedImg } from "@/src/lib/renders";
 import { archiveApp } from "@/src/lib/apps";
@@ -297,7 +297,7 @@ function MiniDashboardEntry({
                         </span>
                     </div>
 
-            
+
                 </div>
             </div>
 
@@ -445,7 +445,7 @@ function MiniDashboardEntry({
                             ) : captureStatus === "queued" ? (
                                 "Queued"
                             ) : (
-                                "Processing"
+                                "Processing…"
                             )
                         ) : mode === "prompt" ? (
                             <>
@@ -461,7 +461,7 @@ function MiniDashboardEntry({
                 {error ? <div className="mt-2 text-sm text-red-700">{error}</div> : null}
 
                 {disabled && captureStatus ? (
-                    <div className="mt-2 inline-flex items-center gap-2 text-xs text-neutral-600">
+                    <div className="mt-4 inline-flex items-center gap-2 text-xs text-neutral-600">
                         {captureStatus === "queued" ? (
                             <Clock3 className="h-3.5 w-3.5" />
                         ) : (
@@ -1089,7 +1089,7 @@ function RenderCardInner({
                                             }
                                         }}
                                         disabled={(disableOpen || isDeleting || !r.html) && !isFailed}
-                                            className="group inline-flex min-w-0 flex-1 items-center justify-center gap-2 overflow-hidden whitespace-nowrap rounded-full border border-neutral-500 px-3 py-1.5 text-neutral-800 shadow-sm disabled:opacity-60"
+                                        className="group inline-flex min-w-0 flex-1 items-center justify-center gap-2 overflow-hidden whitespace-nowrap rounded-full border border-neutral-500 px-3 py-1.5 text-neutral-800 shadow-sm disabled:opacity-60"
                                         title={
                                             isArchivedFlag
                                                 ? "Unarchive to customize this preview"
@@ -1102,13 +1102,13 @@ function RenderCardInner({
                                                             : "Open editor to customize"
                                         }
                                     >
-                										<span className="shrink-0">
-                                                {isBuilding || isQueued
-                                                    ? "Building…"
-                                                    : isFailed
-                                                        ? "Retry"
-                                                        : "Edit"}
-                                            </span>
+                                        <span className="shrink-0">
+                                            {isBuilding || isQueued
+                                                ? "Building…"
+                                                : isFailed
+                                                    ? "Retry"
+                                                    : "Edit"}
+                                        </span>
 
                                         {isFailed ? (
                                             <WrenchIcon className="h-4 w-4 shrink-0 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
@@ -1513,11 +1513,10 @@ function AppCard({
                                     onDeploy({ id: app.id, name: app.name });
                                 }}
                                 disabled={isDeleting || isArchiving}
-                                className={`group inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 overflow-hidden whitespace-nowrap rounded-full px-4 py-2 text-xs ${
-                                    isDeployedFlag
-                                        ? "bg-emerald-500 text-white shadow-sm hover:bg-green-700"
-                                        : "bg-accent text-white shadow-sm hover:bg-accent/90 disabled:opacity-60"
-                                }`}
+                                className={`group inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 overflow-hidden whitespace-nowrap rounded-full px-4 py-2 text-xs ${isDeployedFlag
+                                    ? "bg-emerald-500 text-white shadow-sm hover:bg-green-700"
+                                    : "bg-accent text-white shadow-sm hover:bg-accent/90 disabled:opacity-60"
+                                    }`}
                                 title={isDeployedFlag ? "View and manage deployments" : "Deploy this app to Vercel"}
                             >
                                 {isDeployedFlag ? (
@@ -1764,8 +1763,11 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                             type="button"
                                             onClick={handleAppGeneration}
                                             disabled={effectiveLocked}
-                                            className="w-full rounded-xl border border-[rgba(245,95,42,0.45)] bg-[linear-gradient(180deg,rgba(245,95,42,0.06),rgba(255,255,255,0))] p-4 text-left shadow-sm transition hover:bg-[rgba(245,95,42,0.05)] hover:border-[rgba(245,95,42,0.65)] disabled:opacity-60 disabled:cursor-not-allowed"
+                                            className="relative w-full overflow-visible rounded-xl border border-[rgba(245,95,42,0.45)] bg-[linear-gradient(180deg,rgba(245,95,42,0.06),rgba(255,255,255,0))] p-4 text-left shadow-sm transition hover:bg-[rgba(245,95,42,0.05)] hover:border-[rgba(245,95,42,0.65)] disabled:opacity-60 disabled:cursor-not-allowed"
                                         >
+                                            <span className="pointer-events-none absolute -right-2 -top-2 z-10 inline-flex items-center rounded-full border border-[rgba(245,95,42,0.45)] bg-white px-2 py-0.5 text-[11px] font-semibold text-[rgba(245,95,42,1)] shadow-sm">
+                                                Recommended
+                                            </span>
                                             <div className="flex items-start gap-3">
                                                 <div
                                                     className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-900"
@@ -1784,21 +1786,21 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                 <div className="flex-1 space-y-1">
                                                     <div className="flex items-center gap-2">
                                                         <div className="text-sm font-semibold text-neutral-900">
-                                                            Website (Next.js)
+                                                            Advanced Website
                                                         </div>
                                                         <span className="inline-flex whitespace-nowrap items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800">
                                                             15 preview credits
                                                         </span>
-                                                        <span className="inline-flex items-center rounded-full border border-[rgba(245,95,42,0.35)] bg-[rgba(245,95,42,0.08)] px-2 py-0.5 text-xs font-semibold text-[rgba(245,95,42,1)]">
-                                                            Recommended
-                                                        </span>
                                                     </div>
 
                                                     <div className="text-xs text-neutral-600">
-                                                        Clone websites and web applications or start from a prompt, includes options for user login, and integrations.
+                                                        Generate an advanced, editable multi‑page website from your selected URL.
                                                     </div>
                                                     <div className="mt-1 text-[11px] leading-4 text-neutral-500">
-                                                        Best for: user accounts, AI features, dashboards, web games, stores, or product-heavy websites.
+                                                        From: <span className="font-mono underline text-accent font-semibold">{sourceUrlDisplay || "(no URL selected)"}</span>
+                                                    </div>
+                                                    <div className="mt-1 text-[11px] leading-4 text-neutral-500">
+                                                        Best for sites with: user accounts, AI features, dashboards, web games, stores, or product-heavy content.
                                                     </div>
                                                 </div>
                                             </div>
@@ -1828,20 +1830,20 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                             <div className="flex-1 space-y-1">
                                                 <div className="flex items-center gap-2">
                                                     <div className="text-sm font-semibold text-neutral-900">
-                                                        Website (HTML)
+                                                        Basic Website (HTML)
                                                     </div>
                                                     <span className="inline-flex whitespace-nowrap items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800">
                                                         15 preview credits
                                                     </span>
                                                 </div>
                                                 <div className="text-xs text-neutral-600">
-                                                    Generate a fast, editable multi‑page HTML website from your selected URL.
+                                                    Generate a basic, editable multi‑page HTML website from your selected URL.
                                                 </div>
                                                 <div className="mt-1 text-[11px] leading-4 text-neutral-500">
-                                                    From: <span className="font-mono text-neutral-700">{sourceUrlDisplay || "(no URL selected)"}</span>
+                                                    From: <span className="font-mono underline text-accent font-semibold">{sourceUrlDisplay || "(no URL selected)"}</span>
                                                 </div>
                                                 <div className="mt-1 text-[11px] leading-4 text-neutral-500">
-                                                    Best for: landing pages, marketing sites, performance-first pages. Not for auth / AI / databases.
+                                                    Best for: quick landing pages, marketing sites, performance-first pages. Not for auth / AI / databases.
                                                 </div>
                                             </div>
                                         </div>
@@ -1874,7 +1876,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                             <div className="flex-1 space-y-1">
                                                 <div className="flex items-center gap-2">
                                                     <div className="text-sm font-semibold text-neutral-900">
-                                                        Website template (HTML)
+                                                        Start from Community Template
                                                     </div>
                                                     {/* <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
                                                         Free
@@ -3459,9 +3461,9 @@ export default function PreviewPage(): JSX.Element {
         if (captureSuccessShownForUrlRef.current === urlKey) return;
         captureSuccessShownForUrlRef.current = urlKey;
 
-        setSuccess("Url added successfully!");
+        setSuccess("Url added successfully! You can now generate websites from this URL below.");
         if (captureSuccessTimeoutRef.current) clearTimeout(captureSuccessTimeoutRef.current);
-        captureSuccessTimeoutRef.current = setTimeout(() => setSuccess(""), 6000);
+        captureSuccessTimeoutRef.current = setTimeout(() => setSuccess(""), 15000);
     }, [captureStatus, targetUrl, lockMatches, err]);
 
     useEffect(() => {
@@ -6227,7 +6229,7 @@ export default function PreviewPage(): JSX.Element {
                 </section>
 
                 {/* Step 1: URL selection */}
-                <section className="mb-8 rounded-3xl border border-neutral-200 bg-white/70 px-4 py-4 sm:px-5 sm:py-5 shadow-sm">
+                <section className="mb-8 rounded-3xl border border-neutral-200 bg-gradient-to-br from-white via-neutral-50 to-neutral-100 shadow-sm px-4 py-4 sm:px-5 sm:py-5 shadow-sm">
                     <div ref={urlMenuRef} className="relative">
                         <button
                             type="button"
@@ -6813,8 +6815,8 @@ export default function PreviewPage(): JSX.Element {
                                                     <div className="mt-1 text-xs text-neutral-600 break-all">
                                                         High-fidelity clone using your saved screenshots when available.
                                                     </div>
-                                                    <div className="mt-1 text-xs text-neutral-500 break-all">
-                                                        {appWizardUrl || targetUrl || "(no URL selected)"}
+                                                    <div className="mt-1 text-[11px] leading-4 text-neutral-500">
+                                                        From: <span className="font-mono underline text-accent font-semibold">{appWizardUrl || targetUrl || "(no URL selected)"}</span>
                                                     </div>
                                                 </button>
                                                 <button
@@ -6841,24 +6843,6 @@ export default function PreviewPage(): JSX.Element {
                                                     <div className="mt-1 text-xs text-neutral-600">Describe the app and we’ll generate the first version.</div>
                                                 </button>
                                             </div>
-
-                                            {appWizardSource === "website" ? (
-                                                <div className="mt-2 space-y-2">
-                                                    <label className="text-xs font-semibold text-neutral-700">
-                                                        URL
-                                                    </label>
-                                                    <input
-                                                        value={appWizardUrl}
-                                                        onChange={(e) => setAppWizardUrl(e.target.value)}
-                                                        placeholder={targetUrl || "https://example.com"}
-                                                        className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-[#f55f2a]/20"
-                                                    />
-                                                    {/* <div className="text-[11px] leading-4 text-neutral-500">
-                                                            Tip: for best fidelity, we’ll use your stored full-page screenshots for the selected URL.
-                                                        </div> */}
-                                                </div>
-                                            ) : null}
-
                                             {appWizardSource === "prompt" ? (
                                                 <div className="mt-2 space-y-2">
                                                     <label className="text-xs font-semibold text-neutral-700">
@@ -6888,7 +6872,7 @@ export default function PreviewPage(): JSX.Element {
                                                 {appWizardBusy
                                                     ? "Creating… This may take a minute."
                                                     : appWizardSource === "sample"
-                                                        ? "Create app"
+                                                        ? "Create website"
                                                         : appWizardSource === "website"
                                                             ? "Create from URL"
                                                             : "Create from prompt"}
