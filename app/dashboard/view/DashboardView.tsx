@@ -469,7 +469,7 @@ function MiniDashboardEntry({
                         )}
                         {captureStatus === "queued"
                             ? "Queued snapshot job…"
-                            : "Processing snapshots…"}
+                            : "Processing your URL… This may take a few minutes."}
                     </div>
                 ) : null}
 
@@ -1132,7 +1132,7 @@ function RenderCardInner({
                         {/* progress bar / status – only for the active build/deploy and never at 100% */}
                         {hasProgressInfo && (
                             <div className="mt-2 w-full">
-                                <div className="mb-1 flex items-center justify-between text-[10px] text-neutral-600">
+                                <div className="mb-1 flex items-center justify-between text-[10px] font-semibold text-neutral-600">
                                     <span className="max-w-[72%] truncate" aria-live="polite">
                                         {progressDetail ?? normalizedProgressLabel}
                                     </span>
@@ -1656,7 +1656,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
 
     const title = effectiveLocked ? "Processing…" : "Generate website";
     const subtitle = effectiveLocked
-        ? "You have a pending job."
+        ? "You have a pending job. This may take a few moments."
         : sourceUrlDisplay
             ? "Generate from your selected URL."
             : "Create an editable website.";
@@ -3461,9 +3461,9 @@ export default function PreviewPage(): JSX.Element {
         if (captureSuccessShownForUrlRef.current === urlKey) return;
         captureSuccessShownForUrlRef.current = urlKey;
 
-        setSuccess("Url added successfully! You can now generate websites from this URL below.");
+        setSuccess("URL added successfully! You can now generate websites from this URL below.");
         if (captureSuccessTimeoutRef.current) clearTimeout(captureSuccessTimeoutRef.current);
-        captureSuccessTimeoutRef.current = setTimeout(() => setSuccess(""), 15000);
+        captureSuccessTimeoutRef.current = setTimeout(() => setSuccess(""), 60000);
     }, [captureStatus, targetUrl, lockMatches, err]);
 
     useEffect(() => {
