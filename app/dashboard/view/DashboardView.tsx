@@ -6234,12 +6234,12 @@ export default function PreviewPage(): JSX.Element {
                         <button
                             type="button"
                             onClick={() => setUrlMenuOpen((v) => !v)}
-                            className="inline-flex max-w-[540px] items-center gap-2 truncate rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-800 hover:bg-neutral-50"
+                            className="flex w-full min-w-0 sm:inline-flex sm:w-auto sm:max-w-[540px] items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-800 hover:bg-neutral-50"
                             title={activeUrlDoc?.url}
                             aria-haspopup="listbox"
                             aria-expanded={urlMenuOpen}
                         >
-                            <span className="truncate">
+                            <span className="flex-1 min-w-0 truncate">
                                 {activeUrlDoc?.url || "Select a URL"}
                             </span>
                             <ChevronDown className="h-4 w-4 shrink-0 text-neutral-500" />
@@ -6249,7 +6249,7 @@ export default function PreviewPage(): JSX.Element {
                             <div
                                 role="listbox"
                                 aria-activedescendant={activeUrlDoc?.id ? String(activeUrlDoc.id) : undefined}
-                                className="absolute left-0 z-[9999] mt-2 w-[min(640px,90vw)] overflow-hidden rounded-md border border-neutral-200 bg-white shadow-lg"
+                                className="absolute left-0 z-[9999] mt-2 w-[min(640px,calc(100vw-2rem))] max-w-full overflow-hidden rounded-md border border-neutral-200 bg-white shadow-lg"
                             >
                                 <ul className="max-h-[280px] overflow-auto py-1">
                                     {orderedUrls.map((u) => {
