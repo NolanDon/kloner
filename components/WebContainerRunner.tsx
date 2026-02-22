@@ -1,7 +1,7 @@
 // components/WebContainerRunner.tsx
 "use client";
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { db } from "@/lib/firebase";
 import { doc, onSnapshot, updateDoc, getDoc } from "firebase/firestore";
 import { useAuth } from "@/src/hooks/useAuth";
@@ -33,6 +33,89 @@ interface WebContainerRunnerProps {
 }
 
 export default function WebContainerRunner({ appId, files, onFileChange, onPreviewReadyChange, onBackendReady, reloadToken, applyToken, restartToken, reconnectToken, forceFreshStart, pollingConfig, navigatePath, navigatePathToken }: WebContainerRunnerProps) {
+
+  type DebugEvent = {
+    ts: number;
+    kind: string;
+    data?: any;
+  };
+
+  const debugEventsRef = useRef<DebugEvent[]>([]);
+  const debugPersistTimerRef = useRef<number | null>(null);
+  const debugKeyRef = useRef<string>(`kloner.appprevieweditor.aiAgentEvents.${String(appId || 'unknown')}`);
+
+  const schedulePersistDebugEvents = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    if (debugPersistTimerRef.current != null) return;
+    debugPersistTimerRef.current = window.setTimeout(() => {
+      debugPersistTimerRef.current = null;
+      try {
+        const key = debugKeyRef.current;
+        const payload = JSON.stringify(debugEventsRef.current.slice(-500));
+        window.localStorage.setItem(key, payload);
+        (window as any).__klonerAppPreviewEditorAiAgentEvents = (window as any).__klonerAppPreviewEditorAiAgentEvents || {};
+        (window as any).__klonerAppPreviewEditorAiAgentEvents[String(appId || 'unknown')] = debugEventsRef.current.slice(-500);
+      } catch {
+        // ignore
+      }
+    }, 250);
+  }, [appId]);
+
+  const recordDebugEvent = useCallback((kind: string, data?: any) => {
+    const ts = Date.now();
+    const safeData = (() => {
+      try {
+        if (data == null) return undefined;
+        // Prevent unbounded storage growth on accidental large payloads.
+        const json = JSON.stringify(data);
+        if (json.length <= 20_000) return data;
+        return { truncated: true, bytes: json.length, preview: json.slice(0, 20_000) };
+      } catch {
+        return { unserializable: true };
+      }
+    })();
+
+    debugEventsRef.current.push({ ts, kind, data: safeData });
+    if (debugEventsRef.current.length > 600) {
+      debugEventsRef.current = debugEventsRef.current.slice(-500);
+    }
+    schedulePersistDebugEvents();
+  }, [schedulePersistDebugEvents]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    debugKeyRef.current = `kloner.appprevieweditor.aiAgentEvents.${String(appId || 'unknown')}`;
+    try {
+      const raw = window.localStorage.getItem(debugKeyRef.current);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          debugEventsRef.current = parsed.slice(-500);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, [appId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const onAiAgentEvent = (ev: Event) => {
+      try {
+        const detail = (ev as CustomEvent<any>)?.detail || {};
+        recordDebugEvent('ai-agent', detail);
+      } catch {
+        // ignore
+      }
+    };
+
+    window.addEventListener('kloner:ai-agent-event', onAiAgentEvent as EventListener);
+    recordDebugEvent('ai-agent-recorder-ready', { appId });
+    return () => {
+      window.removeEventListener('kloner:ai-agent-event', onAiAgentEvent as EventListener);
+    };
+  }, [appId, recordDebugEvent]);
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
@@ -716,7 +799,7 @@ export default function NavBar() {
 
     const left = timeLabel;
     return (
-      <div className="mt-6 w-full max-w-2xl rounded-2xl border border-black/10 bg-white/70 px-6 py-4 text-left shadow-sm backdrop-blur-sm">
+      <div className="mt-6 w-full max-w-2xl px-6 py-2 text-left">
         <div className="text-sm text-black/80">
           {left ? <span className="font-semibold">{left}</span> : null}
           <span className="text-black/60">{`${left ? ' — ' : ''}${message}`}</span>

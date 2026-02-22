@@ -190,6 +190,23 @@ function upsertFaviconInHeadTsx(existing: string, faviconUrl: string): string {
     return existing + `\n\n{/* kloner:favicon */}\n<link rel=\"icon\" href=${nextHref} />\n`;
 }
 
+function buildFaviconIcoRouteTs(faviconUrl: string): string {
+    const urlLiteral = JSON.stringify(faviconUrl);
+    return (
+        `// kloner:favicon-route\n` +
+        `const FAVICON_URL = ${urlLiteral};\n\n` +
+        `function redirectToFavicon() {\n` +
+        `  return new Response(null, { status: 307, headers: { Location: FAVICON_URL } });\n` +
+        `}\n\n` +
+        `export function GET() {\n` +
+        `  return redirectToFavicon();\n` +
+        `}\n\n` +
+        `export function HEAD() {\n` +
+        `  return redirectToFavicon();\n` +
+        `}\n`
+    );
+}
+
 function addCacheBust(url: string, token: string | number): string {
     try {
         const u = new URL(url);
@@ -779,10 +796,15 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
         return codeRef.current !== saved;
     }, [appId, isSaving]);
 
+    const getLeaveWarningText = useCallback((): string => {
+        return getHasUnsavedChanges()
+            ? "You have unsaved changes that may be lost. Leave this page anyway?"
+            : "Leave the App Builder?";
+    }, [getHasUnsavedChanges]);
+
     useEffect(() => {
         const onBeforeUnload = (e: BeforeUnloadEvent) => {
             if (allowNextNavigationRef.current) return;
-            if (!getHasUnsavedChanges()) return;
             // Required for Chrome/Safari to show a confirmation dialog.
             e.preventDefault();
             e.returnValue = "";
@@ -797,19 +819,31 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
         // This catches Next.js client-side navigations that won't trigger beforeunload.
         const confirmLeave = async (): Promise<boolean> => {
             if (allowNextNavigationRef.current) return true;
-            if (!getHasUnsavedChanges()) return true;
             return await showConfirm(
-                "You have unsaved changes that may be lost. Leave this page anyway?",
-                "Unsaved changes",
+                getLeaveWarningText(),
+                getHasUnsavedChanges() ? "Unsaved changes" : "Leave App Builder",
             );
         };
+
+        // Add a same-URL history marker so the first Back press doesn't immediately
+        // navigate away (it only changes history.state), giving us a chance to confirm.
+        if (typeof window !== "undefined") {
+            try {
+                const st: any = history.state;
+                if (!st || st.__klonerAppBuilderGuard !== true) {
+                    history.pushState({ ...(st || {}), __klonerAppBuilderGuard: true }, "", window.location.href);
+                    leaveGuardArmedRef.current = true;
+                }
+            } catch {
+                // ignore
+            }
+        }
 
         const onDocumentClickCapture = (e: MouseEvent) => {
             if (e.defaultPrevented) return;
             if (e.button !== 0) return; // left-click only
             if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
             if (allowNextNavigationRef.current) return;
-            if (!getHasUnsavedChanges()) return;
 
             const target = e.target as HTMLElement | null;
             const anchor = target?.closest?.("a") as HTMLAnchorElement | null;
@@ -841,23 +875,16 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
 
         const onPopState = (e: PopStateEvent) => {
             if (allowNextNavigationRef.current) return;
-            if (!getHasUnsavedChanges()) return;
 
-            // We can't cancel popstate directly. Push state back to keep the user here,
-            // then ask; if confirmed, go back again.
-            if (!leaveGuardArmedRef.current) {
-                try {
-                    history.pushState({ __klonerLeaveGuard: true }, "", window.location.href);
+            // If the marker isn't present (e.g. some browsers strip history.state), re-add it.
+            try {
+                const st: any = history.state;
+                if (!st || st.__klonerAppBuilderGuard !== true) {
+                    history.pushState({ ...(st || {}), __klonerAppBuilderGuard: true }, "", window.location.href);
                     leaveGuardArmedRef.current = true;
-                } catch {
-                    // ignore
                 }
-            } else {
-                try {
-                    history.pushState({ __klonerLeaveGuard: true }, "", window.location.href);
-                } catch {
-                    // ignore
-                }
+            } catch {
+                // ignore
             }
 
             void (async () => {
@@ -880,8 +907,34 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
         return () => {
             document.removeEventListener("click", onDocumentClickCapture, true);
             window.removeEventListener("popstate", onPopState);
+
+            // Best-effort: remove the marker entry if we're closing the editor without leaving.
+            // This keeps browser history feeling normal.
+            try {
+                const st: any = history.state;
+                if (st && st.__klonerAppBuilderGuard === true) {
+                    allowNextNavigationRef.current = true;
+                    history.back();
+                    setTimeout(() => {
+                        allowNextNavigationRef.current = false;
+                    }, 0);
+                }
+            } catch {
+                // ignore
+            }
         };
-    }, [getHasUnsavedChanges, showConfirm]);
+    }, [getHasUnsavedChanges, getLeaveWarningText, showConfirm]);
+
+    const requestClose = useCallback(async () => {
+        const ok = await showConfirm(
+            getHasUnsavedChanges()
+                ? "You have unsaved changes that may be lost. Close the editor anyway?"
+                : "Close the App Builder?",
+            getHasUnsavedChanges() ? "Unsaved changes" : "Close editor",
+        );
+        if (!ok) return;
+        onClose();
+    }, [getHasUnsavedChanges, onClose, showConfirm]);
     const [deployChoiceError, setDeployChoiceError] = useState<string | null>(null);
 
     // Lock chat until the preview iframe has successfully loaded.
@@ -2267,6 +2320,13 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
         const headPath = `${appDir}/head.tsx`;
         const existing = (files as any)?.[headPath]?.content;
 
+        const faviconRoutePath = `${appDir}/favicon.ico/route.ts`;
+        const existingFaviconRoute = (files as any)?.[faviconRoutePath]?.content;
+        const canWriteFaviconRoute =
+            typeof existingFaviconRoute !== "string" || existingFaviconRoute.includes("kloner:favicon-route");
+
+        const faviconRouteContent = canWriteFaviconRoute ? buildFaviconIcoRouteTs(nextUrl) : null;
+
         const content =
             typeof existing === "string" && existing.trim().length > 0
                 ? upsertFaviconInHeadTsx(existing, nextUrl)
@@ -2278,12 +2338,35 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
             files: {
                 ...prev.files,
                 [headPath]: { content, lastModified: Date.now() },
+                ...(canWriteFaviconRoute && faviconRouteContent
+                    ? { [faviconRoutePath]: { content: faviconRouteContent, lastModified: Date.now() } }
+                    : null),
             },
         } : prev);
 
-        await saveFileToServer(headPath, content, { afterSave: "apply", interactive: true });
+        if (!canWriteFaviconRoute) {
+            void showAlert(
+                "I found an existing /favicon.ico route in your app and didn’t overwrite it. I updated head.tsx, but your browser may still request /favicon.ico unless you handle that route.",
+                "Favicon",
+            );
+        }
+
+        await saveFileToServer(headPath, content, { afterSave: "none", interactive: true });
+        if (canWriteFaviconRoute && faviconRouteContent) {
+            await saveFileToServer(faviconRoutePath, faviconRouteContent, { afterSave: "none", interactive: true });
+        }
+
+        queuePreviewApply(
+            [
+                { path: headPath, content },
+                ...(canWriteFaviconRoute && faviconRouteContent
+                    ? [{ path: faviconRoutePath, content: faviconRouteContent }]
+                    : []),
+            ],
+            { interactive: false },
+        );
         setFaviconUrl(nextUrl);
-    }, [saveFileToServer, showAlert]);
+    }, [queuePreviewApply, saveFileToServer, showAlert]);
 
     const handleFaviconFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -2977,7 +3060,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                         </button>
 
                         <button
-                            onClick={onClose}
+                            onClick={() => void requestClose()}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-300 bg-white text-neutral-700 shadow-md transition hover:bg-neutral-50"
                             title="Close"
                             aria-label="Close editor"
@@ -3115,7 +3198,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                                     </button>
 
                                     <a
-                                        href="https://vercel.com/dashboard/domains"
+                                        href="https://vercel.com/domains"
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="text-xs text-gray-600 underline hover:text-gray-900"

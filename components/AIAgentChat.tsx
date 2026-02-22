@@ -532,6 +532,23 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         }
     }, []);
 
+    const dispatchAiAgentEvent = useCallback((kind: string, detail?: Record<string, any>) => {
+        if (typeof window === "undefined") return;
+        try {
+            window.dispatchEvent(
+                new CustomEvent("kloner:ai-agent-event", {
+                    detail: {
+                        kind,
+                        ts: Date.now(),
+                        ...(detail || {}),
+                    },
+                }),
+            );
+        } catch {
+            // ignore
+        }
+    }, []);
+
     const withCsrfHeaders = useCallback(async () => {
         // Always fetch a fresh CSRF token to avoid stale token issues
         let csrf: string | null = null;
@@ -1877,6 +1894,14 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         try {
             const headers = await withCsrfHeaders();
 
+            dispatchAiAgentEvent("request", {
+                appId,
+                userId: user?.uid || null,
+                messageLen: input.length,
+                messagePreview: input.slice(0, 280),
+                historyCount: Math.min(messages.length + 1, 11),
+            });
+
             const res = await fetch("/api/ai-agent", {
                 method: "POST",
                 headers,
@@ -1888,9 +1913,27 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 }),
             });
 
-            if (!res.ok) throw new Error("Failed to get AI response");
+            if (!res.ok) {
+                dispatchAiAgentEvent("response_error", {
+                    appId,
+                    userId: user?.uid || null,
+                    status: res.status,
+                });
+                throw new Error("Failed to get AI response");
+            }
 
             const data = await res.json();
+
+            dispatchAiAgentEvent("response_ok", {
+                appId,
+                userId: user?.uid || null,
+                hasFileEdits: Array.isArray(data?.fileEdits) && data.fileEdits.length > 0,
+                fileEditsCount: Array.isArray(data?.fileEdits) ? data.fileEdits.length : 0,
+                hasDbMigrations: Array.isArray(data?.dbMigrations) && data.dbMigrations.length > 0,
+                dbMigrationsCount: Array.isArray(data?.dbMigrations) ? data.dbMigrations.length : 0,
+                restorePointId: typeof data?.restorePointId === "string" ? data.restorePointId : null,
+                responseLen: typeof data?.response === "string" ? data.response.length : null,
+            });
 
             // If the AI response or context indicates a restart is required, suggest the Rebuild app button
             let aiContent = data.response;
@@ -1995,6 +2038,14 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
             // Handle file edits if any
             if (data.fileEdits && data.fileEdits.length > 0) {
+                dispatchAiAgentEvent("file_edits_received", {
+                    appId,
+                    userId: user?.uid || null,
+                    count: Array.isArray(data?.fileEdits) ? data.fileEdits.length : 0,
+                    creditRequestId:
+                        (typeof data?.restorePointId === "string" && data.restorePointId) ||
+                        `ai_agent_${appId}_${userMessage.id}`,
+                });
                 const creditRequestId =
                     (typeof data?.restorePointId === "string" && data.restorePointId) ||
                     `ai_agent_${appId}_${userMessage.id}`;
@@ -2095,7 +2146,12 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                     }
                 }
             }
-        } catch (err) {
+        } catch (err: any) {
+            dispatchAiAgentEvent("client_error", {
+                appId,
+                userId: user?.uid || null,
+                error: err?.message || String(err),
+            });
             console.error("AI chat error:", err);
             const errorMessage: Message = {
                 id: `error_${Date.now()}`,

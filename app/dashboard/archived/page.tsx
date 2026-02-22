@@ -164,7 +164,7 @@ function ArchivedAppCard({
                     <div className="truncate text-sm font-semibold text-neutral-900">
                         {name}
                     </div>
-                    <div className="mt-1 text-xs text-neutral-600">App</div>
+                    <div className="mt-1 text-xs text-neutral-600">v2</div>
                 </div>
             </div>
 

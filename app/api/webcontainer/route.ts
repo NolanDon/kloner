@@ -4,6 +4,8 @@ import { callBackend } from '../../../src/lib/callBackend';
 import { requireSessionAndMaybeCsrf } from '../_lib/route-guard';
 import { assertAppBuilderScope } from '../_lib/appBuilderScope';
 import { getAdminDb } from '../_lib/auth';
+import { getAuthoritativeUserTier } from '../_lib/userTier';
+import { consumeUserCredit, peekUserCredit } from '../_lib/credits-server';
 import { FieldValue } from 'firebase-admin/firestore';
 import crypto from 'node:crypto';
 
@@ -243,8 +245,105 @@ async function handleWebcontainerPostAuthed(body: any, uid: string) {
     );
   }
 
+  // Starting a NEW preview machine should be gated by preview credits.
+  // Reuse/wait flows intentionally bypass gating because they don't create a new machine.
+  let tier: any;
+  try {
+    tier = await getAuthoritativeUserTier(uid);
+  } catch (e: any) {
+    return NextResponse.json(
+      {
+        error:
+          e?.message ||
+          'Unable to determine subscription tier. Try again shortly.',
+      },
+      { status: 500 },
+    );
+  }
+
+  try {
+    const peek = await peekUserCredit(uid, tier, 'preview');
+    if (!peek.ok || (peek.remaining !== null && peek.remaining < 1)) {
+      // Clear the start lock so the UI doesn't get stuck.
+      try {
+        await db.runTransaction(async (tx) => {
+          const snap = await tx.get(appRef);
+          if (!snap.exists) return;
+          const data: any = snap.data() || {};
+          const lock = data?.containerStartLock;
+          if (lock && lock.token === lockToken) {
+            tx.update(appRef, {
+              containerStartLock: FieldValue.delete(),
+              updatedAt: new Date(),
+            });
+          }
+        });
+      } catch {
+        // best-effort
+      }
+
+      return NextResponse.json(
+        {
+          error: 'Monthly preview limit reached for your plan.',
+          remaining: peek.remaining,
+          kind: 'preview',
+        },
+        { status: 429 },
+      );
+    }
+  } catch (e: any) {
+    // Clear lock on credit-check failure as well.
+    try {
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(appRef);
+        if (!snap.exists) return;
+        const data: any = snap.data() || {};
+        const lock = data?.containerStartLock;
+        if (lock && lock.token === lockToken) {
+          tx.update(appRef, {
+            containerStartLock: FieldValue.delete(),
+            updatedAt: new Date(),
+          });
+        }
+      });
+    } catch {
+      // best-effort
+    }
+
+    return NextResponse.json(
+      {
+        error:
+          e?.message ||
+          'Unable to check preview credits. Try again shortly.',
+      },
+      { status: 503 },
+    );
+  }
+
   // Start a new preview.
   const resp = await handleWebcontainerPost(body, uid);
+
+  // If we successfully created a new preview (code returned), consume preview credits.
+  // This is best-effort: we do not fail the preview start if consumption fails, but
+  // the backend enforcement now prevents the free-preview bypass.
+  try {
+    const cloned = resp.clone();
+    const json: any = await cloned.json().catch(() => ({} as any));
+    const code = typeof json?.code === 'string' ? json.code.trim() : '';
+
+    if (resp.ok && code) {
+      try {
+        await consumeUserCredit(uid, tier, 'preview');
+      } catch (err: any) {
+        console.warn('[webcontainer] consumeUserCredit failed (preview)', {
+          uid,
+          err: err?.message || String(err),
+        });
+      }
+    }
+  } catch {
+    // ignore
+  }
 
   // Best-effort: persist the code for reconnection and clear the lock.
   try {

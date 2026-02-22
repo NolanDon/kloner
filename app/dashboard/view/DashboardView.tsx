@@ -963,7 +963,7 @@ function RenderCardInner({
                         className="absolute left-2 top-2 z-40 inline-flex items-center rounded-full border border-blue-200 bg-blue-50/90 px-2 py-0.5 text-[10px] font-semibold text-blue-700 shadow-sm"
                         title={`Render ID: ${String(r?.id || "").slice(0, 10)}`}
                     >
-                        Website
+                        v1
                     </span>
                 </>
             )}
@@ -1484,9 +1484,9 @@ function AppCard({
             {/* App badge - moved to avoid overlap */}
             <span
                 className="absolute left-2 top-2 z-40 inline-flex items-center rounded-full border border-neutral-200 bg-[#f55f2a]/10 px-2 py-0.5 text-[10px] font-semibold text-[#f55f2a] shadow-sm"
-                title="This is an app"
+                title="v2"
             >
-                App
+                v2
             </span>
 
             {/* App name badge - bottom right */}
@@ -1697,7 +1697,11 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-4"
+                        className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:items-center"
+                        style={{
+                            paddingTop: "calc(1rem + env(safe-area-inset-top))",
+                            paddingBottom: "calc(1rem + env(safe-area-inset-bottom))",
+                        }}
                         onMouseDown={(e) => {
                             if (e.target === e.currentTarget) setShowGenerationModal(false);
                         }}
@@ -1707,9 +1711,13 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             exit={{ opacity: 0, y: 10, scale: 0.98 }}
                             transition={{ duration: 0.18, ease: "easeOut" }}
-                            className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white shadow-2xl"
+                            className="flex w-full max-w-md flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-2xl"
+                            style={{
+                                maxHeight:
+                                    "calc(100dvh - 2rem - env(safe-area-inset-top) - env(safe-area-inset-bottom))",
+                            }}
                         >
-                            <div className="flex items-start justify-between gap-4 border-b border-neutral-200 px-5 py-4">
+                            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-neutral-200 px-5 py-4">
                                 <div className="space-y-1">
                                     <div className="text-sm font-semibold text-neutral-900">
                                         Choose Generation Type
@@ -1749,7 +1757,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                 </button>
                             </div>
 
-                            <div className="space-y-3 px-5 py-4">
+                            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-5 py-4">
                                 {effectiveLocked ? (
                                     <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                                         Snapshots are still processing. Generation options are temporarily disabled.
@@ -1894,7 +1902,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                 </div>
                             </div>
 
-                            <div className="flex items-center justify-end gap-2 border-t border-neutral-200 px-5 py-4">
+                            <div className="flex shrink-0 items-center justify-end gap-2 border-t border-neutral-200 px-5 py-4">
                                 <button
                                     type="button"
                                     onClick={() => setShowGenerationModal(false)}
@@ -6870,7 +6878,7 @@ export default function PreviewPage(): JSX.Element {
                                                 style={{ backgroundColor: ACCENT }}
                                             >
                                                 {appWizardBusy
-                                                    ? "Creating… This may take a minute."
+                                                    ? "Creating…"
                                                     : appWizardSource === "sample"
                                                         ? "Create website"
                                                         : appWizardSource === "website"
@@ -6940,7 +6948,7 @@ export default function PreviewPage(): JSX.Element {
                                                         Website deploy
                                                     </p>
                                                     <p className="text-lg font-semibold text-neutral-900">
-                                                        {appDeployWizardAppName ? `Deploy ${appDeployWizardAppName}` : "Deploy your web app"}
+                                                        {appDeployWizardAppName ? `Deploy ${appDeployWizardAppName}` : "Deploy your website"}
                                                     </p>
                                                 </div>
                                             </div>
@@ -7095,7 +7103,7 @@ export default function PreviewPage(): JSX.Element {
                                                     <div className="flex items-start justify-between gap-3">
                                                         <div className="min-w-0">
                                                             <p className="text-lg font-semibold text-neutral-900">
-                                                                Upgrade to publish live apps
+                                                                Upgrade to publish live
                                                             </p>
                                                             <p className="mt-1 text-xs text-neutral-600">
                                                                 Includes a free trial. Cancel anytime.
