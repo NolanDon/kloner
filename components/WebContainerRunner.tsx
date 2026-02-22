@@ -17,6 +17,7 @@ interface WebContainerRunnerProps {
   onFileChange?: (path: string, content: string) => void;
   onPreviewReadyChange?: (ready: boolean) => void;
   onBackendReady?: (args: { appId: string; code: string; url: string }) => void;
+  onRequestRebuild?: () => void | Promise<void>;
   reloadToken?: number;
   applyToken?: number;
   restartToken?: number;
@@ -32,7 +33,7 @@ interface WebContainerRunnerProps {
   navigatePathToken?: number;
 }
 
-export default function WebContainerRunner({ appId, files, onFileChange, onPreviewReadyChange, onBackendReady, reloadToken, applyToken, restartToken, reconnectToken, forceFreshStart, pollingConfig, navigatePath, navigatePathToken }: WebContainerRunnerProps) {
+export default function WebContainerRunner({ appId, files, onFileChange, onPreviewReadyChange, onBackendReady, onRequestRebuild, reloadToken, applyToken, restartToken, reconnectToken, forceFreshStart, pollingConfig, navigatePath, navigatePathToken }: WebContainerRunnerProps) {
 
   type DebugEvent = {
     ts: number;
@@ -172,8 +173,15 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const lastAppServerKindRef = useRef<'fallback' | 'next-dev' | 'next-prod' | ''>('');
   const stickyProgressByCodeRef = useRef<Record<string, number>>({});
 
-  // Fly quota protection: keep status checks relatively infrequent.
+  // Default status polling interval while the preview is booting/compiling.
+  // We keep this relatively infrequent; readiness is primarily driven by the
+  // preview URL/iframe once available.
   const POLL_INTERVAL_MS = 10_000;
+
+  // Throttle: regardless of code path, never issue status checks more frequently
+  // than this (prevents duplicate loops and tight retry paths from spamming).
+  const MIN_STATUS_FETCH_INTERVAL_MS = 3_000;
+  const lastStatusFetchAtRef = useRef<number>(0);
   const HARD_POLL_TIMEOUT_MS = 12 * 60 * 1000;
 
   const derivePreviewCodeFromUrl = (url: string): string | null => {
@@ -983,6 +991,15 @@ export default function NavBar() {
     };
   }, [previewUrl, (currentStatusData as any)?.appServerKind, hmrWsStatus]);
 
+  // If the iframe has loaded and we later confirm HMR websocket health,
+  // the preview is effectively interactive even if the backend `ready` flag lags.
+  useEffect(() => {
+    if (hmrWsStatus !== 'ok') return;
+    if (!previewUrl) return;
+    if (!iframeLoadedSuccessfullyRef.current) return;
+    try { onPreviewReadyChange?.(true); } catch { }
+  }, [hmrWsStatus, previewUrl, onPreviewReadyChange]);
+
   const hardReloadPreview = (reason: string) => {
     const base = proxyBaseRef.current || previewUrlRef.current;
     if (!base) return;
@@ -1556,6 +1573,13 @@ export default function NavBar() {
                 while (startRunIdRef.current === runId && Date.now() - startedAt < 360000) {
                   attempt += 1;
                   try {
+                    // Throttle status checks to avoid spamming when the status service is unhealthy.
+                    const now = Date.now();
+                    const last = lastStatusFetchAtRef.current || 0;
+                    const waitForThrottle = Math.max(0, MIN_STATUS_FETCH_INTERVAL_MS - (now - last));
+                    if (waitForThrottle > 0) await sleep(waitForThrottle);
+                    lastStatusFetchAtRef.current = Date.now();
+
                     const headers = await getAuthenticatedHeaders();
                     const res = await fetch(
                       `/api/webcontainer-status?code=${encodeURIComponent(existingCode)}&appId=${encodeURIComponent(appId)}`,
@@ -1611,7 +1635,8 @@ export default function NavBar() {
                     // ignore transient errors; keep polling
                   }
 
-                  const waitMs = Math.min(5000, 900 + attempt * 250);
+                  // Backoff (in addition to the throttle above).
+                  const waitMs = Math.min(9000, 1200 + attempt * 400);
                   await sleep(waitMs);
                 }
 
@@ -1798,6 +1823,16 @@ export default function NavBar() {
           }
 
           try {
+            // Global throttle: ensure we don't issue status requests too frequently
+            // even if multiple timers/paths accidentally converge.
+            {
+              const now = Date.now();
+              const last = lastStatusFetchAtRef.current || 0;
+              const waitForThrottle = Math.max(0, MIN_STATUS_FETCH_INTERVAL_MS - (now - last));
+              if (waitForThrottle > 0) await new Promise((r) => setTimeout(r, waitForThrottle));
+              lastStatusFetchAtRef.current = Date.now();
+            }
+
             let statusResponse: Response | null = null;
             const hubStatusUrl = hubStatusUrlRef.current;
             if (hubStatusUrl) {
@@ -2646,15 +2681,41 @@ export default function NavBar() {
           <div className="space-y-3">
             <p className="text-red-600 text-sm whitespace-pre-line">{error}</p>
             {canRetry && (
+              (() => {
+                const normalized = String(error || '').toLowerCase();
+                const suggestsRebuild =
+                  normalized.includes('use rebuild') ||
+                  normalized.includes('rebuild') ||
+                  normalized.includes('start fresh') ||
+                  normalized.includes('new machine') ||
+                  normalized.includes('create a new');
+
+                const useRebuild = suggestsRebuild && typeof onRequestRebuild === 'function';
+                const onClick = useRebuild
+                  ? () => {
+                    try {
+                      onRequestRebuild();
+                    } catch {
+                      // fall back
+                      retryApp();
+                    }
+                  }
+                  : retryApp;
+
+                const label = useRebuild ? 'Rebuild' : 'Try Again';
+
+                return (
               <button
-                onClick={retryApp}
+                onClick={onClick}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs bg-accent text-white rounded-lg hover:bg-[#e54f1a] transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                Try Again
+                {label}
               </button>
+                );
+              })()
             )}
           </div>
         </div>
@@ -2782,6 +2843,23 @@ export default function NavBar() {
               iframeLoadedSuccessfullyRef.current = true;
               appLoadedSuccessfullyRef.current = true;
 
+              const status = String((currentStatusData as any)?.status || '').toLowerCase();
+              const uiReadyByStatus = [
+                'ready',
+                'running',
+                'compiled',
+                'started',
+                'completed',
+                'finished',
+                'active',
+                'online',
+              ].includes(status);
+
+              // For the chat UX we want to unlock when the preview is actually usable.
+              // Backend `ready === true` is ideal, but it can lag; HMR websocket `ok`
+              // and strong non-error statuses are good enough to treat as interactive.
+              const uiReady = backendReadyRef.current || hmrWsStatus === 'ok' || uiReadyByStatus;
+
               if (backendReadyRef.current) {
                 setError(null);
                 setCanRetry(false);
@@ -2804,6 +2882,11 @@ export default function NavBar() {
                 if (readyUrl && serverKind === 'fallback') {
                   requestForceFreshRebuild('status_appServerKind_fallback_after_ready', readyUrl);
                 }
+              } else if (uiReady) {
+                // Don't block chat just because the backend hasn't flipped the final `ready` flag yet.
+                try { onPreviewReadyChange?.(true); } catch { }
+                // Keep polling in the background until `ready === true`.
+                if (!isPolling) setIsPolling(true);
               } else {
                 try { onPreviewReadyChange?.(false); } catch { }
                 // Keep polling in the background until `ready === true`.

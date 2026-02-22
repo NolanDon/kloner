@@ -619,6 +619,11 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
     const [app, setApp] = useState<AppData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    const onCloseRef = useRef(onClose);
+    useEffect(() => {
+        onCloseRef.current = onClose;
+    }, [onClose]);
     const [currentFile, setCurrentFile] = useState<string | null>(null);
     const [fileTree, setFileTree] = useState<FileNode[]>([]);
     const [code, setCode] = useState<string>("");
@@ -814,15 +819,36 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
         return () => window.removeEventListener("beforeunload", onBeforeUnload);
     }, [getHasUnsavedChanges]);
 
+    const showConfirmRef = useRef(showConfirm);
+    const getHasUnsavedChangesRef = useRef(getHasUnsavedChanges);
+    const getLeaveWarningTextRef = useRef(getLeaveWarningText);
+
+    useEffect(() => {
+        showConfirmRef.current = showConfirm;
+    }, [showConfirm]);
+
+    useEffect(() => {
+        getHasUnsavedChangesRef.current = getHasUnsavedChanges;
+        getLeaveWarningTextRef.current = getLeaveWarningText;
+    }, [getHasUnsavedChanges, getLeaveWarningText]);
+
+    const leaveConfirmInFlightRef = useRef(false);
     useEffect(() => {
         // In-app navigation guard for anchor clicks and back/forward.
         // This catches Next.js client-side navigations that won't trigger beforeunload.
         const confirmLeave = async (): Promise<boolean> => {
             if (allowNextNavigationRef.current) return true;
-            return await showConfirm(
-                getLeaveWarningText(),
-                getHasUnsavedChanges() ? "Unsaved changes" : "Leave App Builder",
-            );
+            if (leaveConfirmInFlightRef.current) return false;
+            leaveConfirmInFlightRef.current = true;
+            try {
+                const hasUnsaved = Boolean(getHasUnsavedChangesRef.current?.());
+                return await showConfirmRef.current(
+                    getLeaveWarningTextRef.current?.() || "Leave the App Builder?",
+                    hasUnsaved ? "Unsaved changes" : "Leave App Builder",
+                );
+            } finally {
+                leaveConfirmInFlightRef.current = false;
+            }
         };
 
         // Add a same-URL history marker so the first Back press doesn't immediately
@@ -838,6 +864,13 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                 // ignore
             }
         }
+
+        // Some browsers (notably Safari) can fire an initial popstate on page load.
+        // Ignore early popstate events so we don't show a leave-confirm as soon as the editor opens.
+        let popstateReady = false;
+        const armTimer = window.setTimeout(() => {
+            popstateReady = true;
+        }, 250);
 
         const onDocumentClickCapture = (e: MouseEvent) => {
             if (e.defaultPrevented) return;
@@ -856,6 +889,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
             e.preventDefault();
             e.stopPropagation();
 
+            if (leaveConfirmInFlightRef.current) return;
             const href = anchor.href;
             void (async () => {
                 const ok = await confirmLeave();
@@ -873,8 +907,9 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
             })();
         };
 
-        const onPopState = (e: PopStateEvent) => {
+        const onPopState = () => {
             if (allowNextNavigationRef.current) return;
+            if (!popstateReady) return;
 
             // If the marker isn't present (e.g. some browsers strip history.state), re-add it.
             try {
@@ -882,11 +917,13 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                 if (!st || st.__klonerAppBuilderGuard !== true) {
                     history.pushState({ ...(st || {}), __klonerAppBuilderGuard: true }, "", window.location.href);
                     leaveGuardArmedRef.current = true;
+                    return;
                 }
             } catch {
                 // ignore
             }
 
+            if (leaveConfirmInFlightRef.current) return;
             void (async () => {
                 const ok = await confirmLeave();
                 if (!ok) return;
@@ -905,36 +942,30 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
         document.addEventListener("click", onDocumentClickCapture, true);
         window.addEventListener("popstate", onPopState);
         return () => {
+            clearTimeout(armTimer);
             document.removeEventListener("click", onDocumentClickCapture, true);
             window.removeEventListener("popstate", onPopState);
-
-            // Best-effort: remove the marker entry if we're closing the editor without leaving.
-            // This keeps browser history feeling normal.
-            try {
-                const st: any = history.state;
-                if (st && st.__klonerAppBuilderGuard === true) {
-                    allowNextNavigationRef.current = true;
-                    history.back();
-                    setTimeout(() => {
-                        allowNextNavigationRef.current = false;
-                    }, 0);
-                }
-            } catch {
-                // ignore
-            }
         };
-    }, [getHasUnsavedChanges, getLeaveWarningText, showConfirm]);
+    }, [appId]);
 
+    const closeRequestInFlightRef = useRef(false);
     const requestClose = useCallback(async () => {
-        const ok = await showConfirm(
-            getHasUnsavedChanges()
-                ? "You have unsaved changes that may be lost. Close the editor anyway?"
-                : "Close the App Builder?",
-            getHasUnsavedChanges() ? "Unsaved changes" : "Close editor",
-        );
-        if (!ok) return;
-        onClose();
-    }, [getHasUnsavedChanges, onClose, showConfirm]);
+        if (closeRequestInFlightRef.current) return;
+        closeRequestInFlightRef.current = true;
+        try {
+            const hasUnsaved = getHasUnsavedChanges();
+            const ok = await showConfirm(
+                hasUnsaved
+                    ? "You have unsaved changes that may be lost. Close the editor anyway?"
+                    : "Close the editor? Any unsaved changes will be lost.",
+                hasUnsaved ? "Unsaved changes" : "Close editor",
+            );
+            if (!ok) return;
+            onCloseRef.current?.();
+        } finally {
+            closeRequestInFlightRef.current = false;
+        }
+    }, [getHasUnsavedChanges, showConfirm]);
     const [deployChoiceError, setDeployChoiceError] = useState<string | null>(null);
 
     // Lock chat until the preview iframe has successfully loaded.
@@ -964,6 +995,9 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
     const applyRunAfterRef = useRef(false);
     const lastApplyAlertAtRef = useRef(0);
     const applyRetryTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const applyServerErrorRetryCountRef = useRef(0);
+    const applyAutoRetryPausedUntilRef = useRef(0);
+    const lastApplyFailureStatusRef = useRef<number | null>(null);
 
     // Firebase can emit multiple snapshots in quick succession. Reloading the preview iframe for
     // every snapshot causes heavy flicker and request thrash. Coalesce into at most ~1 reload/1.5s.
@@ -1176,6 +1210,19 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                 return;
             }
 
+            const now0 = Date.now();
+            if (applyAutoRetryPausedUntilRef.current && now0 < applyAutoRetryPausedUntilRef.current) {
+                // Keep changes queued, but don't hammer the backend.
+                if (interactive && now0 - lastApplyAlertAtRef.current > 15000) {
+                    lastApplyAlertAtRef.current = now0;
+                    void showAlert(
+                        "Live update is temporarily paused due to server errors. Your changes are saved; try again in a moment or use Refresh/Rebuild.",
+                        "Live update",
+                    );
+                }
+                return;
+            }
+
             const queued = applyQueuedRef.current;
             const paths = Object.keys(queued);
             if (paths.length === 0) return;
@@ -1184,6 +1231,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
             applyInFlightRef.current = true;
             applyRunAfterRef.current = false;
 
+            let scheduledRetry = false;
             try {
                 // Prefer sending the locally stored container code when available.
                 // If absent, the backend/hub can resolve the latest preview by appId.
@@ -1224,6 +1272,15 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                         if (queued[p] !== undefined) applyQueuedRef.current[p] = queued[p];
                     }
 
+                    // Track consecutive failures by status.
+                    const status = res.status;
+                    if (lastApplyFailureStatusRef.current === status) {
+                        applyServerErrorRetryCountRef.current += 1;
+                    } else {
+                        lastApplyFailureStatusRef.current = status;
+                        applyServerErrorRetryCountRef.current = 1;
+                    }
+
                     // 404: no active preview found. Start/reconnect non-destructively and let the user retry.
                     if (res.status === 404) {
                         const now = Date.now();
@@ -1244,6 +1301,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                                 void flushPreviewApply({ interactive: false });
                             }, 1500);
                         }
+                        scheduledRetry = true;
                         return;
                     }
 
@@ -1265,6 +1323,34 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                                 void flushPreviewApply({ interactive: false });
                             }, 1000);
                         }
+                        scheduledRetry = true;
+                        return;
+                    }
+
+                    // 5xx: backend/hub transient error. Retry a couple times, then pause.
+                    if (res.status >= 500 && res.status <= 599) {
+                        const attempt = applyServerErrorRetryCountRef.current;
+                        if (attempt <= 2) {
+                            const delayMs = 1000 + attempt * 1000;
+                            if (!applyRetryTimerRef.current) {
+                                applyRetryTimerRef.current = setTimeout(() => {
+                                    applyRetryTimerRef.current = null;
+                                    void flushPreviewApply({ interactive: false });
+                                }, delayMs);
+                            }
+                            scheduledRetry = true;
+                            return;
+                        }
+
+                        // Pause auto-retry so we don't spam the server.
+                        applyAutoRetryPausedUntilRef.current = Date.now() + 30_000;
+                        const now = Date.now();
+                        const shouldAlert = interactive || now - lastApplyAlertAtRef.current > 15000;
+                        if (shouldAlert) {
+                            lastApplyAlertAtRef.current = now;
+                            const msg = String((data as any)?.error || `Live update failed (HTTP ${res.status})`);
+                            void showAlert(`${msg}\n\nAuto-retry paused for 30 seconds.`, "Live update");
+                        }
                         return;
                     }
 
@@ -1277,6 +1363,11 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                     }
                     return;
                 }
+
+                // Success: reset failure/pause state.
+                applyServerErrorRetryCountRef.current = 0;
+                applyAutoRetryPausedUntilRef.current = 0;
+                lastApplyFailureStatusRef.current = null;
 
                 // Mark these contents as applied so we can safely dedupe future queues.
                 for (const p of paths) {
@@ -1316,6 +1407,28 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                     }
                 }
             } catch (err: any) {
+                // Network / fetch failures: retry a couple times, then pause.
+                if (lastApplyFailureStatusRef.current === -1) {
+                    applyServerErrorRetryCountRef.current += 1;
+                } else {
+                    lastApplyFailureStatusRef.current = -1;
+                    applyServerErrorRetryCountRef.current = 1;
+                }
+
+                const attempt = applyServerErrorRetryCountRef.current;
+                if (attempt <= 2) {
+                    const delayMs = 1000 + attempt * 1000;
+                    if (!applyRetryTimerRef.current) {
+                        applyRetryTimerRef.current = setTimeout(() => {
+                            applyRetryTimerRef.current = null;
+                            void flushPreviewApply({ interactive: false });
+                        }, delayMs);
+                    }
+                    scheduledRetry = true;
+                    return;
+                }
+
+                applyAutoRetryPausedUntilRef.current = Date.now() + 30_000;
                 const now = Date.now();
                 const shouldAlert = interactive || now - lastApplyAlertAtRef.current > 15000;
                 if (shouldAlert) {
@@ -1324,6 +1437,15 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                 }
             } finally {
                 applyInFlightRef.current = false;
+
+                // If we already scheduled a retry (or we're paused), do not immediately re-flush.
+                const now = Date.now();
+                const paused = applyAutoRetryPausedUntilRef.current && now < applyAutoRetryPausedUntilRef.current;
+                if (scheduledRetry || applyRetryTimerRef.current || paused) {
+                    applyRunAfterRef.current = false;
+                    return;
+                }
+
                 if (applyRunAfterRef.current || Object.keys(applyQueuedRef.current).length > 0) {
                     applyRunAfterRef.current = false;
                     void flushPreviewApply({ interactive: false });
@@ -1751,33 +1873,49 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
 
     // Load app data
     useEffect(() => {
+        let didCancel = false;
+        const controller = new AbortController();
+
         const loadApp = async () => {
             try {
-                const res = await fetch(`/api/app-builder/${appId}/files`);
+                const res = await fetch(`/api/app-builder/${appId}/files`, {
+                    method: "GET",
+                    credentials: "include",
+                    cache: "no-store",
+                    signal: controller.signal,
+                });
                 if (!res.ok) {
                     if (res.status === 404) {
-                        console.error('App not found, closing editor');
-                        onClose();
+                        console.error("App not found, closing editor");
+                        onCloseRef.current?.();
                         return;
                     }
                     throw new Error(`Failed to load app: ${res.status} ${res.statusText}`);
                 }
                 const data = await res.json();
+                if (didCancel) return;
                 setApp(data);
                 const liveUrl = typeof data?.productionUrl === "string" ? data.productionUrl.trim() : "";
                 setLastDeployLiveUrl(liveUrl || null);
                 buildFileTree(data.files);
-            } catch (err) {
-                console.error('Error loading app:', err);
-                // For network errors or server errors, don't close immediately
-                // Show error state instead
-                setError(err instanceof Error ? err.message : 'Failed to load app');
+            } catch (err: any) {
+                if (didCancel) return;
+                if (err?.name === "AbortError") return;
+                console.error("Error loading app:", err);
+                // For network errors or server errors, don't close immediately.
+                // Show error state instead.
+                setError(err instanceof Error ? err.message : "Failed to load app");
             } finally {
-                setLoading(false);
+                if (!didCancel) setLoading(false);
             }
         };
+
         loadApp();
-    }, [appId, onClose]);
+        return () => {
+            didCancel = true;
+            controller.abort();
+        };
+    }, [appId]);
 
     // Derive current favicon URL from head.tsx if we created/updated one.
     useEffect(() => {
@@ -2793,22 +2931,58 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
 
     if (error) {
         return (
-            <div className="fixed inset-0 z-[16000] bg-black/70 backdrop-blur-sm flex items-center justify-center">
-                <div className="bg-white rounded-lg p-8 max-w-md">
-                    <div className="text-center">
-                        <div className="text-red-600 text-lg font-semibold mb-2">Failed to load app</div>
-                        <div className="text-gray-600 text-sm mb-4">{error}</div>
+            <div
+                className="fixed inset-0 z-[20000] flex items-center justify-center bg-black/40 p-4"
+                onMouseDown={(e) => {
+                    if (e.target === e.currentTarget) onCloseRef.current?.();
+                }}
+            >
+                <div className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white shadow-2xl">
+                    <div className="flex items-start justify-between gap-4 border-b border-neutral-200 px-5 py-4">
+                        <div className="space-y-1">
+                            <div className="text-sm font-semibold text-neutral-900">Failed to load app</div>
+                        </div>
+
                         <button
-                            onClick={() => window.location.reload()}
-                            className="px-4 py-2 bg-accent text-white rounded-full hover:bg-accent-dark transition-colors"
+                            type="button"
+                            onClick={() => onCloseRef.current?.()}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200"
+                            title="Close"
+                            aria-label="Close"
                         >
-                            Retry
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 20 20"
+                                fill="currentColor"
+                                className="h-4 w-4 text-neutral-700"
+                            >
+                                <path
+                                    fillRule="evenodd"
+                                    d="M4.47 4.47a.75.75 0 011.06 0L10 8.94l4.47-4.47a.75.75 0 111.06 1.06L11.06 10l4.47 4.47a.75.75 0 11-1.06 1.06L10 11.06l-4.47 4.47a.75.75 0 11-1.06-1.06L8.94 10 4.47 5.53a.75.75 0 010-1.06z"
+                                    clipRule="evenodd"
+                                />
+                            </svg>
                         </button>
-                         <button
-                            onClick={() => setError(null)}
-                            className="px-4 py-2 bg-accent text-white rounded-full hover:bg-accent-dark transition-colors"
+                    </div>
+
+                    <div className="px-5 py-4">
+                        <div className="text-sm text-neutral-700 whitespace-pre-wrap">{error}</div>
+                    </div>
+
+                    <div className="flex justify-end gap-3 border-t border-neutral-200 px-5 py-4">
+                        <button
+                            type="button"
+                            onClick={() => onCloseRef.current?.()}
+                            className="px-4 py-2 text-sm font-medium text-neutral-700 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50"
                         >
                             Close
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => window.location.reload()}
+                            className="px-4 py-2 text-sm font-medium text-white bg-[#f55f2a] rounded-lg"
+                        >
+                            Retry
                         </button>
                     </div>
                 </div>
@@ -3254,6 +3428,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                                             setPreviewMode("webcontainer");
                                             setReconnectKey((k) => k + 1);
                                         }}
+                                        onRequestRebuild={() => void handleRefresh(true)}
                                         reloadToken={refreshKey}
                                         applyToken={applyCompleteKey}
                                         restartToken={localRestartKey}
