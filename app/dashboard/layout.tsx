@@ -489,18 +489,18 @@ function MobileHeader({
     };
 
     return (
-        <div className="md:hidden sticky top-0 z-10 bg-white border-b border-neutral-200">
-            <div className="flex items-center justify-between px-4 py-3">
+        <div className="md:hidden sticky top-0 z-[500] border-b border-neutral-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80 pt-[env(safe-area-inset-top)]">
+            <div className="flex items-center justify-between px-3 py-2">
                 <Link
                     href="/"
-                    className="flex items-center gap-2 font-black tracking-tight text-xl md:text-2xl shrink-0"
+                    className="flex items-center gap-2 font-black tracking-tight text-lg shrink-0"
                 >
-                    <div className="relative h-[70px] w-[70px]">
+                    <div className="relative h-[44px] w-[44px]">
                         <Image
                             src={logo}
                             alt="kloner logo"
                             fill
-                            sizes="70px"
+                            sizes="44px"
                             priority
                             className="object-contain"
                         />
@@ -510,7 +510,7 @@ function MobileHeader({
                 <button
                     onClick={() => setOpen(true)}
                     aria-label="Open quick menu"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-700"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-700 shadow-sm"
                 >
                     <MoreHorizontal className="h-4 w-4" />
                 </button>
@@ -525,7 +525,7 @@ function MobileHeader({
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
                             transition={{ duration: 0.18 }}
-                            className="fixed inset-0 z-[80] bg-black/20"
+                            className="fixed inset-0 z-[600] bg-black/20"
                             onClick={close}
                         />
 
@@ -535,7 +535,7 @@ function MobileHeader({
                             animate={{ y: 0, opacity: 1 }}
                             exit={{ y: -10, opacity: 0 }}
                             transition={{ duration: 0.2, ease: "easeOut" }}
-                            className="fixed inset-x-3 top-[max(12px,env(safe-area-inset-top))] z-[90] rounded-3xl border border-neutral-200 bg-white shadow-2xl"
+                            className="fixed inset-x-3 top-[max(12px,env(safe-area-inset-top))] z-[610] rounded-3xl border border-neutral-200 bg-white shadow-2xl"
                             role="dialog"
                             aria-modal="true"
                         >

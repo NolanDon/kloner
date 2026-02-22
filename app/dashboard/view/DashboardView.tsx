@@ -6249,7 +6249,7 @@ export default function PreviewPage(): JSX.Element {
                             <div
                                 role="listbox"
                                 aria-activedescendant={activeUrlDoc?.id ? String(activeUrlDoc.id) : undefined}
-                                className="absolute left-0 z-[9999] mt-2 w-[min(640px,calc(100vw-2rem))] max-w-full overflow-hidden rounded-md border border-neutral-200 bg-white shadow-lg"
+                                className="absolute left-0 z-[300] mt-2 w-[min(640px,calc(100vw-2rem))] max-w-full overflow-hidden rounded-md border border-neutral-200 bg-white shadow-lg"
                             >
                                 <ul className="max-h-[280px] overflow-auto py-1">
                                     {orderedUrls.map((u) => {
