@@ -16,7 +16,7 @@ export default function HeroContent({
   displayClassName: string;
 }) {
   const router = useRouter();
-  const [mode, setMode] = useState<"url" | "prompt">("url");
+  const [mode, setMode] = useState<"url" | "prompt">("prompt");
   const [url, setUrl] = useState("");
   const [prompt, setPrompt] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -132,7 +132,7 @@ export default function HeroContent({
         </h1>
 
         <p className="mt-5 sm:mt-6 text-white/90 text-base sm:text-lg md:text-xl max-w-xl mx-auto font-medium">
-          The ingenuity of cloning, automated. Drop a link or enter a description
+          Enter a description, or drop a link
           to generate your next ready-to-ship project.
         </p>
 
@@ -245,7 +245,7 @@ export default function HeroContent({
           </div>
 
           <div className="mt-3 sm:mt-4 text-xs sm:text-sm text-white font-medium">
-            {error ?? "Instant site cloning technology • No credit card required"}
+            {error ?? "Instant site cloning technology • No credit card required to generate previews"}
           </div>
         </form>
 
