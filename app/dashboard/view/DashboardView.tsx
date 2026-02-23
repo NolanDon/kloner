@@ -468,7 +468,7 @@ function MiniDashboardEntry({
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         )}
                         {captureStatus === "queued"
-                            ? "Queued snapshot job…"
+                            ? "Queued snapshot scan… We’re only capturing this URL now (not generating a website yet)."
                             : "Processing your URL… This may take a few minutes."}
                     </div>
                 ) : null}
@@ -3256,6 +3256,23 @@ export default function PreviewPage(): JSX.Element {
         return normalized ? normUrl(normalized) : "";
     }, [urlParam]);
 
+    const DUPLICATE_URL_MESSAGE =
+        "This URL has already been processed. Click Generate website below to get started.";
+
+    const hasProcessedUrl = useCallback(
+        (candidateUrl: string): boolean => {
+            const normalizedCandidate = validateAndNormalizePublicHttpUrl(candidateUrl);
+            if (!normalizedCandidate) return false;
+            const canonicalCandidate = normalizedCandidate.toLowerCase();
+
+            return urls.some((entry) => {
+                const normalizedExisting = validateAndNormalizePublicHttpUrl(String(entry?.url || ""));
+                return !!normalizedExisting && normalizedExisting.toLowerCase() === canonicalCandidate;
+            });
+        },
+        [urls],
+    );
+
     // If someone deep-links an invalid URL, fail gracefully (no Firestore errors / snapshot retries).
     useEffect(() => {
         if (!urlParam) return;
@@ -3278,9 +3295,14 @@ export default function PreviewPage(): JSX.Element {
         (raw: string) => {
             const normalized = validateAndNormalizePublicHttpUrl(raw);
             if (!normalized) return;
+            if (hasProcessedUrl(normalized)) {
+                setErr(DUPLICATE_URL_MESSAGE);
+                return;
+            }
+            setErr("");
             router.push(`/dashboard/view?u=${encodeURIComponent(normalized)}&start=1`, { scroll: false });
         },
-        [router]
+        [router, hasProcessedUrl]
     );
 
     const submitMiniPrompt = useCallback(
@@ -3340,6 +3362,10 @@ export default function PreviewPage(): JSX.Element {
                         if (prev.some((u) => normUrl(u.url) === normUrl(targetUrl))) return prev;
                         return [{ id: `local_${urlHash}`, url: targetUrl, urlHash } as any, ...prev].slice(0, 50);
                     });
+                } else {
+                    setErr(DUPLICATE_URL_MESSAGE);
+                    setCaptureLockUrl(null);
+                    return;
                 }
 
                 const res = await fetch("/api/private/generate", {
@@ -3431,7 +3457,12 @@ export default function PreviewPage(): JSX.Element {
 
     useEffect(() => {
         // Avoid stale/duplicate legacy notifications after capture finishes (e.g. during hot reload).
-        if (info !== "Queued snapshot job…") return;
+        if (
+            info !== "Queued snapshot job…" &&
+            info !== "Queued snapshot scan… We’re only capturing this URL now (not generating a website yet)."
+        ) {
+            return;
+        }
         if (!captureStatus) return;
         if (captureStatus === "queued" || captureStatus === "processing") return;
         setInfo("");
