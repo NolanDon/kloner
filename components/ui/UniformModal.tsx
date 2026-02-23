@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { ReactNode, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 type ModalType = "alert" | "confirm";
@@ -10,7 +10,7 @@ interface UniformModalProps {
   onClose: () => void;
   onConfirm?: () => void;
   title: string;
-  message: string;
+  message: ReactNode;
   type?: ModalType;
   confirmText?: string;
   cancelText?: string;

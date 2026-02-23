@@ -3,7 +3,8 @@
 
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import Editor from "@monaco-editor/react";
-import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database, Rocket, Monitor, SlidersHorizontal } from "lucide-react";
+import Image from "next/image";
+import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database, Rocket, Monitor, SlidersHorizontal, Images, Send } from "lucide-react";
 import AIAgentChat from "./AIAgentChat";
 import KlonerLoader from "./KlonerLoader";
 import WebContainerRunner from "./WebContainerRunner";
@@ -13,6 +14,8 @@ import { db } from "@/lib/firebase";
 import { doc, onSnapshot } from "firebase/firestore";
 import { useAuth } from "@/src/hooks/useAuth";
 import { useModal } from "@/components/ui/ModalContext";
+import { compressImageForUpload } from "@/src/lib/clientImageCompression";
+import { sanitizeImageName } from "./helpers";
 
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
@@ -51,6 +54,56 @@ type AutoPreviewPhase =
 type CodedError = Error & { code?: string };
 
 type PreviewMode = "vercel" | "webcontainer";
+
+type LeftViewMode = "ai" | "code" | "images";
+
+type StagedImage = {
+    id: string;
+    originalFile: globalThis.File;
+    preparedFile: globalThis.File;
+    previewUrl: string;
+    originalBytes: number;
+    preparedBytes: number;
+    alt: string;
+    placementPrompt: string;
+    uploadedUrl: string | null;
+    uploadedPath: string | null;
+    status: "staged" | "uploading" | "applied" | "failed";
+    error: string | null;
+};
+
+type PlacementPosition = "top" | "middle" | "bottom";
+
+type ImagePlacementPlan = {
+    targetPath: string;
+    position: PlacementPosition;
+    label: string;
+};
+
+type LastImageInsert = {
+    stagedImageId: string;
+    targetPath: string;
+    previousContent: string;
+    uploadedPath: string | null;
+};
+
+const IMAGE_PLACEMENT_PLACEHOLDERS = [
+    "insert this image on the homepage",
+    "insert this image for the product display",
+    "insert this image in the footer",
+];
+
+function formatDeployUrlShortLabel(url: string | null): string {
+    if (!url) return "Open live site";
+    try {
+        const parsed = new URL(url);
+        const path = parsed.pathname === "/" ? "" : parsed.pathname;
+        const shortPath = path.length > 12 ? `${path.slice(0, 12)}…` : path;
+        return `${parsed.hostname}${shortPath}`;
+    } catch {
+        return url.length > 28 ? `${url.slice(0, 28)}…` : url;
+    }
+}
 
 function mergeFilesPreferNewest(
     localFiles: AppData["files"],
@@ -247,6 +300,129 @@ function addVercelProtectionBypass(url: string, secret: string | null | undefine
     }
 }
 
+function escapeAttribute(value: string): string {
+    return String(value || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function buildImageSnippet(url: string, alt: string): string {
+    const safeUrl = escapeAttribute(url);
+    const safeAlt = escapeAttribute(alt || "");
+    return `<img src=\"${safeUrl}\" alt=\"${safeAlt}\" loading=\"lazy\" />`;
+}
+
+function detectPlacementPosition(prompt: string): PlacementPosition {
+    const p = String(prompt || "").toLowerCase();
+    if (/(bottom|footer|end|last|below)/i.test(p)) return "bottom";
+    if (/(top|header|hero|start|above|first)/i.test(p)) return "top";
+    return "middle";
+}
+
+function resolveFileFromPrompt(
+    files: AppData["files"],
+    prompt: string,
+    currentFile: string | null,
+): string | null {
+    const p = String(prompt || "").toLowerCase();
+    const keys = Object.keys(files || {});
+    const codeKeys = keys.filter((k) => /\.(tsx|ts|jsx|js|html|mdx?)$/i.test(k));
+
+    const byPriority = (candidates: string[]) => candidates.find((c) => Boolean((files as any)?.[c])) || null;
+
+    if (/(this file|current file|here)/i.test(p) && currentFile && (files as any)?.[currentFile]) {
+        return currentFile;
+    }
+
+    const homepage = byPriority(["src/app/page.tsx", "app/page.tsx", "src/pages/index.tsx", "pages/index.tsx", "src/pages/index.jsx", "pages/index.jsx"]);
+    if (/(homepage|home page|home|landing)/i.test(p) && homepage) {
+        return homepage;
+    }
+
+    const routeMatch = p.match(/\/(\w[\w-]*)/);
+    if (routeMatch && routeMatch[1]) {
+        const route = routeMatch[1].toLowerCase();
+        const routeFile = codeKeys.find((k) => k.toLowerCase().includes(`/app/${route}/page.`) || k.toLowerCase().includes(`/pages/${route}.`));
+        if (routeFile) return routeFile;
+    }
+
+    const sectionHints: Array<{ match: RegExp; token: string }> = [
+        { match: /(about)/i, token: "about" },
+        { match: /(contact)/i, token: "contact" },
+        { match: /(pricing|price)/i, token: "price" },
+        { match: /(team)/i, token: "team" },
+        { match: /(blog)/i, token: "blog" },
+        { match: /(faq|support)/i, token: "support" },
+    ];
+    for (const hint of sectionHints) {
+        if (!hint.match.test(p)) continue;
+        const match = codeKeys.find((k) => k.toLowerCase().includes(hint.token));
+        if (match) return match;
+    }
+
+    if (currentFile && (files as any)?.[currentFile] && /\.(tsx|ts|jsx|js|html|mdx?)$/i.test(currentFile)) {
+        return currentFile;
+    }
+
+    if (homepage) return homepage;
+    return codeKeys[0] || null;
+}
+
+function resolveImagePlacementPlan(
+    files: AppData["files"],
+    prompt: string,
+    currentFile: string | null,
+): ImagePlacementPlan | null {
+    const targetPath = resolveFileFromPrompt(files, prompt, currentFile);
+    if (!targetPath) return null;
+    const position = detectPlacementPosition(prompt);
+    return {
+        targetPath,
+        position,
+        label: `${targetPath} (${position})`,
+    };
+}
+
+function insertSnippetIntoContent(content: string, snippet: string, position: PlacementPosition): string {
+    const base = String(content || "");
+    const insertAfterTag = (regex: RegExp): string | null => {
+        const m = regex.exec(base);
+        if (!m || m.index < 0) return null;
+        const start = m.index;
+        const end = start + m[0].length;
+        return `${base.slice(0, end)}\n${snippet}\n${base.slice(end)}`;
+    };
+
+    if (position === "top") {
+        return (
+            insertAfterTag(/<main[^>]*>/i) ||
+            insertAfterTag(/<header[^>]*>/i) ||
+            insertAfterTag(/<body[^>]*>/i) ||
+            `${snippet}\n${base}`
+        );
+    }
+
+    if (position === "bottom") {
+        const mainClose = base.search(/<\/main>/i);
+        if (mainClose >= 0) {
+            return `${base.slice(0, mainClose)}\n${snippet}\n${base.slice(mainClose)}`;
+        }
+        const bodyClose = base.search(/<\/body>/i);
+        if (bodyClose >= 0) {
+            return `${base.slice(0, bodyClose)}\n${snippet}\n${base.slice(bodyClose)}`;
+        }
+        const needsBreak = base.length > 0 && !base.endsWith("\n");
+        return `${base}${needsBreak ? "\n" : ""}${snippet}\n`;
+    }
+
+    return (
+        insertAfterTag(/<section[^>]*>/i) ||
+        insertAfterTag(/<main[^>]*>/i) ||
+        (() => {
+            const needsBreak = base.length > 0 && !base.endsWith("\n");
+            return `${base}${needsBreak ? "\n" : ""}${snippet}\n`;
+        })()
+    );
+}
+
 function FileTree({ nodes, onFileSelect, prefix = "" }: {
     nodes: FileNode[];
     onFileSelect: (path: string) => void;
@@ -295,6 +471,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
     const { showConfirm, showAlert } = useModal();
 
     const faviconInputRef = useRef<HTMLInputElement | null>(null);
+    const imageInputRef = useRef<HTMLInputElement | null>(null);
     const [faviconUploading, setFaviconUploading] = useState(false);
     const [faviconUrl, setFaviconUrl] = useState<string | null>(null);
     const [supabaseConnected, setSupabaseConnected] = useState<boolean | null>(null);
@@ -652,7 +829,12 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
     const [forceFreshStart, setForceFreshStart] = useState(false);
     const forceFreshStartRef = useRef(false);
     const forceFreshStartKey = useRef(0);
-    const [viewMode, setViewMode] = useState<"ai" | "code">("ai"); // Default to AI chat
+    const [viewMode, setViewMode] = useState<LeftViewMode>("ai"); // Default to AI chat
+    const [stagedImages, setStagedImages] = useState<StagedImage[]>([]);
+    const stagedImagesRef = useRef<StagedImage[]>([]);
+    const [autoCompressImages, setAutoCompressImages] = useState(true);
+    const [lastImageInsert, setLastImageInsert] = useState<LastImageInsert | null>(null);
+    const [imagePromptPlaceholderIdx, setImagePromptPlaceholderIdx] = useState(0);
     const [isMobile, setIsMobile] = useState(false);
     const [mobileTab, setMobileTab] = useState<"app" | "prompt">("app");
     const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
@@ -677,6 +859,150 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
     const [vercelConnectOpen, setVercelConnectOpen] = useState(false);
     const [vercelConnectOpening, setVercelConnectOpening] = useState(false);
     const [generationEver, setGenerationEver] = useState(false);
+
+    useEffect(() => {
+        stagedImagesRef.current = stagedImages;
+    }, [stagedImages]);
+
+    useEffect(() => {
+        if (viewMode !== "images") return;
+        const id = window.setInterval(() => {
+            setImagePromptPlaceholderIdx((prev) => (prev + 1) % IMAGE_PLACEMENT_PLACEHOLDERS.length);
+        }, 2600);
+        return () => window.clearInterval(id);
+    }, [viewMode]);
+
+    useEffect(() => {
+        return () => {
+            for (const item of stagedImagesRef.current) {
+                try {
+                    URL.revokeObjectURL(item.previewUrl);
+                } catch {
+                    // ignore
+                }
+            }
+        };
+    }, []);
+
+    const uploadImageToUserBlob = useCallback(async (file: globalThis.File) => {
+        const csrf = await ensureSessionAndCsrf().catch(() => null);
+        const safeName = sanitizeImageName(file.name || "upload.bin");
+        const url = `/api/user-blob/upload-url?filename=${encodeURIComponent(safeName)}&renderId=${encodeURIComponent(appId)}`;
+
+        const res = await fetch(url, {
+            method: "POST",
+            headers: {
+                "content-type": file.type || "application/octet-stream",
+                ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
+            },
+            credentials: "include",
+            body: file,
+        });
+
+        const j = await res.json().catch(() => ({} as any));
+        if (!res.ok || !j?.url) {
+            throw new Error(j?.error || `upload_failed_${res.status}`);
+        }
+
+        return {
+            url: String(j.url),
+            path: typeof j.path === "string" ? j.path : null,
+        };
+    }, [appId]);
+
+    const deleteUserBlobPaths = useCallback(async (paths: string[]) => {
+        const filtered = paths.filter((p) => typeof p === "string" && p.trim().length > 0);
+        if (!filtered.length) return;
+
+        const csrf = await ensureSessionAndCsrf().catch(() => null);
+        await fetch("/api/user-blob/delete", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
+            },
+            credentials: "include",
+            body: JSON.stringify({ paths: filtered }),
+        }).catch(() => null);
+    }, []);
+
+    const handlePickImages = useCallback(() => {
+        imageInputRef.current?.click();
+    }, []);
+
+    const handleImageFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const inputFiles = Array.from(e.target.files || []);
+        if (!inputFiles.length) return;
+
+        const valid = inputFiles.filter((f) => f.type.startsWith("image/"));
+        if (!valid.length) {
+            void showAlert("Please select image files only.", "Images");
+            e.target.value = "";
+            return;
+        }
+
+        const nextItems = await Promise.all(
+            valid.map(async (file) => {
+                let prepared = file;
+                if (autoCompressImages) {
+                    try {
+                        prepared = await compressImageForUpload(file);
+                    } catch {
+                        prepared = file;
+                    }
+                }
+
+                return {
+                    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                    originalFile: file,
+                    preparedFile: prepared,
+                    previewUrl: URL.createObjectURL(prepared),
+                    originalBytes: file.size,
+                    preparedBytes: prepared.size,
+                    alt: file.name.replace(/\.[^.]+$/, "") || "",
+                    placementPrompt: "",
+                    uploadedUrl: null,
+                    uploadedPath: null,
+                    status: "staged" as const,
+                    error: null,
+                };
+            })
+        );
+
+        setStagedImages((prev) => [...nextItems, ...prev]);
+        e.target.value = "";
+    }, [autoCompressImages, showAlert]);
+
+    const removeStagedImage = useCallback((id: string) => {
+        setStagedImages((prev) => {
+            const target = prev.find((item) => item.id === id);
+            if (target) {
+                try {
+                    URL.revokeObjectURL(target.previewUrl);
+                } catch {
+                    // ignore
+                }
+            }
+            return prev.filter((item) => item.id !== id);
+        });
+    }, []);
+
+    const clearStagedImages = useCallback(() => {
+        setStagedImages((prev) => {
+            for (const item of prev) {
+                try {
+                    URL.revokeObjectURL(item.previewUrl);
+                } catch {
+                    // ignore
+                }
+            }
+            return [];
+        });
+    }, []);
+
+    const updateStagedImage = useCallback((id: string, patch: Partial<StagedImage>) => {
+        setStagedImages((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+    }, []);
 
     const generationPlaceholderFiles = useMemo(() => {
         // Minimal Next.js App Router template so we can start a machine immediately
@@ -993,6 +1319,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
     }, [previewMode, refreshKey, localRestartKey, reconnectKey]);
     const [lastDeployLiveUrl, setLastDeployLiveUrl] = useState<string | null>(null);
     const [showDeploySuccess, setShowDeploySuccess] = useState(false);
+    const deployUrlShortLabel = useMemo(() => formatDeployUrlShortLabel(lastDeployLiveUrl), [lastDeployLiveUrl]);
     const [leftPanelWidth, setLeftPanelWidth] = useState(500); // Default wider AI chat panel
     const [isResizing, setIsResizing] = useState(false);
     const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -2457,6 +2784,150 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
         }
     }, [appId, queuePreviewApply, showAlert]);
 
+    const applyStagedImage = useCallback(async (id: string) => {
+        const item = stagedImages.find((entry) => entry.id === id);
+        if (!item) return;
+
+        const allFiles = appRef.current?.files || ({} as AppData["files"]);
+        const plan = resolveImagePlacementPlan(allFiles, item.placementPrompt, currentFile);
+        if (!plan) {
+            void showAlert("I couldn’t find a place for that prompt. Try something like “homepage top” or “/about bottom”.", "Images");
+            return;
+        }
+
+        const confirm = await showConfirm(
+            <div className="space-y-3">
+                <Image
+                    src={item.previewUrl}
+                    alt={item.alt || "Image preview"}
+                    width={1200}
+                    height={1200}
+                    className="h-auto max-h-56 w-full rounded-lg border border-neutral-200 object-contain"
+                    unoptimized
+                />
+                <div className="text-sm text-neutral-700">
+                    Place image at {plan.label}?
+                </div>
+                <div className="text-sm text-neutral-700">
+                    Prompt: {item.placementPrompt || "(none)"}
+                </div>
+            </div>,
+            "Images",
+        );
+        if (!confirm) return;
+
+        updateStagedImage(id, { status: "uploading", error: null });
+
+        try {
+            let finalUrl = item.uploadedUrl;
+            let finalPath = item.uploadedPath;
+            if (!finalUrl) {
+                const uploaded = await uploadImageToUserBlob(item.preparedFile);
+                finalUrl = uploaded.url;
+                finalPath = uploaded.path;
+            }
+
+            const targetContent = appRef.current?.files?.[plan.targetPath]?.content || "";
+            const snippet = buildImageSnippet(finalUrl, item.alt || "");
+            const nextContent = insertSnippetIntoContent(targetContent, snippet, plan.position);
+
+            setApp((prev) => {
+                if (!prev) return prev;
+                return {
+                    ...prev,
+                    files: {
+                        ...prev.files,
+                        [plan.targetPath]: {
+                            content: nextContent,
+                            lastModified: Date.now(),
+                        },
+                    },
+                };
+            });
+
+            if (currentFile === plan.targetPath) {
+                setCode(nextContent);
+            }
+
+            const ok = await saveFileToServer(plan.targetPath, nextContent, { afterSave: "apply", interactive: true });
+            if (!ok) {
+                throw new Error("save_failed");
+            }
+
+            setLastImageInsert({
+                stagedImageId: item.id,
+                targetPath: plan.targetPath,
+                previousContent: targetContent,
+                uploadedPath: finalPath || null,
+            });
+
+            updateStagedImage(id, {
+                status: "applied",
+                uploadedUrl: finalUrl,
+                uploadedPath: finalPath || null,
+                error: null,
+            });
+            void showAlert("Image applied to your project.", "Images");
+        } catch (err: any) {
+            updateStagedImage(id, {
+                status: "failed",
+                error: err?.message ? String(err.message) : "Failed to apply image",
+            });
+            void showAlert("Could not apply this image. Please try again.", "Images");
+        }
+    }, [currentFile, saveFileToServer, showAlert, showConfirm, stagedImages, updateStagedImage, uploadImageToUserBlob]);
+
+    const undoLastImageInsert = useCallback(async () => {
+        if (!lastImageInsert) {
+            void showAlert("No image insertion to undo yet.", "Images");
+            return;
+        }
+
+        const { stagedImageId, targetPath, previousContent, uploadedPath } = lastImageInsert;
+        const confirmed = await showConfirm(
+            `Undo the last image insert in ${targetPath}?`,
+            "Images",
+        );
+        if (!confirmed) return;
+
+        setApp((prev) => {
+            if (!prev) return prev;
+            return {
+                ...prev,
+                files: {
+                    ...prev.files,
+                    [targetPath]: {
+                        content: previousContent,
+                        lastModified: Date.now(),
+                    },
+                },
+            };
+        });
+
+        if (currentFile === targetPath) {
+            setCode(previousContent);
+        }
+
+        const ok = await saveFileToServer(targetPath, previousContent, { afterSave: "apply", interactive: true });
+        if (!ok) {
+            void showAlert("Undo failed while restoring file content.", "Images");
+            return;
+        }
+
+        if (uploadedPath) {
+            await deleteUserBlobPaths([uploadedPath]);
+        }
+
+        updateStagedImage(stagedImageId, {
+            status: "staged",
+            uploadedUrl: null,
+            uploadedPath: null,
+            error: null,
+        });
+        setLastImageInsert(null);
+        void showAlert("Image insert reverted.", "Images");
+    }, [currentFile, deleteUserBlobPaths, lastImageInsert, saveFileToServer, showAlert, showConfirm, updateStagedImage]);
+
     const applyFaviconToApp = useCallback(async (nextUrl: string) => {
         const files = appRef.current?.files;
         const appDir = detectNextAppDir(files);
@@ -2677,11 +3148,17 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
         }
     };
 
-    const handleDeploy = () => {
+    const handleDeploy = async () => {
         if (!app || isDeploying) return;
 
         const alreadyDeployed = Boolean(app.isDeployed) || Boolean(app.productionUrl);
         if (!alreadyDeployed) {
+            const confirmed = await showConfirm(
+                "Start deployment for this app now?",
+                "Deploy",
+            );
+            if (!confirmed) return;
+
             if (onDeploy) {
                 onDeploy({ id: app.id, name: app.name });
                 return;
@@ -2689,6 +3166,12 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
             void showAlert("First deploy is handled in the dashboard deploy wizard.", "Deploy");
             return;
         }
+
+        const confirmed = await showConfirm(
+            "Deploy your latest changes live now?",
+            "Deploy",
+        );
+        if (!confirmed) return;
 
         void runVercelDeployLive();
     };
@@ -2747,7 +3230,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
 
             setLastDeployLiveUrl(url);
             setShowDeploySuccess(true);
-            setTimeout(() => setShowDeploySuccess(false), 3500);
+            setTimeout(() => setShowDeploySuccess(false), 12000);
 
             return;
         } catch (err: any) {
@@ -3082,7 +3565,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
             <div className="h-full w-full bg-white flex flex-col">
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b bg-gray-50">
-                    <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex flex-1 min-w-0 items-center gap-3">
                         {isRenaming ? (
                             <div className="flex items-center gap-2">
                                 <input
@@ -3112,9 +3595,9 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                                 </button>
                             </div>
                         ) : (
-                            <div className="relative group">
+                            <div className="relative group min-w-0">
                                 <h1
-                                    className="text-xl font-semibold cursor-pointer hover:text-purple-600 transition-colors"
+                                    className="block truncate text-lg sm:text-xl font-semibold cursor-pointer hover:text-accent transition-colors"
                                     onClick={startRename}
                                     title="Click to rename"
                                 >
@@ -3231,8 +3714,19 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                         </div>
 
                         {showDeploySuccess ? (
-                            <div className="md:hidden text-[11px] font-semibold text-emerald-700">
-                                Deployed
+                            <div className="md:hidden rounded-xl border border-emerald-200 bg-emerald-50/70 px-2.5 py-2 text-[11px] text-emerald-900">
+                                <div className="font-semibold">Live deploy started</div>
+                                <div className="mt-0.5 text-emerald-800/90">Rebuild can take a few minutes before updates appear.</div>
+                                {lastDeployLiveUrl ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => window.open(lastDeployLiveUrl, "_blank", "noopener,noreferrer")}
+                                        className="mt-1 inline-flex items-center gap-1 font-semibold underline underline-offset-2"
+                                        title="Open live site"
+                                    >
+                                        View live: {deployUrlShortLabel}
+                                    </button>
+                                ) : null}
                             </div>
                         ) : null}
 
@@ -3266,6 +3760,14 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                     className="hidden"
                     onChange={handleFaviconFileChange}
                 />
+                <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={handleImageFileChange}
+                />
 
                 {isGenerationProcessing && previewMode === "webcontainer" ? (
                     <div className="border-b bg-amber-50 px-4 py-2 text-xs text-amber-900">
@@ -3281,7 +3783,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                     >
                         {/* View Mode Toggle */}
                         <div className="p-3 border-b sticky top-0 z-10 bg-gray-50">
-                            <div className="flex gap-2">
+                            <div className="grid grid-cols-3 gap-2">
                                 <button
                                     onClick={() => setViewMode("ai")}
                                     className={`flex-1 px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors ${
@@ -3306,6 +3808,18 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                                     <Code className="w-4 h-4" />
                                     Code
                                 </button>
+                                <button
+                                    onClick={() => setViewMode("images")}
+                                    className={`flex-1 px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors ${
+                                        viewMode === "images"
+                                            ? "bg-[#F55F2A] text-white hover:bg-[#E04E1B]"
+                                            : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-100"
+                                    }`}
+                                    title="Images"
+                                >
+                                    <Images className="w-4 h-4" />
+                                    Images
+                                </button>
                             </div>
                         </div>
 
@@ -3323,7 +3837,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                                     previewReady={previewMode !== "webcontainer" ? true : isWebPreviewReady}
                                     welcomeContext={agentWelcomeContext}
                                 />
-                            ) : (
+                            ) : viewMode === "code" ? (
                                 // Code View - File Tree and Editor
                                 <div className="h-full flex flex-col">
                                     {/* File Tree */}
@@ -3353,6 +3867,148 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                                                 Select a file to edit
                                             </div>
                                         )}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="h-full flex flex-col">
+                                    <div className="border-b p-3 space-y-3">
+                                        <div className="flex items-center justify-end gap-3">
+                                            {lastImageInsert ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => void undoLastImageInsert()}
+                                                    className="text-xs font-semibold text-[#F55F2A] hover:text-[#E04E1B]"
+                                                >
+                                                    Undo last insert
+                                                </button>
+                                            ) : null}
+                                            {stagedImages.length ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={clearStagedImages}
+                                                    className="text-xs text-gray-600 hover:text-gray-900"
+                                                >
+                                                    Clear all
+                                                </button>
+                                            ) : null}
+                                        </div>
+
+                                        <div className="flex flex-col items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={handlePickImages}
+                                                className="inline-flex items-center gap-2 rounded-full bg-[#F55F2A] px-3 py-2 text-xs font-semibold text-white hover:bg-[#E04E1B]"
+                                            >
+                                                <Upload className="w-3.5 h-3.5" />
+                                                Upload
+                                            </button>
+                                            <label className="inline-flex items-center gap-2 text-[11px] text-gray-500">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={autoCompressImages}
+                                                    onChange={(e) => setAutoCompressImages(e.target.checked)}
+                                                    className="rounded border-gray-300"
+                                                />
+                                                Auto-compress before upload
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex-1 overflow-auto p-3 space-y-3">
+                                        {stagedImages.length === 0 ? (
+                                            <div className="rounded-xl border border-dashed border-gray-300 bg-white p-4 text-xs text-gray-600">
+                                                Add one or more images to stage them, then type placement prompts like insert into homepage top or add to footer.
+                                            </div>
+                                        ) : null}
+
+                                        {stagedImages.map((item) => {
+                                            const compressionPct = item.originalBytes > 0
+                                                ? Math.max(0, Math.round((1 - item.preparedBytes / item.originalBytes) * 100))
+                                                : 0;
+
+                                            return (
+                                                <div key={item.id} className="rounded-xl border border-gray-200 bg-white p-3 space-y-2.5">
+                                                    <div className="flex items-start gap-3">
+                                                        <Image
+                                                            src={item.previewUrl}
+                                                            alt={item.alt || "Staged image"}
+                                                            width={64}
+                                                            height={64}
+                                                            unoptimized
+                                                            className="h-16 w-16 rounded-lg object-cover border border-gray-200"
+                                                        />
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="text-xs font-semibold text-gray-900 truncate">{item.originalFile.name}</div>
+                                                            <div className="text-[11px] text-gray-500">
+                                                                {Math.round(item.originalBytes / 1024)}KB → {Math.round(item.preparedBytes / 1024)}KB
+                                                                {item.preparedBytes < item.originalBytes ? ` (${compressionPct}% smaller)` : ""}
+                                                            </div>
+
+                                                            <details className="mt-2 rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1.5">
+                                                                <summary className="cursor-pointer select-none text-[11px] text-gray-600">Alt text</summary>
+                                                                <div className="mt-2">
+                                                                    <input
+                                                                        type="text"
+                                                                        value={item.alt}
+                                                                        onChange={(e) => updateStagedImage(item.id, { alt: e.target.value })}
+                                                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs bg-white"
+                                                                        placeholder="Alt text"
+                                                                    />
+                                                                </div>
+                                                            </details>
+
+                                                            {item.error ? (
+                                                                <div className="mt-2 text-[11px] text-red-600">{item.error}</div>
+                                                            ) : null}
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeStagedImage(item.id)}
+                                                            className="text-gray-500 hover:text-gray-900"
+                                                            title="Remove"
+                                                        >
+                                                            <X className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
+
+                                                    <div className="mt-4 mb-2 space-y-3">
+                                                        <label className="block text-[12px] font-medium text-gray-700">Where should this go?</label>
+                                                        <div className="relative flex items-center bg-white/95 gap-2 backdrop-blur-md p-2 pl-4 pr-2 shadow-[0_12px_30px_rgba(0,0,0,0.08)] ring-1 ring-neutral-200 rounded-full h-[48px]">
+                                                            <input
+                                                                type="text"
+                                                                value={item.placementPrompt}
+                                                                onChange={(e) => updateStagedImage(item.id, { placementPrompt: e.target.value })}
+                                                                className="flex-1 bg-transparent outline-none text-neutral-700 placeholder:text-neutral-400 font-medium text-[13px] sm:text-sm"
+                                                                placeholder={IMAGE_PLACEMENT_PLACEHOLDERS[imagePromptPlaceholderIdx]}
+                                                            />
+
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => void applyStagedImage(item.id)}
+                                                                disabled={item.status === "uploading" || !item.placementPrompt.trim()}
+                                                                className={`inline-flex h-8 w-8 items-center justify-center rounded-full transition disabled:opacity-60 ${
+                                                                    item.status === "applied"
+                                                                        ? "bg-emerald-100 text-emerald-700"
+                                                                        : item.status === "uploading"
+                                                                          ? "bg-neutral-200 text-neutral-600"
+                                                                          : "bg-[#F55F2A] text-white hover:bg-[#E04E1B]"
+                                                                }`}
+                                                                title={item.status === "applied" ? "Applied" : "Apply image"}
+                                                                aria-label={item.status === "applied" ? "Applied" : "Apply image"}
+                                                            >
+                                                                {item.status === "applied" ? (
+                                                                    <Check className="h-4 w-4" />
+                                                                ) : item.status === "uploading" ? (
+                                                                    <RefreshCw className="h-4 w-4 animate-spin" />
+                                                                ) : (
+                                                                    <Send className="h-4 w-4" />
+                                                                )}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             )}
@@ -3421,9 +4077,19 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                             </div>
 
                             {showDeploySuccess ? (
-                                <div className="ml-auto text-xs font-semibold text-emerald-700 flex items-center gap-1">
-                                    <span className="inline-block animate-pulse">🎉</span>
-                                    Deployed
+                                <div className="ml-auto rounded-xl border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-xs text-emerald-900">
+                                    <div className="font-semibold">Live deploy started</div>
+                                    <div className="mt-0.5 text-[11px] text-emerald-800/90">Rebuild can take a few minutes before updates appear.</div>
+                                    {lastDeployLiveUrl ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => window.open(lastDeployLiveUrl, "_blank", "noopener,noreferrer")}
+                                            className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold underline underline-offset-2"
+                                            title="Open live site"
+                                        >
+                                            View live: {deployUrlShortLabel}
+                                        </button>
+                                    ) : null}
                                 </div>
                             ) : null}
                         </div>
@@ -3605,7 +4271,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                             title="App"
                         >
                             <Monitor className="h-4 w-4" />
-                            <span>App</span>
+                            <span>Preview</span>
                         </button>
                         <button
                             type="button"

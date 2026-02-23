@@ -256,7 +256,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         return () => document.removeEventListener("keydown", onKey);
     }, [topupModalOpen]);
     const makeWelcomeMessage = useCallback((ctx?: AIAgentChatProps["welcomeContext"]) => {
-        const base = "Welcome to your website builder! I'm here to help you create amazing applications. 🚀";
+        const base = "Welcome — let’s build this step by step.";
 
         const cleanOneLine = (v: unknown, max = 180) => {
             const raw = typeof v === "string" ? v : "";
@@ -279,23 +279,15 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             contextLine = `You're starting from the ${templateName} template.`;
         }
 
-        const help =
-            "I can help you with:\n" +
-            "• Adding new features and pages\n" +
-            "• Styling and customizing your design\n" +
-            "• Moving and repositioning elements\n" +
-            "• Adding or removing images and visual assets\n" +
-            "• Updating colors, fonts, and layouts\n" +
-            "• Integrating APIs and external services\n" +
-            "• Fixing bugs and optimizing performance";
-
         const question = prompt
-            ? "Want me to start implementing that, or refine the plan first?"
+            ? "Want me to implement this now, or adjust the direction first?"
             : urlRaw
-                ? "Do you want to match it 1:1, or start customizing right away?"
-                : "What would you like to build or improve today?";
+                ? "Do you want a close match first, or start customizing now?"
+                : "What should we work on first?";
 
-        return [base, contextLine, "", help, "", question].filter(Boolean).join("\n");
+        return [base, "", contextLine, "", "I can help with layout, styling, images, and features.", "", question]
+            .filter(Boolean)
+            .join("\n");
     }, []);
 
     const [messages, setMessages] = useState<Message[]>(() => [

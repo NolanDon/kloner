@@ -6,7 +6,7 @@ import UniformModal from "./UniformModal";
 interface ModalState {
   isOpen: boolean;
   title: string;
-  message: string;
+  message: ReactNode;
   type: "alert" | "confirm";
   confirmText?: string;
   cancelText?: string;
@@ -15,8 +15,8 @@ interface ModalState {
 }
 
 interface ModalContextType {
-  showAlert: (message: string, title?: string) => Promise<void>;
-  showConfirm: (message: string, title?: string) => Promise<boolean>;
+  showAlert: (message: ReactNode, title?: string) => Promise<void>;
+  showConfirm: (message: ReactNode, title?: string) => Promise<boolean>;
   hideModal: () => void;
 }
 
@@ -42,7 +42,7 @@ export function ModalProvider({ children }: ModalProviderProps) {
     type: "alert",
   });
 
-  const showAlert = (message: string, title = "Alert"): Promise<void> => {
+  const showAlert = (message: ReactNode, title = "Alert"): Promise<void> => {
     return new Promise((resolve) => {
       setModalState({
         isOpen: true,
@@ -55,7 +55,7 @@ export function ModalProvider({ children }: ModalProviderProps) {
     });
   };
 
-  const showConfirm = (message: string, title = "Confirm"): Promise<boolean> => {
+  const showConfirm = (message: ReactNode, title = "Confirm"): Promise<boolean> => {
     return new Promise((resolve) => {
       setModalState({
         isOpen: true,
