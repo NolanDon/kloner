@@ -457,7 +457,7 @@ export async function POST(req: NextRequest) {
                 .map((m) => `${m.role}: ${m.content}`)
                 .join("\n");
 
-            const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || "gemini-1.5-pro" });
+            const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || "gemini-3-pro-preview" });
 
             let lastBuild = { ok: true, exitCode: 0, logs: "" };
             let aggregatedEdits: FileEdit[] = [];

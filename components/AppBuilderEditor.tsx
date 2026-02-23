@@ -128,13 +128,13 @@ function detectNextAppDir(files: AppData["files"] | null | undefined): "src/app"
 }
 
 function buildHeadTsxWithFavicon(faviconUrl: string): string {
-    const urlLiteral = JSON.stringify(faviconUrl);
+    const localHrefLiteral = JSON.stringify("/favicon.ico");
     return (
         `export default function Head() {\n` +
         `  return (\n` +
         `    <>\n` +
         `      {/* kloner:favicon */}\n` +
-        `      <link rel="icon" href=${urlLiteral} />\n` +
+        `      <link rel="icon" href=${localHrefLiteral} />\n` +
         `    </>\n` +
         `  );\n` +
         `}\n`
@@ -142,7 +142,7 @@ function buildHeadTsxWithFavicon(faviconUrl: string): string {
 }
 
 function upsertFaviconInHeadTsx(existing: string, faviconUrl: string): string {
-    const nextHref = JSON.stringify(faviconUrl);
+    const nextHref = JSON.stringify("/favicon.ico");
 
     // Prefer updating our marker line if present.
     if (existing.includes("kloner:favicon")) {
@@ -164,11 +164,11 @@ function upsertFaviconInHeadTsx(existing: string, faviconUrl: string): string {
     // Replace an existing rel="icon" href="..." in either attribute order.
     const r1 = /(<link\s+[^>]*rel=["']icon["'][^>]*href=["'])([^"']*)(["'][^>]*>)/i;
     if (r1.test(existing)) {
-        return existing.replace(r1, `$1${faviconUrl}$3`);
+        return existing.replace(r1, `$1/favicon.ico$3`);
     }
     const r2 = /(<link\s+[^>]*href=["'])([^"']*)(["'][^>]*rel=["']icon["'][^>]*>)/i;
     if (r2.test(existing)) {
-        return existing.replace(r2, `$1${faviconUrl}$3`);
+        return existing.replace(r2, `$1/favicon.ico$3`);
     }
 
     // If it's a TSX file with a return fragment, insert our link near the top.
@@ -195,14 +195,28 @@ function buildFaviconIcoRouteTs(faviconUrl: string): string {
     return (
         `// kloner:favicon-route\n` +
         `const FAVICON_URL = ${urlLiteral};\n\n` +
-        `function redirectToFavicon() {\n` +
-        `  return new Response(null, { status: 307, headers: { Location: FAVICON_URL } });\n` +
+        `async function fetchFavicon() {\n` +
+        `  const upstream = await fetch(FAVICON_URL, { cache: "no-store" });\n` +
+        `  if (!upstream.ok) {\n` +
+        `    return new Response(null, { status: 307, headers: { Location: FAVICON_URL } });\n` +
+        `  }\n` +
+        `  const contentType = upstream.headers.get("content-type") || "image/x-icon";\n` +
+        `  const cacheControl = upstream.headers.get("cache-control") || "public, max-age=3600";\n` +
+        `  const body = await upstream.arrayBuffer();\n` +
+        `  return new Response(body, {\n` +
+        `    status: 200,\n` +
+        `    headers: {\n` +
+        `      "content-type": contentType,\n` +
+        `      "cache-control": cacheControl,\n` +
+        `    },\n` +
+        `  });\n` +
         `}\n\n` +
-        `export function GET() {\n` +
-        `  return redirectToFavicon();\n` +
+        `export async function GET() {\n` +
+        `  return fetchFavicon();\n` +
         `}\n\n` +
-        `export function HEAD() {\n` +
-        `  return redirectToFavicon();\n` +
+        `export async function HEAD() {\n` +
+        `  const res = await fetchFavicon();\n` +
+        `  return new Response(null, { status: res.status, headers: res.headers });\n` +
         `}\n`
     );
 }

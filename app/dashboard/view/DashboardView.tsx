@@ -3259,6 +3259,86 @@ export default function PreviewPage(): JSX.Element {
     const DUPLICATE_URL_MESSAGE =
         "This URL has already been processed. Click Generate website below to get started.";
 
+    const isDuplicateUrlConfirmationMessage = useCallback(
+        (message: string): boolean => {
+            const m = (message || "").toLowerCase();
+            return m === DUPLICATE_URL_MESSAGE.toLowerCase() ||
+                (m.includes("already") && m.includes("url") && (m.includes("v1") || m.includes("v2") || m.includes("processed")));
+        },
+        [],
+    );
+
+    const buildDuplicateUrlMessage = useCallback(
+        (candidateUrl: string): string => {
+            const normalizedCandidate = validateAndNormalizePublicHttpUrl(candidateUrl);
+            if (!normalizedCandidate) return DUPLICATE_URL_MESSAGE;
+
+            const canonicalCandidate = normUrl(normalizedCandidate).toLowerCase();
+            const candidateHash = hash64(canonicalCandidate);
+
+            const hasV1FromUrls = urls.some((entry) => {
+                const normalizedExisting = validateAndNormalizePublicHttpUrl(String(entry?.url || ""));
+                if (!normalizedExisting) return false;
+                return normUrl(normalizedExisting).toLowerCase() === canonicalCandidate;
+            });
+
+            const hasV1FromRenders = renders.some((render) => {
+                if (render?.archived) return false;
+                if (typeof render?.urlHash === "string" && render.urlHash === candidateHash) return true;
+                const normalizedRenderUrl = validateAndNormalizePublicHttpUrl(String(render?.url || ""));
+                if (!normalizedRenderUrl) return false;
+                return normUrl(normalizedRenderUrl).toLowerCase() === canonicalCandidate;
+            });
+
+            const hasV2FromApps = apps.some((app: any) => {
+                const rawUrlCandidates = [
+                    app?.sourceUrl,
+                    app?.url,
+                    app?.targetUrl,
+                    app?.originUrl,
+                    app?.originalUrl,
+                    app?.inputUrl,
+                    app?.websiteUrl,
+                    app?.source?.url,
+                ];
+
+                const hasMatchingUrl = rawUrlCandidates.some((raw) => {
+                    const normalizedAppUrl = validateAndNormalizePublicHttpUrl(String(raw || ""));
+                    if (!normalizedAppUrl) return false;
+                    return normUrl(normalizedAppUrl).toLowerCase() === canonicalCandidate;
+                });
+                if (hasMatchingUrl) return true;
+
+                const hashCandidates = [
+                    app?.urlHash,
+                    app?.sourceUrlHash,
+                    app?.targetUrlHash,
+                    app?.originUrlHash,
+                ]
+                    .map((v) => (typeof v === "string" ? v : ""))
+                    .filter(Boolean);
+
+                return hashCandidates.includes(candidateHash);
+            });
+
+            const hasV1 = hasV1FromUrls || hasV1FromRenders;
+            const hasV2 = hasV2FromApps;
+
+            if (hasV1 && hasV2) {
+                return "A v1 and v2 website already exist for this URL. Click Generate website below to continue.";
+            }
+            if (hasV2) {
+                return "A v2 website already exists for this URL. Click Generate website below to continue.";
+            }
+            if (hasV1) {
+                return "A v1 website already exists for this URL. Click Generate website below to continue.";
+            }
+
+            return DUPLICATE_URL_MESSAGE;
+        },
+        [apps, renders, urls],
+    );
+
     const hasProcessedUrl = useCallback(
         (candidateUrl: string): boolean => {
             const normalizedCandidate = validateAndNormalizePublicHttpUrl(candidateUrl);
@@ -3296,13 +3376,15 @@ export default function PreviewPage(): JSX.Element {
             const normalized = validateAndNormalizePublicHttpUrl(raw);
             if (!normalized) return;
             if (hasProcessedUrl(normalized)) {
-                setErr(DUPLICATE_URL_MESSAGE);
+                setErr("");
+                setInfo(buildDuplicateUrlMessage(normalized));
                 return;
             }
             setErr("");
+            setInfo("");
             router.push(`/dashboard/view?u=${encodeURIComponent(normalized)}&start=1`, { scroll: false });
         },
-        [router, hasProcessedUrl]
+        [router, hasProcessedUrl, buildDuplicateUrlMessage]
     );
 
     const submitMiniPrompt = useCallback(
@@ -3363,7 +3445,8 @@ export default function PreviewPage(): JSX.Element {
                         return [{ id: `local_${urlHash}`, url: targetUrl, urlHash } as any, ...prev].slice(0, 50);
                     });
                 } else {
-                    setErr(DUPLICATE_URL_MESSAGE);
+                    setErr("");
+                    setInfo(buildDuplicateUrlMessage(targetUrl));
                     setCaptureLockUrl(null);
                     return;
                 }
@@ -3402,7 +3485,7 @@ export default function PreviewPage(): JSX.Element {
         return () => {
             cancelled = true;
         };
-    }, [startRequested, user, targetUrl, router]);
+    }, [startRequested, user, targetUrl, router, buildDuplicateUrlMessage]);
 
     const startLockRequested = !!startRequested && !!targetUrl;
 
@@ -6376,7 +6459,14 @@ export default function PreviewPage(): JSX.Element {
                 ) : null}
 
                 {info ? (
-                    <div className="mt-2 rounded-md border border-neutral-300 bg-neutral-50 px-3 py-2 text-sm text-neutral-800">
+                    <div
+                        className={
+                            "mt-2 rounded-md px-3 py-2 text-sm " +
+                            (isDuplicateUrlConfirmationMessage(info)
+                                ? "border border-amber-300 bg-amber-50 text-amber-800"
+                                : "border border-neutral-300 bg-neutral-50 text-neutral-800")
+                        }
+                    >
                         {info}
                     </div>
                 ) : null}
