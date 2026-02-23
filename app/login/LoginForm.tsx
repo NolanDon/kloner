@@ -531,9 +531,9 @@ export default function LoginPage(): JSX.Element {
     };
 
     return (
-        <main className="min-h-[100dvh] bg-white text-black px-4 sm:px-6 pt-28 pb-16 flex items-start md:items-center justify-center">
+        <main className="min-h-[100dvh] bg-white text-black px-4 sm:px-6 pt-24 pb-12 sm:pt-28 sm:pb-16 flex items-start md:items-center justify-center">
             <NavBar />
-            <div className="w-full max-w-md rounded-2xl border border-black/10 bg-white p-6 sm:p-8 shadow-md max-h-[calc(100dvh-8rem)] md:max-h-none overflow-y-auto md:overflow-visible">
+            <div className="w-full max-w-md rounded-2xl border border-black/10 bg-white p-4 sm:p-6 md:p-8 shadow-md">
                 {/* TOP MODE TOGGLE */}
                 <div className="mb-4 flex justify-center">
                     <div className="inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 p-1 text-xs">
