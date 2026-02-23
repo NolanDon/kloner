@@ -453,7 +453,7 @@ function MiniDashboardEntry({
                                 <span className="sr-only">Preview</span>
                             </>
                         ) : (
-                            "Preview"
+                            "Add URL"
                         )}
                     </button>
                 </div>
