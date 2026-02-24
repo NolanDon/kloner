@@ -495,7 +495,7 @@ function MobileHeader({
                     href="/"
                     className="flex items-center gap-2 font-black tracking-tight text-lg shrink-0"
                 >
-                    <div className="relative h-[44px] w-[44px]">
+                    <div className="relative h-[64px] w-[64px]">
                         <Image
                             src={logo}
                             alt="kloner logo"
