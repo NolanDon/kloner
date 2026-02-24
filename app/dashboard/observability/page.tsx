@@ -8,6 +8,7 @@ type ObsEvent = {
     source?: string;
     severity?: string;
     statusCode?: number;
+    method?: string;
     route?: string;
     page?: string;
     action?: string;
