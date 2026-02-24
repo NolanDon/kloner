@@ -138,6 +138,12 @@ const BASE_NAV_SECTIONS: NavSectionConfig[] = [
                 adminOnly: true,
             },
             {
+                href: "/dashboard/observability",
+                label: "Observability",
+                icon: Monitor,
+                adminOnly: true,
+            },
+            {
                 href: "/admin/support-docs",
                 label: "Support docs",
                 icon: BookText,

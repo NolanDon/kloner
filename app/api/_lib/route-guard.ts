@@ -1,6 +1,7 @@
 // app/api/_lib/route-guard.ts
 import { NextRequest, NextResponse } from "next/server";
 import { assertCsrf, verifySession } from "./auth";
+import { captureCriticalEvent, captureException } from "@/lib/observability";
 
 function getReqId(req: NextRequest): string {
     const h = req.headers;
@@ -83,7 +84,30 @@ export async function requireSessionAndMaybeCsrf(
     }
 
     try {
-        return await handler({ req, uid });
+        const response = await handler({ req, uid });
+        const status = response.status;
+
+        if (status >= 400) {
+            const severity = status >= 500 ? "critical" : "error";
+            await captureCriticalEvent({
+                source: "vercel",
+                severity,
+                statusCode: status,
+                route: req.nextUrl?.pathname,
+                method: req.method,
+                action: `api.${req.method.toLowerCase()}`,
+                userId: uid,
+                requestId: getReqId(req),
+                message: `API responded with status ${status}`,
+                url: req.url,
+                service: "next-api",
+                extra: {
+                    query: req.nextUrl?.search || "",
+                },
+            });
+        }
+
+        return response;
     } catch (err: any) {
         const reqId = getReqId(req);
         const mapped = toPublicAuthError(err);
@@ -96,6 +120,28 @@ export async function requireSessionAndMaybeCsrf(
                 code: mapped.code,
                 message: mapped.logMessage,
             });
+
+            if (mapped.status >= 400) {
+                const severity = mapped.status >= 500 ? "critical" : "error";
+                await captureCriticalEvent({
+                    source: "vercel",
+                    severity,
+                    statusCode: mapped.status,
+                    route: req.nextUrl?.pathname,
+                    method: req.method,
+                    action: `api.${req.method.toLowerCase()}`,
+                    userId: uid,
+                    requestId: reqId,
+                    message: mapped.logMessage,
+                    url: req.url,
+                    service: "next-api",
+                    extra: {
+                        code: mapped.code,
+                        appId: mapped.appId || null,
+                    },
+                });
+            }
+
             return NextResponse.json(
                 {
                     ok: false,
@@ -112,6 +158,19 @@ export async function requireSessionAndMaybeCsrf(
             uid,
             path: req.nextUrl?.pathname,
             message: typeof err?.message === "string" ? err.message : String(err),
+        });
+
+        await captureException({
+            source: "vercel",
+            error: err,
+            route: req.nextUrl?.pathname,
+            action: `api.${req.method.toLowerCase()}`,
+            userId: uid,
+            requestId: reqId,
+            method: req.method,
+            statusCode: 500,
+            url: req.url,
+            service: "next-api",
         });
 
         // Return a structured 500 so the frontend can surface a usable error.

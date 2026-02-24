@@ -26,6 +26,16 @@ To track specific clicks without wiring handlers, add attributes:
 - optional `data-mp-prop-location="hero"` (any `data-mp-prop-*` becomes an event prop)
 - optional `data-mp-props='{"foo":"bar"}'` (JSON object)
 
+## Observability (critical errors)
+
+Kloner supports unified critical error capture across Next.js (Vercel) and backend services (e.g. Fly):
+
+- Slack alerting via `SLACK_ERROR_WEBHOOK_URL`
+- Event ingestion endpoint: `/api/internal/observability/ingest`
+- Admin dashboard: `/dashboard/observability`
+
+Detailed setup and payload format: `MONITORING.md`.
+
 ## Supabase MCP Integration
 
 Kloner uses Supabase with Model Context Protocol (MCP) for AI-powered database operations. This enables the AI agent to:
