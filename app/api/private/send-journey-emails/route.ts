@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import { getAdminAuth, getAdminDb } from "../../_lib/auth";
 import crypto from "crypto";
+import { captureCriticalEvent, captureException } from "@/lib/observability";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -415,7 +416,20 @@ async function sendWithRateLimit(
 
 export async function POST(req: NextRequest) {
     const denied = requireInternal(req);
-    if (denied) return denied;
+    if (denied) {
+        await captureCriticalEvent({
+            source: "vercel",
+            severity: "error",
+            statusCode: 401,
+            route: req.nextUrl?.pathname,
+            method: "POST",
+            action: "private.sendJourneyEmails.auth",
+            message: "Unauthorized internal access",
+            service: "internal-email",
+            url: req.url,
+        });
+        return denied;
+    }
 
     // Default to sending to real users.
     // Set EMAIL_SEND_MODE=test to run a safe test-only send to EMAIL_TEST_TO.
@@ -670,6 +684,16 @@ export async function POST(req: NextRequest) {
         );
     } catch (err: any) {
         console.error("send-journey-emails failed:", err);
+        await captureException({
+            source: "vercel",
+            error: err,
+            route: req.nextUrl?.pathname,
+            method: "POST",
+            action: "private.sendJourneyEmails.run",
+            statusCode: 500,
+            service: "internal-email",
+            url: req.url,
+        });
         return NextResponse.json(
             { error: err?.message || "Internal error" },
             { status: 500, headers: { "Cache-Control": "no-store" } },

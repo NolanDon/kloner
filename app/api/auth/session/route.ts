@@ -1,6 +1,7 @@
 // src/app/api/auth/session/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminAuth, CSRF_COOKIE, SESSION_COOKIE_NAME } from "../../_lib/auth";
+import { captureCriticalEvent, captureException } from "@/lib/observability";
 
 const COOKIE = SESSION_COOKIE_NAME;
 const MAX_AGE_MS = 5 * 24 * 60 * 60 * 1000; // 5 days
@@ -8,27 +9,52 @@ const MAX_AGE_MS = 5 * 24 * 60 * 60 * 1000; // 5 days
 export async function POST(req: NextRequest) {
     const { idToken } = await req.json().catch(() => ({}));
     if (!idToken) {
+        await captureCriticalEvent({
+            source: "vercel",
+            severity: "error",
+            statusCode: 400,
+            route: req.nextUrl?.pathname,
+            method: "POST",
+            action: "auth.session.create",
+            message: "idToken required",
+            service: "next-auth",
+            url: req.url,
+        });
         return NextResponse.json({ error: "idToken required" }, { status: 400 });
     }
 
-    const auth = getAdminAuth();
-    await auth.verifyIdToken(idToken, true);
+    try {
+        const auth = getAdminAuth();
+        await auth.verifyIdToken(idToken, true);
 
-    const cookie = await auth.createSessionCookie(idToken, {
-        expiresIn: MAX_AGE_MS,
-    });
+        const cookie = await auth.createSessionCookie(idToken, {
+            expiresIn: MAX_AGE_MS,
+        });
 
-    const res = NextResponse.json({ ok: true }, { status: 200 });
+        const res = NextResponse.json({ ok: true }, { status: 200 });
 
-    res.cookies.set(COOKIE, cookie, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        path: "/",
-        maxAge: Math.floor(MAX_AGE_MS / 1000),
-    });
+        res.cookies.set(COOKIE, cookie, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "lax",
+            path: "/",
+            maxAge: Math.floor(MAX_AGE_MS / 1000),
+        });
 
-    return res;
+        return res;
+    } catch (err) {
+        await captureException({
+            source: "vercel",
+            error: err,
+            route: req.nextUrl?.pathname,
+            method: "POST",
+            action: "auth.session.create",
+            statusCode: 500,
+            service: "next-auth",
+            url: req.url,
+        });
+        return NextResponse.json({ error: "Session creation failed" }, { status: 500 });
+    }
 }
 
 export async function DELETE() {

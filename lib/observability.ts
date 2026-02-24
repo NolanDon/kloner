@@ -220,11 +220,37 @@ async function postToSlack(event: StoredEvent, eventId: string) {
 async function storeEvent(event: StoredEvent): Promise<string> {
     const db = getAdminDb();
     const ref = db.collection("observability_events").doc();
-    await ref.set({
+
+    const sanitizeForFirestore = (value: any): any => {
+        if (value === undefined) return undefined;
+        if (value === null) return null;
+        if (value instanceof Date) return value;
+
+        if (Array.isArray(value)) {
+            return value
+                .map((item) => sanitizeForFirestore(item))
+                .filter((item) => item !== undefined);
+        }
+
+        if (typeof value === "object") {
+            const cleaned: Record<string, unknown> = {};
+            for (const [key, entry] of Object.entries(value)) {
+                const next = sanitizeForFirestore(entry);
+                if (next !== undefined) cleaned[key] = next;
+            }
+            return cleaned;
+        }
+
+        return value;
+    };
+
+    const payload = sanitizeForFirestore({
         ...event,
         tags: event.tags || [],
         extra: event.extra || {},
     });
+
+    await ref.set(payload);
     return ref.id;
 }
 

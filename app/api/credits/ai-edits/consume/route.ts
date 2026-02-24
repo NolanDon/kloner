@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { assertCsrf, verifySession, getAdminDb } from "@/app/api/_lib/auth";
 import { monthlyLimitFor, type UserTier } from "@/src/lib/credits";
 import { getAuthoritativeUserTier } from "@/app/api/_lib/userTier";
+import { captureCriticalEvent, captureException } from "@/lib/observability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -76,6 +77,18 @@ export async function POST(req: NextRequest) {
 
         const cost = typeof body?.cost === "number" && Number.isFinite(body.cost) ? Math.max(0, Math.floor(body.cost)) : DEFAULT_COST;
         if (!requestId) {
+            await captureCriticalEvent({
+                source: "vercel",
+                severity: "error",
+                statusCode: 400,
+                route: req.nextUrl?.pathname,
+                method: "POST",
+                action: "credits.consumeAiEdits",
+                userId: uid,
+                message: "Missing requestId",
+                service: "credits",
+                url: req.url,
+            });
             return NextResponse.json({ ok: false, error: "Missing requestId" }, { status: 400 });
         }
 
@@ -242,6 +255,24 @@ export async function POST(req: NextRequest) {
             const upgradeUrl = new URL("/price", origin).toString();
             const topupUrl = new URL("/price#topup", origin).toString();
 
+            await captureCriticalEvent({
+                source: "vercel",
+                severity: "error",
+                statusCode: 402,
+                route: req.nextUrl?.pathname,
+                method: "POST",
+                action: "credits.consumeAiEdits",
+                userId: uid,
+                message: "Insufficient credits",
+                service: "credits",
+                url: req.url,
+                extra: {
+                    remaining: finalRemaining,
+                    monthlyLimit: limit,
+                    tier: effectiveTier,
+                },
+            });
+
             return NextResponse.json(
                 {
                     ok: false,
@@ -271,6 +302,30 @@ export async function POST(req: NextRequest) {
     } catch (err: any) {
         const msg = typeof err?.message === "string" ? err.message : "Failed to consume credits";
         const status = typeof err?.status === "number" ? err.status : 500;
+        if (status >= 500) {
+            await captureException({
+                source: "vercel",
+                error: err,
+                route: req.nextUrl?.pathname,
+                method: "POST",
+                action: "credits.consumeAiEdits",
+                statusCode: status,
+                service: "credits",
+                url: req.url,
+            });
+        } else {
+            await captureCriticalEvent({
+                source: "vercel",
+                severity: "error",
+                statusCode: status,
+                route: req.nextUrl?.pathname,
+                method: "POST",
+                action: "credits.consumeAiEdits",
+                message: msg,
+                service: "credits",
+                url: req.url,
+            });
+        }
         return NextResponse.json({ ok: false, error: msg }, { status });
     }
 }

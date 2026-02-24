@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getStripe } from "@/lib/stripe";
 import { FieldValue } from "firebase-admin/firestore";
 import { assertCsrf, getAdminDb, verifySession } from "@/app/api/_lib/auth";
+import { captureCriticalEvent, captureException } from "@/lib/observability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -172,6 +173,18 @@ export async function POST(req: NextRequest) {
 
         const result = await applyTopup({ uid, sessionId, stripeCustomerId });
         if (!result.applied) {
+            await captureCriticalEvent({
+                source: "vercel",
+                severity: "error",
+                statusCode: 400,
+                route: req.nextUrl?.pathname,
+                method: "POST",
+                action: "billing.confirmCreditTopup",
+                userId: uid,
+                message: "Unable to confirm top-up",
+                service: "billing",
+                url: req.url,
+            });
             return NextResponse.json({ error: "Unable to confirm top-up." }, { status: 400 });
         }
 
@@ -179,6 +192,30 @@ export async function POST(req: NextRequest) {
     } catch (err: any) {
         const status = typeof err?.status === "number" ? err.status : 401;
         const msg = typeof err?.message === "string" ? err.message : "Unauthorized";
+        if (status >= 500) {
+            await captureException({
+                source: "vercel",
+                error: err,
+                route: req.nextUrl?.pathname,
+                method: "POST",
+                action: "billing.confirmCreditTopup",
+                statusCode: status,
+                service: "billing",
+                url: req.url,
+            });
+        } else {
+            await captureCriticalEvent({
+                source: "vercel",
+                severity: "error",
+                statusCode: status,
+                route: req.nextUrl?.pathname,
+                method: "POST",
+                action: "billing.confirmCreditTopup",
+                message: msg,
+                service: "billing",
+                url: req.url,
+            });
+        }
         return NextResponse.json({ error: msg }, { status });
     }
 }

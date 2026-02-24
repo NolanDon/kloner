@@ -3,6 +3,7 @@ import { getStripe } from "@/lib/stripe";
 import { assertCsrf, getAdminAuth, getAdminDb, verifySession } from "@/app/api/_lib/auth";
 import { linkCustomerToUid } from "@/app/api/_lib/billing";
 import { getAuthoritativeUserTier } from "@/app/api/_lib/userTier";
+import { captureCriticalEvent, captureException } from "@/lib/observability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -167,10 +168,49 @@ export async function POST(req: NextRequest) {
         const decoded = await verifySession(req);
         const uid = decoded.uid;
         const claims = (decoded as any) as Record<string, unknown>;
-        return await handler(req, uid, claims);
+        const response = await handler(req, uid, claims);
+        if (response.status >= 400) {
+            await captureCriticalEvent({
+                source: "vercel",
+                severity: response.status >= 500 ? "critical" : "error",
+                statusCode: response.status,
+                route: req.nextUrl?.pathname,
+                method: "POST",
+                action: "billing.createCreditTopupSession",
+                userId: uid,
+                message: `Top-up session request failed with status ${response.status}`,
+                service: "billing",
+                url: req.url,
+            });
+        }
+        return response;
     } catch (err: any) {
         const status = typeof err?.status === "number" ? err.status : 401;
         const msg = typeof err?.message === "string" ? err.message : "Unauthorized";
+        if (status >= 500) {
+            await captureException({
+                source: "vercel",
+                error: err,
+                route: req.nextUrl?.pathname,
+                method: "POST",
+                action: "billing.createCreditTopupSession",
+                statusCode: status,
+                service: "billing",
+                url: req.url,
+            });
+        } else {
+            await captureCriticalEvent({
+                source: "vercel",
+                severity: "error",
+                statusCode: status,
+                route: req.nextUrl?.pathname,
+                method: "POST",
+                action: "billing.createCreditTopupSession",
+                message: msg,
+                service: "billing",
+                url: req.url,
+            });
+        }
         return NextResponse.json({ error: msg }, { status });
     }
 }

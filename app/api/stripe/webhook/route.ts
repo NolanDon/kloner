@@ -8,6 +8,7 @@ import {
     mapPriceToTier,
     setUserTierFromStripe,
 } from "../../_lib/billing";
+import { captureCriticalEvent, captureException } from "@/lib/observability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -649,6 +650,17 @@ async function handleRefundCreatedForAffiliate(params: {
 export async function POST(req: NextRequest) {
     const sig = req.headers.get("stripe-signature");
     if (!sig) {
+        await captureCriticalEvent({
+            source: "vercel",
+            severity: "error",
+            statusCode: 400,
+            route: req.nextUrl?.pathname,
+            method: "POST",
+            action: "stripe.webhook.signature",
+            message: "Missing stripe-signature",
+            service: "stripe-webhook",
+            url: req.url,
+        });
         return NextResponse.json({ error: "Missing stripe-signature" }, { status: 400 });
     }
 
@@ -673,6 +685,17 @@ export async function POST(req: NextRequest) {
     }
 
     if (!event || !usedSecret) {
+        await captureCriticalEvent({
+            source: "vercel",
+            severity: "error",
+            statusCode: 400,
+            route: req.nextUrl?.pathname,
+            method: "POST",
+            action: "stripe.webhook.signature",
+            message: "Invalid signature",
+            service: "stripe-webhook",
+            url: req.url,
+        });
         return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
     }
 
@@ -875,6 +898,20 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ received: true });
     } catch (err: any) {
         console.error("Stripe webhook handler error", err);
+        await captureException({
+            source: "vercel",
+            error: err,
+            route: req.nextUrl?.pathname,
+            method: "POST",
+            action: "stripe.webhook.handle",
+            statusCode: 500,
+            service: "stripe-webhook",
+            url: req.url,
+            extra: {
+                eventType: event?.type || null,
+                livemode: typeof event?.livemode === "boolean" ? event.livemode : null,
+            },
+        });
         return NextResponse.json({ error: "Webhook handler error" }, { status: 500 });
     }
 }

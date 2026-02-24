@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import admin from "firebase-admin";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getAdminDb } from "../../_lib/auth";
+import { captureCriticalEvent, captureException } from "@/lib/observability";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
 const geminiClient = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
@@ -384,6 +385,17 @@ export async function GET(req: NextRequest) {
         const { searchParams } = new URL(req.url);
         const chatId = searchParams.get("chatId");
         if (!chatId) {
+            await captureCriticalEvent({
+                source: "vercel",
+                severity: "error",
+                statusCode: 400,
+                route: req.nextUrl?.pathname,
+                method: "GET",
+                action: "support.chat.get",
+                message: "Missing chatId",
+                service: "support-chat",
+                url: req.url,
+            });
             return NextResponse.json({ ok: false, error: "Missing chatId" }, { status: 400 });
         }
 
@@ -391,6 +403,18 @@ export async function GET(req: NextRequest) {
         const chatRef = db.collection(CHAT_COLLECTION).doc(chatId);
         const chatSnap = await chatRef.get();
         if (!chatSnap.exists) {
+            await captureCriticalEvent({
+                source: "vercel",
+                severity: "error",
+                statusCode: 404,
+                route: req.nextUrl?.pathname,
+                method: "GET",
+                action: "support.chat.get",
+                message: "Chat not found",
+                service: "support-chat",
+                url: req.url,
+                extra: { chatId },
+            });
             return NextResponse.json({ ok: false, error: "Chat not found" }, { status: 404 });
         }
 
@@ -423,6 +447,16 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ ok: true, chatId, mode, status, messages });
     } catch (err: any) {
         console.error("support chat GET failed", err);
+        await captureException({
+            source: "vercel",
+            error: err,
+            route: req.nextUrl?.pathname,
+            method: "GET",
+            action: "support.chat.get",
+            statusCode: 500,
+            service: "support-chat",
+            url: req.url,
+        });
         return NextResponse.json({ ok: false, error: "Failed to load chat" }, { status: 500 });
     }
 }
@@ -434,6 +468,17 @@ export async function POST(req: NextRequest) {
         const existingChatId = typeof body.chatId === "string" ? body.chatId.trim() : "";
 
         if (!textRaw) {
+            await captureCriticalEvent({
+                source: "vercel",
+                severity: "error",
+                statusCode: 400,
+                route: req.nextUrl?.pathname,
+                method: "POST",
+                action: "support.chat.post",
+                message: "Missing message text",
+                service: "support-chat",
+                url: req.url,
+            });
             return NextResponse.json({ ok: false, error: "Missing message text" }, { status: 400 });
         }
 
@@ -660,6 +705,16 @@ export async function POST(req: NextRequest) {
         });
     } catch (err: any) {
         console.error("support chat POST failed", err);
+        await captureException({
+            source: "vercel",
+            error: err,
+            route: req.nextUrl?.pathname,
+            method: "POST",
+            action: "support.chat.post",
+            statusCode: 500,
+            service: "support-chat",
+            url: req.url,
+        });
         return NextResponse.json({ ok: false, error: "Failed to send message" }, { status: 500 });
     }
 }

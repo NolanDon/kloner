@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySession, getAdminDb } from "../../../_lib/auth";
 import { FieldValue } from "firebase-admin/firestore";
+import { captureCriticalEvent, captureException } from "@/lib/observability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,6 +53,24 @@ export async function GET(req: NextRequest) {
         return res;
     };
 
+    const reportOauthIssue = async (statusCode: number, reason: string, message: string, extra?: Record<string, unknown>) => {
+        await captureCriticalEvent({
+            source: "vercel",
+            severity: statusCode >= 500 ? "critical" : "error",
+            statusCode,
+            route: req.nextUrl?.pathname,
+            method: "GET",
+            action: "vercel.oauth.callback",
+            message,
+            service: "vercel-oauth",
+            url: req.url,
+            extra: {
+                reason,
+                ...extra,
+            },
+        });
+    };
+
     try {
         const url = new URL(req.url);
         const code = url.searchParams.get("code");
@@ -64,6 +83,7 @@ export async function GET(req: NextRequest) {
 
         if (!code) {
             console.warn("[vercel-oauth] missing code param");
+            await reportOauthIssue(400, "token", "Missing code param");
             return redirectWithStatus("error", "token");
         }
 
@@ -73,6 +93,7 @@ export async function GET(req: NextRequest) {
                 state,
                 cookieState,
             });
+            await reportOauthIssue(400, "state", "OAuth state mismatch");
             return redirectWithStatus("error", "state");
         }
 
@@ -81,6 +102,7 @@ export async function GET(req: NextRequest) {
             decoded = await verifySession(req);
         } catch (err) {
             console.error("[vercel-oauth] verifySession failed", err);
+            await reportOauthIssue(401, "auth", "verifySession failed");
             return redirectWithStatus("error", "auth");
         }
 
@@ -92,6 +114,7 @@ export async function GET(req: NextRequest) {
             console.error(
                 "[vercel-oauth] VERCEL_OAUTH_REDIRECT_URI env missing during token exchange",
             );
+            await reportOauthIssue(500, "config", "VERCEL_OAUTH_REDIRECT_URI env missing");
             return redirectWithStatus("error", "config");
         }
 
@@ -120,12 +143,16 @@ export async function GET(req: NextRequest) {
                     tokenRes.status,
                     text,
                 );
+                await reportOauthIssue(502, "token", "Token exchange failed", {
+                    providerStatus: tokenRes.status,
+                });
                 return redirectWithStatus("error", "token");
             }
 
             json = await tokenRes.json();
         } catch (err) {
             console.error("[vercel-oauth] token exchange threw", err);
+            await reportOauthIssue(502, "token", "Token exchange threw");
             return redirectWithStatus("error", "token");
         }
 
@@ -152,12 +179,23 @@ export async function GET(req: NextRequest) {
             );
         } catch (err) {
             console.error("[vercel-oauth] Firestore write failed", err, { uid });
+            await reportOauthIssue(500, "db", "Firestore write failed", { uid });
             return redirectWithStatus("error", "db");
         }
 
         return redirectWithStatus("success");
     } catch (err) {
         console.error("[vercel-oauth] unexpected error", err);
+        await captureException({
+            source: "vercel",
+            error: err,
+            route: req.nextUrl?.pathname,
+            method: "GET",
+            action: "vercel.oauth.callback",
+            statusCode: 500,
+            service: "vercel-oauth",
+            url: req.url,
+        });
         return redirectWithStatus("error", "internal");
     }
 }

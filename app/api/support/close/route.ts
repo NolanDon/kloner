@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import admin from "firebase-admin";
 import { getAdminDb } from "../../_lib/auth";
+import { captureCriticalEvent, captureException } from "@/lib/observability";
 
 const CHAT_COLLECTION = "support_chats";
 const INBOX_COLLECTION = "support_inbox";
@@ -16,6 +17,17 @@ export async function POST(req: NextRequest) {
                 : "user";
 
         if (!chatId) {
+            await captureCriticalEvent({
+                source: "vercel",
+                severity: "error",
+                statusCode: 400,
+                route: req.nextUrl?.pathname,
+                method: "POST",
+                action: "support.close",
+                message: "Missing chatId",
+                service: "support-chat",
+                url: req.url,
+            });
             return NextResponse.json({ ok: false, error: "Missing chatId" }, { status: 400 });
         }
 
@@ -52,6 +64,16 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
     } catch (err) {
         console.error("support close POST failed", err);
+        await captureException({
+            source: "vercel",
+            error: err,
+            route: req.nextUrl?.pathname,
+            method: "POST",
+            action: "support.close",
+            statusCode: 500,
+            service: "support-chat",
+            url: req.url,
+        });
         return NextResponse.json({ ok: false, error: "Failed to close chat" }, { status: 500 });
     }
 }

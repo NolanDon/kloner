@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { getAdminDb } from "../../_lib/auth";
+import { captureCriticalEvent, captureException } from "@/lib/observability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -182,6 +183,17 @@ export async function POST(req: NextRequest) {
 
     if (!verifySignature(rawBody, signature)) {
         console.warn("[vercel-webhook] invalid signature");
+        await captureCriticalEvent({
+            source: "vercel",
+            severity: "error",
+            statusCode: 401,
+            route: req.nextUrl?.pathname,
+            method: "POST",
+            action: "vercel.webhook.signature",
+            message: "Invalid signature",
+            service: "vercel-webhook",
+            url: req.url,
+        });
         return NextResponse.json(
             { ok: false, error: "Invalid signature" },
             { status: 401 }
@@ -193,6 +205,17 @@ export async function POST(req: NextRequest) {
         event = JSON.parse(rawBody);
     } catch (e) {
         console.error("[vercel-webhook] invalid JSON", e);
+        await captureCriticalEvent({
+            source: "vercel",
+            severity: "error",
+            statusCode: 400,
+            route: req.nextUrl?.pathname,
+            method: "POST",
+            action: "vercel.webhook.parse",
+            message: "Invalid JSON",
+            service: "vercel-webhook",
+            url: req.url,
+        });
         return NextResponse.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
     }
 
@@ -230,6 +253,20 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
     } catch (e: any) {
         console.error("[vercel-webhook] handler error", type, id, e);
+        await captureException({
+            source: "vercel",
+            error: e,
+            route: req.nextUrl?.pathname,
+            method: "POST",
+            action: "vercel.webhook.handle",
+            statusCode: 500,
+            service: "vercel-webhook",
+            url: req.url,
+            extra: {
+                eventType: type,
+                eventId: id,
+            },
+        });
         return NextResponse.json(
             { ok: false, error: "Internal error in webhook handler" },
             { status: 500 }

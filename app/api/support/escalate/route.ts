@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import admin from "firebase-admin";
 import { Resend } from "resend";
 import { getAdminDb } from "../../_lib/auth";
+import { captureCriticalEvent, captureException } from "@/lib/observability";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -92,6 +93,17 @@ export async function POST(req: NextRequest) {
         const chatId = typeof body.chatId === "string" ? body.chatId.trim() : "";
 
         if (!chatId) {
+          await captureCriticalEvent({
+            source: "vercel",
+            severity: "error",
+            statusCode: 400,
+            route: req.nextUrl?.pathname,
+            method: "POST",
+            action: "support.escalate",
+            message: "Missing chatId",
+            service: "support-chat",
+            url: req.url,
+          });
             return NextResponse.json(
                 { ok: false, error: "Missing chatId" },
                 { status: 400 },
@@ -103,6 +115,18 @@ export async function POST(req: NextRequest) {
         const chatSnap = await chatRef.get();
 
         if (!chatSnap.exists) {
+          await captureCriticalEvent({
+            source: "vercel",
+            severity: "error",
+            statusCode: 404,
+            route: req.nextUrl?.pathname,
+            method: "POST",
+            action: "support.escalate",
+            message: "Chat not found",
+            service: "support-chat",
+            url: req.url,
+            extra: { chatId },
+          });
             return NextResponse.json(
                 { ok: false, error: "Chat not found" },
                 { status: 404 },
@@ -203,6 +227,16 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true, mode: "agent", status: "pending" });
     } catch (err) {
         console.error("support escalate POST failed", err);
+      await captureException({
+        source: "vercel",
+        error: err,
+        route: req.nextUrl?.pathname,
+        method: "POST",
+        action: "support.escalate",
+        statusCode: 500,
+        service: "support-chat",
+        url: req.url,
+      });
         return NextResponse.json(
             { ok: false, error: "Failed to escalate" },
             { status: 500 },
