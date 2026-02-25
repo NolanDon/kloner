@@ -1557,7 +1557,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                 if (interactive && now0 - lastApplyAlertAtRef.current > 15000) {
                     lastApplyAlertAtRef.current = now0;
                     void showAlert(
-                        "Live update is temporarily paused due to server errors. Your changes are saved; try again in a moment or use Refresh/Rebuild.",
+                        "Live update is temporarily paused due to server errors. Your changes are saved. Try Refresh first; if it still fails, use Rebuild.",
                         "Live update",
                     );
                 }
@@ -1965,7 +1965,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                     if (interactive || now - lastApplyAlertAtRef.current > 15000) {
                         lastApplyAlertAtRef.current = now;
                         void showAlert(
-                            "That file affects dependencies/build settings, so it can’t be hot-updated. Your change is saved; restart the preview to see it.",
+                            "That file affects dependencies/build settings, so it can’t be hot-updated. Your change is saved. Try Refresh first; if it still fails, use Rebuild.",
                             "Restart needed",
                         );
                     }

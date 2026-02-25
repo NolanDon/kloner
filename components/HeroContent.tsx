@@ -16,7 +16,7 @@ export default function HeroContent({
   displayClassName: string;
 }) {
   const router = useRouter();
-  const [mode, setMode] = useState<"url" | "prompt">("prompt");
+  const [mode, setMode] = useState<"url" | "prompt">("url");
   const [url, setUrl] = useState("");
   const [prompt, setPrompt] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +50,7 @@ export default function HeroContent({
       }
 
       try {
+        localStorage.removeItem("kloner.pendingUrl");
         localStorage.setItem("kloner.pendingPrompt", p);
       } catch {}
       router.push(`/login?mode=signup&prompt=${encodeURIComponent(p)}`);
@@ -72,6 +73,7 @@ export default function HeroContent({
     }
 
     try {
+      localStorage.removeItem("kloner.pendingPrompt");
       localStorage.setItem("kloner.pendingUrl", normalized);
     } catch {}
     router.push(`/login?mode=signup&u=${encodeURIComponent(normalized)}`);

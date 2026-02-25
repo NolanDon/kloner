@@ -179,6 +179,7 @@ export default function UrlOverlay({ open, onClose }: UrlOverlayProps) {
             }
 
             try {
+                localStorage.removeItem("kloner.pendingUrl");
                 localStorage.setItem("kloner.pendingPrompt", p);
             } catch {
                 // ignore
@@ -208,6 +209,7 @@ export default function UrlOverlay({ open, onClose }: UrlOverlayProps) {
         }
 
         try {
+            localStorage.removeItem("kloner.pendingPrompt");
             localStorage.setItem("kloner.pendingUrl", normalized);
         } catch {
             // ignore

@@ -172,6 +172,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const autoRebuildByCodeRef = useRef<Record<string, true>>({});
   const lastAppServerKindRef = useRef<'fallback' | 'next-dev' | 'next-prod' | ''>('');
   const stickyProgressByCodeRef = useRef<Record<string, number>>({});
+  const lastTimeoutReportKeyRef = useRef<string>('');
 
   // Default status polling interval while the preview is booting/compiling.
   // We keep this relatively infrequent; readiness is primarily driven by the
@@ -380,6 +381,28 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     };
     if (csrf) headers["x-csrf"] = String(csrf);
     return headers;
+  };
+
+  const reportPreviewTimeout = async (payload: {
+    appId: string;
+    code?: string;
+    status?: string;
+    message: string;
+    ageMs?: number;
+    previewUrl?: string | null;
+  }) => {
+    try {
+      const headers = await getAuthenticatedHeaders();
+      await fetch('/api/internal/observability/frontend-timeout', {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        cache: 'no-store',
+        body: JSON.stringify(payload),
+      });
+    } catch (error) {
+      console.warn('[WebContainerRunner] failed to report preview timeout', error);
+    }
   };
 
   // Helper function to get stored container code for this app
@@ -1657,7 +1680,7 @@ export default function NavBar() {
                 setConnectingToExisting(false);
                 setIsLoading(false);
                 setIsPolling(false);
-                setError('Failed to reconnect to the existing machine. Try Reconnect again, or use Start fresh.');
+                setError('Failed to reconnect to the existing machine. Try Refresh/Reconnect first; if it still fails, use Rebuild (Start fresh).');
                 setCanRetry(true);
                 return;
               }
@@ -1671,7 +1694,7 @@ export default function NavBar() {
               setConnectingToExisting(false);
               setIsLoading(false);
               setIsPolling(false);
-              setError('No usable existing machine to reconnect to. Use Rebuild to create a new one.');
+              setError('No usable existing machine to reconnect to. Try Refresh/Reconnect first; if it still fails, use Rebuild to create a new machine.');
               setCanRetry(true);
               return;
             }
@@ -1811,13 +1834,26 @@ export default function NavBar() {
           // Hard timeout guard (12 minutes)
           if (pollStartedAtRef.current && Date.now() - pollStartedAtRef.current > HARD_POLL_TIMEOUT_MS) {
             console.error('[WebContainerRunner] Preview polling timed out');
+            const timedOutAgeMs = Date.now() - pollStartedAtRef.current;
+            const timeoutReportKey = `hard-timeout:${appId}:${code}`;
+            if (lastTimeoutReportKeyRef.current !== timeoutReportKey) {
+              lastTimeoutReportKeyRef.current = timeoutReportKey;
+              void reportPreviewTimeout({
+                appId,
+                code,
+                status: 'poll_timeout',
+                message: 'Preview polling exceeded 12-minute hard timeout in WebContainerRunner.',
+                ageMs: timedOutAgeMs,
+                previewUrl: previewUrlRef.current,
+              });
+            }
             stopAllTimers();
             setIsPolling(false);
             setIsLoading(false);
             setConnectingToExisting(false);
             setLoadingStatus('');
             setCurrentStatusData(null);
-            setError('Preview is taking longer than expected (12 minute timeout). Try Reconnect, or use Start fresh to start a new machine.');
+            setError('Preview is taking longer than expected (12 minute timeout). Try Refresh/Reconnect first; if it still fails, use Rebuild (Start fresh) to create a new machine.');
             setCanRetry(true);
             return;
           }
@@ -2006,7 +2042,7 @@ export default function NavBar() {
               setIsLoading(false);
               setConnectingToExisting(false);
               setLoadingStatus('');
-              setError('Preview stopped. Use Reconnect, or Start fresh to create a new machine.');
+              setError('Preview stopped. Try Refresh/Reconnect first; if it still fails, use Rebuild (Start fresh) to create a new machine.');
               setCanRetry(true);
               setPreviewUrl(null);
               return;
@@ -2287,12 +2323,24 @@ export default function NavBar() {
 
             if (pollingRetryCountRef.current >= maxPollingRetries) {
               // Max polling retries reached, show neutral message instead of error
+              const timeoutReportKey = `retry-timeout:${appId}:${code}`;
+              if (lastTimeoutReportKeyRef.current !== timeoutReportKey) {
+                lastTimeoutReportKeyRef.current = timeoutReportKey;
+                void reportPreviewTimeout({
+                  appId,
+                  code,
+                  status: 'poll_retries_exhausted',
+                  message: 'Preview status polling retries were exhausted before readiness.',
+                  ageMs: pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : undefined,
+                  previewUrl: previewUrlRef.current,
+                });
+              }
               setIsPolling(false);
               setIsLoading(false);
               setConnectingToExisting(false);
               setCurrentStatusData(null); // Clear status data
               setLoadingStatus(''); // Clear loading status on timeout
-              setError('Build is taking longer than expected. The app may still be starting up. Try Reconnect, or use Start fresh to start a new machine.');
+              setError('Build is taking longer than expected. The app may still be starting up. Try Refresh/Reconnect first; if it still fails, use Rebuild (Start fresh) to start a new machine.');
               setCanRetry(true);
               setPreviewUrl(null);
               stopAllTimers();
