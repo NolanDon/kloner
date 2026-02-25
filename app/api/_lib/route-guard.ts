@@ -123,16 +123,17 @@ export async function requireSessionAndMaybeCsrf(
 
             if (mapped.status >= 400) {
                 const severity = mapped.status >= 500 ? "critical" : "error";
+                const isAppScope = mapped.code === "MISSING_APP_SCOPE" || mapped.code === "INVALID_APP_SCOPE";
                 await captureCriticalEvent({
                     source: "vercel",
                     severity,
                     statusCode: mapped.status,
                     route: req.nextUrl?.pathname,
                     method: req.method,
-                    action: `api.${req.method.toLowerCase()}`,
+                    action: isAppScope ? "api.app_scope_error" : `api.${req.method.toLowerCase()}`,
                     userId: uid,
                     requestId: reqId,
-                    message: mapped.logMessage,
+                    message: isAppScope ? `${mapped.logMessage} (${mapped.code})` : mapped.logMessage,
                     url: req.url,
                     service: "next-api",
                     extra: {

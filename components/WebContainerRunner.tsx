@@ -1774,6 +1774,19 @@ export default function NavBar() {
           }
         }
 
+        // Ensure app scope cookie exists before privileged app-builder APIs.
+        const ensureAppScopeCookie = async () => {
+          try {
+            await fetch(`/api/app-builder/${encodeURIComponent(appId)}/scope`, {
+              method: 'GET',
+              credentials: 'include',
+              cache: 'no-store',
+            });
+          } catch {
+            // best-effort; request path below still handles scope retry
+          }
+        };
+
         // Start the webcontainer creation (async, fire-and-forget)
         const requestBody = { appId, files: validatedFiles, mode: 'dev' };
 
@@ -1788,15 +1801,25 @@ export default function NavBar() {
           });
         };
 
+        await ensureAppScopeCookie();
         let response = await postWebcontainer(0);
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({} as any));
           const errorMsg = String(errorData?.error || 'Failed to start app');
+          const errorCode = String(errorData?.code || '').trim();
+          const isScopeProblem =
+            errorCode === 'MISSING_APP_SCOPE' ||
+            errorCode === 'INVALID_APP_SCOPE' ||
+            errorMsg.toLowerCase().includes('app scope');
 
           // CSRF can drift (cookie/header mismatch). Refresh token and retry once.
           if (response.status === 403 && errorMsg.toLowerCase().includes('csrf')) {
             console.warn('Webcontainer start hit CSRF 403; retrying once with fresh CSRF token');
+            response = await postWebcontainer(1);
+          } else if (response.status === 403 && isScopeProblem) {
+            console.warn('Webcontainer start hit app-scope 403; refreshing scope cookie and retrying once');
+            await ensureAppScopeCookie();
             response = await postWebcontainer(1);
           } else {
             throw new Error(errorMsg);
