@@ -480,7 +480,6 @@ export async function GET(request: NextRequest) {
                   };
                   await appRef.set({ files: newFiles }, { merge: true });
                   console.log(`[supabase/project-status] .env.local written for appId=${appId}`);
-                }
 
                   await setupRef.set(
                     {
