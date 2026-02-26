@@ -1795,7 +1795,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                 <div className="flex-1 space-y-1">
                                                     <div className="flex items-center gap-2">
                                                         <div className="text-sm font-semibold text-neutral-900">
-                                                            Advanced Website
+                                                            Advanced Website (NextJS)
                                                         </div>
                                                         <span className="inline-flex whitespace-nowrap items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800">
                                                             15 preview credits
@@ -1809,7 +1809,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                         From: <span className="font-mono underline text-accent font-semibold">{sourceUrlDisplay || "(no URL selected)"}</span>
                                                     </div> */}
                                                     <div className="mt-1 text-[11px] leading-4 text-neutral-500">
-                                                        Best for sites with: user accounts, AI features, dashboards, web games, stores, or product-heavy content.
+                                                        Best for: user accounts, AI features, dashboards, web games, stores, or product-heavy content.
                                                     </div>
                                                 </div>
                                             </div>
@@ -1846,13 +1846,13 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                     </span>
                                                 </div>
                                                 <div className="text-xs text-neutral-600">
-                                                    Generate a basic, editable multi‑page HTML website from your selected URL.
+                                                    Recommended for simple, static websites.
                                                 </div>
                                                 <div className="mt-1 text-[11px] leading-4 text-neutral-500">
                                                     From: <span className="font-mono underline text-accent font-semibold">{sourceUrlDisplay || "(no URL selected)"}</span>
                                                 </div>
                                                 <div className="mt-1 text-[11px] leading-4 text-neutral-500">
-                                                    Best for: quick landing pages, marketing sites, performance-first pages. Not for auth / AI / databases.
+                                                    Best for: landing pages, marketing sites, performance-first pages. Not for auth / AI / databases.
                                                 </div>
                                             </div>
                                         </div>
@@ -1885,14 +1885,14 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                             <div className="flex-1 space-y-1">
                                                 <div className="flex items-center gap-2">
                                                     <div className="text-sm font-semibold text-neutral-900">
-                                                        Start from Community Template
+                                                        Community Template (HTML)
                                                     </div>
                                                     {/* <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
                                                         Free
                                                     </span> */}
                                                 </div>
                                                 <div className="text-xs text-neutral-600">
-                                                    Start from a community generated template, then customize.
+                                                    Start from a community-generated template.
                                                 </div>
                                                 <div className="mt-1 text-[11px] leading-4 text-neutral-500">
                                                     Best for: fastest start, proven layouts, quick edits. No auth / AI / databases.

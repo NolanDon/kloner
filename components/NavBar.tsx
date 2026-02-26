@@ -115,27 +115,20 @@ export default function NavBar(): JSX.Element {
   }, [baseNav, extraNav]);
 
   const mobilePrimaryNav: NavItem[] = useMemo(() => {
-    const priorities = ["pricing", "community", "docs", "blog"];
-    const picked: NavItem[] = [];
-
-    for (const key of priorities) {
-      const match = navItems.find((item) => item.label.toLowerCase().includes(key));
-      if (match && !picked.some((item) => item.href === match.href)) {
-        picked.push(match);
-      }
-      if (picked.length >= 2) break;
+    if (user) {
+      return [
+        { label: "Dashboard", href: "/dashboard/view" },
+        { label: "Pricing", href: "/price" },
+        { label: "Community", href: "/community-builds" },
+      ];
     }
 
-    if (picked.length < 2) {
-      for (const item of navItems) {
-        if (picked.some((existing) => existing.href === item.href)) continue;
-        picked.push(item);
-        if (picked.length >= 2) break;
-      }
-    }
-
-    return picked;
-  }, [navItems]);
+    return [
+      { label: "Login / Sign up", href: "/login" },
+      { label: "Pricing", href: "/price" },
+      { label: "Community", href: "/community-builds" },
+    ];
+  }, [user]);
 
   const resolveNavIcon = (label: string): React.ComponentType<
     React.SVGProps<SVGSVGElement>
@@ -184,7 +177,16 @@ export default function NavBar(): JSX.Element {
           <nav className="lg:hidden flex-1 min-w-0">
             <ul className="flex items-center justify-center gap-1.5 sm:gap-2 pr-1">
               {mobilePrimaryNav.map((item, idx) => (
-                <li key={item.href} className={idx > 0 ? "hidden sm:block" : "block"}>
+                <li
+                  key={`${item.href}-${idx}`}
+                  className={
+                    idx === 0
+                      ? "block"
+                      : idx === 1
+                        ? "hidden min-[390px]:block"
+                        : "hidden sm:block"
+                  }
+                >
                   <Link
                     href={item.href}
                     className="inline-flex h-8 items-center rounded-full border border-white/15 px-3 text-[12px] font-medium text-white/90 hover:bg-white/10"
@@ -228,7 +230,7 @@ export default function NavBar(): JSX.Element {
           </nav>
 
           {/* Right side */}
-          <div className="ml-auto flex items-center gap-2 md:gap-4">
+          <div className="ml-auto flex items-center gap-2 md:gap-4 pr-1 sm:pr-2">
             {/* Mobile hamburger */}
             <button
               aria-label={mOpen ? "Close menu" : "Open menu"}
@@ -237,7 +239,7 @@ export default function NavBar(): JSX.Element {
                 setMOpen((v) => !v);
                 setOpen(false);
               }}
-              className="lg:hidden inline-flex h-10 w-10 items-center justify-center rounded-full text-white/90 hover:bg-white/10 ring-1 ring-white/10"
+              className="lg:hidden mr-1 inline-flex h-10 w-10 items-center justify-center rounded-full text-white/90 hover:bg-white/10 ring-1 ring-white/10"
             >
               {mOpen ? (
                 <X size={18} strokeWidth={2.2} />
@@ -294,7 +296,7 @@ export default function NavBar(): JSX.Element {
                         </div>
                         <div className="h-px bg-neutral-200/70" />
                         <div className="py-1 text-sm">
-                          <MenuLink href="/dashboard" label="Dashboard" />
+                          <MenuLink href="/dashboard/view" label="Dashboard" />
                           <MenuLink href="/dashboard/settings" label="Settings" />
                           <button
                             onClick={() => void onSignOut()}
@@ -359,7 +361,7 @@ export default function NavBar(): JSX.Element {
                 animate={{ x: 0, opacity: 1 }}
                 exit={{ x: 16, opacity: 0 }}
                 transition={{ duration: 0.18, ease: "easeOut" }}
-                className="fixed right-[max(10px,env(safe-area-inset-right))] top-[max(10px,env(safe-area-inset-top))] z-[70] w-[min(420px,calc(100dvw-20px-env(safe-area-inset-right)))] max-h-[calc(100dvh-20px-env(safe-area-inset-top)-env(safe-area-inset-bottom))] overflow-hidden rounded-3xl border border-white/15 bg-white/95 shadow-2xl backdrop-blur"
+                className="fixed right-[max(10px,env(safe-area-inset-right))] top-[max(10px,env(safe-area-inset-top))] z-[70] flex w-[min(420px,calc(100dvw-20px-env(safe-area-inset-right)))] max-h-[calc(100dvh-20px-env(safe-area-inset-top)-env(safe-area-inset-bottom))] flex-col overflow-hidden rounded-3xl border border-white/15 bg-white/95 shadow-2xl backdrop-blur"
                 role="dialog"
                 aria-modal="true"
               >
@@ -368,10 +370,9 @@ export default function NavBar(): JSX.Element {
                   <div className="flex items-center justify-between px-4 py-3">
                     <div className="flex items-center gap-2">
                       <span
-                        className="inline-grid h-8 w-8 place-items-center rounded-xl"
-                        style={{ background: ACCENT }}
+                        className="inline-grid h-8 w-8 place-items-center rounded-xl border border-neutral-200 bg-white"
                       >
-                        <LayoutGrid className="h-4 w-4 text-white" />
+                        <LayoutGrid className="h-4 w-4 text-neutral-700" />
                       </span>
                       <div className="leading-tight">
                         <div className="text-sm font-semibold text-neutral-900">
@@ -401,8 +402,7 @@ export default function NavBar(): JSX.Element {
                           setMOpen(false);
                           openUrlOverlay();
                         }}
-                        className="inline-flex items-center justify-center gap-2 rounded-2xl px-3 py-3 text-sm font-semibold text-white shadow-sm"
-                        style={{ background: ACCENT }}
+                        className="inline-flex items-center justify-center gap-2 rounded-2xl border border-neutral-300 bg-white px-3 py-3 text-sm font-semibold text-neutral-900"
                       >
                         <ScanSearch className="h-4 w-4" />
                         Start project
@@ -423,8 +423,8 @@ export default function NavBar(): JSX.Element {
                           onClick={() => setMOpen(false)}
                           className="inline-flex items-center justify-center gap-2 rounded-2xl border border-neutral-300 bg-white px-3 py-3 text-sm font-semibold text-neutral-900"
                         >
-                          <Hammer className="h-4 w-4" />
-                          Builder
+                          <LayoutGrid className="h-4 w-4" />
+                          Dashboard
                         </Link>
                       )}
                     </div>
@@ -432,7 +432,7 @@ export default function NavBar(): JSX.Element {
                 </div>
 
                 {/* Content */}
-                <div className="max-h-[calc(100dvh-180px)] overflow-y-auto">
+                <div className="flex-1 min-h-0 overflow-y-auto">
                   {/* Quick links (icon set matches appshell) */}
                   <div className="px-4 pt-4">
                     <div className="mb-2 flex items-center justify-between">
@@ -447,14 +447,15 @@ export default function NavBar(): JSX.Element {
                     <div className="grid grid-cols-2 gap-3">
                       <QuickAction
                         href="/dashboard/view"
-                        icon={Hammer}
-                        label="Builder"
+                        icon={LayoutGrid}
+                        label="Dashboard"
+                        accent
                         onNavigate={() => setMOpen(false)}
                       />
                       <QuickAction
-                        href="/dashboard"
-                        icon={LayoutGrid}
-                        label="Dashboard"
+                        href="/price"
+                        icon={CreditCard}
+                        label="Pricing"
                         onNavigate={() => setMOpen(false)}
                       />
                       <QuickAction
@@ -506,49 +507,44 @@ export default function NavBar(): JSX.Element {
                     </ul>
                   </div>
 
-                  <div className="mt-2 h-px bg-neutral-200/70" />
+                  <div className="pb-2" />
+                </div>
 
-                  {/* Auth actions */}
-                  <div className="px-4 py-4">
-                    {user ? (
-                      <div className="rounded-2xl border border-neutral-200 bg-white/70 p-3">
-                        <div className="flex items-center gap-3">
-                          <div
-                            className="h-10 w-10 rounded-full grid place-items-center text-white text-[12px] font-semibold"
-                            style={{ backgroundColor: ACCENT }}
-                          >
-                            {initials || "ME"}
+                <div className="shrink-0 border-t border-neutral-200/70 bg-white/90 px-4 py-3 pb-[max(12px,env(safe-area-inset-bottom))]">
+                  {user ? (
+                    <div className="rounded-2xl border border-neutral-200 bg-white/70 p-3">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="h-10 w-10 rounded-full grid place-items-center border border-neutral-300 bg-white text-neutral-800 text-[12px] font-semibold"
+                        >
+                          {initials || "ME"}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-neutral-900 truncate">
+                            {user.displayName || user.email}
                           </div>
-                          <div className="min-w-0">
-                            <div className="text-sm font-semibold text-neutral-900 truncate">
-                              {user.displayName || user.email}
-                            </div>
-                            <div className="text-[11px] text-neutral-500 truncate">
-                              Signed in
-                            </div>
+                          <div className="text-[11px] text-neutral-500 truncate">
+                            Signed in
                           </div>
                         </div>
-
-                        <button
-                          onClick={async () => {
-                            await onSignOut();
-                            setMOpen(false);
-                          }}
-                          className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold text-white"
-                          style={{ background: ACCENT }}
-                        >
-                          <LogOut className="h-4 w-4" />
-                          Sign out
-                        </button>
                       </div>
-                    ) : (
-                      <div className="text-[12px] text-neutral-500">
-                        Sign in for Builder and Dashboard.
-                      </div>
-                    )}
-                  </div>
 
-                  <div className="pb-[max(10px,env(safe-area-inset-bottom))]" />
+                      <button
+                        onClick={async () => {
+                          await onSignOut();
+                          setMOpen(false);
+                        }}
+                        className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-neutral-300 bg-white px-4 py-2.5 text-sm font-semibold text-neutral-900"
+                      >
+                        <LogOut className="h-4 w-4" />
+                        Sign out
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="text-[12px] text-neutral-500">
+                      Sign in for Dashboard.
+                    </div>
+                  )}
                 </div>
               </motion.aside>
             </>
@@ -601,11 +597,13 @@ function QuickAction({
   href,
   icon: Icon,
   label,
+  accent = false,
   onNavigate,
 }: {
   href: string;
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
   label: string;
+  accent?: boolean;
   onNavigate: () => void;
 }) {
   return (
@@ -615,10 +613,12 @@ function QuickAction({
       className="group flex items-center gap-3 rounded-2xl border border-neutral-200 bg-white/70 px-3 py-3 hover:border-neutral-300 hover:bg-white"
     >
       <div
-        className="grid h-10 w-10 place-items-center rounded-xl"
-        style={{ background: ACCENT }}
+        className={`grid h-10 w-10 place-items-center rounded-xl border ${
+          accent ? "border-transparent" : "border-neutral-200 bg-white"
+        }`}
+        style={accent ? { background: ACCENT } : undefined}
       >
-        <Icon className="h-5 w-5 text-white" />
+        <Icon className={`h-5 w-5 ${accent ? "text-white" : "text-neutral-700"}`} />
       </div>
 
       <div className="min-w-0">

@@ -108,7 +108,7 @@ function DeployModal({
         <motion.div style={{ opacity: spinOpacity }} className="text-center absolute">
           <div className="mx-auto mb-3 h-8 w-8 rounded-full border-2 border-neutral-200 border-t-neutral-900 animate-spin" />
           <div className="text-sm font-medium text-neutral-800">
-            Deploying to Vercel…
+            Deploying live…
           </div>
           <div className="text-xs text-neutral-500 mt-1">
             Building, optimizing, shipping
@@ -330,7 +330,7 @@ function Card({
           {title}
         </h3>
       </div>
-      <p className="text-black/70 text-sm h-20 leading-relaxed">{text}</p>
+      <p className="text-black/70 text-sm min-h-[5rem] md:h-20 leading-relaxed">{text}</p>
       {/* @ts-expect-error conditional prop forwarding */}
       {needsProgress ? <Modal progress={progress} /> : <Modal />}
     </motion.div>
@@ -439,7 +439,7 @@ export default function HowItWorks() {
   return (
     <section id="how" className="bg-white text-black">
       <div className="container-soft">
-        <div ref={containerRef} className="relative h-[220vh]">
+        <div ref={containerRef} className="relative h-auto md:h-[220vh]">
           {/* Scroll-to-continue bouncer */}
           <motion.div
             style={{ opacity: hintOpacity }}
@@ -460,7 +460,7 @@ export default function HowItWorks() {
             </div>
           </motion.div>
 
-          <div className="sticky top-44">
+          <div className="md:sticky md:top-44">
             <h2 className="text-4xl md:text-6xl mb-10 text-black/80">
               How it works
             </h2>

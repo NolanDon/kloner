@@ -247,7 +247,7 @@ export default function HeroContent({
           </div>
 
           <div className="mt-3 sm:mt-4 text-xs sm:text-sm text-white font-medium">
-            {error ?? "Instant site cloning technology • No credit card required to generate previews"}
+            {error ?? "Site cloning technology • No credit card required to generate previews"}
           </div>
         </form>
 

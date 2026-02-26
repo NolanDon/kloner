@@ -1,15 +1,17 @@
 // components/PreviewDashboard.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence, useAnimation } from "framer-motion";
+import Image from "next/image";
 import {
     Rocket,
-    RefreshCw,
     CheckCircle2,
     Hand,
     ListChecks,
     TimerOff,
+    MousePointer,
+    ArrowRight,
 } from "lucide-react";
 import { ClickyCursor } from "./ClickyCursor";
 import { useUrlOverlay } from "./UrlOverlayProvider";
@@ -22,12 +24,6 @@ import { useUrlOverlay } from "./UrlOverlayProvider";
  * - Grid sits below header with consistent spacing on all breakpoints.
  */
 
-type PageCard = { name: string; path: string; hint?: string };
-const PAGES: PageCard[] = [
-    { name: "Home", path: "/" },
-    { name: "About", path: "/about", hint: "Team • Mission" },
-    { name: "Pricing", path: "/price", hint: "Plans • Tiers" },
-] as const;
 
 type Phase =
     | "idle"
@@ -55,7 +51,7 @@ function FeaturesStrip() {
         {
             icon: <Hand className="h-5 w-5 text-neutral-800" />,
             title: "One-click deploy",
-            sub: "Vercel, Netlify, or zip",
+            sub: "Live hosting",
         },
     ];
 
@@ -86,7 +82,7 @@ function FeaturesStrip() {
 }
 
 export default function PreviewDashboard({
-    url = "https://example.com",
+    url = "https://bettertherapy.ca",
     timings = {
         startDelayMs: 300,
         typeMsPerChar: 18,
@@ -113,17 +109,16 @@ export default function PreviewDashboard({
     const T = {
         startDelayMs: timings.startDelayMs ?? 300,
         typeMsPerChar: timings.typeMsPerChar ?? 18,
-        skeletonMs: timings.skeletonMs ?? 250,
-        revealStaggerMs: timings.revealStaggerMs ?? 120,
-        highlightMs: timings.highlightMs ?? 400,
-        deployingMs: timings.deployingMs ?? 700,
-        successMs: timings.successMs ?? 700,
-        cooldownMs: timings.cooldownMs ?? 300,
+        skeletonMs: timings.skeletonMs ?? 1250,
+        revealStaggerMs: timings.revealStaggerMs ?? 1020,
+        highlightMs: timings.highlightMs ?? 1000,
+        deployingMs: timings.deployingMs ?? 1500,
+        successMs: timings.successMs ?? 3000,
+        cooldownMs: timings.cooldownMs ?? 5000,
     };
 
     const [phase, setPhase] = useState<Phase>("idle");
     const [typed, setTyped] = useState<string>("");
-    const [visibleCount, setVisibleCount] = useState<number>(0);
     const [pulseDeploy, setPulseDeploy] = useState<boolean>(false);
     const [previewReadyFlash, setPreviewReadyFlash] = useState<boolean>(false);
     const { openUrlOverlay } = useUrlOverlay();
@@ -139,7 +134,6 @@ export default function PreviewDashboard({
     const runLoop = async () => {
         setPhase("idle");
         setTyped("");
-        setVisibleCount(0);
         setPulseDeploy(false);
         setPreviewReadyFlash(false);
 
@@ -159,10 +153,7 @@ export default function PreviewDashboard({
         await sleep(T.skeletonMs);
 
         setPhase("revealing");
-        for (let i = 1; i <= PAGES.length; i++) {
-            setVisibleCount(i);
-            await sleep(T.revealStaggerMs);
-        }
+        await sleep(T.revealStaggerMs);
 
         setPhase("highlight");
         setPulseDeploy(true);
@@ -187,57 +178,16 @@ export default function PreviewDashboard({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [url]);
 
-    const headerHint = useMemo(() => {
-        switch (phase) {
-            case "typing":
-                return "Typing…";
-            case "loading":
-                return "Building preview…";
-            case "revealing":
-            case "highlight":
-                return "Preview ready";
-            case "deploying":
-                return "Deploying to Vercel…";
-            case "success":
-                return "Deployed";
-            default:
-                return "Ready";
-        }
-    }, [phase]);
-
-    const gridVisible =
-        phase === "loading" || phase === "revealing" || phase === "highlight";
+    const showcaseVisible =
+        phase === "success" || phase === "cooldown";
 
     const controls = useAnimation();
     useEffect(() => {
         controls.start({ opacity: 1, y: 0 });
     }, [controls]);
 
-    const primaryLabel: "Preview" | "Deploy" = previewReadyFlash
-        ? "Preview"
-        : ["loading", "revealing", "highlight", "deploying", "success"].includes(
-            phase,
-        )
-            ? "Deploy"
-            : "Preview";
-
-    const primaryDisabled: boolean = (() => {
-        if (previewReadyFlash) return false;
-        if (phase === "typing") return true;
-        if (phase === "loading") return true;
-        if (phase === "revealing") return true;
-        if (phase === "highlight") return false;
-        if (phase === "deploying" || phase === "success") return true;
-        if (phase === "idle" || phase === "cooldown") return true;
-        return true;
-    })();
-
-    const primaryBg =
-        phase === "highlight"
-            ? "bg-accent"
-            : primaryDisabled
-                ? "bg-neutral-300"
-                : "bg-accent";
+    const isDeployedState = phase === "cooldown";
+    const deployCtaLabel = isDeployedState ? "Deployed" : "Deploy";
 
     return (
         <section className="section bg-white text-neutral-800">
@@ -293,7 +243,7 @@ export default function PreviewDashboard({
                 {/* Showcase area with browser frame + faded side demos */}
                 <div className="relative">
                     {/* soft background behind everything */}
-                    <div className="pointer-events-none absolute inset-0 -z-10 rounded-[36px] bg-gradient-to-b from-neutral-50 to-white" />
+                    <div className="pointer-events-none absolute inset-0 -z-10 rounded-[36px] bg-white" />
                     <div className="pointer-events-none absolute inset-0 -z-10 rounded-[36px] ring-1 ring-neutral-200/60" />
 
                     {/* Side faded demos */}
@@ -303,183 +253,134 @@ export default function PreviewDashboard({
                     {/* Center browser */}
                     <div className="mx-auto max-w-6xl px-2 sm:px-3 md:px-0">
                         <BrowserFrame
-                            urlDisplay={url}
+                            // urlDisplay={url}
                             className="mx-auto"
                             contentClassName={CANVAS_CLASS}
                         >
                             {/* Inner app layout (flow-based, no absolute offsets) */}
                             <div className="relative">
+                                <SequenceCursor phase={phase} showcaseVisible={showcaseVisible} />
+
                                 {/* In-app header panel (sticky) */}
-                                <div className="sticky top-0 z-20">
-                                    <div className="px-3 sm:px-4 md:px-6 pt-3 sm:pt-4">
-                                        <div className="rounded-2xl border border-neutral-200 bg-white/90 backdrop-blur shadow-sm">
-                                            <div className="px-4 sm:px-5 py-4 sm:py-5">
-                                                <div className="flex items-center gap-2 text-xs text-neutral-500">
-                                                    <span className="text-neutral-800">{headerHint}</span>
+                                {!showcaseVisible && (
+                                    <div className="sticky top-0 z-20">
+                                    <div className="px-3 sm:px-4 md:px-6 pt-3 sm:pt-4 min-h-[220px] flex items-center justify-center">
+                                        <div className="w-full max-w-5xl px-4 sm:px-5 py-4 sm:py-5">
+                                                <div className="mt-1 flex items-center justify-center gap-2 text-xs text-neutral-700">
+                                                    <button
+                                                        type="button"
+                                                        aria-disabled
+                                                        className="pointer-events-none rounded-full px-3 py-1 ring-1 transition bg-neutral-100 ring-neutral-300 text-neutral-800"
+                                                    >
+                                                        URL
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        aria-disabled
+                                                        className="pointer-events-none rounded-full px-3 py-1 ring-1 transition bg-transparent ring-neutral-300 text-neutral-500"
+                                                    >
+                                                        Prompt
+                                                    </button>
                                                 </div>
 
-                                                <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center">
-                                                    <div className="flex-1 rounded-xl ring-1 ring-neutral-200 bg-neutral-50 px-3 py-3 text-sm text-neutral-700 overflow-hidden">
-                                                        <span className="text-neutral-400 mr-1">URL:</span>
-                                                        <AnimatedCaret
-                                                            text={typed}
-                                                            showCaret={phase === "typing"}
-                                                            className="font-medium text-neutral-800 break-all"
-                                                        />
-                                                    </div>
+                                                <div className="mt-3 relative flex items-center bg-white/95 backdrop-blur-md p-2 pl-4 sm:pl-6 shadow-[0_20px_50px_rgba(0,0,0,0.08)] ring-1 ring-neutral-200 transition-all duration-300 ease-out rounded-full h-[64px] sm:h-[72px]">
+                                                    <input
+                                                        readOnly
+                                                        value={typed || "https://bettertherapy.ca"}
+                                                        className="flex-1 bg-transparent outline-none text-neutral-700 text-base sm:text-lg placeholder:text-neutral-400 font-medium"
+                                                        placeholder="bettertherapy.ca"
+                                                        aria-label="URL preview"
+                                                    />
 
-                                                    <div className="flex gap-2">
-                                                        <button
-                                                            aria-disabled
-                                                            className="pointer-events-none inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-4 py-2.5 text-sm text-neutral-400"
-                                                        >
-                                                            <RefreshCw className="h-4 w-4" />
-                                                            Rescan
-                                                        </button>
-
-                                                        <button
-                                                            aria-disabled
-                                                            className={[
-                                                                "pointer-events-none relative inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm text-white",
-                                                                primaryBg,
-                                                                pulseDeploy
-                                                                    ? "ring-4 ring-neutral-900/10"
-                                                                    : "ring-0",
-                                                            ].join(" ")}
-                                                        >
-                                                            <Rocket className="h-4 w-4" />
-                                                            {primaryLabel}
-                                                        </button>
-                                                    </div>
+                                                    <motion.button
+                                                        aria-disabled
+                                                        className="pointer-events-none shrink-0 h-full w-12 sm:w-auto rounded-full bg-[#f26522] text-white px-0 sm:px-10 inline-flex items-center justify-center gap-2"
+                                                        animate={{
+                                                            scale: phase === "highlight" ? 0.94 : 1,
+                                                            y: phase === "highlight" ? 1 : 0,
+                                                        }}
+                                                        transition={{ duration: 0.14, ease: "easeOut" }}
+                                                    >
+                                                        <ArrowRight className="h-5 w-5 sm:hidden" />
+                                                        <span className="hidden sm:inline">Preview</span>
+                                                    </motion.button>
                                                 </div>
-                                            </div>
                                         </div>
                                     </div>
 
                                     {/* subtle fade separator under sticky header */}
                                     <div className="pointer-events-none h-6 bg-gradient-to-b from-white/80 to-transparent" />
-                                </div>
+                                    </div>
+                                )}
 
                                 {/* Content area */}
                                 <div className="px-3 sm:px-4 md:px-6 pb-6 sm:pb-8">
-                                    {/* Deploying / Success overlay */}
-                                    <AnimatePresence>
-                                        {(phase === "deploying" || phase === "success") && (
-                                            <motion.div
-                                                key="overlay"
-                                                initial={{ opacity: 0, y: 6 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                exit={{ opacity: 0, y: 6 }}
-                                                transition={{ duration: 0.18 }}
-                                                className="mb-4 rounded-2xl border border-neutral-200 bg-white p-8 sm:p-10 shadow-sm grid place-items-center"
-                                            >
-                                                {phase === "deploying" && (
-                                                    <div className="text-center">
-                                                        <motion.div
-                                                            animate={{ rotate: 360 }}
-                                                            transition={{
-                                                                repeat: Infinity,
-                                                                ease: "linear",
-                                                                duration: 1.1,
-                                                            }}
-                                                            className="mx-auto mb-4 h-10 w-10 rounded-full border-2 border-neutral-200 border-t-neutral-900"
-                                                        />
-                                                        <div className="text-lg font-medium">
-                                                            Deploying to Vercel…
-                                                        </div>
-                                                        <div className="text-sm text-neutral-500 mt-1">
-                                                            Building, optimizing, shipping
-                                                        </div>
-                                                    </div>
-                                                )}
+                                    {phase === "deploying" && <InlineKlonerLoader />}
 
-                                                {phase === "success" && (
-                                                    <div className="text-center">
-                                                        <CheckCircle2 className="h-10 w-10 text-emerald-600 mx-auto mb-3" />
-                                                        <div className="text-lg font-medium">
-                                                            Success! Your preview was deployed.
-                                                        </div>
-                                                        <div className="text-sm text-neutral-500 mt-1">
-                                                            Continuing in a moment…
+                                    <AnimatePresence>
+                                        {showcaseVisible && (
+                                            <motion.div
+                                                key="showcase2"
+                                                initial={{ opacity: 0, y: 10 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                exit={{ opacity: 0, y: 8 }}
+                                                transition={{ duration: 0.22 }}
+                                                className="relative mt-2 sm:mt-3 mx-2 sm:mx-3 md:mx-4 overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm"
+                                            >
+                                                <div className="flex items-center justify-between p-3 border-b border-neutral-200 bg-gray-50/95">
+                                                    <div className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-2 py-1 shadow-sm">
+                                                        <div className="px-1.5 text-[11px] font-semibold text-neutral-700 whitespace-nowrap">
+                                                            <span className="mr-2 inline-block h-2 w-2 rounded-full bg-green-500" aria-hidden="true" />
+                                                            Machine: Ready
                                                         </div>
                                                     </div>
-                                                )}
+
+                                                    <motion.button
+                                                        type="button"
+                                                        aria-disabled
+                                                        className={[
+                                                            "pointer-events-none inline-flex h-8 items-center gap-1.5 rounded-full px-3 py-1 text-[13px] font-semibold text-white transition",
+                                                            isDeployedState
+                                                                ? "border border-emerald-600 bg-emerald-600"
+                                                                : "border border-[#f55f2a] bg-[#f55f2a]",
+                                                        ].join(" ")}
+                                                        animate={{
+                                                            scale: phase === "success" ? 0.94 : 1,
+                                                            y: phase === "success" ? 1 : 0,
+                                                        }}
+                                                        transition={{ duration: 0.14, ease: "easeOut" }}
+                                                    >
+                                                        {isDeployedState ? (
+                                                            <CheckCircle2 className="h-3.5 w-3.5" />
+                                                        ) : (
+                                                            <Rocket className="h-3.5 w-3.5" />
+                                                        )}
+                                                        <span>{deployCtaLabel}</span>
+                                                    </motion.button>
+                                                </div>
+
+                                                <div className="relative w-full aspect-[3/4] md:aspect-[16/9] bg-neutral-100 md:bg-transparent">
+                                                    <Image
+                                                        src="/images/showcase/mobile_showcase2.jpg"
+                                                        alt="Website showcase"
+                                                        fill
+                                                        sizes="100vw"
+                                                        className="object-cover object-top md:hidden"
+                                                        priority
+                                                    />
+                                                    <Image
+                                                        src="/images/showcase/showcase2.jpg"
+                                                        alt="Website showcase"
+                                                        fill
+                                                        sizes="(max-width: 768px) 100vw, 1100px"
+                                                        className="hidden object-cover md:block"
+                                                        priority
+                                                    />
+                                                    <div className="absolute inset-0 hidden bg-black/10 md:block" />
+                                                </div>
                                             </motion.div>
                                         )}
                                     </AnimatePresence>
-
-                                    {/* Grid */}
-                                    {gridVisible && (
-                                        <div>
-                                            <motion.div
-                                                initial={{ opacity: 0, y: 6 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                transition={{ duration: 0.22 }}
-                                                className="text-sm text-neutral-600 mb-3"
-                                            >
-                                                Generated pages
-                                            </motion.div>
-
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
-                                                {PAGES.map((p, i) => {
-                                                    const revealed =
-                                                        i < visibleCount &&
-                                                        (phase === "revealing" || phase === "highlight");
-                                                    const loading =
-                                                        phase === "loading" ||
-                                                        (!revealed && phase !== "highlight");
-
-                                                    return (
-                                                        <motion.div
-                                                            key={p.path}
-                                                            initial={{ opacity: 0, y: 8, scale: 0.99 }}
-                                                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                                                            transition={{
-                                                                duration: 0.25,
-                                                                delay: 0.02 + i * 0.02,
-                                                            }}
-                                                            className="group rounded-2xl border border-neutral-200 bg-white overflow-hidden shadow-sm"
-                                                        >
-                                                            <Thumb
-                                                                url={url}
-                                                                path={p.path}
-                                                                revealed={revealed}
-                                                                loading={loading}
-                                                            />
-
-                                                            <div className="p-3">
-                                                                <div className="flex items-center justify-between gap-3">
-                                                                    <div className="min-w-0">
-                                                                        {revealed ? (
-                                                                            <>
-                                                                                <div className="text-sm font-medium text-neutral-800">
-                                                                                    {p.name}
-                                                                                </div>
-                                                                                {p.hint && (
-                                                                                    <div className="text-xs text-neutral-500 truncate">
-                                                                                        {p.hint}
-                                                                                    </div>
-                                                                                )}
-                                                                            </>
-                                                                        ) : (
-                                                                            <div className="h-6 w-24 rounded bg-neutral-200 animate-pulse" />
-                                                                        )}
-                                                                    </div>
-
-                                                                    <button
-                                                                        aria-disabled
-                                                                        className="pointer-events-none text-xs rounded-full px-3 py-1 border border-neutral-200 text-neutral-400 shrink-0"
-                                                                    >
-                                                                        Open
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        </motion.div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
                                 </div>
                             </div>
                         </BrowserFrame>
@@ -491,6 +392,119 @@ export default function PreviewDashboard({
 }
 
 /* ---------- subcomponents ---------- */
+
+function InlineKlonerLoader() {
+    return (
+        <div className="mt-2 sm:mt-3 mb-4 mx-2 sm:mx-3 md:mx-4 rounded-2xl bg-white p-8 sm:p-10 grid place-items-center min-h-[220px]">
+            <motion.div
+                className="relative h-20 w-20"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.25 }}
+            >
+                <motion.span
+                    className="absolute inset-0 rounded-full border-2 border-t-transparent"
+                    style={{
+                        borderColor: "#f55f2a",
+                        borderTopColor: "transparent",
+                    }}
+                    initial={{ rotate: 0 }}
+                    animate={{ rotate: 360 }}
+                    transition={{
+                        duration: 1.1,
+                        repeat: Infinity,
+                        repeatType: "loop",
+                        ease: "linear",
+                    }}
+                />
+            </motion.div>
+        </div>
+    );
+}
+
+function SequenceCursor({
+    phase,
+    showcaseVisible,
+}: {
+    phase: Phase;
+    showcaseVisible: boolean;
+}) {
+    const clickPhase = phase === "highlight" || phase === "success";
+    const isPreviewClick = phase === "highlight";
+
+    const previewTarget = { x: 85.2, y: 49.1 };
+    const previewSpawnTarget = { x: 75.2, y: 70.2 };
+    const deployTarget = { x: 90.5, y: 6.4 };
+    const isResetting = phase === "idle";
+
+    const target = (() => {
+        if (phase === "success" || phase === "cooldown") {
+            return { ...deployTarget, click: phase === "success" };
+        }
+        if (phase === "highlight" || phase === "deploying") {
+            return { ...previewTarget, click: phase === "highlight" };
+        }
+        if (!showcaseVisible) {
+            return { ...previewSpawnTarget, click: false };
+        }
+        return { ...previewSpawnTarget, click: false };
+    })();
+
+    return (
+        <motion.div
+            className="pointer-events-none absolute z-30 will-change-transform"
+            initial={false}
+            animate={{
+                left: `${target.x}%`,
+                top: `${target.y}%`,
+                opacity: isResetting ? 0 : 1,
+            }}
+            transition={{
+                left: {
+                    duration: isResetting ? 0 : 0.62,
+                    ease: [0.25, 0.1, 0.25, 1],
+                },
+                top: {
+                    duration: isResetting ? 0 : 0.62,
+                    ease: [0.25, 0.1, 0.25, 1],
+                },
+                opacity: { duration: isResetting ? 0.12 : 0.2, ease: "easeOut" },
+            }}
+            style={{ transform: "translate3d(-50%, -50%, 0)" }}
+        >
+            <motion.div
+                key={clickPhase ? `click-${phase}` : "idle"}
+                className="relative"
+                animate={
+                    target.click
+                        ? { scale: [1, 0.92, 1], y: [0, 1, 0] }
+                        : { scale: 1, y: 0 }
+                }
+                transition={
+                    target.click
+                        ? {
+                              duration: 0.3,
+                              ease: "easeOut",
+                              delay: isPreviewClick ? 0.5 : 0,
+                          }
+                        : { duration: 0.2, ease: "easeOut" }
+                }
+            >
+                <MousePointer className="h-7 w-7 text-neutral-900 drop-shadow-[0_1px_1px_rgba(255,255,255,0.55)]" />
+                {target.click ? (
+                    <>
+                        <motion.span
+                            className="absolute -left-1 -top-1 h-4 w-4 rounded-full"
+                            style={{ boxShadow: "0 0 0 2px rgba(0,0,0,0.3)" }}
+                            animate={{ opacity: [0.8, 0], scale: [0.55, 2.2] }}
+                            transition={{ duration: 0.55, ease: "easeOut" }}
+                        />
+                    </>
+                ) : null}
+            </motion.div>
+        </motion.div>
+    );
+}
 
 function AnimatedCaret({
     text,
@@ -521,82 +535,16 @@ function AnimatedCaret({
     );
 }
 
-function Thumb({
-    url,
-    path,
-    revealed,
-    loading,
-}: {
-    url: string;
-    path: string;
-    revealed: boolean;
-    loading: boolean;
-}) {
-    const full = (url.replace(/\/+$/, "") || "") + path;
-
-    return (
-        <div className="relative aspect-[4/3] bg-gradient-to-br from-neutral-50 to-white">
-            <div className="absolute left-0 right-0 top-0 h-8 border-b border-neutral-200 bg-white/90 flex items-center gap-1 px-3">
-                <span className="inline-block h-2.5 w-2.5 rounded-full bg-rose-400" />
-                <span className="inline-block h-2.5 w-2.5 rounded-full bg-amber-400" />
-                <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-400" />
-                <div className="ml-2 text-[11px] text-neutral-500 truncate">{full}</div>
-            </div>
-
-            <div className="absolute inset-0 pt-8 px-3">
-                <div className="p-3 md:p-4 relative h-full">
-                    <AnimatePresence>
-                        {loading && !revealed && (
-                            <motion.div
-                                key="sk"
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                transition={{ duration: 0.18 }}
-                                className="absolute inset-0 pt-8 p-3 md:p-4"
-                            >
-                                <div className="h-10 md:h-12 w-4/5 rounded-xl bg-neutral-200 animate-pulse" />
-                                <div className="h-3 w-3/5 rounded-md bg-neutral-200 animate-pulse mt-2" />
-                                <div className="grid grid-cols-3 gap-2 mt-2">
-                                    <div className="h-20 rounded-xl bg-neutral-200 animate-pulse" />
-                                    <div className="h-20 rounded-xl bg-neutral-200 animate-pulse" />
-                                    <div className="h-20 rounded-xl bg-neutral-200 animate-pulse" />
-                                </div>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-
-                    {revealed && (
-                        <motion.div
-                            initial={{ opacity: 0, y: 4 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.22 }}
-                        >
-                            <div className="h-10 md:h-12 w-4/5 rounded-xl bg-neutral-400 ring-1 ring-neutral-200" />
-                            <div className="h-3 w-3/5 rounded-md bg-neutral-400 ring-1 ring-neutral-200 mt-2" />
-                            <div className="grid grid-cols-3 gap-2 mt-2">
-                                <div className="h-20 rounded-xl bg-neutral-400 ring-1 ring-neutral-200" />
-                                <div className="h-20 rounded-xl bg-neutral-400 ring-1 ring-neutral-200" />
-                                <div className="h-20 rounded-xl bg-neutral-400 ring-1 ring-neutral-200" />
-                            </div>
-                        </motion.div>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-}
-
 /* ---------- browser chrome + side demos ---------- */
 
 function BrowserFrame({
     children,
-    urlDisplay,
+    // urlDisplay,
     className = "",
     contentClassName = "",
 }: {
     children: React.ReactNode;
-    urlDisplay: string;
+    // urlDisplay: string;
     className?: string;
     contentClassName?: string;
 }) {
@@ -622,7 +570,7 @@ function BrowserFrame({
                     <div className="mx-auto max-w-[820px]">
                         <div className="h-8 rounded-full bg-neutral-50 border border-neutral-200 px-4 flex items-center">
                             <div className="text-[12px] text-neutral-500 truncate">
-                                {urlDisplay}
+                                https://kloner.app
                             </div>
                         </div>
                     </div>
@@ -640,7 +588,7 @@ function BrowserFrame({
                     contentClassName,
                 ].join(" ")}
             >
-                <div className="absolute inset-0 bg-gradient-to-b from-neutral-50 to-white" />
+                <div className="absolute inset-0 bg-white" />
                 <div className="relative">{children}</div>
             </div>
         </div>
