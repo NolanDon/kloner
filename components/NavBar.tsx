@@ -114,6 +114,29 @@ export default function NavBar(): JSX.Element {
     return merged;
   }, [baseNav, extraNav]);
 
+  const mobilePrimaryNav: NavItem[] = useMemo(() => {
+    const priorities = ["pricing", "community", "docs", "blog"];
+    const picked: NavItem[] = [];
+
+    for (const key of priorities) {
+      const match = navItems.find((item) => item.label.toLowerCase().includes(key));
+      if (match && !picked.some((item) => item.href === match.href)) {
+        picked.push(match);
+      }
+      if (picked.length >= 2) break;
+    }
+
+    if (picked.length < 2) {
+      for (const item of navItems) {
+        if (picked.some((existing) => existing.href === item.href)) continue;
+        picked.push(item);
+        if (picked.length >= 2) break;
+      }
+    }
+
+    return picked;
+  }, [navItems]);
+
   const resolveNavIcon = (label: string): React.ComponentType<
     React.SVGProps<SVGSVGElement>
   > | null => {
@@ -156,6 +179,22 @@ export default function NavBar(): JSX.Element {
               />
             </div>
           </Link>
+
+          {/* Mobile priority nav */}
+          <nav className="lg:hidden flex-1 min-w-0">
+            <ul className="flex items-center justify-center gap-1.5 sm:gap-2 pr-1">
+              {mobilePrimaryNav.map((item, idx) => (
+                <li key={item.href} className={idx > 0 ? "hidden sm:block" : "block"}>
+                  <Link
+                    href={item.href}
+                    className="inline-flex h-8 items-center rounded-full border border-white/15 px-3 text-[12px] font-medium text-white/90 hover:bg-white/10"
+                  >
+                    {item.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
 
           {/* Desktop nav */}
           <nav className="hidden lg:flex flex-1 items-center justify-center">

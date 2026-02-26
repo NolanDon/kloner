@@ -106,6 +106,7 @@ const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
 
 const ACCENT = "#f55f2a";
+const CAPTURE_STALL_TIMEOUT_MS = 10 * 60 * 1000;
 
 type UrlStatusUi = "queued" | "processing" | "ready" | "stale" | "error" | "unknown";
 
@@ -439,7 +440,7 @@ function MiniDashboardEntry({
                         style={{ backgroundColor: ACCENT }}
                         aria-label={mode === "prompt" ? "Create from prompt" : "Preview from URL"}
                     >
-                        {disabled ? (
+                        {disabled && (captureStatus === "queued" || captureStatus === "processing") ? (
                             mode === "prompt" ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />
                             ) : captureStatus === "queued" ? (
@@ -460,7 +461,7 @@ function MiniDashboardEntry({
 
                 {error ? <div className="mt-2 text-sm text-red-700">{error}</div> : null}
 
-                {disabled && captureStatus ? (
+                {disabled && (captureStatus === "queued" || captureStatus === "processing") ? (
                     <div className="mt-4 inline-flex items-center gap-2 text-xs text-neutral-600">
                         {captureStatus === "queued" ? (
                             <Clock3 className="h-3.5 w-3.5" />
@@ -468,7 +469,7 @@ function MiniDashboardEntry({
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         )}
                         {captureStatus === "queued"
-                            ? "Queued snapshot scan… We’re only capturing this URL now (not generating a website yet)."
+                            ? "Queued snapshot scan… We’re capturing this URL, when complete you'll be able to generate a website. This process typically takes 1-3 minutes."
                             : "Processing your URL… This may take a few minutes."}
                     </div>
                 ) : null}
@@ -1802,11 +1803,11 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                     </div>
 
                                                     <div className="text-xs text-neutral-600">
-                                                        Generate an advanced, editable multi‑page website from your selected URL.
+                                                        Recommended for complex multi‑page websites.
                                                     </div>
-                                                    <div className="mt-1 text-[11px] leading-4 text-neutral-500">
+                                                    {/* <div className="mt-1 text-[11px] leading-4 text-neutral-500">
                                                         From: <span className="font-mono underline text-accent font-semibold">{sourceUrlDisplay || "(no URL selected)"}</span>
-                                                    </div>
+                                                    </div> */}
                                                     <div className="mt-1 text-[11px] leading-4 text-neutral-500">
                                                         Best for sites with: user accounts, AI features, dashboards, web games, stores, or product-heavy content.
                                                     </div>
@@ -1891,7 +1892,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                     </span> */}
                                                 </div>
                                                 <div className="text-xs text-neutral-600">
-                                                    Start from a polished HTML template, then customize.
+                                                    Start from a community generated template, then customize.
                                                 </div>
                                                 <div className="mt-1 text-[11px] leading-4 text-neutral-500">
                                                     Best for: fastest start, proven layouts, quick edits. No auth / AI / databases.
@@ -3401,7 +3402,14 @@ export default function PreviewPage(): JSX.Element {
 
     const [urlDocReloadNonce, setUrlDocReloadNonce] = useState(0);
     const startRequestedHandledRef = useRef<string>("");
+    const startRequestedInFlightRef = useRef<string>("");
     const [captureLockUrl, setCaptureLockUrl] = useState<string | null>(null);
+    const captureLockStartedAtRef = useRef<number>(0);
+    const captureLockUrlRef = useRef<string | null>(null);
+    const captureStatusRef = useRef<UrlStatusUi | null>(null);
+    const targetUrlRef = useRef<string>("");
+    const captureStallReportedForUrlRef = useRef<string>("");
+    const captureStaleReportedForUrlRef = useRef<string>("");
 
     // When a URL is entered from the mini-dashboard entry panel (or deep-linked with start=1),
     // ensure the UrlDoc exists and queue the screenshot capture job. The existing loader stages
@@ -3410,19 +3418,36 @@ export default function PreviewPage(): JSX.Element {
         if (!startRequested) return;
         if (!user || !targetUrl) return;
         if (!isHttpUrl(targetUrl)) return;
-        if (startRequestedHandledRef.current === targetUrl) return;
-        startRequestedHandledRef.current = targetUrl;
+        const startRequestKey = `${user.uid}:${targetUrl}`;
+        if (startRequestedHandledRef.current === startRequestKey) return;
+        if (startRequestedInFlightRef.current === startRequestKey) return;
+        startRequestedInFlightRef.current = startRequestKey;
+
         setCaptureLockUrl(targetUrl);
+        captureLockStartedAtRef.current = Date.now();
+        captureStallReportedForUrlRef.current = "";
 
         let cancelled = false;
+        let shouldMarkHandled = false;
         (async () => {
             try {
-                await ensureSessionAndCsrf().catch(() => null);
+                let csrf = await ensureSessionAndCsrf().catch(() => null);
 
                 const colRef = collection(db, "kloner_users", user.uid, "kloner_urls");
                 const qy = query(colRef, where("url", "==", targetUrl));
                 const snap = await getDocs(qy);
                 if (cancelled) return;
+
+                const statusFromDoc = (doc: any): string =>
+                    String((doc?.data?.()?.status ?? doc?.status ?? "unknown") || "unknown").toLowerCase();
+
+                const existingStatuses = snap.empty
+                    ? []
+                    : snap.docs.map((d: any) => statusFromDoc(d));
+
+                const hasReadyDoc = existingStatuses.some((s) =>
+                    s === "ready" || s === "uploaded" || s === "done"
+                );
 
                 if (snap.empty) {
                     const urlHash = hash64(targetUrl);
@@ -3444,19 +3469,35 @@ export default function PreviewPage(): JSX.Element {
                         if (prev.some((u) => normUrl(u.url) === normUrl(targetUrl))) return prev;
                         return [{ id: `local_${urlHash}`, url: targetUrl, urlHash } as any, ...prev].slice(0, 50);
                     });
-                } else {
+                } else if (hasReadyDoc) {
+                    shouldMarkHandled = true;
                     setErr("");
                     setInfo(buildDuplicateUrlMessage(targetUrl));
                     setCaptureLockUrl(null);
                     return;
+                } else {
+                    setInfo("Resuming URL capture…");
                 }
 
-                const res = await fetch("/api/private/generate", {
-                    method: "POST",
-                    headers: { "content-type": "application/json" },
-                    credentials: "include",
-                    body: JSON.stringify({ url: targetUrl }),
-                });
+                const queueGenerate = async (): Promise<Response> => {
+                    let last: Response | null = null;
+                    for (let attempt = 0; attempt < 2; attempt++) {
+                        const res = await fetch("/api/private/generate", {
+                            method: "POST",
+                            headers: { "content-type": "application/json" },
+                            credentials: "include",
+                            body: JSON.stringify({ url: targetUrl }),
+                        });
+                        last = res;
+                        if (res.status !== 401 && res.status !== 403) return res;
+
+                        csrf = await ensureSessionAndCsrf().catch(() => csrf);
+                    }
+                    return last as Response;
+                };
+
+                const res = await queueGenerate();
+                shouldMarkHandled = true;
 
                 if (cancelled) return;
 
@@ -3464,20 +3505,54 @@ export default function PreviewPage(): JSX.Element {
                     const j: any = await res.json().catch(() => ({}));
                     setErr(j?.error || "Failed to queue screenshot job.");
                     setCaptureLockUrl(null);
+                    captureLockStartedAtRef.current = 0;
+
+                    void (async () => {
+                        try {
+                            await fetch("/api/internal/observability/frontend-timeout", {
+                                method: "POST",
+                                headers: {
+                                    "content-type": "application/json",
+                                    ...(csrf ? { "x-csrf": csrf } : {}),
+                                },
+                                credentials: "include",
+                                body: JSON.stringify({
+                                    action: "url_capture_enqueue_failed",
+                                    route: "/dashboard/view",
+                                    service: "dashboard-view",
+                                    statusCode: res.status,
+                                    status: "enqueue_failed",
+                                    message: j?.error || `Failed to queue URL capture (HTTP ${res.status}).`,
+                                    previewUrl: targetUrl,
+                                    tags: ["url-capture", "enqueue", "frontend", "error"],
+                                }),
+                            });
+                        } catch {
+                            // ignore telemetry failures
+                        }
+                    })();
                 }
             } catch (e: any) {
                 if (!cancelled) setErr(e?.message || "Failed to start capture.");
                 setCaptureLockUrl(null);
+                captureLockStartedAtRef.current = 0;
             } finally {
-                // Clear start=1 so refresh doesn't re-trigger capture.
-                try {
-                    const url = new URL(window.location.href);
-                    url.searchParams.delete("start");
-                    const qs = url.searchParams.toString();
-                    const next = qs ? `${url.pathname}?${qs}` : url.pathname;
-                    router.replace(next, { scroll: false });
-                } catch {
-                    // ignore
+                if (!cancelled && shouldMarkHandled) {
+                    startRequestedHandledRef.current = startRequestKey;
+                    // Clear start=1 so refresh doesn't re-trigger capture.
+                    try {
+                        const url = new URL(window.location.href);
+                        url.searchParams.delete("start");
+                        const qs = url.searchParams.toString();
+                        const next = qs ? `${url.pathname}?${qs}` : url.pathname;
+                        router.replace(next, { scroll: false });
+                    } catch {
+                        // ignore
+                    }
+                }
+
+                if (startRequestedInFlightRef.current === startRequestKey) {
+                    startRequestedInFlightRef.current = "";
                 }
             }
         })();
@@ -3521,8 +3596,19 @@ export default function PreviewPage(): JSX.Element {
         return activeUrlStatus;
     }, [activeUrlStatus, lockMatches, shotMetaCount]);
 
-    const captureLocked =
-        lockMatches || captureStatus === "queued" || captureStatus === "processing";
+    const captureLocked = captureStatus === "queued" || captureStatus === "processing";
+
+    useEffect(() => {
+        captureLockUrlRef.current = captureLockUrl;
+    }, [captureLockUrl]);
+
+    useEffect(() => {
+        captureStatusRef.current = captureStatus;
+    }, [captureStatus]);
+
+    useEffect(() => {
+        targetUrlRef.current = targetUrl;
+    }, [targetUrl]);
 
     useEffect(() => {
         if (!captureLockUrl) return;
@@ -3530,19 +3616,123 @@ export default function PreviewPage(): JSX.Element {
 
         if (err) {
             setCaptureLockUrl(null);
+            captureLockStartedAtRef.current = 0;
             return;
         }
 
         if (captureStatus && captureStatus !== "queued" && captureStatus !== "processing") {
             setCaptureLockUrl(null);
+            captureLockStartedAtRef.current = 0;
         }
     }, [captureLockUrl, targetUrl, captureStatus, err]);
+
+    useEffect(() => {
+        if (!targetUrl) return;
+        if (err) return;
+        if (captureStatus !== "queued" && captureStatus !== "processing") return;
+
+        const updatedAtMs = (() => {
+            const raw = (docData as any)?.updatedAt;
+            if (typeof raw?.toMillis === "function") return raw.toMillis();
+            const parsed = Date.parse(raw || "");
+            return Number.isFinite(parsed) ? parsed : null;
+        })();
+
+        const startedAt = captureLockStartedAtRef.current || updatedAtMs || Date.now();
+        const elapsed = Date.now() - startedAt;
+        const remaining = Math.max(0, CAPTURE_STALL_TIMEOUT_MS - elapsed);
+
+        const timeoutId = window.setTimeout(() => {
+            const currentTarget = targetUrlRef.current;
+            const currentStatus = captureStatusRef.current;
+            if (!currentTarget) return;
+            if (currentStatus !== "queued" && currentStatus !== "processing") return;
+
+            const normalizedUrl = normUrl(currentTarget);
+            if (captureStallReportedForUrlRef.current === normalizedUrl) return;
+            captureStallReportedForUrlRef.current = normalizedUrl;
+
+            setCaptureLockUrl(null);
+            captureLockStartedAtRef.current = 0;
+            setInfo("");
+            setErr("URL capture is taking longer than expected (over 10 minutes). Please click Refresh and try again.");
+
+            void (async () => {
+                try {
+                    const csrf = await ensureSessionAndCsrf().catch(() => null);
+                    await fetch("/api/internal/observability/frontend-timeout", {
+                        method: "POST",
+                        headers: {
+                            "content-type": "application/json",
+                            ...(csrf ? { "x-csrf": csrf } : {}),
+                        },
+                        credentials: "include",
+                        body: JSON.stringify({
+                            action: "url_capture_stalled",
+                            route: "/dashboard/view",
+                            service: "dashboard-view",
+                            statusCode: 504,
+                            status: "queued_timeout",
+                            message: "URL capture stayed queued/processing for more than 10 minutes without completion.",
+                            previewUrl: currentTarget,
+                            ageMs: Date.now() - startedAt,
+                            tags: ["url-capture", "queue", "timeout", "frontend"],
+                        }),
+                    });
+                } catch {
+                    // ignore telemetry failures
+                }
+            })();
+        }, remaining);
+
+        return () => window.clearTimeout(timeoutId);
+    }, [targetUrl, captureStatus, err, docData]);
+
+    useEffect(() => {
+        if (!targetUrl) return;
+        if (captureStatus !== "stale") return;
+
+        const normalizedUrl = normUrl(targetUrl);
+        if (captureStaleReportedForUrlRef.current === normalizedUrl) return;
+        captureStaleReportedForUrlRef.current = normalizedUrl;
+
+        if (!err) {
+            setInfo("");
+            setErr("URL capture appears stalled (status is stale). Please click Refresh and try again.");
+        }
+
+        void (async () => {
+            try {
+                const csrf = await ensureSessionAndCsrf().catch(() => null);
+                await fetch("/api/internal/observability/frontend-timeout", {
+                    method: "POST",
+                    headers: {
+                        "content-type": "application/json",
+                        ...(csrf ? { "x-csrf": csrf } : {}),
+                    },
+                    credentials: "include",
+                    body: JSON.stringify({
+                        action: "url_capture_stale",
+                        route: "/dashboard/view",
+                        service: "dashboard-view",
+                        statusCode: 504,
+                        status: "stale",
+                        message: "URL capture entered stale state before completion.",
+                        previewUrl: targetUrl,
+                        tags: ["url-capture", "stale", "frontend"],
+                    }),
+                });
+            } catch {
+                // ignore telemetry failures
+            }
+        })();
+    }, [targetUrl, captureStatus, err]);
 
     useEffect(() => {
         // Avoid stale/duplicate legacy notifications after capture finishes (e.g. during hot reload).
         if (
             info !== "Queued snapshot job…" &&
-            info !== "Queued snapshot scan… We’re only capturing this URL now (not generating a website yet)."
+            info !== "Queued snapshot scan… We’re capturing this URL soon. This may take a few minutes."
         ) {
             return;
         }

@@ -21,6 +21,16 @@ function cleanNumber(value: unknown): number | undefined {
     return undefined;
 }
 
+function cleanTags(value: unknown): string[] | undefined {
+    if (!Array.isArray(value)) return undefined;
+    const tags = value
+        .filter((item) => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .slice(0, 20);
+    return tags.length ? tags : undefined;
+}
+
 export async function POST(req: NextRequest) {
     return requireSessionAndMaybeCsrf(
         req,
@@ -35,23 +45,28 @@ export async function POST(req: NextRequest) {
             const appId = cleanText(body?.appId, 200);
             const code = cleanText(body?.code, 200);
             const status = cleanText(body?.status, 80) || "unknown";
+            const action = cleanText(body?.action, 120) || "preview_timeout_12min";
+            const route = cleanText(body?.route, 300) || "/dashboard/view";
+            const service = cleanText(body?.service, 200) || "webcontainer-runner";
             const message =
                 cleanText(body?.message, 1000) ||
                 "Preview exceeded timeout while starting in frontend polling";
             const previewUrl = cleanText(body?.previewUrl, 1000);
             const ageMs = cleanNumber(body?.ageMs);
+            const statusCode = cleanNumber(body?.statusCode) || 504;
+            const tags = cleanTags(body?.tags) || ["preview", "timeout", "frontend"];
 
             await captureCriticalEvent({
                 source: "frontend",
                 severity: "critical",
-                statusCode: 504,
-                route: "/dashboard/view",
+                statusCode,
+                route,
                 method: "POST",
-                action: "preview_timeout_12min",
+                action,
                 userId: uid,
                 message,
-                service: "webcontainer-runner",
-                tags: ["preview", "timeout", "frontend"],
+                service,
+                tags,
                 url: previewUrl || undefined,
                 extra: {
                     appId: appId || undefined,
