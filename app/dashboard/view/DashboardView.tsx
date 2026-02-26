@@ -3497,7 +3497,7 @@ export default function PreviewPage(): JSX.Element {
                 if (!res.ok) {
                     generateAbortedRef.current = startRequestKey;
                     await res.json().catch(() => ({})); // consume body
-                    setErr("This URL failed to scan. Please enter the URL above and try again.");
+                    setErr("This URL failed to process. Please ensure it is an accessible URL before trying again.");
                     setInfo("");
                     captureLockMinUntilRef.current = 0;
                     setCaptureLockUrl(null);
@@ -3533,7 +3533,7 @@ export default function PreviewPage(): JSX.Element {
                 generateAbortedRef.current = startRequestKey;
                 setInfo("");
                 clearStartQueryParam();
-                if (!cancelled) setErr("This URL failed to scan. Please enter the URL above and try again.");
+                if (!cancelled) setErr("This URL failed to process. Please ensure it is an acc.");
                 captureLockMinUntilRef.current = 0;
                 setCaptureLockUrl(null);
                 captureLockStartedAtRef.current = 0;
@@ -3602,7 +3602,7 @@ export default function PreviewPage(): JSX.Element {
             // Server error — abort polling, wipe captured UI state, show error.
             generateAbortedRef.current = startRequestKey;
             if (!cancelled) {
-                setErr("This URL failed to scan. Please enter the URL above and try again.");
+                setErr("This URL failed to process. Please ensure it is an acc.");
                 setInfo("");
                 captureLockMinUntilRef.current = 0;
                 setCaptureLockUrl(null);
