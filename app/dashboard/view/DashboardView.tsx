@@ -3571,7 +3571,7 @@ export default function PreviewPage(): JSX.Element {
         const POLL_INTERVAL_MS = 3000;
 
         let cancelled = false;
-        let nextPollTimeoutId: number | null = null;
+        let nextPollTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
         const doEnqueueOnce = async (): Promise<boolean> => {
             let csrf = await ensureSessionAndCsrf().catch(() => null);
@@ -3655,8 +3655,7 @@ export default function PreviewPage(): JSX.Element {
         };
 
         const schedulePoll = (delayMs: number) => {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            nextPollTimeoutId = (window.setTimeout as any)(async () => {
+            nextPollTimeoutId = setTimeout(async () => {
                 if (cancelled) return;
                 // Already succeeded (main effect or a prior poll).
                 if (generateSucceededRef.current === startRequestKey) return;
@@ -3698,7 +3697,7 @@ export default function PreviewPage(): JSX.Element {
 
         return () => {
             cancelled = true;
-            if (nextPollTimeoutId !== null) window.clearTimeout(nextPollTimeoutId);
+            if (nextPollTimeoutId !== null) clearTimeout(nextPollTimeoutId);
         };
     }, [startRequested, user, targetUrl, clearStartQueryParam]);
 
@@ -3782,7 +3781,7 @@ export default function PreviewPage(): JSX.Element {
             const remaining = captureLockMinUntilRef.current - Date.now();
             if (remaining > 0) {
                 // Hold the queued UI until the 60s minimum display time has elapsed.
-                const t = (window.setTimeout as any)(() => {
+                const t = setTimeout(() => {
                     captureLockMinUntilRef.current = 0;
                     setCaptureLockUrl(null);
                     captureLockStartedAtRef.current = 0;
