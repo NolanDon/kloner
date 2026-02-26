@@ -52,10 +52,19 @@ export async function POST(req: NextRequest) {
         async ({ uid, req: authedReq }) => {
             const body = await authedReq.json().catch(() => ({} as any));
             const cleanupIfDeleted = Boolean(body?.cleanupIfDeleted);
+            const requestAppId = typeof body?.appId === "string" ? body.appId.trim() : "";
 
             const integration = await getSupabaseIntegration(uid);
             if (!integration) {
                 return NextResponse.json({ ok: true, connected: false, reachable: false, reason: "no_integration" });
+            }
+
+            // Enforce 1:1 binding: if the stored integration belongs to a different app, report disconnected.
+            const storedBoundAppId = typeof (integration as any)?.boundAppId === "string" && (integration as any).boundAppId.trim()
+                ? (integration as any).boundAppId.trim()
+                : null;
+            if (storedBoundAppId && requestAppId && storedBoundAppId !== requestAppId) {
+                return NextResponse.json({ ok: true, connected: false, reachable: false, reason: "app_mismatch" });
             }
 
             const mode = normalizeString((integration as any)?.mode) || ((integration as any)?.accessToken ? "oauth" : "manual");

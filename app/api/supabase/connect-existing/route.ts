@@ -43,6 +43,8 @@ export async function POST(req: NextRequest) {
             const anonKey = typeof body?.anonKey === "string" ? body.anonKey : "";
             const serviceRoleKey = typeof body?.serviceRoleKey === "string" ? body.serviceRoleKey : "";
 
+            const rawAppId = typeof body?.appId === "string" ? body.appId.trim() : "";
+
             const projectRef = normalizeProjectRef(projectRefInput);
             if (!projectRef || !isPlausibleProjectRef(projectRef)) {
                 return NextResponse.json({ ok: false, error: "Invalid Project Reference ID / Supabase URL" }, { status: 400 });
@@ -53,11 +55,28 @@ export async function POST(req: NextRequest) {
             }
 
             const db = getAdminDb();
-            const integrationRef = db
+
+            // Enforce 1:1 binding: if the integration already belongs to a different app, reject.
+            const existingRef = db
                 .collection("kloner_users")
                 .doc(uid)
                 .collection("integrations")
                 .doc("supabase");
+            const existingSnap = await existingRef.get();
+            if (existingSnap.exists) {
+                const existingData = existingSnap.data() as any;
+                const storedBoundAppId = typeof existingData?.boundAppId === "string" && existingData.boundAppId.trim()
+                    ? existingData.boundAppId.trim()
+                    : null;
+                if (storedBoundAppId && rawAppId && storedBoundAppId !== rawAppId) {
+                    return NextResponse.json(
+                        { ok: false, error: "A different Kloner project is already connected to a Supabase instance. Disconnect it first before connecting a new project." },
+                        { status: 409 },
+                    );
+                }
+            }
+
+            const integrationRef = existingRef;
 
             await integrationRef.set(
                 {
@@ -70,6 +89,8 @@ export async function POST(req: NextRequest) {
                     supabaseUrl: `https://${projectRef}.supabase.co`,
                     anonKey: encryptString(anonKey.trim()),
                     serviceRoleKey: serviceRoleKey.trim() ? encryptString(serviceRoleKey.trim()) : null,
+                    // Bind to the specific Kloner app that initiated this connection (1:1 guarantee).
+                    boundAppId: rawAppId || null,
                     updatedAt: new Date(),
                     createdAt: new Date(),
                 },

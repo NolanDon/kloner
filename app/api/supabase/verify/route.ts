@@ -72,6 +72,7 @@ export async function POST(req: NextRequest) {
         async ({ uid, req: authedReq }) => {
             const body = await authedReq.json().catch(() => ({} as any));
             const cleanupIfDeleted = Boolean(body?.cleanupIfDeleted);
+            const requestAppId = typeof body?.appId === "string" ? body.appId.trim() : "";
 
             const db = getAdminDb();
             const integrationRef = db
@@ -92,6 +93,14 @@ export async function POST(req: NextRequest) {
             }
 
             const data: any = snap.data() as any;
+
+            // Enforce 1:1 binding: if the stored integration belongs to a different app, report disconnected.
+            const storedBoundAppId = typeof data?.boundAppId === "string" && data.boundAppId.trim()
+                ? data.boundAppId.trim()
+                : null;
+            if (storedBoundAppId && requestAppId && storedBoundAppId !== requestAppId) {
+                return NextResponse.json({ ok: true, connected: false, reason: "app_mismatch" });
+            }
             const mode = normalizeString(data?.mode) || (data?.accessToken ? "oauth" : "manual");
             const projectRef = normalizeString(data?.projectRef) || normalizeString(data?.projectId);
 

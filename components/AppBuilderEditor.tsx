@@ -492,7 +492,10 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
 
         const refreshSupabaseStatusFromApi = useCallback(async (): Promise<boolean> => {
             try {
-                const res = await fetch("/api/supabase/project-status", { cache: "no-store" });
+                const url = appId
+                    ? `/api/supabase/project-status?appId=${encodeURIComponent(appId)}`
+                    : "/api/supabase/project-status";
+                const res = await fetch(url, { cache: "no-store" });
                 if (!res.ok) return false;
                 const data: any = await res.json().catch(() => null);
                 if (data && data.completed && data.ok) {
@@ -536,7 +539,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                         "Content-Type": "application/json",
                         ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
                     },
-                    body: JSON.stringify({ cleanupIfDeleted: true }),
+                    body: JSON.stringify({ cleanupIfDeleted: true, appId: appId || undefined }),
                 });
                 const data: any = await res.json().catch(() => null);
 
@@ -610,7 +613,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                         "Content-Type": "application/json",
                         ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
                     },
-                    body: JSON.stringify({ cleanupIfDeleted: true }),
+                    body: JSON.stringify({ cleanupIfDeleted: true, appId: appId || undefined }),
                     cache: "no-store",
                 });
 
@@ -693,6 +696,19 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                         return;
                     }
                     const data = snap.data() as any;
+
+                    // Enforce 1:1 binding: if this integration doc belongs to a different Kloner app,
+                    // treat it as not connected for THIS app.
+                    const storedBoundAppId = typeof data?.boundAppId === "string" && data.boundAppId.trim()
+                        ? data.boundAppId.trim()
+                        : null;
+                    if (storedBoundAppId && appId && storedBoundAppId !== appId) {
+                        setSupabaseConnected(false);
+                        setSupabaseProjectName(null);
+                        setSupabaseProjectRef(null);
+                        return;
+                    }
+
                     // Optimistically show connected if the integration doc exists.
                     // Background verification will flip it back to disconnected if the project was deleted.
                     setSupabaseConnected(true);
@@ -760,7 +776,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                     "Content-Type": "application/json",
                     ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
                 },
-                body: JSON.stringify({ confirm: "DISCONNECT" }),
+                body: JSON.stringify({ confirm: "DISCONNECT", appId: appId || undefined }),
             });
 
             const data: any = await res.json().catch(() => null);

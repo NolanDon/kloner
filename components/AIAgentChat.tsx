@@ -367,7 +367,10 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
     const refreshSupabaseStatusFromApi = useCallback(async (): Promise<boolean> => {
         try {
-            const res = await fetch("/api/supabase/project-status", {
+            const url = appId
+                ? `/api/supabase/project-status?appId=${encodeURIComponent(appId)}`
+                : "/api/supabase/project-status";
+            const res = await fetch(url, {
                 method: "GET",
                 cache: "no-store",
                 credentials: "include",
@@ -705,7 +708,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             const res = await fetch("/api/supabase/db-health", {
                 method: "POST",
                 headers,
-                body: JSON.stringify({ cleanupIfDeleted: true }),
+                body: JSON.stringify({ cleanupIfDeleted: true, appId: appId || undefined }),
                 cache: "no-store",
             });
 
@@ -1552,6 +1555,8 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                     projectRef,
                     anonKey,
                     serviceRoleKey: serviceRoleKey || null,
+                    // Bind to this specific Kloner app (1:1 guarantee).
+                    appId: appId || undefined,
                 }),
             });
 

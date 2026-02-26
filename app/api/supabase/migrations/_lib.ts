@@ -15,6 +15,8 @@ export type SupabaseIntegrationDoc = {
     accessToken?: EncryptedBlobV1;
     refreshToken?: EncryptedBlobV1 | null;
     tokenExpiresAt?: Date;
+    /** The Kloner appId this Supabase integration is strictly bound to (1:1). */
+    boundAppId?: string | null;
 };
 
 export async function getSupabaseIntegration(uid: string): Promise<SupabaseIntegrationDoc | null> {

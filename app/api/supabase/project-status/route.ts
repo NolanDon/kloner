@@ -455,6 +455,8 @@ export async function GET(request: NextRequest) {
                       accessToken: encryptedAccessToken,
                       refreshToken: setup?.refreshToken || null,
                       tokenExpiresAt: toValidDateOrNull(setup?.tokenExpiresAt),
+                      // Bind this integration to the specific Kloner app (1:1 guarantee).
+                      boundAppId: ((typeof setup?.appId === "string" && setup.appId.trim()) ? setup.appId.trim() : appIdHint) || null,
                       updatedAt: new Date(),
                       createdAt: new Date(),
                     },
@@ -683,6 +685,8 @@ export async function GET(request: NextRequest) {
                               accessToken: encryptedAccessToken,
                               refreshToken: setup?.refreshToken || null,
                               tokenExpiresAt: toValidDateOrNull(setup?.tokenExpiresAt),
+                              // Bind this integration to the specific Kloner app (1:1 guarantee).
+                              boundAppId: ((typeof setup?.appId === "string" && setup.appId.trim()) ? setup.appId.trim() : appIdHint) || null,
                               updatedAt: new Date(),
                               createdAt: new Date(),
                             },
