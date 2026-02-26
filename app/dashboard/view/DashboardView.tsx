@@ -3264,7 +3264,8 @@ export default function PreviewPage(): JSX.Element {
         (message: string): boolean => {
             const m = (message || "").toLowerCase();
             return m === DUPLICATE_URL_MESSAGE.toLowerCase() ||
-                (m.includes("already") && m.includes("url") && (m.includes("v1") || m.includes("v2") || m.includes("processed")));
+                (m.includes("already") && m.includes("url") && (m.includes("v1") || m.includes("v2") || m.includes("processed"))) ||
+                (m.includes("website") && m.includes("already exists") && m.includes("url"));
         },
         [],
     );
@@ -3376,16 +3377,11 @@ export default function PreviewPage(): JSX.Element {
         (raw: string) => {
             const normalized = validateAndNormalizePublicHttpUrl(raw);
             if (!normalized) return;
-            if (hasProcessedUrl(normalized)) {
-                setErr("");
-                setInfo(buildDuplicateUrlMessage(normalized));
-                return;
-            }
             setErr("");
             setInfo("");
             router.push(`/dashboard/view?u=${encodeURIComponent(normalized)}&start=1`, { scroll: false });
         },
-        [router, hasProcessedUrl, buildDuplicateUrlMessage]
+        [router]
     );
 
     const submitMiniPrompt = useCallback(
@@ -3403,9 +3399,19 @@ export default function PreviewPage(): JSX.Element {
     const [urlDocReloadNonce, setUrlDocReloadNonce] = useState(0);
     const startRequestedInFlightRef = useRef<string>("");
     const startRequestedEnqueueAttemptRef = useRef<string>("");
-    const startRequestedFallbackAttemptRef = useRef<string>("");
+    // Tracks the startRequestKey for which /generate was successfully enqueued, used by the
+    // polling fallback to know when it can stop retrying.
+    const generateSucceededRef = useRef<string>("");
+    // Tracks the startRequestKey for which /generate returned a server error, used to stop
+    // polling from retrying after a real failure (as opposed to a missed race-condition fire).
+    const generateAbortedRef = useRef<string>("");
+    // Counts how many polling retries have been attempted for the current startRequestKey.
+    const generatePollCountRef = useRef<number>(0);
     const [captureLockUrl, setCaptureLockUrl] = useState<string | null>(null);
     const captureLockStartedAtRef = useRef<number>(0);
+    // Minimum wall-clock time (Date.now()) before the capture lock is auto-released on status
+    // change. Ensures the queued/processing UI persists for at least 60s after /generate fires.
+    const captureLockMinUntilRef = useRef<number>(0);
     const captureLockUrlRef = useRef<string | null>(null);
     const captureStatusRef = useRef<UrlStatusUi | null>(null);
     const targetUrlRef = useRef<string>("");
@@ -3437,7 +3443,9 @@ export default function PreviewPage(): JSX.Element {
 
         setCaptureLockUrl(targetUrl);
         captureLockStartedAtRef.current = Date.now();
+        captureLockMinUntilRef.current = Date.now() + 60_000;
         captureStallReportedForUrlRef.current = "";
+        captureStaleReportedForUrlRef.current = "";
 
         let cancelled = false;
         let shouldMarkHandled = false;
@@ -3449,41 +3457,6 @@ export default function PreviewPage(): JSX.Element {
                 const qy = query(colRef, where("url", "==", targetUrl));
                 const snap = await getDocs(qy);
                 if (cancelled) return;
-
-                const statusFromDoc = (doc: any): string =>
-                    String((doc?.data?.()?.status ?? doc?.status ?? "unknown") || "unknown").toLowerCase();
-
-                const existingStatuses = snap.empty
-                    ? []
-                    : snap.docs.map((d: any) => statusFromDoc(d));
-
-                const markUrlDocsError = async (reason: string) => {
-                    try {
-                        const latest = await getDocs(qy);
-                        await Promise.all(
-                            latest.docs.map((d: any) => {
-                                const s = statusFromDoc(d);
-                                if (s === "ready" || s === "uploaded" || s === "done") {
-                                    return Promise.resolve();
-                                }
-                                return updateDoc(d.ref, {
-                                    status: "error",
-                                    updatedAt: serverTimestamp(),
-                                    lastError: reason,
-                                } as any);
-                            })
-                        );
-                        setUrlDocReloadNonce((n) => n + 1);
-                    } catch {
-                        // ignore best-effort status rollback failures
-                    }
-                };
-
-                const hasReadyDoc = existingStatuses.some((s) =>
-                    s === "ready" || s === "uploaded" || s === "done"
-                );
-
-                const hasExistingUrlDoc = !snap.empty;
 
                 if (snap.empty) {
                     const urlHash = hash64(targetUrl);
@@ -3503,66 +3476,30 @@ export default function PreviewPage(): JSX.Element {
                     // Best-effort: keep dropdown list fresh even before the next fetch.
                     setUrls((prev) => {
                         if (prev.some((u) => normUrl(u.url) === normUrl(targetUrl))) return prev;
-                        return [{ id: `local_${urlHash}`, url: targetUrl, urlHash } as any, ...prev].slice(0, 50);
+                        return [{ id: `local_${hash64(targetUrl)}`, url: targetUrl, urlHash: hash64(targetUrl) } as any, ...prev].slice(0, 50);
                     });
-                } else if (hasExistingUrlDoc || hasReadyDoc) {
-                    shouldMarkHandled = true;
-                    setErr("");
-                    setSuccess("");
-                    setInfo(buildDuplicateUrlMessage(targetUrl));
-                    setCaptureLockUrl(null);
-                    return;
-                } else {
-                    setInfo("Resuming URL capture…");
                 }
 
-                const queueGenerate = async (): Promise<Response> => {
-                    const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-                    let last: Response | null = null;
-                    for (let attempt = 0; attempt < 3; attempt++) {
-                        startRequestedEnqueueAttemptRef.current = startRequestKey;
-                        const res = await fetch("/api/private/generate", {
-                            method: "POST",
-                            headers: { "content-type": "application/json" },
-                            credentials: "include",
-                            body: JSON.stringify({ url: targetUrl }),
-                        });
-                        last = res;
-
-                        if (res.status === 401 || res.status === 403) {
-                            csrf = await ensureSessionAndCsrf().catch(() => csrf);
-                            continue;
-                        }
-
-                        if (res.status === 504) {
-                            const timedOut = await res
-                                .clone()
-                                .json()
-                                .then((j: any) => j?.code === "ENQUEUE_TIMEOUT")
-                                .catch(() => false);
-
-                            if (timedOut && attempt < 2) {
-                                await wait(1200 * (attempt + 1));
-                                continue;
-                            }
-                        }
-
-                        return res;
-
-                    }
-                    return last as Response;
-                };
-
-                const res = await queueGenerate();
+                startRequestedEnqueueAttemptRef.current = startRequestKey;
+                const res = await fetch("/api/private/generate", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ url: targetUrl }),
+                });
                 shouldMarkHandled = res.ok;
+                if (res.ok) {
+                    generateSucceededRef.current = startRequestKey;
+                }
 
                 if (cancelled) return;
 
                 if (!res.ok) {
-                    const j: any = await res.json().catch(() => ({}));
-                    await markUrlDocsError(j?.error || "enqueue_failed");
-                    setErr(j?.error || "Failed to queue screenshot job.");
+                    generateAbortedRef.current = startRequestKey;
+                    await res.json().catch(() => ({})); // consume body
+                    setErr("This URL failed to scan. Please enter the URL above and try again.");
                     setInfo("");
+                    captureLockMinUntilRef.current = 0;
                     setCaptureLockUrl(null);
                     captureLockStartedAtRef.current = 0;
                     clearStartQueryParam();
@@ -3582,7 +3519,7 @@ export default function PreviewPage(): JSX.Element {
                                     service: "dashboard-view",
                                     statusCode: res.status,
                                     status: "enqueue_failed",
-                                    message: j?.error || `Failed to queue URL capture (HTTP ${res.status}).`,
+                                    message: `Failed to queue URL capture (HTTP ${res.status}).`,
                                     previewUrl: targetUrl,
                                     tags: ["url-capture", "enqueue", "frontend", "error"],
                                 }),
@@ -3593,9 +3530,11 @@ export default function PreviewPage(): JSX.Element {
                     })();
                 }
             } catch (e: any) {
+                generateAbortedRef.current = startRequestKey;
                 setInfo("");
                 clearStartQueryParam();
-                if (!cancelled) setErr(e?.message || "Failed to start capture.");
+                if (!cancelled) setErr("This URL failed to scan. Please enter the URL above and try again.");
+                captureLockMinUntilRef.current = 0;
                 setCaptureLockUrl(null);
                 captureLockStartedAtRef.current = 0;
             } finally {
@@ -3612,107 +3551,155 @@ export default function PreviewPage(): JSX.Element {
         return () => {
             cancelled = true;
         };
-    }, [startRequested, user, targetUrl, buildDuplicateUrlMessage, clearStartQueryParam]);
+    }, [startRequested, user, targetUrl, clearStartQueryParam]);
 
+    // Polling fallback: retries /generate up to MAX_POLL_ATTEMPTS times if the main effect
+    // fails to enqueue (network hiccup, slow auth hydration on live, etc.). The poll starts
+    // after an initial grace period and backs off between attempts.
     useEffect(() => {
         if (!startRequested) return;
         if (!user || !targetUrl) return;
         if (!isHttpUrl(targetUrl)) return;
 
         const startRequestKey = `${user.uid}:${targetUrl}`;
-        if (startRequestedFallbackAttemptRef.current === startRequestKey) return;
 
-        const timeoutId = window.setTimeout(() => {
-            if (startRequestedEnqueueAttemptRef.current === startRequestKey) return;
-            if (startRequestedInFlightRef.current === startRequestKey) return;
+        // Reset poll counter whenever the key changes (new user/url combo).
+        generatePollCountRef.current = 0;
 
-            startRequestedFallbackAttemptRef.current = startRequestKey;
+        const MAX_POLL_ATTEMPTS = 5;
+        const INITIAL_DELAY_MS = 2500;
+        const POLL_INTERVAL_MS = 3000;
 
-            void (async () => {
-                let csrf = await ensureSessionAndCsrf().catch(() => null);
+        let cancelled = false;
+        let nextPollTimeoutId: number | null = null;
+
+        const doEnqueueOnce = async (): Promise<boolean> => {
+            let csrf = await ensureSessionAndCsrf().catch(() => null);
+            if (cancelled) return false;
+
+            const attempt = () =>
+                fetch("/api/private/generate", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ url: targetUrl }),
+                });
+
+            let res = await attempt();
+            if ((res.status === 401 || res.status === 403) && !cancelled) {
+                csrf = await ensureSessionAndCsrf().catch(() => csrf);
+                res = await attempt();
+            }
+
+            if (cancelled) return false;
+
+            if (res.ok) {
+                generateSucceededRef.current = startRequestKey;
+                clearStartQueryParam();
+                return true;
+            }
+
+            // Server error — abort polling, wipe captured UI state, show error.
+            generateAbortedRef.current = startRequestKey;
+            if (!cancelled) {
+                setErr("This URL failed to scan. Please enter the URL above and try again.");
+                setInfo("");
+                captureLockMinUntilRef.current = 0;
+                setCaptureLockUrl(null);
+                captureLockStartedAtRef.current = 0;
+                clearStartQueryParam();
+                // Best-effort: mark the Firestore doc as error so the UI reflects the real state
+                // (if the doc stays "queued" the ghost render card won't clear).
                 const colRef = collection(db, "kloner_users", user.uid, "kloner_urls");
                 const qy = query(colRef, where("url", "==", targetUrl));
-                const statusFromDoc = (doc: any): string =>
-                    String((doc?.data?.()?.status ?? doc?.status ?? "unknown") || "unknown").toLowerCase();
-                const markUrlDocsError = async (reason: string) => {
-                    try {
-                        const latest = await getDocs(qy);
-                        await Promise.all(
-                            latest.docs.map((d: any) => {
-                                const s = statusFromDoc(d);
-                                if (s === "ready" || s === "uploaded" || s === "done") {
-                                    return Promise.resolve();
-                                }
-                                return updateDoc(d.ref, {
-                                    status: "error",
-                                    updatedAt: serverTimestamp(),
-                                    lastError: reason,
-                                } as any);
-                            })
-                        );
-                        setUrlDocReloadNonce((n) => n + 1);
-                    } catch {
-                        // ignore
-                    }
+                const statusFromDoc = (d: any): string =>
+                    String((d?.data?.()?.status ?? d?.status ?? "unknown") || "unknown").toLowerCase();
+                const tryMarkError = async () => {
+                    const latest = await getDocs(qy);
+                    await Promise.all(
+                        latest.docs.map((d: any) => {
+                            const s = statusFromDoc(d);
+                            if (s === "ready" || s === "uploaded" || s === "done") return Promise.resolve();
+                            return updateDoc(d.ref, {
+                                status: "error",
+                                updatedAt: serverTimestamp(),
+                                lastError: "poll_enqueue_server_error",
+                            } as any);
+                        })
+                    );
+                    setUrlDocReloadNonce((n) => n + 1);
                 };
+                void tryMarkError().catch(() => tryMarkError().catch(() => undefined));
+            }
 
-                const doEnqueue = () =>
-                    fetch("/api/private/generate", {
-                        method: "POST",
-                        headers: { "content-type": "application/json" },
-                        credentials: "include",
-                        body: JSON.stringify({ url: targetUrl }),
-                    });
+            void fetch("/api/internal/observability/frontend-timeout", {
+                method: "POST",
+                headers: {
+                    "content-type": "application/json",
+                    ...(csrf ? { "x-csrf": csrf } : {}),
+                },
+                credentials: "include",
+                body: JSON.stringify({
+                    action: "url_capture_poll_enqueue_failed",
+                    route: "/dashboard/view",
+                    service: "dashboard-view",
+                    statusCode: res.status,
+                    status: "poll_enqueue_failed",
+                    message: `Poll enqueue failed (HTTP ${res.status}).`,
+                    previewUrl: targetUrl,
+                    pollAttempt: generatePollCountRef.current,
+                    tags: ["url-capture", "enqueue", "poll", "frontend"],
+                }),
+            }).catch(() => {});
+            return false;
+        };
 
-                try {
-                    let res = await doEnqueue();
-                    if (res.status === 401 || res.status === 403) {
-                        csrf = await ensureSessionAndCsrf().catch(() => csrf);
-                        res = await doEnqueue();
+        const schedulePoll = (delayMs: number) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            nextPollTimeoutId = (window.setTimeout as any)(async () => {
+                if (cancelled) return;
+                // Already succeeded (main effect or a prior poll).
+                if (generateSucceededRef.current === startRequestKey) return;
+                // Main effect received a real server error — do not retry.
+                if (generateAbortedRef.current === startRequestKey) return;
+                // Main effect is currently handling it — wait another cycle.
+                if (startRequestedInFlightRef.current === startRequestKey) {
+                    if (generatePollCountRef.current < MAX_POLL_ATTEMPTS) {
+                        schedulePoll(POLL_INTERVAL_MS);
                     }
-
-                    if (res.ok) {
-                        clearStartQueryParam();
-                    } else {
-                        const j: any = await res.json().catch(() => ({}));
-                        await markUrlDocsError(j?.error || "enqueue_fallback_failed");
-                        if (j?.error) setErr(j.error);
-                        setInfo("");
-                        setCaptureLockUrl(null);
-                        captureLockStartedAtRef.current = 0;
-                        clearStartQueryParam();
-
-                        void fetch("/api/internal/observability/frontend-timeout", {
-                            method: "POST",
-                            headers: {
-                                "content-type": "application/json",
-                                ...(csrf ? { "x-csrf": csrf } : {}),
-                            },
-                            credentials: "include",
-                            body: JSON.stringify({
-                                action: "url_capture_enqueue_fallback_failed",
-                                route: "/dashboard/view",
-                                service: "dashboard-view",
-                                statusCode: res.status,
-                                status: "enqueue_fallback_failed",
-                                message: j?.error || `Fallback enqueue failed (HTTP ${res.status}).`,
-                                previewUrl: targetUrl,
-                                tags: ["url-capture", "enqueue", "fallback", "frontend"],
-                            }),
-                        }).catch(() => {});
-                    }
-                } catch (e: any) {
-                    await markUrlDocsError(e?.message || "enqueue_fallback_failed");
-                    setInfo("");
-                    setCaptureLockUrl(null);
-                    captureLockStartedAtRef.current = 0;
-                    clearStartQueryParam();
-                    if (e?.message) setErr(e.message);
+                    return;
                 }
-            })();
-        }, 2500);
+                // Also skip if main effect's request is still in flight (no failure yet).
+                if (startRequestedEnqueueAttemptRef.current === startRequestKey) {
+                    if (generatePollCountRef.current < MAX_POLL_ATTEMPTS) {
+                        schedulePoll(POLL_INTERVAL_MS);
+                    }
+                    return;
+                }
 
-        return () => window.clearTimeout(timeoutId);
+                generatePollCountRef.current++;
+                let succeeded = false;
+                try {
+                    succeeded = await doEnqueueOnce();
+                } catch {
+                    // Network error — will retry on next cycle if attempts remain.
+                }
+
+                // If the poll itself got a server error, doEnqueueOnce will have set
+                // generateAbortedRef — check it before scheduling another cycle.
+                if (!cancelled && !succeeded && generatePollCountRef.current < MAX_POLL_ATTEMPTS
+                    && generateAbortedRef.current !== startRequestKey) {
+                    schedulePoll(POLL_INTERVAL_MS);
+                }
+            }, delayMs);
+        };
+
+        schedulePoll(INITIAL_DELAY_MS);
+
+        return () => {
+            cancelled = true;
+            if (nextPollTimeoutId !== null) window.clearTimeout(nextPollTimeoutId);
+        };
     }, [startRequested, user, targetUrl, clearStartQueryParam]);
 
     const startLockRequested = !!startRequested && !!targetUrl && !err;
@@ -3739,6 +3726,14 @@ export default function PreviewPage(): JSX.Element {
         // If we are in an in-flight capture, don't let an "unknown" doc status remove the UX lock.
         if (lockMatches) {
             const stable = activeUrlStatus;
+
+            // When a fresh scan was explicitly requested (start=1), an old "stale" or "error" doc
+            // should not surface as an error immediately — treat it as "queued" until the new
+            // /generate call either succeeds or fails.
+            if (startRequested && !err) {
+                if (stable === "stale" || stable === "error") return "queued";
+            }
+
             if (stable === "ready" || stable === "error" || stable === "stale") return stable;
             if (stable === "queued" || stable === "processing") return stable;
 
@@ -3747,7 +3742,7 @@ export default function PreviewPage(): JSX.Element {
         }
 
         return activeUrlStatus;
-    }, [activeUrlStatus, lockMatches, shotMetaCount]);
+    }, [activeUrlStatus, lockMatches, shotMetaCount, startRequested, err]);
 
     const captureLocked = captureStatus === "queued" || captureStatus === "processing";
 
@@ -3763,15 +3758,12 @@ export default function PreviewPage(): JSX.Element {
         targetUrlRef.current = targetUrl;
     }, [targetUrl]);
 
+    // Reset polling state whenever the user or target URL changes so a new attempt
+    // starts fresh with no stale succeeded/count/aborted values from a prior request.
     useEffect(() => {
-        if (!user || !targetUrl) {
-            startRequestedFallbackAttemptRef.current = "";
-            return;
-        }
-        const key = `${user.uid}:${targetUrl}`;
-        if (startRequestedFallbackAttemptRef.current !== key) {
-            startRequestedFallbackAttemptRef.current = "";
-        }
+        generateSucceededRef.current = "";
+        generateAbortedRef.current = "";
+        generatePollCountRef.current = 0;
     }, [user, targetUrl]);
 
     useEffect(() => {
@@ -3779,12 +3771,25 @@ export default function PreviewPage(): JSX.Element {
         if (!targetUrl || captureLockUrl !== targetUrl) return;
 
         if (err) {
+            // Hard failure — release lock immediately regardless of min-until.
+            captureLockMinUntilRef.current = 0;
             setCaptureLockUrl(null);
             captureLockStartedAtRef.current = 0;
             return;
         }
 
         if (captureStatus && captureStatus !== "queued" && captureStatus !== "processing") {
+            const remaining = captureLockMinUntilRef.current - Date.now();
+            if (remaining > 0) {
+                // Hold the queued UI until the 60s minimum display time has elapsed.
+                const t = (window.setTimeout as any)(() => {
+                    captureLockMinUntilRef.current = 0;
+                    setCaptureLockUrl(null);
+                    captureLockStartedAtRef.current = 0;
+                }, remaining);
+                return () => window.clearTimeout(t);
+            }
+            captureLockMinUntilRef.current = 0;
             setCaptureLockUrl(null);
             captureLockStartedAtRef.current = 0;
         }
@@ -3855,6 +3860,9 @@ export default function PreviewPage(): JSX.Element {
     useEffect(() => {
         if (!targetUrl) return;
         if (captureStatus !== "stale") return;
+        // Don't fire while a fresh scan is actively being started — the doc status is stale from
+        // a prior run and will be overwritten once /generate kicks off.
+        if (startRequested && !err) return;
 
         const normalizedUrl = normUrl(targetUrl);
         if (captureStaleReportedForUrlRef.current === normalizedUrl) return;
@@ -3890,7 +3898,7 @@ export default function PreviewPage(): JSX.Element {
                 // ignore telemetry failures
             }
         })();
-    }, [targetUrl, captureStatus, err]);
+    }, [targetUrl, captureStatus, err, startRequested]);
 
     useEffect(() => {
         // Avoid stale/duplicate legacy notifications after capture finishes (e.g. during hot reload).
