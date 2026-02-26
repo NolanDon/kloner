@@ -105,6 +105,26 @@ export async function POST(req: NextRequest) {
                             queued: r.status === 202 || r.status === 204,
                         };
 
+                const timedOutBeforeAck =
+                    r.status === 202 && (payload as any)?.code === "TIMEOUT_ACCEPTED";
+
+                if (timedOutBeforeAck) {
+                    return NextResponse.json(
+                        {
+                            error:
+                                "Capture enqueue timed out before confirmation. Please retry.",
+                            code: "ENQUEUE_TIMEOUT",
+                        },
+                        {
+                            status: 504,
+                            headers: {
+                                "x-request-id": r.reqId,
+                                "cache-control": "no-store",
+                            },
+                        }
+                    );
+                }
+
                 // Decide if this run actually "succeeded" in a way that should burn a credit.
                 //
                 // Conditions for success:

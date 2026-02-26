@@ -469,7 +469,7 @@ function MiniDashboardEntry({
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         )}
                         {captureStatus === "queued"
-                            ? "Queued snapshot scan… We’re capturing this URL, when complete you'll be able to generate a website. This process typically takes 1-3 minutes."
+                            ? "Queued scan… We’re capturing this URL, when complete you'll be able to generate a website. This process typically takes 1-3 minutes."
                             : "Processing your URL… This may take a few minutes."}
                     </div>
                 ) : null}
@@ -3480,8 +3480,9 @@ export default function PreviewPage(): JSX.Element {
                 }
 
                 const queueGenerate = async (): Promise<Response> => {
+                    const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
                     let last: Response | null = null;
-                    for (let attempt = 0; attempt < 2; attempt++) {
+                    for (let attempt = 0; attempt < 3; attempt++) {
                         const res = await fetch("/api/private/generate", {
                             method: "POST",
                             headers: { "content-type": "application/json" },
@@ -3489,9 +3490,27 @@ export default function PreviewPage(): JSX.Element {
                             body: JSON.stringify({ url: targetUrl }),
                         });
                         last = res;
-                        if (res.status !== 401 && res.status !== 403) return res;
 
-                        csrf = await ensureSessionAndCsrf().catch(() => csrf);
+                        if (res.status === 401 || res.status === 403) {
+                            csrf = await ensureSessionAndCsrf().catch(() => csrf);
+                            continue;
+                        }
+
+                        if (res.status === 504) {
+                            const timedOut = await res
+                                .clone()
+                                .json()
+                                .then((j: any) => j?.code === "ENQUEUE_TIMEOUT")
+                                .catch(() => false);
+
+                            if (timedOut && attempt < 2) {
+                                await wait(1200 * (attempt + 1));
+                                continue;
+                            }
+                        }
+
+                        return res;
+
                     }
                     return last as Response;
                 };
@@ -3732,7 +3751,7 @@ export default function PreviewPage(): JSX.Element {
         // Avoid stale/duplicate legacy notifications after capture finishes (e.g. during hot reload).
         if (
             info !== "Queued snapshot job…" &&
-            info !== "Queued snapshot scan… We’re capturing this URL soon. This may take a few minutes."
+            info !== "Queued scan… We’re capturing this URL, when complete you'll be able to generate a website. This process typically takes 1-3 minutes."
         ) {
             return;
         }
