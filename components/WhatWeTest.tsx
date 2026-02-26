@@ -53,7 +53,7 @@ const items = [
   'HTML project scaffold',
   'Layout and partials',
   'Reusable components pass',
-  'Lighthouse sanity check',
+  'Lighthouse performance checks',
   'Type-safe config',
   'Inline AI Code Helpers',
   'Responsive image generation',
@@ -68,12 +68,8 @@ const advancedSet = new Set([
 ]);
 
 const comingSoonSet = new Set([
-  'Responsive image generation',
   'Team Collaberation',
-  'Inline AI Code Helpers',
   'URL to Mobile Application Generation',
-  'NextJS project scaffold',
-  'Automated AI Developers',
   'AWS / Netlify Deployments',
   'Lighthouse sanity check',
   'Type-safe config',
