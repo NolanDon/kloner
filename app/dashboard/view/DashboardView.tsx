@@ -469,8 +469,8 @@ function MiniDashboardEntry({
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         )}
                         {captureStatus === "queued"
-                            ? "Queued scan… We’re capturing this URL, when complete you'll be able to generate a website. This process typically takes 1-3 minutes."
-                            : "Processing your URL… This may take a few minutes."}
+                            ? "Queued scan… "
+                            : "Processing your URL… This may take a few minutes. After processing, you can begin website generation."}
                     </div>
                 ) : null}
 
@@ -3326,13 +3326,13 @@ export default function PreviewPage(): JSX.Element {
             const hasV2 = hasV2FromApps;
 
             if (hasV1 && hasV2) {
-                return "A v1 and v2 website already exist for this URL. Click Generate website below to continue.";
+                return "A website already exist for this URL. Click Generate website below to continue.";
             }
             if (hasV2) {
-                return "A v2 website already exists for this URL. Click Generate website below to continue.";
+                return "A website already exists for this URL. Click Generate website below to continue.";
             }
             if (hasV1) {
-                return "A v1 website already exists for this URL. Click Generate website below to continue.";
+                return "A website already exists for this URL. Click Generate website below to continue.";
             }
 
             return DUPLICATE_URL_MESSAGE;
@@ -3401,8 +3401,9 @@ export default function PreviewPage(): JSX.Element {
     const urlMenuRef = useRef<HTMLDivElement | null>(null);
 
     const [urlDocReloadNonce, setUrlDocReloadNonce] = useState(0);
-    const startRequestedHandledRef = useRef<string>("");
     const startRequestedInFlightRef = useRef<string>("");
+    const startRequestedEnqueueAttemptRef = useRef<string>("");
+    const startRequestedFallbackAttemptRef = useRef<string>("");
     const [captureLockUrl, setCaptureLockUrl] = useState<string | null>(null);
     const captureLockStartedAtRef = useRef<number>(0);
     const captureLockUrlRef = useRef<string | null>(null);
@@ -3419,7 +3420,6 @@ export default function PreviewPage(): JSX.Element {
         if (!user || !targetUrl) return;
         if (!isHttpUrl(targetUrl)) return;
         const startRequestKey = `${user.uid}:${targetUrl}`;
-        if (startRequestedHandledRef.current === startRequestKey) return;
         if (startRequestedInFlightRef.current === startRequestKey) return;
         startRequestedInFlightRef.current = startRequestKey;
 
@@ -3449,6 +3449,8 @@ export default function PreviewPage(): JSX.Element {
                     s === "ready" || s === "uploaded" || s === "done"
                 );
 
+                const hasExistingUrlDoc = !snap.empty;
+
                 if (snap.empty) {
                     const urlHash = hash64(targetUrl);
                     await addDoc(colRef, {
@@ -3469,9 +3471,10 @@ export default function PreviewPage(): JSX.Element {
                         if (prev.some((u) => normUrl(u.url) === normUrl(targetUrl))) return prev;
                         return [{ id: `local_${urlHash}`, url: targetUrl, urlHash } as any, ...prev].slice(0, 50);
                     });
-                } else if (hasReadyDoc) {
+                } else if (hasExistingUrlDoc || hasReadyDoc) {
                     shouldMarkHandled = true;
                     setErr("");
+                    setSuccess("");
                     setInfo(buildDuplicateUrlMessage(targetUrl));
                     setCaptureLockUrl(null);
                     return;
@@ -3483,6 +3486,7 @@ export default function PreviewPage(): JSX.Element {
                     const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
                     let last: Response | null = null;
                     for (let attempt = 0; attempt < 3; attempt++) {
+                        startRequestedEnqueueAttemptRef.current = startRequestKey;
                         const res = await fetch("/api/private/generate", {
                             method: "POST",
                             headers: { "content-type": "application/json" },
@@ -3516,7 +3520,7 @@ export default function PreviewPage(): JSX.Element {
                 };
 
                 const res = await queueGenerate();
-                shouldMarkHandled = true;
+                shouldMarkHandled = res.ok;
 
                 if (cancelled) return;
 
@@ -3557,7 +3561,6 @@ export default function PreviewPage(): JSX.Element {
                 captureLockStartedAtRef.current = 0;
             } finally {
                 if (!cancelled && shouldMarkHandled) {
-                    startRequestedHandledRef.current = startRequestKey;
                     // Clear start=1 so refresh doesn't re-trigger capture.
                     try {
                         const url = new URL(window.location.href);
@@ -3580,6 +3583,79 @@ export default function PreviewPage(): JSX.Element {
             cancelled = true;
         };
     }, [startRequested, user, targetUrl, router, buildDuplicateUrlMessage]);
+
+    useEffect(() => {
+        if (!startRequested) return;
+        if (!user || !targetUrl) return;
+        if (!isHttpUrl(targetUrl)) return;
+
+        const startRequestKey = `${user.uid}:${targetUrl}`;
+        if (startRequestedFallbackAttemptRef.current === startRequestKey) return;
+
+        const timeoutId = window.setTimeout(() => {
+            if (startRequestedEnqueueAttemptRef.current === startRequestKey) return;
+            if (startRequestedInFlightRef.current === startRequestKey) return;
+
+            startRequestedFallbackAttemptRef.current = startRequestKey;
+
+            void (async () => {
+                let csrf = await ensureSessionAndCsrf().catch(() => null);
+                const doEnqueue = () =>
+                    fetch("/api/private/generate", {
+                        method: "POST",
+                        headers: { "content-type": "application/json" },
+                        credentials: "include",
+                        body: JSON.stringify({ url: targetUrl }),
+                    });
+
+                try {
+                    let res = await doEnqueue();
+                    if (res.status === 401 || res.status === 403) {
+                        csrf = await ensureSessionAndCsrf().catch(() => csrf);
+                        res = await doEnqueue();
+                    }
+
+                    if (res.ok) {
+                        try {
+                            const url = new URL(window.location.href);
+                            url.searchParams.delete("start");
+                            const qs = url.searchParams.toString();
+                            const next = qs ? `${url.pathname}?${qs}` : url.pathname;
+                            router.replace(next, { scroll: false });
+                        } catch {
+                            // ignore
+                        }
+                    } else {
+                        const j: any = await res.json().catch(() => ({}));
+                        if (j?.error) setErr(j.error);
+
+                        void fetch("/api/internal/observability/frontend-timeout", {
+                            method: "POST",
+                            headers: {
+                                "content-type": "application/json",
+                                ...(csrf ? { "x-csrf": csrf } : {}),
+                            },
+                            credentials: "include",
+                            body: JSON.stringify({
+                                action: "url_capture_enqueue_fallback_failed",
+                                route: "/dashboard/view",
+                                service: "dashboard-view",
+                                statusCode: res.status,
+                                status: "enqueue_fallback_failed",
+                                message: j?.error || `Fallback enqueue failed (HTTP ${res.status}).`,
+                                previewUrl: targetUrl,
+                                tags: ["url-capture", "enqueue", "fallback", "frontend"],
+                            }),
+                        }).catch(() => {});
+                    }
+                } catch (e: any) {
+                    if (e?.message) setErr(e.message);
+                }
+            })();
+        }, 2500);
+
+        return () => window.clearTimeout(timeoutId);
+    }, [startRequested, user, targetUrl, router]);
 
     const startLockRequested = !!startRequested && !!targetUrl;
 
@@ -3628,6 +3704,17 @@ export default function PreviewPage(): JSX.Element {
     useEffect(() => {
         targetUrlRef.current = targetUrl;
     }, [targetUrl]);
+
+    useEffect(() => {
+        if (!user || !targetUrl) {
+            startRequestedFallbackAttemptRef.current = "";
+            return;
+        }
+        const key = `${user.uid}:${targetUrl}`;
+        if (startRequestedFallbackAttemptRef.current !== key) {
+            startRequestedFallbackAttemptRef.current = "";
+        }
+    }, [user, targetUrl]);
 
     useEffect(() => {
         if (!captureLockUrl) return;
@@ -3751,7 +3838,7 @@ export default function PreviewPage(): JSX.Element {
         // Avoid stale/duplicate legacy notifications after capture finishes (e.g. during hot reload).
         if (
             info !== "Queued snapshot job…" &&
-            info !== "Queued scan… We’re capturing this URL, when complete you'll be able to generate a website. This process typically takes 1-3 minutes."
+            info !== "Queued scan… "
         ) {
             return;
         }
@@ -3782,6 +3869,11 @@ export default function PreviewPage(): JSX.Element {
             return;
         }
 
+        if (isDuplicateUrlConfirmationMessage(info || "")) {
+            setSuccess("");
+            return;
+        }
+
         if (err) return;
         if (!lockMatches) return;
 
@@ -3795,7 +3887,7 @@ export default function PreviewPage(): JSX.Element {
         setSuccess("URL added successfully! You can now generate websites from this URL below.");
         if (captureSuccessTimeoutRef.current) clearTimeout(captureSuccessTimeoutRef.current);
         captureSuccessTimeoutRef.current = setTimeout(() => setSuccess(""), 60000);
-    }, [captureStatus, targetUrl, lockMatches, err]);
+    }, [captureStatus, targetUrl, lockMatches, err, info, isDuplicateUrlConfirmationMessage]);
 
     useEffect(() => {
         return () => {

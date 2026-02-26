@@ -111,12 +111,13 @@ export async function POST(req: NextRequest) {
                 if (timedOutBeforeAck) {
                     return NextResponse.json(
                         {
-                            error:
-                                "Capture enqueue timed out before confirmation. Please retry.",
-                            code: "ENQUEUE_TIMEOUT",
+                            ok: true,
+                            queued: true,
+                            accepted: true,
+                            code: "TIMEOUT_ACCEPTED",
                         },
                         {
-                            status: 504,
+                            status: 202,
                             headers: {
                                 "x-request-id": r.reqId,
                                 "cache-control": "no-store",
