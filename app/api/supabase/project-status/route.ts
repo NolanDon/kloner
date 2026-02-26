@@ -468,7 +468,7 @@ export async function GET(request: NextRequest) {
                     `SUPABASE_SERVICE_ROLE_KEY=${serviceRoleKey}`,
                     ""
                   ].join("\n");
-                  const appRef = db.collection("kloner_users").doc(uid).collection("kloner_apps").doc(appId);
+                  const appRef = db.collection("kloner_users").doc(uid).collection("kloner_apps").doc(appIdHint);
                   const appSnap = await appRef.get();
                   const prevFiles = appSnap.exists && appSnap.data()?.files ? appSnap?.data()?.files : {};
                   const newFiles = {
@@ -479,7 +479,7 @@ export async function GET(request: NextRequest) {
                     }
                   };
                   await appRef.set({ files: newFiles }, { merge: true });
-                  console.log(`[supabase/project-status] .env.local written for appId=${appId}`);
+                  console.log(`[supabase/project-status] .env.local written for appId=${appIdHint}`);
 
                   await setupRef.set(
                     {
