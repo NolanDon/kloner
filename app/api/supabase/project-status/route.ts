@@ -456,27 +456,31 @@ export async function GET(request: NextRequest) {
                       accessToken: encryptedAccessToken,
                       refreshToken: setup?.refreshToken || null,
                       tokenExpiresAt: toValidDateOrNull(setup?.tokenExpiresAt),
+                    },
+                    { merge: true }
+                  );
 
-                      `# Do not commit this file; do not deploy secrets from here.`,
-                      `NEXT_PUBLIC_SUPABASE_URL=https://${fetchedRef || projectRef}.supabase.co`,
-                      `SUPABASE_URL=https://${fetchedRef || projectRef}.supabase.co`,
-                      `NEXT_PUBLIC_SUPABASE_ANON_KEY=${anonKey}`,
-                      `SUPABASE_SERVICE_ROLE_KEY=${serviceRoleKey}`,
-                      ""
-                    ].join("\n");
-                    const appRef = db.collection("kloner_users").doc(uid).collection("kloner_apps").doc(appId);
-                    const appSnap = await appRef.get();
-                    const prevFiles = appSnap.exists && appSnap.data()?.files ? appSnap?.data()?.files : {};
-                    const newFiles = {
-                      ...prevFiles,
-                      [".env.local"]: {
-                        content: envContent,
-                        lastModified: Date.now(),
-                      }
-                    };
-                    await appRef.set({ files: newFiles }, { merge: true });
-                    console.log(`[supabase/project-status] .env.local written for appId=${appId}`);
-                  }
+                  const envContent = [
+                    `# Do not commit this file; do not deploy secrets from here.`,
+                    `NEXT_PUBLIC_SUPABASE_URL=https://${fetchedRef || projectRef}.supabase.co`,
+                    `SUPABASE_URL=https://${fetchedRef || projectRef}.supabase.co`,
+                    `NEXT_PUBLIC_SUPABASE_ANON_KEY=${anonKey}`,
+                    `SUPABASE_SERVICE_ROLE_KEY=${serviceRoleKey}`,
+                    ""
+                  ].join("\n");
+                  const appRef = db.collection("kloner_users").doc(uid).collection("kloner_apps").doc(appId);
+                  const appSnap = await appRef.get();
+                  const prevFiles = appSnap.exists && appSnap.data()?.files ? appSnap?.data()?.files : {};
+                  const newFiles = {
+                    ...prevFiles,
+                    [".env.local"]: {
+                      content: envContent,
+                      lastModified: Date.now(),
+                    }
+                  };
+                  await appRef.set({ files: newFiles }, { merge: true });
+                  console.log(`[supabase/project-status] .env.local written for appId=${appId}`);
+                }
 
                   await setupRef.set(
                     {
