@@ -25,6 +25,10 @@ export async function POST(request: NextRequest) {
           }, { status: 500 });
         }
 
+        if (!appId) {
+          return NextResponse.json({ error: 'Missing appId' }, { status: 400 });
+        }
+
         const state = crypto.randomBytes(24).toString("base64url");
 
         // Store state in Firestore for verification (avoids in-memory state issues on serverless)
@@ -35,24 +39,27 @@ export async function POST(request: NextRequest) {
           .set({
             provider: "supabase",
             uid,
+            appId: appId || null,
             createdAt: new Date(),
             expiresAt: new Date(Date.now() + OAUTH_STATE_TTL_MS),
           });
 
-        // Also record progress under the user's nested integrations collection
-        // so Supabase-related setup state is discoverable at:
-        // /kloner_users/{uid}/integrations/supabase_setup
-        await db
-          .collection("kloner_users")
-          .doc(uid)
-          .collection("integrations")
-          .doc("supabase_setup")
-          .set(
+        // Record setup progress under the app's integrations subcollection:
+        // /kloner_users/{uid}/kloner_apps/{appId}/integrations/supabase_setup
+        if (appId) {
+          await db
+            .collection("kloner_users")
+            .doc(uid)
+            .collection("kloner_apps")
+            .doc(appId)
+            .collection("integrations")
+            .doc("supabase_setup")
+            .set(
             {
               provider: "supabase",
               status: "IN_PROGRESS",
               step: "OAUTH",
-              ...(appId ? { appId } : {}),
+              appId,
               oauthState: state,
               oauthStartedAt: new Date(),
               oauthExpiresAt: new Date(Date.now() + OAUTH_STATE_TTL_MS),
@@ -76,6 +83,7 @@ export async function POST(request: NextRequest) {
             },
             { merge: true }
           );
+        }
 
         // Supabase Platform OAuth authorization URL
         // (The supabase.com hostname serves the marketing site and returns 404 for /oauth/*.)

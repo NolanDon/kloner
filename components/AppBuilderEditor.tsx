@@ -479,6 +479,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
     const [supabaseProjectRef, setSupabaseProjectRef] = useState<string | null>(null);
     const [supabaseDbReachable, setSupabaseDbReachable] = useState<boolean | null>(null);
     const [supabaseDbStatusText, setSupabaseDbStatusText] = useState<string | null>(null);
+    const [supabaseDbReason, setSupabaseDbReason] = useState<string | null>(null);
     const [supabaseDbLastCheckedAt, setSupabaseDbLastCheckedAt] = useState<number | null>(null);
     const supabaseVerifyInFlightRef = useRef(false);
     const lastSupabaseVerifyAtRef = useRef(0);
@@ -575,8 +576,10 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                             ? "Your Supabase project no longer exists (it looks like it was deleted). Kloner removed the stale connection."
                             : reason === "unauthorized"
                               ? "Kloner can’t access your Supabase project anymore. Please reconnect Supabase."
-                              : "Supabase is no longer connected. Please reconnect.";
-                    void showAlert(msg, "Database");
+                              : reason === "app_mismatch"
+                                ? "" // Silently clear — this integration belongs to a different app
+                                : "Supabase is no longer connected. Please reconnect.";
+                    if (msg) void showAlert(msg, "Database");
                 }
                 return false;
             } catch {
@@ -632,6 +635,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                     setSupabaseProjectName(null);
                     setSupabaseProjectRef(null);
                     setSupabaseDbReachable(false);
+                    setSupabaseDbReason(data?.reason || null);
                     setSupabaseDbStatusText(
                         data?.reason === "project_deleted"
                             ? "Supabase project was deleted"
@@ -653,19 +657,25 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
 
                 const reachable = Boolean(data.reachable);
                 setSupabaseDbReachable(reachable);
+                setSupabaseDbReason(reachable ? null : (data?.reason || null));
 
-                const err = typeof data?.error === "string" && data.error.trim() ? data.error.trim() : null;
+                const reason = typeof data?.reason === "string" ? data.reason : "";
                 setSupabaseDbStatusText(
                     reachable
                         ? "Database reachable"
-                        : err
-                          ? err
-                          : "Database not reachable (project may be paused or networking is blocked)",
+                        : reason === "project_paused"
+                          ? "Project is paused — resume it in the Supabase dashboard"
+                          : reason === "timeout_or_network"
+                            ? "Connection timed out — project may still be resuming after a pause"
+                            : (typeof data?.error === "string" && data.error.trim())
+                              ? data.error.trim()
+                              : "Database not reachable (project may be paused or networking is blocked)",
                 );
                 return reachable;
             } catch {
                 setSupabaseDbLastCheckedAt(Date.now());
                 setSupabaseDbReachable(null);
+                setSupabaseDbReason(null);
                 setSupabaseDbStatusText("Could not verify database reachability");
                 return false;
             } finally {
@@ -679,13 +689,14 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                 setSupabaseProjectName(null);
                 setSupabaseProjectRef(null);
                 setSupabaseDbReachable(null);
+                setSupabaseDbReason(null);
                 setSupabaseDbStatusText(null);
                 setSupabaseDbLastCheckedAt(null);
                 return;
             }
 
             setSupabaseConnected(null);
-            const integrationRef = doc(db, "kloner_users", user.uid, "integrations", "supabase");
+            const integrationRef = doc(db, "kloner_users", user.uid, "kloner_apps", appId, "integrations", "supabase");
             const unsub = onSnapshot(
                 integrationRef,
                 (snap) => {
@@ -696,18 +707,6 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                         return;
                     }
                     const data = snap.data() as any;
-
-                    // Enforce 1:1 binding: if this integration doc belongs to a different Kloner app,
-                    // treat it as not connected for THIS app.
-                    const storedBoundAppId = typeof data?.boundAppId === "string" && data.boundAppId.trim()
-                        ? data.boundAppId.trim()
-                        : null;
-                    if (storedBoundAppId && appId && storedBoundAppId !== appId) {
-                        setSupabaseConnected(false);
-                        setSupabaseProjectName(null);
-                        setSupabaseProjectRef(null);
-                        return;
-                    }
 
                     // Optimistically show connected if the integration doc exists.
                     // Background verification will flip it back to disconnected if the project was deleted.
@@ -3640,7 +3639,9 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                                         ? "bg-white text-gray-500 border border-gray-200"
                                         : supabaseConnected
                                           ? supabaseDbReachable === false
-                                              ? "bg-red-100 text-red-900 hover:bg-red-200"
+                                              ? (supabaseDbReason === "project_paused" || supabaseDbReason === "timeout_or_network")
+                                                  ? "bg-amber-100 text-amber-900 hover:bg-amber-200"
+                                                  : "bg-red-100 text-red-900 hover:bg-red-200"
                                               : supabaseDbReachable === true
                                                 ? "bg-green-100 text-green-900 hover:bg-green-200"
                                                 : "bg-white text-green-900 border border-green-200 hover:bg-green-50"
@@ -3652,16 +3653,31 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                                         : "Connect your database"
                                 }
                             >
-                                <Database className="w-4 h-4" />
+                                <Database className="w-4 h-4 shrink-0" />
                                 {supabaseConnected === null ? (
-                                    <span>DB: Verifying</span>
+                                    <span>DB: Verifying…</span>
                                 ) : supabaseConnected ? (
-                                    <span>
-                                        {supabaseDbReachable === false
-                                            ? "DB: Unreachable"
-                                            : supabaseDbReachable === true
-                                              ? "DB: Healthy"
-                                              : "DB: Connected"}
+                                    <span className="flex flex-col items-start leading-tight">
+                                        <span className="text-[10px] font-bold uppercase tracking-wide opacity-70">
+                                            {supabaseDbReachable === false
+                                                ? supabaseDbReason === "project_paused"
+                                                    ? "DB: Paused"
+                                                    : supabaseDbReason === "timeout_or_network"
+                                                      ? "DB: Resuming"
+                                                      : "Unreachable"
+                                                : supabaseDbReachable === true
+                                                  ? "DB: Healthy"
+                                                  : "DB: Connected"}
+                                        </span>
+                                        {supabaseProjectName ? (
+                                            <span className="max-w-[110px] truncate font-semibold" title={supabaseProjectName}>
+                                                {supabaseProjectName}
+                                            </span>
+                                        ) : supabaseProjectRef ? (
+                                            <span className="max-w-[110px] truncate font-mono text-[10px]" title={supabaseProjectRef}>
+                                                {supabaseProjectRef}
+                                            </span>
+                                        ) : null}
                                     </span>
                                 ) : (
                                     <span>Connect DB</span>
@@ -4399,10 +4415,17 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                                     <button
                                         onClick={() => void openDatabaseConnect()}
                                         className="inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold border border-neutral-300 bg-white text-neutral-800"
-                                        title={supabaseConnected ? "Open Supabase" : "Connect DB"}
+                                        title={supabaseConnected && (supabaseProjectName || supabaseProjectRef) ? `Connected to: ${supabaseProjectName || supabaseProjectRef}` : supabaseConnected ? "Open Supabase" : "Connect DB"}
                                     >
-                                        <Database className="h-4 w-4" />
-                                        <span>{supabaseConnected ? "Database" : "Connect DB"}</span>
+                                        <Database className="h-4 w-4 shrink-0" />
+                                        {supabaseConnected && (supabaseProjectName || supabaseProjectRef) ? (
+                                            <span className="flex flex-col items-start leading-tight">
+                                                <span className="text-[10px] uppercase tracking-wide opacity-60">Database</span>
+                                                <span className="max-w-[140px] truncate">{supabaseProjectName || supabaseProjectRef}</span>
+                                            </span>
+                                        ) : (
+                                            <span>{supabaseConnected ? "Database" : "Connect DB"}</span>
+                                        )}
                                     </button>
                                 </div>
 

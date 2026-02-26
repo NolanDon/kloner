@@ -36,15 +36,22 @@ export async function POST(req: NextRequest) {
             const body = await authedReq.json().catch(() => ({} as any));
             const proposalId = typeof body?.proposalId === "string" ? body.proposalId : "";
             const confirm = typeof body?.confirm === "string" ? body.confirm : "";
+            const appId = typeof body?.appId === "string" ? body.appId.trim() : "";
 
             if (!proposalId) {
                 return NextResponse.json({ ok: false, error: "Missing proposalId" }, { status: 400 });
+            }
+
+            if (!appId) {
+                return NextResponse.json({ ok: false, error: "Missing appId" }, { status: 400 });
             }
 
             const db = getAdminDb();
             const proposalRef = db
                 .collection("kloner_users")
                 .doc(uid)
+                .collection("kloner_apps")
+                .doc(appId)
                 .collection("integrations")
                 .doc("supabase")
                 .collection("migration_proposals")
@@ -76,7 +83,7 @@ export async function POST(req: NextRequest) {
                 );
             }
 
-            const integration = await getSupabaseIntegration(uid);
+            const integration = await getSupabaseIntegration(uid, appId);
             if (!integration?.projectId) {
                 return NextResponse.json({ ok: false, error: "Supabase is not connected" }, { status: 400 });
             }

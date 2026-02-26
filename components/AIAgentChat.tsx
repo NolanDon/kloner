@@ -312,8 +312,11 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     const [showSupabaseSetup, setShowSupabaseSetup] = useState(false);
     const [showSupabaseAdvanced, setShowSupabaseAdvanced] = useState(false);
     const [isSupabaseConnected, setIsSupabaseConnected] = useState(false);
+    const [supabaseProjectName, setSupabaseProjectName] = useState<string | null>(null);
+    const [supabaseProjectRef, setSupabaseProjectRef] = useState<string | null>(null);
     const [supabaseDbReachable, setSupabaseDbReachable] = useState<boolean | null>(null);
     const [supabaseDbStatusText, setSupabaseDbStatusText] = useState<string | null>(null);
+    const [supabaseDbReason, setSupabaseDbReason] = useState<string | null>(null);
     const [supabaseDbLastCheckedAt, setSupabaseDbLastCheckedAt] = useState<number | null>(null);
     const [existingSupabaseProjectRef, setExistingSupabaseProjectRef] = useState("");
     const [existingSupabaseAnonKey, setExistingSupabaseAnonKey] = useState("");
@@ -382,8 +385,18 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             const connected = !!(data && data.completed && data.ok);
 
             setIsSupabaseConnected(connected);
-            if (!connected) {
+            if (connected) {
+                const name = typeof data?.project?.name === "string" && data.project.name.trim() ? data.project.name.trim() : null;
+                const ref =
+                    (typeof data?.project?.ref === "string" && data.project.ref.trim() ? data.project.ref.trim() : null) ||
+                    (typeof data?.project?.id === "string" && data.project.id.trim() ? data.project.id.trim() : null);
+                setSupabaseProjectName(name);
+                setSupabaseProjectRef(ref);
+            } else {
+                setSupabaseProjectName(null);
+                setSupabaseProjectRef(null);
                 setSupabaseDbReachable(null);
+                setSupabaseDbReason(null);
                 setSupabaseDbStatusText(null);
                 setSupabaseDbLastCheckedAt(null);
             }
@@ -392,7 +405,10 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         } catch {
             // Network/offline: do not spam logs; just treat as disconnected.
             setIsSupabaseConnected(false);
+            setSupabaseProjectName(null);
+            setSupabaseProjectRef(null);
             setSupabaseDbReachable(null);
+            setSupabaseDbReason(null);
             setSupabaseDbStatusText(null);
             setSupabaseDbLastCheckedAt(null);
             return false;
@@ -402,7 +418,10 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     useEffect(() => {
         if (!user?.uid) {
             setIsSupabaseConnected(false);
+            setSupabaseProjectName(null);
+            setSupabaseProjectRef(null);
             setSupabaseDbReachable(null);
+            setSupabaseDbReason(null);
             setSupabaseDbStatusText(null);
             setSupabaseDbLastCheckedAt(null);
             return;
@@ -411,7 +430,10 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         // If DB setup UI is disabled, don't even check status.
         if (!allowDatabaseSetupUi) {
             setIsSupabaseConnected(false);
+            setSupabaseProjectName(null);
+            setSupabaseProjectRef(null);
             setSupabaseDbReachable(null);
+            setSupabaseDbReason(null);
             setSupabaseDbStatusText(null);
             setSupabaseDbLastCheckedAt(null);
             return;
@@ -679,6 +701,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     const checkSupabaseDbHealth = useCallback(async (opts?: { silent?: boolean }) => {
         if (!user?.uid) {
             setSupabaseDbReachable(null);
+            setSupabaseDbReason(null);
             setSupabaseDbStatusText(null);
             setSupabaseDbLastCheckedAt(null);
             return { connected: false, reachable: false, reason: "no_user" as const };
@@ -686,6 +709,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
         if (!isSupabaseConnectedRef.current) {
             setSupabaseDbReachable(null);
+            setSupabaseDbReason(null);
             setSupabaseDbStatusText(null);
             setSupabaseDbLastCheckedAt(null);
             return { connected: false, reachable: false, reason: "not_connected" as const };
@@ -717,12 +741,14 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
             if (!res.ok || !data?.ok) {
                 setSupabaseDbReachable(null);
+                setSupabaseDbReason(null);
                 setSupabaseDbStatusText("Could not verify database reachability");
                 return { connected: true, reachable: false, reason: "request_failed" as const };
             }
 
             if (data.connected === false) {
                 setSupabaseDbReachable(false);
+                setSupabaseDbReason(data?.reason || null);
                 setSupabaseDbStatusText(
                     data?.reason === "project_deleted"
                         ? "Supabase project was deleted"
@@ -731,6 +757,8 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                           : "Supabase not connected",
                 );
                 setIsSupabaseConnected(false);
+                setSupabaseProjectName(null);
+                setSupabaseProjectRef(null);
 
                 if (!opts?.silent) {
                     await showAlert(
@@ -746,18 +774,24 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
             const reachable = Boolean(data.reachable);
             setSupabaseDbReachable(reachable);
-            const err = typeof data?.error === "string" && data.error.trim() ? data.error.trim() : null;
+            const reason = typeof data?.reason === "string" ? data.reason : "";
+            setSupabaseDbReason(reachable ? null : reason || null);
             setSupabaseDbStatusText(
                 reachable
                     ? "Database reachable"
-                    : err
-                      ? err
-                      : "Database not reachable (project may be paused or networking is blocked)",
+                    : reason === "project_paused"
+                      ? "Project is paused — resume it in the Supabase dashboard"
+                      : reason === "timeout_or_network"
+                        ? "Connection timed out — project may still be resuming after a pause"
+                        : (typeof data?.error === "string" && data.error.trim())
+                          ? data.error.trim()
+                          : "Database not reachable (project may be paused or networking is blocked)",
             );
-            return { connected: true, reachable, reason: data?.reason || (reachable ? "ok" : "unreachable"), error: err || undefined };
+            return { connected: true, reachable, reason: reason || (reachable ? "ok" : "unreachable"), error: (typeof data?.error === "string" && data.error.trim()) ? data.error.trim() : undefined };
         } catch (e: any) {
             setSupabaseDbLastCheckedAt(Date.now());
             setSupabaseDbReachable(null);
+            setSupabaseDbReason(null);
             setSupabaseDbStatusText("Could not verify database reachability");
             return { connected: true, reachable: false, reason: "client_error" as const, error: typeof e?.message === "string" ? e.message : undefined };
         } finally {
@@ -1796,7 +1830,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 const res = await fetch("/api/supabase/migrations/apply", {
                     method: "POST",
                     headers,
-                    body: JSON.stringify({ proposalId, confirm: `APPLY ${proposalId}` }),
+                    body: JSON.stringify({ proposalId, confirm: `APPLY ${proposalId}`, appId }),
                 });
 
                 const json = await res.json().catch(() => ({} as any));
@@ -1964,7 +1998,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                     const proposeRes = await fetch("/api/supabase/migrations/propose", {
                         method: "POST",
                         headers: headers2,
-                        body: JSON.stringify({ sql, message: messageText, destructive }),
+                        body: JSON.stringify({ sql, message: messageText, destructive, appId }),
                     });
 
                     const proposeJson = await proposeRes.json().catch(() => ({} as any));
@@ -2469,11 +2503,18 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                 <div className="font-semibold text-gray-900">Supabase</div>
                                 <div className="text-xs text-gray-600">
                                     {isSupabaseConnected
-                                        ? supabaseDbReachable === false
-                                            ? "Connected (unreachable)"
-                                            : supabaseDbReachable === true
-                                              ? "Connected (healthy)"
-                                              : "Connected"
+                                        ? (
+                                            <>
+                                                <span className={supabaseDbReachable === false ? "text-red-600" : supabaseDbReachable === true ? "text-green-700" : "text-gray-600"}>
+                                                    {supabaseDbReachable === false ? "Unreachable" : supabaseDbReachable === true ? "Healthy" : "Connected"}
+                                                </span>
+                                                {(supabaseProjectName || supabaseProjectRef) ? (
+                                                    <span className="ml-1 font-medium text-gray-800">
+                                                        &mdash; {supabaseProjectName || supabaseProjectRef}
+                                                    </span>
+                                                ) : null}
+                                            </>
+                                        )
                                         : "PostgreSQL with auth & real-time"}
                                 </div>
                             </div>
@@ -2653,21 +2694,43 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
                                     {isSupabaseConnected ? (
                                         supabaseDbReachable === false ? (
-                                            <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-                                                <div className="font-semibold">Supabase is connected, but the database is unreachable</div>
-                                                <div className="mt-1 text-sm text-red-700 whitespace-pre-wrap">
+                                            <div className={`mt-4 rounded-md border p-3 text-sm ${
+                                                supabaseDbReason === "project_paused" || supabaseDbReason === "timeout_or_network"
+                                                    ? "border-amber-200 bg-amber-50 text-amber-900"
+                                                    : "border-red-200 bg-red-50 text-red-800"
+                                            }`}>
+                                                <div className="font-semibold">
+                                                    {supabaseDbReason === "project_paused"
+                                                        ? "Supabase project is paused"
+                                                        : supabaseDbReason === "timeout_or_network"
+                                                          ? "Database still resuming…"
+                                                          : "Supabase is connected, but the database is unreachable"}
+                                                </div>
+                                                <div className={`mt-1 text-sm whitespace-pre-wrap ${
+                                                    supabaseDbReason === "project_paused" || supabaseDbReason === "timeout_or_network"
+                                                        ? "text-amber-800"
+                                                        : "text-red-700"
+                                                }`}>
                                                     {supabaseDbStatusText || "Database not reachable (project may be paused or deleted)."}
                                                 </div>
                                                 <div className="mt-2 flex items-center gap-2">
                                                     <button
                                                         type="button"
                                                         onClick={() => void checkSupabaseDbHealth({ silent: true })}
-                                                        className="px-2 py-1 text-xs bg-white border border-red-200 rounded hover:bg-red-50"
+                                                        className={`px-2 py-1 text-xs bg-white rounded ${
+                                                            supabaseDbReason === "project_paused" || supabaseDbReason === "timeout_or_network"
+                                                                ? "border border-amber-200 hover:bg-amber-50"
+                                                                : "border border-red-200 hover:bg-red-50"
+                                                        }`}
                                                     >
                                                         Re-check
                                                     </button>
                                                     {supabaseDbLastCheckedAt ? (
-                                                        <span className="text-[11px] text-red-700/80">
+                                                        <span className={`text-[11px] ${
+                                                            supabaseDbReason === "project_paused" || supabaseDbReason === "timeout_or_network"
+                                                                ? "text-amber-700/80"
+                                                                : "text-red-700/80"
+                                                        }`}>
                                                             Last checked {Math.max(1, Math.round((Date.now() - supabaseDbLastCheckedAt) / 1000))}s ago
                                                         </span>
                                                     ) : null}
@@ -2810,7 +2873,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                                     const res = await fetch("/api/supabase/migrations/apply", {
                                                         method: "POST",
                                                         headers,
-                                                        body: JSON.stringify({ proposalId, confirm: `APPLY ${proposalId}` }),
+                                                        body: JSON.stringify({ proposalId, confirm: `APPLY ${proposalId}`, appId }),
                                                     });
                                                     const json = await res.json().catch(() => ({} as any));
                                                     if (!res.ok || json?.ok === false) {

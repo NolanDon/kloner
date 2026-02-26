@@ -54,29 +54,18 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ ok: false, error: "Missing anon key" }, { status: 400 });
             }
 
-            const db = getAdminDb();
-
-            // Enforce 1:1 binding: if the integration already belongs to a different app, reject.
-            const existingRef = db
-                .collection("kloner_users")
-                .doc(uid)
-                .collection("integrations")
-                .doc("supabase");
-            const existingSnap = await existingRef.get();
-            if (existingSnap.exists) {
-                const existingData = existingSnap.data() as any;
-                const storedBoundAppId = typeof existingData?.boundAppId === "string" && existingData.boundAppId.trim()
-                    ? existingData.boundAppId.trim()
-                    : null;
-                if (storedBoundAppId && rawAppId && storedBoundAppId !== rawAppId) {
-                    return NextResponse.json(
-                        { ok: false, error: "A different Kloner project is already connected to a Supabase instance. Disconnect it first before connecting a new project." },
-                        { status: 409 },
-                    );
-                }
+            if (!rawAppId) {
+                return NextResponse.json({ ok: false, error: "Missing appId" }, { status: 400 });
             }
 
-            const integrationRef = existingRef;
+            const db = getAdminDb();
+            const integrationRef = db
+                .collection("kloner_users")
+                .doc(uid)
+                .collection("kloner_apps")
+                .doc(rawAppId)
+                .collection("integrations")
+                .doc("supabase");
 
             await integrationRef.set(
                 {
@@ -89,8 +78,6 @@ export async function POST(req: NextRequest) {
                     supabaseUrl: `https://${projectRef}.supabase.co`,
                     anonKey: encryptString(anonKey.trim()),
                     serviceRoleKey: serviceRoleKey.trim() ? encryptString(serviceRoleKey.trim()) : null,
-                    // Bind to the specific Kloner app that initiated this connection (1:1 guarantee).
-                    boundAppId: rawAppId || null,
                     updatedAt: new Date(),
                     createdAt: new Date(),
                 },

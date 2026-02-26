@@ -20,32 +20,24 @@ export async function POST(req: NextRequest) {
                 );
             }
 
-            const db = getAdminDb();
-            const integrations = db
-                .collection("kloner_users")
-                .doc(uid)
-                .collection("integrations");
-
-            // Enforce 1:1 binding: only allow disconnecting the integration bound to this specific app.
-            if (requestAppId) {
-                const existingSnap = await integrations.doc("supabase").get();
-                if (existingSnap.exists) {
-                    const existingData = existingSnap.data() as any;
-                    const storedBoundAppId = typeof existingData?.boundAppId === "string" && existingData.boundAppId.trim()
-                        ? existingData.boundAppId.trim()
-                        : null;
-                    if (storedBoundAppId && storedBoundAppId !== requestAppId) {
-                        return NextResponse.json(
-                            { ok: false, error: "This Supabase connection belongs to a different Kloner project and cannot be disconnected from here." },
-                            { status: 403 },
-                        );
-                    }
-                }
+            if (!requestAppId) {
+                return NextResponse.json(
+                    { ok: false, error: "Missing appId" },
+                    { status: 400 },
+                );
             }
 
+            const db = getAdminDb();
+            const appIntegrations = db
+                .collection("kloner_users")
+                .doc(uid)
+                .collection("kloner_apps")
+                .doc(requestAppId)
+                .collection("integrations");
+
             await Promise.all([
-                integrations.doc("supabase").delete().catch(() => undefined),
-                integrations.doc("supabase_setup").delete().catch(() => undefined),
+                appIntegrations.doc("supabase").delete().catch(() => undefined),
+                appIntegrations.doc("supabase_setup").delete().catch(() => undefined),
             ]);
 
             return NextResponse.json({ ok: true });

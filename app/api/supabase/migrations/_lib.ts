@@ -15,19 +15,34 @@ export type SupabaseIntegrationDoc = {
     accessToken?: EncryptedBlobV1;
     refreshToken?: EncryptedBlobV1 | null;
     tokenExpiresAt?: Date;
-    /** The Kloner appId this Supabase integration is strictly bound to (1:1). */
-    boundAppId?: string | null;
 };
 
-export async function getSupabaseIntegration(uid: string): Promise<SupabaseIntegrationDoc | null> {
+/** Returns the Firestore DocumentReference for a per-app Supabase integration. */
+export function getSupabaseIntegrationRef(uid: string, appId: string) {
     const db = getAdminDb();
-    const snap = await db
+    return db
         .collection("kloner_users")
         .doc(uid)
+        .collection("kloner_apps")
+        .doc(appId)
         .collection("integrations")
-        .doc("supabase")
-        .get();
+        .doc("supabase");
+}
 
+/** Returns the Firestore DocumentReference for a per-app Supabase setup doc. */
+export function getSupabaseSetupRef(uid: string, appId: string) {
+    const db = getAdminDb();
+    return db
+        .collection("kloner_users")
+        .doc(uid)
+        .collection("kloner_apps")
+        .doc(appId)
+        .collection("integrations")
+        .doc("supabase_setup");
+}
+
+export async function getSupabaseIntegration(uid: string, appId: string): Promise<SupabaseIntegrationDoc | null> {
+    const snap = await getSupabaseIntegrationRef(uid, appId).get();
     if (!snap.exists) return null;
     return snap.data() as SupabaseIntegrationDoc;
 }

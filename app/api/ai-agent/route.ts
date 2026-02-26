@@ -101,10 +101,10 @@ function fileEditsLookLikeInsecureLocalAuth(edits: FileEdit[]): boolean {
     return redFlags.some((fn) => fn(joined));
 }
 
-async function getSupabaseIntegrationStatus(params: { db: any; uid: string }): Promise<{ connected: boolean; projectRef: string | null }> {
-    const { db, uid } = params;
+async function getSupabaseIntegrationStatus(params: { db: any; uid: string; appId: string }): Promise<{ connected: boolean; projectRef: string | null }> {
+    const { db, uid, appId } = params;
     try {
-        const ref = db.collection("kloner_users").doc(uid).collection("integrations").doc("supabase");
+        const ref = db.collection("kloner_users").doc(uid).collection("kloner_apps").doc(appId).collection("integrations").doc("supabase");
         const snap = await ref.get();
         if (!snap.exists) return { connected: false, projectRef: null };
         const data = snap.data() as any;
@@ -397,7 +397,7 @@ export async function POST(req: NextRequest) {
             const db = getAdminDb();
 
             // Determine whether Supabase is actually connected (source of truth used elsewhere in the product).
-            const supabase = await getSupabaseIntegrationStatus({ db, uid });
+            const supabase = await getSupabaseIntegrationStatus({ db, uid, appId });
             const hasAnyDb = supabase.connected || databaseConnections.length > 0;
 
             // Security-first guard: if a request likely needs persistence/auth and no DB is connected,

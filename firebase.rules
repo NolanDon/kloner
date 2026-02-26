@@ -124,6 +124,12 @@ service cloud.firestore {
         match /ai_chat/{chatId} {
           allow read, write: if isOwnerOrAdmin(userId);
         }
+
+        // Per-app Supabase integration (1:1 — path enforces the binding)
+        match /integrations/{any=**} {
+          allow read: if isOwnerOrAdmin(userId);
+          allow write: if false; // Written exclusively by the Admin SDK
+        }
       }
 
       match /deployments/{deploymentId} {

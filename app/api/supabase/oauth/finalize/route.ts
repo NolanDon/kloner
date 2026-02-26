@@ -169,10 +169,15 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({} as any));
     uid = typeof body?.uid === "string" ? body.uid : "";
+    const appId = typeof body?.appId === "string" ? body.appId.trim() : "";
     const finalizeToken = typeof body?.finalizeToken === "string" ? body.finalizeToken : "";
 
     if (!uid) {
       return NextResponse.json({ ok: false, error: "missing_uid" }, { status: 400 });
+    }
+
+    if (!appId) {
+      return NextResponse.json({ ok: false, error: "missing_appId" }, { status: 400 });
     }
 
     if (!finalizeToken) {
@@ -183,6 +188,8 @@ export async function POST(request: NextRequest) {
     const setupRef = db
       .collection("kloner_users")
       .doc(uid)
+      .collection("kloner_apps")
+      .doc(appId)
       .collection("integrations")
       .doc("supabase_setup");
 
@@ -291,16 +298,14 @@ export async function POST(request: NextRequest) {
     const integrationRef = db
       .collection("kloner_users")
       .doc(uid)
+      .collection("kloner_apps")
+      .doc(appId)
       .collection("integrations")
       .doc("supabase");
 
-    // Use the appId that was stored in the setup doc when OAuth was initiated for this specific app.
-    // This ensures strict 1:1 binding between each Kloner app and its Supabase project.
-    const appId = typeof setup?.appId === "string" && setup.appId.trim() ? setup.appId.trim() : null;
+    // appId comes from the POST body (passed from the OAuth popup HTML).
     if (appId) {
-      console.log(`[supabase/oauth/finalize] Using appId from setup doc: ${appId}`);
-    } else {
-      console.warn(`[supabase/oauth/finalize] No appId in setup doc for user ${uid} — .env.local will not be written`);
+      console.log(`[supabase/oauth/finalize] Using appId from request: ${appId}`);
     }
 
     await integrationRef.set(
@@ -318,8 +323,6 @@ export async function POST(request: NextRequest) {
         accessToken: encryptedAccessToken,
         refreshToken: encryptedRefreshToken || null,
         tokenExpiresAt: toValidDateOrNull(setup?.tokenExpiresAt),
-        // Bind this integration to the specific Kloner app that initiated the OAuth flow.
-        boundAppId: appId || null,
         updatedAt: new Date(),
         createdAt: new Date(),
       },
@@ -365,20 +368,11 @@ export async function POST(request: NextRequest) {
     // Best-effort: if uid was provided, mark setup as failed.
     if (uid) {
       try {
-        await db
-          .collection("kloner_users")
-          .doc(uid)
-          .collection("integrations")
-          .doc("supabase_setup")
-          .set(
-            {
-              provider: "supabase",
-              status: "FAILED" satisfies SupabaseSetupStatus,
-              error: details,
-              updatedAt: new Date(),
-            },
-            { merge: true }
-          );
+        // Best effort — skip if we don't have appId yet.
+        const setupPath = db.collection("kloner_users").doc(uid);
+        // Try to find appId from any existing setup doc in kloner_apps (not reliable without appId)
+        // For now just log the error; the users can retry.
+        console.error(`[supabase/oauth/finalize] Setup failed for uid=${uid}: ${details}`);
       } catch {
         // ignore
       }

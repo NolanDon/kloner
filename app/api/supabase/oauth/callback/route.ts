@@ -149,6 +149,7 @@ function renderOauthProvisioningHtml(params: {
   origin: string;
   dashboardUrl: string;
   uid: string;
+  appId: string;
   finalizeToken: string;
   statusToken: string;
 }): string {
@@ -215,6 +216,7 @@ function renderOauthProvisioningHtml(params: {
         try { console.log('[kloner] Supabase provisioning popup loaded'); } catch (e) {}
         var origin = ${jsonForScript(params.origin)};
         var uid = ${jsonForScript(params.uid)};
+        var appId = ${jsonForScript(params.appId)};
         var finalizeToken = ${jsonForScript(params.finalizeToken)};
         var statusToken = ${jsonForScript(params.statusToken)};
         var titleEl = document.getElementById('title');
@@ -269,7 +271,7 @@ function renderOauthProvisioningHtml(params: {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'same-origin',
-          body: JSON.stringify({ uid: uid, finalizeToken: finalizeToken })
+          body: JSON.stringify({ uid: uid, appId: appId, finalizeToken: finalizeToken })
         })
         .then(readJsonSafe)
         .then(function (data) {
@@ -289,7 +291,7 @@ function renderOauthProvisioningHtml(params: {
           var lastStepChangedAt = Date.now();
 
           function poll() {
-            var statusUrl = '/api/supabase/project-status?uid=' + encodeURIComponent(uid) + '&statusToken=' + encodeURIComponent(statusToken);
+            var statusUrl = '/api/supabase/project-status?uid=' + encodeURIComponent(uid) + '&statusToken=' + encodeURIComponent(statusToken) + (appId ? '&appId=' + encodeURIComponent(appId) : '');
             fetch(statusUrl, { credentials: 'same-origin', cache: 'no-store' })
               .then(function (r) {
                 return r.text().then(function (t) {
@@ -495,6 +497,7 @@ export async function GET(request: NextRequest) {
 
     const stateData = stateSnap.data() as any;
     const uid = stateData?.uid as string | undefined;
+    const appId = typeof stateData?.appId === "string" ? stateData.appId.trim() : "";
     uidForError = uid;
     const createdAtMs = stateData?.createdAt?.toDate?.()?.getTime?.() ?? 0;
     const expiresAtMs = stateData?.expiresAt?.toDate?.()?.getTime?.() ?? 0;
@@ -519,13 +522,17 @@ export async function GET(request: NextRequest) {
     // Clean up used state
     await stateRef.delete().catch(() => undefined);
 
-    const setupRef = db
-      .collection("kloner_users")
-      .doc(uid)
-      .collection("integrations")
-      .doc("supabase_setup");
+    const setupRef = appId
+      ? db
+          .collection("kloner_users")
+          .doc(uid)
+          .collection("kloner_apps")
+          .doc(appId)
+          .collection("integrations")
+          .doc("supabase_setup")
+      : null;
 
-    await setupRef.set(
+    await setupRef?.set(
       {
         provider: "supabase",
         status: "IN_PROGRESS" satisfies SupabaseSetupStatus,
@@ -577,7 +584,7 @@ export async function GET(request: NextRequest) {
 
     const finalizeToken = crypto.randomBytes(24).toString("base64url");
     const statusToken = crypto.randomBytes(24).toString("base64url");
-    await setupRef.set(
+    await setupRef?.set(
       {
         provider: "supabase",
         status: "IN_PROGRESS" satisfies SupabaseSetupStatus,
@@ -598,6 +605,7 @@ export async function GET(request: NextRequest) {
         origin,
         dashboardUrl: `${dashboardUrl}?supabase_connected=true&project_created=pending`,
         uid,
+        appId: appId || "",
         finalizeToken,
         statusToken,
       }),
@@ -612,20 +620,8 @@ export async function GET(request: NextRequest) {
     try {
       if (uidForError) {
         const db = getAdminDb();
-        await db
-          .collection("kloner_users")
-          .doc(uidForError)
-          .collection("integrations")
-          .doc("supabase_setup")
-          .set(
-            {
-              provider: "supabase",
-              status: "FAILED" satisfies SupabaseSetupStatus,
-              error: details,
-              updatedAt: new Date(),
-            },
-            { merge: true }
-          );
+        // Best effort — uidForError is set but appId may not be. Log only.
+        console.error(`[supabase/oauth/callback] Error for uid=${uidForError}: ${details}`);
       }
     } catch {
       // ignore

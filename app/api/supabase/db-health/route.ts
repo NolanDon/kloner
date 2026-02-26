@@ -54,17 +54,13 @@ export async function POST(req: NextRequest) {
             const cleanupIfDeleted = Boolean(body?.cleanupIfDeleted);
             const requestAppId = typeof body?.appId === "string" ? body.appId.trim() : "";
 
-            const integration = await getSupabaseIntegration(uid);
-            if (!integration) {
+            if (!requestAppId) {
                 return NextResponse.json({ ok: true, connected: false, reachable: false, reason: "no_integration" });
             }
 
-            // Enforce 1:1 binding: if the stored integration belongs to a different app, report disconnected.
-            const storedBoundAppId = typeof (integration as any)?.boundAppId === "string" && (integration as any).boundAppId.trim()
-                ? (integration as any).boundAppId.trim()
-                : null;
-            if (storedBoundAppId && requestAppId && storedBoundAppId !== requestAppId) {
-                return NextResponse.json({ ok: true, connected: false, reachable: false, reason: "app_mismatch" });
+            const integration = await getSupabaseIntegration(uid, requestAppId);
+            if (!integration) {
+                return NextResponse.json({ ok: true, connected: false, reachable: false, reason: "no_integration" });
             }
 
             const mode = normalizeString((integration as any)?.mode) || ((integration as any)?.accessToken ? "oauth" : "manual");
@@ -105,10 +101,10 @@ export async function POST(req: NextRequest) {
                 if (status === 404) {
                     if (cleanupIfDeleted) {
                         const db = getAdminDb();
-                        const integrations = db.collection("kloner_users").doc(uid).collection("integrations");
+                        const appIntegrations = db.collection("kloner_users").doc(uid).collection("kloner_apps").doc(requestAppId).collection("integrations");
                         await Promise.all([
-                            integrations.doc("supabase").delete().catch(() => undefined),
-                            integrations.doc("supabase_setup").delete().catch(() => undefined),
+                            appIntegrations.doc("supabase").delete().catch(() => undefined),
+                            appIntegrations.doc("supabase_setup").delete().catch(() => undefined),
                         ]);
                     }
                     return NextResponse.json({
@@ -133,7 +129,21 @@ export async function POST(req: NextRequest) {
                     });
                 }
 
-                // Timeouts / transient errors: stay "connected" but mark unreachable.
+                // HTTP 544 = Supabase "Project Paused" — temporary, user can resume in dashboard.
+                if (status === 544) {
+                    return NextResponse.json({
+                        ok: true,
+                        connected: true,
+                        reachable: false,
+                        reason: "project_paused",
+                        mode: "oauth",
+                        error: "Project is paused — resume it in the Supabase dashboard",
+                        latencyMs: result.latencyMs,
+                    });
+                }
+
+                // Status 0 = AbortSignal timeout / network-level failure (common just after a project resumes).
+                // Treat as transient — do NOT flip to disconnected.
                 return NextResponse.json({
                     ok: true,
                     connected: true,
@@ -141,7 +151,9 @@ export async function POST(req: NextRequest) {
                     reason: status === 0 ? "timeout_or_network" : "query_failed",
                     mode: "oauth",
                     httpStatus: status || null,
-                    error: result.error || "Query failed",
+                    error: status === 0
+                        ? "Connection timed out — project may still be resuming after a pause"
+                        : result.error || "Query failed",
                     latencyMs: result.latencyMs,
                 });
             }
@@ -178,10 +190,10 @@ export async function POST(req: NextRequest) {
                 if (status === 404) {
                     if (cleanupIfDeleted) {
                         const db = getAdminDb();
-                        const integrations = db.collection("kloner_users").doc(uid).collection("integrations");
+                        const appIntegrations = db.collection("kloner_users").doc(uid).collection("kloner_apps").doc(requestAppId).collection("integrations");
                         await Promise.all([
-                            integrations.doc("supabase").delete().catch(() => undefined),
-                            integrations.doc("supabase_setup").delete().catch(() => undefined),
+                            appIntegrations.doc("supabase").delete().catch(() => undefined),
+                            appIntegrations.doc("supabase_setup").delete().catch(() => undefined),
                         ]);
                     }
                     return NextResponse.json({ ok: true, connected: false, reachable: false, reason: "project_deleted", mode: "manual", cleanedUp: cleanupIfDeleted });

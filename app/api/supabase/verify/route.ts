@@ -1,8 +1,7 @@
-// app/api/supabase/verify/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
-import { getAdminDb } from "../../_lib/auth";
 import { decryptString, encryptString, EncryptedBlobV1 } from "../../_lib/crypto";
+import { getSupabaseIntegrationRef, getSupabaseSetupRef } from "../migrations/_lib";
 
 export const runtime = "nodejs";
 
@@ -74,18 +73,12 @@ export async function POST(req: NextRequest) {
             const cleanupIfDeleted = Boolean(body?.cleanupIfDeleted);
             const requestAppId = typeof body?.appId === "string" ? body.appId.trim() : "";
 
-            const db = getAdminDb();
-            const integrationRef = db
-                .collection("kloner_users")
-                .doc(uid)
-                .collection("integrations")
-                .doc("supabase");
+            if (!requestAppId) {
+                return NextResponse.json({ ok: true, connected: false, reason: "no_integration" });
+            }
 
-            const setupRef = db
-                .collection("kloner_users")
-                .doc(uid)
-                .collection("integrations")
-                .doc("supabase_setup");
+            const integrationRef = getSupabaseIntegrationRef(uid, requestAppId);
+            const setupRef = getSupabaseSetupRef(uid, requestAppId);
 
             const snap = await integrationRef.get();
             if (!snap.exists) {
@@ -93,14 +86,6 @@ export async function POST(req: NextRequest) {
             }
 
             const data: any = snap.data() as any;
-
-            // Enforce 1:1 binding: if the stored integration belongs to a different app, report disconnected.
-            const storedBoundAppId = typeof data?.boundAppId === "string" && data.boundAppId.trim()
-                ? data.boundAppId.trim()
-                : null;
-            if (storedBoundAppId && requestAppId && storedBoundAppId !== requestAppId) {
-                return NextResponse.json({ ok: true, connected: false, reason: "app_mismatch" });
-            }
             const mode = normalizeString(data?.mode) || (data?.accessToken ? "oauth" : "manual");
             const projectRef = normalizeString(data?.projectRef) || normalizeString(data?.projectId);
 

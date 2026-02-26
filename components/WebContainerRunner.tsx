@@ -1680,7 +1680,7 @@ export default function NavBar() {
                 setConnectingToExisting(false);
                 setIsLoading(false);
                 setIsPolling(false);
-                setError('Failed to reconnect to the existing machine. Try Refresh/Reconnect first; if it still fails, use Rebuild (Start fresh).');
+                setError('Failed to reconnect to the existing machine. Try Refresh first; if it still fails, use Rebuild (Start fresh).');
                 setCanRetry(true);
                 return;
               }
@@ -1694,7 +1694,7 @@ export default function NavBar() {
               setConnectingToExisting(false);
               setIsLoading(false);
               setIsPolling(false);
-              setError('No usable existing machine to reconnect to. Try Refresh/Reconnect first; if it still fails, use Rebuild to create a new machine.');
+              setError('No usable existing machine to reconnect to. Try Refresh first; if it still fails, use Rebuild to create a new machine.');
               setCanRetry(true);
               return;
             }
@@ -1876,7 +1876,7 @@ export default function NavBar() {
             setConnectingToExisting(false);
             setLoadingStatus('');
             setCurrentStatusData(null);
-            setError('Preview is taking longer than expected (12 minute timeout). Try Refresh/Reconnect first; if it still fails, use Rebuild (Start fresh) to create a new machine.');
+            setError('Preview is taking longer than expected (12 minute timeout). Try Refresh first; if it still fails, use Rebuild to create a new machine.');
             setCanRetry(true);
             return;
           }
@@ -2065,7 +2065,7 @@ export default function NavBar() {
               setIsLoading(false);
               setConnectingToExisting(false);
               setLoadingStatus('');
-              setError('Preview stopped. Try Refresh/Reconnect first; if it still fails, use Rebuild (Start fresh) to create a new machine.');
+              setError('Preview stopped. Try Refresh first; if it still fails, use Rebuild to create a new machine.');
               setCanRetry(true);
               setPreviewUrl(null);
               return;
@@ -2363,7 +2363,7 @@ export default function NavBar() {
               setConnectingToExisting(false);
               setCurrentStatusData(null); // Clear status data
               setLoadingStatus(''); // Clear loading status on timeout
-              setError('Build is taking longer than expected. The app may still be starting up. Try Refresh/Reconnect first; if it still fails, use Rebuild (Start fresh) to start a new machine.');
+              setError('Build is taking longer than expected. The app may still be starting up. Try Refresh first; if it still fails, use Rebuild to start a new machine.');
               setCanRetry(true);
               setPreviewUrl(null);
               stopAllTimers();
