@@ -3412,6 +3412,18 @@ export default function PreviewPage(): JSX.Element {
     const captureStallReportedForUrlRef = useRef<string>("");
     const captureStaleReportedForUrlRef = useRef<string>("");
 
+    const clearStartQueryParam = useCallback(() => {
+        try {
+            const url = new URL(window.location.href);
+            url.searchParams.delete("start");
+            const qs = url.searchParams.toString();
+            const next = qs ? `${url.pathname}?${qs}` : url.pathname;
+            router.replace(next, { scroll: false });
+        } catch {
+            // ignore
+        }
+    }, [router]);
+
     // When a URL is entered from the mini-dashboard entry panel (or deep-linked with start=1),
     // ensure the UrlDoc exists and queue the screenshot capture job. The existing loader stages
     // in this page will then take over (docData + shots + groupedShots + preview generation).
@@ -3444,6 +3456,28 @@ export default function PreviewPage(): JSX.Element {
                 const existingStatuses = snap.empty
                     ? []
                     : snap.docs.map((d: any) => statusFromDoc(d));
+
+                const markUrlDocsError = async (reason: string) => {
+                    try {
+                        const latest = await getDocs(qy);
+                        await Promise.all(
+                            latest.docs.map((d: any) => {
+                                const s = statusFromDoc(d);
+                                if (s === "ready" || s === "uploaded" || s === "done") {
+                                    return Promise.resolve();
+                                }
+                                return updateDoc(d.ref, {
+                                    status: "error",
+                                    updatedAt: serverTimestamp(),
+                                    lastError: reason,
+                                } as any);
+                            })
+                        );
+                        setUrlDocReloadNonce((n) => n + 1);
+                    } catch {
+                        // ignore best-effort status rollback failures
+                    }
+                };
 
                 const hasReadyDoc = existingStatuses.some((s) =>
                     s === "ready" || s === "uploaded" || s === "done"
@@ -3526,9 +3560,12 @@ export default function PreviewPage(): JSX.Element {
 
                 if (!res.ok) {
                     const j: any = await res.json().catch(() => ({}));
+                    await markUrlDocsError(j?.error || "enqueue_failed");
                     setErr(j?.error || "Failed to queue screenshot job.");
+                    setInfo("");
                     setCaptureLockUrl(null);
                     captureLockStartedAtRef.current = 0;
+                    clearStartQueryParam();
 
                     void (async () => {
                         try {
@@ -3556,21 +3593,14 @@ export default function PreviewPage(): JSX.Element {
                     })();
                 }
             } catch (e: any) {
+                setInfo("");
+                clearStartQueryParam();
                 if (!cancelled) setErr(e?.message || "Failed to start capture.");
                 setCaptureLockUrl(null);
                 captureLockStartedAtRef.current = 0;
             } finally {
                 if (!cancelled && shouldMarkHandled) {
-                    // Clear start=1 so refresh doesn't re-trigger capture.
-                    try {
-                        const url = new URL(window.location.href);
-                        url.searchParams.delete("start");
-                        const qs = url.searchParams.toString();
-                        const next = qs ? `${url.pathname}?${qs}` : url.pathname;
-                        router.replace(next, { scroll: false });
-                    } catch {
-                        // ignore
-                    }
+                    clearStartQueryParam();
                 }
 
                 if (startRequestedInFlightRef.current === startRequestKey) {
@@ -3582,7 +3612,7 @@ export default function PreviewPage(): JSX.Element {
         return () => {
             cancelled = true;
         };
-    }, [startRequested, user, targetUrl, router, buildDuplicateUrlMessage]);
+    }, [startRequested, user, targetUrl, buildDuplicateUrlMessage, clearStartQueryParam]);
 
     useEffect(() => {
         if (!startRequested) return;
@@ -3600,6 +3630,32 @@ export default function PreviewPage(): JSX.Element {
 
             void (async () => {
                 let csrf = await ensureSessionAndCsrf().catch(() => null);
+                const colRef = collection(db, "kloner_users", user.uid, "kloner_urls");
+                const qy = query(colRef, where("url", "==", targetUrl));
+                const statusFromDoc = (doc: any): string =>
+                    String((doc?.data?.()?.status ?? doc?.status ?? "unknown") || "unknown").toLowerCase();
+                const markUrlDocsError = async (reason: string) => {
+                    try {
+                        const latest = await getDocs(qy);
+                        await Promise.all(
+                            latest.docs.map((d: any) => {
+                                const s = statusFromDoc(d);
+                                if (s === "ready" || s === "uploaded" || s === "done") {
+                                    return Promise.resolve();
+                                }
+                                return updateDoc(d.ref, {
+                                    status: "error",
+                                    updatedAt: serverTimestamp(),
+                                    lastError: reason,
+                                } as any);
+                            })
+                        );
+                        setUrlDocReloadNonce((n) => n + 1);
+                    } catch {
+                        // ignore
+                    }
+                };
+
                 const doEnqueue = () =>
                     fetch("/api/private/generate", {
                         method: "POST",
@@ -3616,18 +3672,15 @@ export default function PreviewPage(): JSX.Element {
                     }
 
                     if (res.ok) {
-                        try {
-                            const url = new URL(window.location.href);
-                            url.searchParams.delete("start");
-                            const qs = url.searchParams.toString();
-                            const next = qs ? `${url.pathname}?${qs}` : url.pathname;
-                            router.replace(next, { scroll: false });
-                        } catch {
-                            // ignore
-                        }
+                        clearStartQueryParam();
                     } else {
                         const j: any = await res.json().catch(() => ({}));
+                        await markUrlDocsError(j?.error || "enqueue_fallback_failed");
                         if (j?.error) setErr(j.error);
+                        setInfo("");
+                        setCaptureLockUrl(null);
+                        captureLockStartedAtRef.current = 0;
+                        clearStartQueryParam();
 
                         void fetch("/api/internal/observability/frontend-timeout", {
                             method: "POST",
@@ -3649,15 +3702,20 @@ export default function PreviewPage(): JSX.Element {
                         }).catch(() => {});
                     }
                 } catch (e: any) {
+                    await markUrlDocsError(e?.message || "enqueue_fallback_failed");
+                    setInfo("");
+                    setCaptureLockUrl(null);
+                    captureLockStartedAtRef.current = 0;
+                    clearStartQueryParam();
                     if (e?.message) setErr(e.message);
                 }
             })();
         }, 2500);
 
         return () => window.clearTimeout(timeoutId);
-    }, [startRequested, user, targetUrl, router]);
+    }, [startRequested, user, targetUrl, clearStartQueryParam]);
 
-    const startLockRequested = !!startRequested && !!targetUrl;
+    const startLockRequested = !!startRequested && !!targetUrl && !err;
 
     const shotMetaCount = useMemo(() => {
         if (!docData) return 0;
