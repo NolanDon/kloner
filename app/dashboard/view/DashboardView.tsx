@@ -3819,7 +3819,7 @@ export default function PreviewPage(): JSX.Element {
             setCaptureLockUrl(null);
             captureLockStartedAtRef.current = 0;
             setInfo("");
-            setErr("URL capture is taking longer than expected (over 10 minutes). Please click Refresh and try again.");
+            setErr("We couldn't finish capturing this URL. Please re-enter the URL above and try again.");
 
             void (async () => {
                 try {
@@ -3862,7 +3862,7 @@ export default function PreviewPage(): JSX.Element {
 
         if (!err) {
             setInfo("");
-            setErr("URL capture appears stalled (status is stale). Please click Refresh and try again.");
+            setErr("We couldn't finish capturing this URL. Please re-enter the URL above and try again.");
         }
 
         void (async () => {
