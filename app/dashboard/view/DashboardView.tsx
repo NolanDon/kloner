@@ -219,14 +219,14 @@ function MiniDashboardEntry({
         <div
             className={
                 "rounded-3xl border border-neutral-200 bg-gradient-to-br from-white via-neutral-50 to-neutral-100 shadow-sm " +
-                (isCompact ? "px-5 py-6 sm:px-6 sm:py-7" : "px-6 py-8 sm:px-8 sm:py-10")
+                (isCompact ? "px-4 py-4 sm:px-6 sm:py-7" : "px-4 py-5 sm:px-8 sm:py-10")
             }
         >
             <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                     <div
                         className={
-                            "inline-flex items-center gap-2 rounded-full bg-accent text-neutral-50 px-3 py-1 mb-4 " +
+                            "hidden sm:inline-flex items-center gap-2 rounded-full bg-accent text-neutral-50 px-3 py-1 mb-4 " +
                             (isCompact ? "text-[10px] mb-3" : "text-[11px] mb-4")
                         }
                     >
