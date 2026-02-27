@@ -174,18 +174,12 @@ export default function NavBar(): JSX.Element {
           </Link>
 
           {/* Mobile priority nav */}
-          <nav className="lg:hidden flex-1 min-w-0">
+          <nav className="hidden md:flex lg:hidden flex-1 min-w-0">
             <ul className="flex items-center justify-center gap-1.5 sm:gap-2 pr-1">
               {mobilePrimaryNav.map((item, idx) => (
                 <li
                   key={`${item.href}-${idx}`}
-                  className={
-                    idx === 0
-                      ? "block"
-                      : idx === 1
-                        ? "hidden min-[390px]:block"
-                        : "hidden sm:block"
-                  }
+                  className="block"
                 >
                   <Link
                     href={item.href}
@@ -230,7 +224,7 @@ export default function NavBar(): JSX.Element {
           </nav>
 
           {/* Right side */}
-          <div className="ml-auto flex items-center gap-2 md:gap-4 pr-1 sm:pr-2">
+          <div className="ml-auto flex items-center gap-2 md:gap-4">
             {/* Mobile hamburger */}
             <button
               aria-label={mOpen ? "Close menu" : "Open menu"}
@@ -316,7 +310,7 @@ export default function NavBar(): JSX.Element {
             <button
               type="button"
               onClick={openUrlOverlay}
-              className="hidden lg:inline-flex items-center justify-center h-14 rounded-full px-5 text-[15px] text-white whitespace-nowrap"
+              className="hidden lg:inline-flex items-center justify-center h-[52px] mr-1.5 rounded-full px-5 text-[15px] text-white whitespace-nowrap"
               style={{ backgroundColor: ACCENT }}
             >
               Start project
@@ -433,66 +427,8 @@ export default function NavBar(): JSX.Element {
 
                 {/* Content */}
                 <div className="flex-1 min-h-0 overflow-y-auto">
-                  {/* Quick links (icon set matches appshell) */}
-                  <div className="px-4 pt-4">
-                    <div className="mb-2 flex items-center justify-between">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
-                        Quick links
-                      </div>
-                      <div className="text-[11px] text-neutral-400">
-                        Most used
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <QuickAction
-                        href="/dashboard/view"
-                        icon={LayoutGrid}
-                        label="Dashboard"
-                        accent
-                        onNavigate={() => setMOpen(false)}
-                      />
-                      <QuickAction
-                        href="/price"
-                        icon={CreditCard}
-                        label="Pricing"
-                        onNavigate={() => setMOpen(false)}
-                      />
-                      <QuickAction
-                        href="/community-builds"
-                        icon={Sparkles}
-                        label="Community"
-                        onNavigate={() => setMOpen(false)}
-                      />
-                      <QuickAction
-                        href="/dashboard/docs"
-                        icon={BookText}
-                        label="Docs"
-                        onNavigate={() => setMOpen(false)}
-                      />
-                      <QuickAction
-                        href="/affiliate"
-                        icon={Users}
-                        label="Affiliate"
-                        onNavigate={() => setMOpen(false)}
-                      />
-                      <QuickAction
-                        href="/dashboard/settings"
-                        icon={SettingsIcon}
-                        label="Settings"
-                        onNavigate={() => setMOpen(false)}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="mt-5 h-px bg-neutral-200/70" />
-
                   {/* Secondary nav list (clean, consistent, icon-mapped) */}
                   <div className="px-2 py-2">
-                    <div className="px-2 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
-                      Pages
-                    </div>
-
                     <ul className="space-y-1">
                       {navItems.map((i) => (
                         <li key={i.label}>
@@ -589,46 +525,6 @@ function MobileNavLink({
       </div>
 
       <ChevronRight className="h-4 w-4 text-neutral-400 group-hover:translate-x-0.5 transition-transform" />
-    </Link>
-  );
-}
-
-function QuickAction({
-  href,
-  icon: Icon,
-  label,
-  accent = false,
-  onNavigate,
-}: {
-  href: string;
-  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
-  label: string;
-  accent?: boolean;
-  onNavigate: () => void;
-}) {
-  return (
-    <Link
-      href={href}
-      onClick={onNavigate}
-      className="group flex items-center gap-3 rounded-2xl border border-neutral-200 bg-white/70 px-3 py-3 hover:border-neutral-300 hover:bg-white"
-    >
-      <div
-        className={`grid h-10 w-10 place-items-center rounded-xl border ${
-          accent ? "border-transparent" : "border-neutral-200 bg-white"
-        }`}
-        style={accent ? { background: ACCENT } : undefined}
-      >
-        <Icon className={`h-5 w-5 ${accent ? "text-white" : "text-neutral-700"}`} />
-      </div>
-
-      <div className="min-w-0">
-        <div className="text-[13px] font-semibold text-neutral-900 leading-tight">
-          {label}
-        </div>
-        <div className="text-[11px] text-neutral-500 leading-tight">
-          Open
-        </div>
-      </div>
     </Link>
   );
 }

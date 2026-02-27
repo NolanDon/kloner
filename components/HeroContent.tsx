@@ -125,7 +125,7 @@ export default function HeroContent({
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8 }}
-        className="w-full max-w-[720px] text-center pt-20 pb-20 sm:pt-0 sm:pb-0"
+        className="w-full max-w-[720px] text-center pt-20 sm:pt-0"
       >
         <h1
           className={`${displayClassName} leading-[0.95] font-bold text-[3rem] sm:text-[4.25rem] md:text-[5.5rem] tracking-tight text-white`}

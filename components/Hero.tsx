@@ -10,7 +10,7 @@ const display = Outfit({
 export default function Hero() {
   return (
     <section
-      className="relative bg-white"
+      className="relative bg-white overflow-hidden"
       style={{
         height: "calc(100dvh - var(--header-h, 0px))",
         minHeight: 560,

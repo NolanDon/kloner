@@ -376,7 +376,7 @@ export default function UrlOverlay({ open, onClose }: UrlOverlayProps) {
                                     ) : submitting ? (
                                         "Checking…"
                                     ) : (
-                                        "Continue"
+                                        "Preview"
                                     )}
                                 </button>
                             </div>
