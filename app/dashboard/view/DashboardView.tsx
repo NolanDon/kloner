@@ -7530,7 +7530,7 @@ export default function PreviewPage(): JSX.Element {
                                                         </div>
                                                         <div className="text-sm font-semibold text-neutral-900">Vercel connection</div>
                                                         <div className="text-xs text-neutral-600">
-                                                            Required to deploy your app live.
+                                                            Required to deploy your website live.
                                                         </div>
                                                     </div>
                                                 </div>
