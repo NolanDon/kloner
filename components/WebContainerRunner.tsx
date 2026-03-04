@@ -165,6 +165,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const lastStatusRef = useRef<string>('');
   const statusPollTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Track status polling timeout
   const iframeLoadTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Track iframe load timeout
+  const iframePostLoadTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Detect white-screen after iframe navigation
   const automaticRetryTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Track automatic retry timeout
   const pollStartedAtRef = useRef<number>(0);
   const latestDeploymentUrlRef = useRef<string>('');
@@ -173,6 +174,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const lastReadyUrlRef = useRef<string | null>(null);
   const lastBackendReadyNotifyRef = useRef<string | null>(null);
   const autoRebuildByCodeRef = useRef<Record<string, true>>({});
+  const iframePostLoadRecoveryCountRef = useRef<number>(0);
   const lastAppServerKindRef = useRef<'fallback' | 'next-dev' | 'next-prod' | ''>('');
   const stickyProgressByCodeRef = useRef<Record<string, number>>({});
   const lastTimeoutReportKeyRef = useRef<string>('');
@@ -454,6 +456,10 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     if (iframeLoadTimeoutRef.current) {
       clearTimeout(iframeLoadTimeoutRef.current);
       iframeLoadTimeoutRef.current = null;
+    }
+    if (iframePostLoadTimeoutRef.current) {
+      clearTimeout(iframePostLoadTimeoutRef.current);
+      iframePostLoadTimeoutRef.current = null;
     }
   };
 
@@ -754,6 +760,11 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     appLoadedSuccessfullyRef.current = false; // Reset server success flag
     iframeLoadedSuccessfullyRef.current = false; // Reset iframe success flag
     pollingCodeRef.current = null; // Reset polling code
+    iframePostLoadRecoveryCountRef.current = 0;
+    if (iframePostLoadTimeoutRef.current) {
+      clearTimeout(iframePostLoadTimeoutRef.current);
+      iframePostLoadTimeoutRef.current = null;
+    }
 
     // Do not clear stored container code on retry.
     // Retry should attempt to reconnect to the saved machine first.
@@ -1001,24 +1012,15 @@ export default function NavBar() {
 
   const renderLiveStatusLine = (statusData: any) => {
     if (!statusData) return null;
-    // const stage = String(statusData?.uiStage || statusData?.status || '').trim();
-    const title = String(statusData?.uiTitle || '').trim();
     const detail = String(statusData?.uiMessage || '').trim();
-    // UI log line contract:
-    // - Show exactly one message (prefer uiMessage).
-    // - Format: HH:MM — <message>
-    const message = detail || title;
-    const updatedAtMs = getUpdatedAtMs(statusData?.updatedAt);
-    const timeLabel = typeof updatedAtMs === 'number' ? formatStatusTime(updatedAtMs) : '';
-    // if (!stage && !message && !timeLabel) return null;
+    // UX requirement: show only subheader/body status text, never backend header/title.
+    const message = detail;
     if (!message) return null;
 
-    const left = timeLabel;
     return (
       <div className="mt-6 w-full max-w-2xl px-6 py-2 text-left">
-        <div className="text-sm text-black/80">
-          {left ? <span className="font-semibold">{left}</span> : null}
-          <span className="text-black/60">{`${left ? ' — ' : ''}${message}`}</span>
+        <div className="text-sm text-black/60">
+          <span>{message}</span>
         </div>
       </div>
     );
@@ -1393,6 +1395,11 @@ export default function NavBar() {
     pollingCodeRef.current = null;
     backendReadyRef.current = false;
     pollStartedAtRef.current = 0;
+    iframePostLoadRecoveryCountRef.current = 0;
+    if (iframePostLoadTimeoutRef.current) {
+      clearTimeout(iframePostLoadTimeoutRef.current);
+      iframePostLoadTimeoutRef.current = null;
+    }
     latestDeploymentUrlRef.current = '';
     hubStatusUrlRef.current = null;
     lastReportedStatusRef.current = '';
@@ -1428,6 +1435,11 @@ export default function NavBar() {
     pollingCodeRef.current = null;
     backendReadyRef.current = false;
     pollStartedAtRef.current = 0;
+    iframePostLoadRecoveryCountRef.current = 0;
+    if (iframePostLoadTimeoutRef.current) {
+      clearTimeout(iframePostLoadTimeoutRef.current);
+      iframePostLoadTimeoutRef.current = null;
+    }
     latestDeploymentUrlRef.current = '';
     hubStatusUrlRef.current = null;
     lastReportedStatusRef.current = '';
@@ -3257,6 +3269,11 @@ export default function NavBar() {
             onLoad={() => {
               console.log('[WebContainerRunner] iframe onLoad (navigation complete):', previewUrl);
 
+              if (iframePostLoadTimeoutRef.current) {
+                clearTimeout(iframePostLoadTimeoutRef.current);
+                iframePostLoadTimeoutRef.current = null;
+              }
+
               // Iframe load can be a real app OR a "Not Found"/fallback page.
               // Only declare the preview "ready" when the backend contract says `ready === true`.
               iframeLoadedSuccessfullyRef.current = true;
@@ -3285,6 +3302,7 @@ export default function NavBar() {
                 setIsLoading(false);
                 setConnectingToExisting(false);
                 setLoadingStatus('');
+                iframePostLoadRecoveryCountRef.current = 0;
                 // Once the app is actually running, hide the URL overlay for the remainder of this session.
                 setPreviewUrlDetailsOpen(false);
                 setShowPreviewUrlOverlay(false);
@@ -3305,12 +3323,28 @@ export default function NavBar() {
                 // Don't block chat just because the backend hasn't flipped the final `ready` flag yet.
                 try { onPreviewReadyChange?.(true); } catch { }
                 if (loadingStatus) setLoadingStatus('');
+                iframePostLoadRecoveryCountRef.current = 0;
                 // Keep polling in the background until `ready === true`.
                 if (!isPolling) setIsPolling(true);
               } else {
                 try { onPreviewReadyChange?.(false); } catch { }
                 // Keep polling in the background until `ready === true`.
                 if (!isPolling) setIsPolling(true);
+
+                // White-screen watchdog: iframe navigated, but preview didn't become interactive.
+                // Recover once automatically, then surface a clear manual action.
+                iframePostLoadTimeoutRef.current = setTimeout(() => {
+                  if (backendReadyRef.current) return;
+                  if (!previewUrlRef.current) return;
+                  if (iframePostLoadRecoveryCountRef.current < 1) {
+                    iframePostLoadRecoveryCountRef.current += 1;
+                    hardReloadPreview('iframe_loaded_but_not_interactive');
+                    return;
+                  }
+
+                  setCanRetry(true);
+                  setError('Preview loaded but did not become interactive. Refresh first. If it still stays blank, use Rebuild to start a fresh machine.');
+                }, 20000);
               }
               // Reset asset failure count on successful load
               assetFailureCountRef.current = 0;
