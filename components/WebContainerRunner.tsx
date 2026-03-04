@@ -365,7 +365,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
         return `${u.origin}${statusPath}`;
       }
 
-      return `https://${DEFAULT_HUB_HOST}${statusPath}`;
+      return `https://${CUSTOM_PREVIEW_HOST || DEFAULT_HUB_HOST}${statusPath}`;
     } catch {
       return null;
     }
@@ -397,7 +397,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     const normalized = normalizePreviewUrlHost(url);
     try {
       const u = new URL(normalized, typeof window !== 'undefined' ? window.location.origin : undefined);
-      if (u.hostname.toLowerCase() !== DEFAULT_HUB_HOST) return false;
+      if (!isHubHost(u.hostname.toLowerCase())) return false;
     } catch {
       return false;
     }
@@ -1033,38 +1033,7 @@ export default function NavBar() {
   };
 
   const renderBuildChecklist = (statusData: any) => {
-    if (!statusData) return null;
-
-    const progress = typeof statusData?.uiProgress === 'number' ? statusData.uiProgress : 0;
-    const ready = Boolean(statusData?.ready) || String(statusData?.status || '').toLowerCase() === 'ready';
-    const transitioning = Boolean(statusData?.__transitioning);
-
-    const p = Math.max(0, Math.min(100, Math.floor(progress || 0)));
-    const steps = [
-      { id: 'machine', label: 'Provision machine', done: ready || p >= 5 },
-      { id: 'deps', label: 'Install dependencies', done: ready || p >= 25 },
-      { id: 'build', label: 'Build app', done: ready || p >= 55 },
-      { id: 'server', label: 'Start server', done: ready || p >= 85 },
-      { id: 'ready', label: 'Ready', done: ready || p >= 100 },
-    ];
-
-    return (
-      <div className="mt-2 rounded-xl border border-black/10 bg-white/80 px-3 py-2 text-[11px] text-black/70 shadow-sm backdrop-blur-sm">
-        <div className="mb-1 flex items-center justify-between gap-3">
-          <span className="font-semibold text-black/70">Build progress</span>
-          <span className="tabular-nums text-black/50">{p}%</span>
-        </div>
-        <div className="space-y-1">
-          {steps.map((s) => (
-            <div key={s.id} className="flex items-center gap-2">
-              <span className={s.done ? 'text-emerald-600' : 'text-black/30'}>{s.done ? '✓' : '○'}</span>
-              <span className={s.done ? 'text-black/70' : 'text-black/60'}>{s.label}</span>
-            </div>
-          ))}
-          {transitioning ? <div className="pt-1 text-black/50">Transitioning deployment…</div> : null}
-        </div>
-      </div>
-    );
+    return null;
   };
 
   useEffect(() => {
@@ -2152,7 +2121,7 @@ export default function NavBar() {
                   setIsPolling(false);
                   setIsLoading(false);
                   setConnectingToExisting(false);
-                  setError('Container failed to start. The deployment may have failed.');
+                  setError('Container failed to start. Refresh first to retry this preview. If it still fails, use Rebuild to start a new machine.');
                   setCanRetry(true);
                   setLoadingStatus('');
                   setCurrentStatusData(null);
@@ -2310,9 +2279,15 @@ export default function NavBar() {
                 });
               }
 
-              // Clear status data since we're done
-              setCurrentStatusData(null);
-              setLoadingStatus('');
+              // Keep a visible connected/loading status until the iframe actually finishes loading.
+              setCurrentStatusData((prev: any) => ({
+                ...(prev && typeof prev === 'object' ? prev : {}),
+                ...(statusData && typeof statusData === 'object' ? statusData : {}),
+                uiTitle: 'Connected to machine',
+                uiMessage: 'Connected to machine. Finalizing preview render…',
+                updatedAt: Date.now(),
+              }));
+              setLoadingStatus('Connected to machine. Finalizing preview render…');
 
               // If the parent wants to run its own "Refresh" behavior, notify it once.
               // This is intentionally the AppBuilderEditor "Refresh" (reconnect) semantics.
@@ -2326,6 +2301,18 @@ export default function NavBar() {
                     // ignore
                   }
                 }
+
+                // Some browsers (notably Safari) can lag rendering after backend ready.
+                // Keep polling/status visible until iframe navigation confirms load.
+                if (!iframeLoadedSuccessfullyRef.current) {
+                  setIsPolling(true);
+                  setIsLoading(false);
+                  statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
+                  return;
+                }
+
+                setCurrentStatusData(null);
+                setLoadingStatus('');
                 setIsPolling(false);
                 setIsLoading(false);
                 return;
@@ -2337,7 +2324,16 @@ export default function NavBar() {
                 proxyBaseRef.current = readyUrl;
                 setPreviewUrl(withCacheBust(readyUrl));
               }
-              setLoadingStatus(`Connected to machine ${(statusData as any)?.machineId}! Loading interface...`);
+              setLoadingStatus(`Connected to machine ${(statusData as any)?.machineId}! Finalizing preview render...`);
+              if (!iframeLoadedSuccessfullyRef.current) {
+                setIsPolling(true);
+                setIsLoading(false);
+                statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
+                return;
+              }
+
+              setCurrentStatusData(null);
+              setLoadingStatus('');
               setIsPolling(false);
               appLoadedSuccessfullyRef.current = true;
               pollingRetryCountRef.current = 0;
@@ -2986,26 +2982,7 @@ export default function NavBar() {
             {canRetry && (
               (() => {
                 const normalized = String(error || '').toLowerCase();
-                const suggestsRebuild =
-                  normalized.includes('use rebuild') ||
-                  normalized.includes('rebuild') ||
-                  normalized.includes('start fresh') ||
-                  normalized.includes('new machine') ||
-                  normalized.includes('create a new');
-
-                const useRebuild = suggestsRebuild && typeof onRequestRebuild === 'function';
-                const onClick = useRebuild
-                  ? () => {
-                    try {
-                      onRequestRebuild();
-                    } catch {
-                      // fall back
-                      retryApp();
-                    }
-                  }
-                  : retryApp;
-
-                const label = useRebuild ? 'Rebuild' : 'Try Again';
+                const hasRebuildAction = typeof onRequestRebuild === 'function';
                 const cookieRelated = cookieRecoveryPromptVisible || looksLikeCookieIframeIssue(normalized);
 
                 return (
@@ -3016,14 +2993,28 @@ export default function NavBar() {
                 </div>
               ) : null}
               <button
-                onClick={onClick}
+                onClick={retryApp}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs bg-accent text-white rounded-lg hover:bg-[#e54f1a] transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                {label}
+                Refresh
               </button>
+              {hasRebuildAction ? (
+                <button
+                  onClick={() => {
+                    try {
+                      onRequestRebuild();
+                    } catch {
+                      retryApp();
+                    }
+                  }}
+                  className="inline-flex ml-2 items-center gap-2 px-4 py-2 rounded-full text-xs border border-black/15 bg-white text-black/80 hover:bg-black/5 transition-colors"
+                >
+                  Rebuild
+                </button>
+              ) : null}
               {cookieRelated ? (
                 <button
                   onClick={retryApp}
@@ -3041,6 +3032,15 @@ export default function NavBar() {
       )}
       {previewUrl && !error ? (
         <div className="relative w-full h-full">
+          {!externalPreviewMode && (isLoading || isPolling || !!currentStatusData || !!loadingStatus) ? (
+            <div className="absolute inset-x-3 top-3 z-10 rounded-xl border border-black/10 bg-white/92 px-3 py-2 shadow-sm backdrop-blur-sm">
+              <div className="flex items-center gap-2 text-xs text-black/80">
+                <span className="inline-flex h-2 w-2 rounded-full bg-accent animate-pulse" />
+                <span className="font-medium">Machine connected</span>
+                <span className="text-black/50">— {String(loadingStatus || currentStatusData?.uiMessage || 'Waiting for preview render…')}</span>
+              </div>
+            </div>
+          ) : null}
           {/* {hmrWsStatus === 'blocked' && showHmrWarning ? (
             <div className="absolute left-3 top-3 z-10 max-w-[min(520px,92vw)] rounded-xl border border-amber-200 bg-amber-50/90 px-3 py-2 text-xs text-amber-900 shadow-sm backdrop-blur-sm">
               <div className="flex items-start justify-between gap-3">
@@ -3082,7 +3082,7 @@ export default function NavBar() {
                 ) : null}
               </div>
               <div className="mt-2 text-[11px] text-amber-900/70">
-                If you’re on a VPN, try disabling it (or split-tunnel/allowlist <span className="font-mono">tracksite-hub.fly.dev</span>).
+                If you’re on a VPN, try disabling it (or split-tunnel/allowlist <span className="font-mono">{CUSTOM_PREVIEW_HOST || DEFAULT_HUB_HOST}</span>).
               </div>
             </div>
           ) : null}
