@@ -4237,9 +4237,10 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                                         onFileChange={handleFileChangeFromContainer}
                                         onPreviewReadyChange={setIsWebPreviewReady}
                                         onBackendReady={() => {
-                                            // Mirror the top-right "Refresh" button behavior.
+                                            // Keep mode pinned to webcontainer, but do not auto-reconnect.
+                                            // Auto-incrementing reconnectKey here causes a reconnect loop
+                                            // immediately after the iframe becomes visible.
                                             setPreviewMode("webcontainer");
-                                            setReconnectKey((k) => k + 1);
                                         }}
                                         onRequestRebuild={() => void handleRefresh(true)}
                                         reloadToken={refreshKey}
