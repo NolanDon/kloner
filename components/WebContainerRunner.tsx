@@ -391,6 +391,22 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     return isSafari && !nonSafariMarkers.some((marker) => ua.includes(marker));
   };
 
+  const getSiteKey = (hostname: string): string => {
+    const host = String(hostname || '').trim().toLowerCase();
+    if (!host) return '';
+    if (host === 'localhost' || host.endsWith('.localhost')) return 'localhost';
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(':')) return host;
+    const parts = host.split('.').filter(Boolean);
+    if (parts.length <= 2) return host;
+    return parts.slice(-2).join('.');
+  };
+
+  const isSameSiteHost = (a: string, b: string): boolean => {
+    const sa = getSiteKey(a);
+    const sb = getSiteKey(b);
+    return Boolean(sa && sb && sa === sb);
+  };
+
   const shouldBypassIframeForBrowserCookiePolicy = (url: string): boolean => {
     if (forceExternalPreviewRef.current && isHubPreviewUrl(url)) return true;
 
@@ -398,6 +414,12 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     try {
       const u = new URL(normalized, typeof window !== 'undefined' ? window.location.origin : undefined);
       if (!isHubHost(u.hostname.toLowerCase())) return false;
+
+      // On same-site embeds (e.g. kloner.app -> preview.kloner.app), try iframe first even on Safari.
+      // Safari may still fail later; onError/timeout handlers will then switch to external mode.
+      if (typeof window !== 'undefined' && isSameSiteHost(window.location.hostname, u.hostname)) {
+        return false;
+      }
     } catch {
       return false;
     }
@@ -3156,6 +3178,23 @@ export default function NavBar() {
                   Safari blocks the third-party routing cookie needed for embedded previews, so we opened your live preview in a separate tab automatically.
                 </div>
                 <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      forceExternalPreviewRef.current = false;
+                      setExternalPreviewMode(false);
+                      setExternalPreviewAutoOpenFailed(false);
+                      iframeLoadedSuccessfullyRef.current = false;
+                      setIframeKey((k) => k + 1);
+                      setIsLoading(true);
+                      setIsPolling(true);
+                      setLoadingStatus('Retrying embedded preview…');
+                      try { onPreviewReadyChange?.(false); } catch { }
+                    }}
+                    className="inline-flex items-center rounded-full border border-black/10 bg-white px-4 py-2 text-xs font-semibold text-black/80 hover:bg-black/5"
+                  >
+                    Try embedded preview
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
