@@ -143,7 +143,7 @@ function clampPct(v: number): number {
 }
 
 export default function PriceClient(): JSX.Element {
-    const TOPUP_COMING_SOON = process.env.NEXT_PUBLIC_AI_EDIT_TOPUPS_DISABLED === "1";
+    const TOPUP_COMING_SOON = false;
     const [loadingPlan, setLoadingPlan] = useState<null | "pro" | "agency">(null);
     const [loadingTopup, setLoadingTopup] = useState(false);
     const [topupCredits, setTopupCredits] = useState<number>(500);
@@ -451,10 +451,6 @@ export default function PriceClient(): JSX.Element {
     }
 
     async function startTopup() {
-        if (TOPUP_COMING_SOON) {
-            await showAlert("Credit top-ups are coming soon. For now, purchases are disabled.", "Coming soon");
-            return;
-        }
         if (loadingTopup) return;
         setLoadingTopup(true);
 
@@ -812,8 +808,7 @@ export default function PriceClient(): JSX.Element {
                                         disabled={
                                             loadingTopup ||
                                             authLoading ||
-                                            TOPUP_COMING_SOON ||
-                                            (!!user && !(userTier === "pro" || userTier === "agency"))
+                                            TOPUP_COMING_SOON
                                         }
                                         onClick={() => void startTopup()}
                                         className={
@@ -828,11 +823,6 @@ export default function PriceClient(): JSX.Element {
                                         <p className="mt-2 text-[11px] text-neutral-500">Sign in to purchase a top-up.</p>
                                     )}
 
-                                    {user && !(userTier === "pro" || userTier === "agency") ? (
-                                        <p className="mt-2 text-[11px] text-neutral-500">
-                                            Upgrade to Pro or Agency to enable top-ups.
-                                        </p>
-                                    ) : null}
                                 </div>
                             </div>
                         </div>

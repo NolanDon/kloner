@@ -142,7 +142,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     const { user, userTier } = useAuth();
     const { showConfirm, showAlert } = useModal();
     const AI_EDIT_COST = 5;
-    const TOPUP_COMING_SOON = process.env.NEXT_PUBLIC_AI_EDIT_TOPUPS_DISABLED === "1";
+    const TOPUP_COMING_SOON = false;
     // Supabase OAuth setup is safe to expose in production (still requires session + CSRF on the server).
     const allowDatabaseSetupUi = true;
     const [aiCreditsRemaining, setAiCreditsRemaining] = useState<number | null>(null);
@@ -643,11 +643,6 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     }, [showAlert, user?.uid, withCsrfHeaders]);
 
     const startCreditTopup = useCallback(async (credits: number) => {
-        if (TOPUP_COMING_SOON) {
-            window.location.href = "/price#topup";
-            return;
-        }
-
         if (topupBusy) return;
         if (typeof window === "undefined") return;
 
@@ -655,11 +650,6 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
         if (!user?.uid) {
             window.location.href = `/login?next=${encodeURIComponent(nextPath)}`;
-            return;
-        }
-
-        if (!(userTier === "pro" || userTier === "agency")) {
-            window.location.href = "/price";
             return;
         }
 
@@ -698,7 +688,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         } finally {
             setTopupBusy(false);
         }
-    }, [TOPUP_COMING_SOON, showAlert, topupBusy, topupConfig, user?.uid, userTier, withCsrfHeaders]);
+    }, [showAlert, topupBusy, topupConfig, user?.uid, withCsrfHeaders]);
 
     const checkSupabaseDbHealth = useCallback(async (opts?: { silent?: boolean }) => {
         if (!user?.uid) {

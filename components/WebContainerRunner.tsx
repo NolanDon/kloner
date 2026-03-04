@@ -128,6 +128,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const [hmrWsStatus, setHmrWsStatus] = useState<'unknown' | 'ok' | 'blocked'>('unknown');
   const [error, setError] = useState<string | null>(null);
   const [cookieRecoveryPromptVisible, setCookieRecoveryPromptVisible] = useState(false);
+  const [externalPreviewMode, setExternalPreviewMode] = useState(false);
+  const [externalPreviewAutoOpenFailed, setExternalPreviewAutoOpenFailed] = useState(false);
   const [canRetry, setCanRetry] = useState(false);
   const [startAttempt, setStartAttempt] = useState(0);
   const [loadingStatus, setLoadingStatus] = useState('');
@@ -338,6 +340,20 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
       m.includes('third party cookies') ||
       m.includes('embedded iframe')
     );
+  };
+
+  const isSafariLikeBrowser = (): boolean => {
+    if (typeof navigator === 'undefined') return false;
+    const ua = String(navigator.userAgent || '').toLowerCase();
+    const isSafari = ua.includes('safari');
+    const nonSafariMarkers = ['chrome', 'crios', 'chromium', 'edg/', 'edgios', 'opr/', 'firefox', 'fxios'];
+    return isSafari && !nonSafariMarkers.some((marker) => ua.includes(marker));
+  };
+
+  const shouldBypassIframeForBrowserCookiePolicy = (url: string): boolean => {
+    const s = String(url || '').toLowerCase();
+    if (!s.includes('tracksite-hub.fly.dev')) return false;
+    return isSafariLikeBrowser();
   };
 
   const stopAllTimers = () => {
@@ -687,6 +703,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const lastReconnectTokenRef = useRef<number | null>(null);
   const lastNavigatePathTokenRef = useRef<number | null>(null);
   const lastPreviewUrlForLoadRef = useRef<string | null>(null);
+  const lastExternalPreviewOpenedUrlRef = useRef<string | null>(null);
   const reconnectOnlyRef = useRef(false);
   const filesRef = useRef(files);
   const startRunIdRef = useRef(0);
@@ -943,6 +960,42 @@ export default function NavBar() {
   useEffect(() => {
     previewUrlRef.current = previewUrl;
   }, [previewUrl]);
+
+  useEffect(() => {
+    if (!previewUrl) {
+      setExternalPreviewMode(false);
+      setExternalPreviewAutoOpenFailed(false);
+      lastExternalPreviewOpenedUrlRef.current = null;
+      return;
+    }
+
+    if (!shouldBypassIframeForBrowserCookiePolicy(previewUrl)) {
+      setExternalPreviewMode(false);
+      setExternalPreviewAutoOpenFailed(false);
+      return;
+    }
+
+    setExternalPreviewMode(true);
+    setError(null);
+    setCanRetry(false);
+    setCookieRecoveryPromptVisible(false);
+
+    if (lastExternalPreviewOpenedUrlRef.current === previewUrl) {
+      try { onPreviewReadyChange?.(true); } catch { }
+      return;
+    }
+
+    lastExternalPreviewOpenedUrlRef.current = previewUrl;
+    let opened: Window | null = null;
+    try {
+      opened = window.open(previewUrl, '_blank', 'noopener,noreferrer');
+    } catch {
+      opened = null;
+    }
+
+    setExternalPreviewAutoOpenFailed(!opened);
+    try { onPreviewReadyChange?.(true); } catch { }
+  }, [previewUrl, onPreviewReadyChange]);
 
   // When the preview URL changes (new machine / new viewer token), re-show the overlay.
   useEffect(() => {
@@ -2680,6 +2733,14 @@ export default function NavBar() {
 
   // Handle iframe load timeout
   useEffect(() => {
+    if (externalPreviewMode) {
+      if (iframeLoadTimeoutRef.current) {
+        clearTimeout(iframeLoadTimeoutRef.current);
+        iframeLoadTimeoutRef.current = null;
+      }
+      return;
+    }
+
     if (!previewUrl) {
       // Clear any existing timeout
       if (iframeLoadTimeoutRef.current) {
@@ -2782,7 +2843,7 @@ export default function NavBar() {
         iframeLoadTimeoutRef.current = null;
       }
     };
-  }, [previewUrl, onPreviewReadyChange]);
+  }, [previewUrl, onPreviewReadyChange, externalPreviewMode]);
 
   return (
     <div className="h-full flex flex-col bg-white text-black/90 border border-black/10 rounded-2xl shadow">
@@ -2955,6 +3016,45 @@ export default function NavBar() {
               </div>
             </div>
           ) : null} */}
+          {externalPreviewMode ? (
+            <div className="h-full w-full flex items-center justify-center p-6">
+              <div className="w-full max-w-xl rounded-2xl border border-black/10 bg-white p-6 text-center shadow-sm">
+                <div className="text-lg font-semibold text-black/90">Preview opened outside iframe</div>
+                <div className="mt-2 text-sm text-black/70">
+                  Safari blocks the third-party routing cookie needed for embedded previews, so we opened your live preview in a separate tab automatically.
+                </div>
+                <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      let opened: Window | null = null;
+                      try {
+                        opened = window.open(previewUrl, '_blank', 'noopener,noreferrer');
+                      } catch {
+                        opened = null;
+                      }
+                      setExternalPreviewAutoOpenFailed(!opened);
+                    }}
+                    className="inline-flex items-center rounded-full border border-black/10 bg-white px-4 py-2 text-xs font-semibold text-black/80 hover:bg-black/5"
+                  >
+                    Open preview tab
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => hardReloadPreview('external_preview_reload')}
+                    className="inline-flex items-center rounded-full bg-accent px-4 py-2 text-xs font-semibold text-white hover:bg-[#e54f1a]"
+                  >
+                    Restart preview session
+                  </button>
+                </div>
+                {externalPreviewAutoOpenFailed ? (
+                  <div className="mt-3 text-xs text-amber-700">
+                    Your browser blocked auto-open. Click “Open preview tab”.
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : (
           <iframe
             key={iframeKey}
             src={previewUrl}
@@ -3079,6 +3179,7 @@ export default function NavBar() {
               }
             }}
           />
+          )}
         </div>
       ) : !error ? (
         <div className="flex-1 flex items-center justify-center">
