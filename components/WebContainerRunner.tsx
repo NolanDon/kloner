@@ -392,6 +392,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   };
 
   const shouldBypassIframeForBrowserCookiePolicy = (url: string): boolean => {
+    if (forceExternalPreviewRef.current && isHubPreviewUrl(url)) return true;
+
     const normalized = normalizePreviewUrlHost(url);
     try {
       const u = new URL(normalized, typeof window !== 'undefined' ? window.location.origin : undefined);
@@ -766,6 +768,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const lastPreviewUrlForLoadRef = useRef<string | null>(null);
   const lastExternalPreviewOpenedUrlRef = useRef<string | null>(null);
   const lastCookieBlockReportKeyRef = useRef<string>('');
+  const forceExternalPreviewRef = useRef(false);
   const reconnectOnlyRef = useRef(false);
   const filesRef = useRef(files);
   const startRunIdRef = useRef(0);
@@ -791,6 +794,35 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
       browser,
       userAgent: ua,
     });
+  };
+
+  const switchToExternalPreviewMode = (url: string, reason: string) => {
+    const normalizedUrl = normalizePreviewUrlHost(url);
+    if (!normalizedUrl) return;
+
+    forceExternalPreviewRef.current = true;
+    setExternalPreviewMode(true);
+    setError(null);
+    setCanRetry(false);
+    setCookieRecoveryPromptVisible(false);
+    setIsLoading(false);
+    setIsPolling(false);
+    setConnectingToExisting(false);
+
+    reportCookieIframeBlocked({
+      previewUrl: normalizedUrl,
+      reason,
+      message: 'Safari iframe preview failed repeatedly; switching to external preview fallback.',
+    });
+
+    let opened: Window | null = null;
+    try {
+      opened = window.open(normalizedUrl, '_blank', 'noopener,noreferrer');
+    } catch {
+      opened = null;
+    }
+    setExternalPreviewAutoOpenFailed(!opened);
+    try { onPreviewReadyChange?.(true); } catch { }
   };
 
   const normalizeConfigJson = (raw: string): string => {
@@ -1044,10 +1076,19 @@ export default function NavBar() {
   }, [previewUrl]);
 
   useEffect(() => {
+    if (!previewUrl) return;
+    const normalized = normalizePreviewUrlHost(previewUrl);
+    if (normalized !== previewUrl) {
+      setPreviewUrl(normalized);
+    }
+  }, [previewUrl]);
+
+  useEffect(() => {
     if (!previewUrl) {
       setExternalPreviewMode(false);
       setExternalPreviewAutoOpenFailed(false);
       lastExternalPreviewOpenedUrlRef.current = null;
+      forceExternalPreviewRef.current = false;
       return;
     }
 
@@ -1478,7 +1519,7 @@ export default function NavBar() {
 
         console.log('Starting app with ID:', appId);
 
-        const reconnectOnly = reconnectOnlyRef.current;
+        let reconnectOnly = reconnectOnlyRef.current;
         reconnectOnlyRef.current = false;
 
         // Handle force fresh start - delete existing container and create new one
@@ -1521,13 +1562,11 @@ export default function NavBar() {
           const existingCode = await getStoredContainerCode(appId, user);
 
           if (!existingCode && reconnectOnly) {
-            console.log(`🔌 Reconnect requested but no stored container code found for app ${appId}`);
+            console.log(`🔌 Reconnect requested but no stored container code found for app ${appId}; falling back to creating a new machine`);
+            reconnectOnly = false;
             setConnectingToExisting(false);
-            setIsLoading(false);
-            setIsPolling(false);
-            setError('No saved machine found to reconnect.');
-            setCanRetry(true);
-            return;
+            setError(null);
+            setCanRetry(false);
           }
 
           if (existingCode) {
@@ -1848,12 +1887,11 @@ export default function NavBar() {
             } catch (err) {
               console.log(`❌ Failed to check status of existing container ${existingCode}, will create new one:`, err);
               if (reconnectOnly) {
+                console.log(`🔌 Reconnect failed for ${existingCode}; falling back to creating a new machine`);
+                reconnectOnly = false;
                 setConnectingToExisting(false);
-                setIsLoading(false);
-                setIsPolling(false);
-                setError('Failed to reconnect to the existing machine. Try Refresh first, if it still fails, please contact support.');
-                setCanRetry(true);
-                return;
+                setError(null);
+                setCanRetry(false);
               }
               // Clear the stored code since it's not usable
               await clearStoredContainerCodeEverywhere(appId, user);
@@ -1862,12 +1900,10 @@ export default function NavBar() {
             // If we get here, the existing container is not usable
             console.log(`🆕 No usable existing container found for app ${appId}, creating new one`);
             if (reconnectOnly) {
+              reconnectOnly = false;
               setConnectingToExisting(false);
-              setIsLoading(false);
-              setIsPolling(false);
-              setError('No usable existing machine to reconnect to. Try Refresh first, if it still fails, please contact support.');
-              setCanRetry(true);
-              return;
+              setError(null);
+              setCanRetry(false);
             }
             setConnectingToExisting(false);
             await clearStoredContainerCodeEverywhere(appId, user);
@@ -1877,13 +1913,11 @@ export default function NavBar() {
         } // End of forceFreshStart else block
 
         if (reconnectOnly) {
-          // Reconnect-only should never fall through into "create new container".
+          // Safety fallback: if reconnect mode is still set here, continue by creating a new machine.
+          reconnectOnly = false;
           setConnectingToExisting(false);
-          setIsLoading(false);
-          setIsPolling(false);
-          setError('Reconnect only: unable to reach an existing machine.');
-          setCanRetry(true);
-          return;
+          setError(null);
+          setCanRetry(false);
         }
 
         // Create a new container (either force fresh start or no existing container found)
@@ -2902,6 +2936,10 @@ export default function NavBar() {
 
           // If backend had already declared ready, treat this as a real failure.
           const cookieLikely = isHubPreviewUrl(String(previewUrl || ''));
+          if (cookieLikely && isSafariLikeBrowser()) {
+            switchToExternalPreviewMode(String(previewUrl || ''), 'safari_iframe_timeout_hub_preview');
+            return;
+          }
           if (cookieLikely) {
             setError('Preview couldn’t load in this iframe because the required routing cookie appears blocked. Necessary cookies are required for app building and connecting this preview. We will automatically restart the preview in a few seconds.');
             setCookieRecoveryPromptVisible(true);
@@ -3241,6 +3279,10 @@ export default function NavBar() {
 
               // Check if this looks like a DNS/network error or preview routing issue
               if (isHubPreviewUrl(previewUrl)) {
+                if (isSafariLikeBrowser()) {
+                  switchToExternalPreviewMode(previewUrl, 'safari_iframe_onerror_hub_preview');
+                  return;
+                }
                 setError('Preview couldn’t load in this iframe because the required routing cookie appears blocked or not ready yet. Necessary cookies are required for app building and connecting this preview. We will automatically restart the preview in a few seconds.');
                 setCookieRecoveryPromptVisible(true);
                 setCanRetry(true);
