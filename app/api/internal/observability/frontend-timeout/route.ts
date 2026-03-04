@@ -52,9 +52,21 @@ export async function POST(req: NextRequest) {
                 cleanText(body?.message, 1000) ||
                 "Preview exceeded timeout while starting in frontend polling";
             const previewUrl = cleanText(body?.previewUrl, 1000);
+            const browser = cleanText(body?.browser, 120);
+            const userAgent = cleanText(body?.userAgent, 500);
+            const reason = cleanText(body?.reason, 200);
             const ageMs = cleanNumber(body?.ageMs);
             const statusCode = cleanNumber(body?.statusCode) || 504;
             const tags = cleanTags(body?.tags) || ["preview", "timeout", "frontend"];
+
+            const enrichedMessage = [
+                message,
+                browser ? `browser=${browser}` : "",
+                reason ? `reason=${reason}` : "",
+                userAgent ? `ua=${userAgent}` : "",
+            ]
+                .filter(Boolean)
+                .join(" | ");
 
             await captureCriticalEvent({
                 source: "frontend",
@@ -64,7 +76,7 @@ export async function POST(req: NextRequest) {
                 method: "POST",
                 action,
                 userId: uid,
-                message,
+                message: enrichedMessage,
                 service,
                 tags,
                 url: previewUrl || undefined,
@@ -72,6 +84,9 @@ export async function POST(req: NextRequest) {
                     appId: appId || undefined,
                     code: code || undefined,
                     status,
+                    browser: browser || undefined,
+                    reason: reason || undefined,
+                    userAgent: userAgent || undefined,
                     ageMs: typeof ageMs === "number" ? ageMs : undefined,
                 },
             });

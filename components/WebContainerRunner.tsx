@@ -356,6 +356,18 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     return isSafariLikeBrowser();
   };
 
+  const detectBrowserLabel = (): string => {
+    if (typeof navigator === 'undefined') return 'unknown';
+    const ua = String(navigator.userAgent || '');
+    const lower = ua.toLowerCase();
+    if (lower.includes('edg/')) return 'Edge';
+    if (lower.includes('firefox') || lower.includes('fxios')) return 'Firefox';
+    if (lower.includes('opr/') || lower.includes('opera')) return 'Opera';
+    if (lower.includes('chrome') || lower.includes('crios')) return 'Chrome';
+    if (lower.includes('safari')) return 'Safari';
+    return 'unknown';
+  };
+
   const stopAllTimers = () => {
     if (retryTimeoutRef.current) {
       clearTimeout(retryTimeoutRef.current);
@@ -419,6 +431,9 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     message: string;
     ageMs?: number;
     previewUrl?: string | null;
+    browser?: string;
+    userAgent?: string;
+    reason?: string;
   }) => {
     try {
       const headers = await getAuthenticatedHeaders();
@@ -704,12 +719,33 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const lastNavigatePathTokenRef = useRef<number | null>(null);
   const lastPreviewUrlForLoadRef = useRef<string | null>(null);
   const lastExternalPreviewOpenedUrlRef = useRef<string | null>(null);
+  const lastCookieBlockReportKeyRef = useRef<string>('');
   const reconnectOnlyRef = useRef(false);
   const filesRef = useRef(files);
   const startRunIdRef = useRef(0);
   const effectStartedAtRef = useRef<number>(0);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const ensuredConfigRef = useRef(false);
+
+  const reportCookieIframeBlocked = (args: { previewUrl?: string | null; reason: string; message: string }) => {
+    if (typeof window === 'undefined') return;
+    const ua = String(window.navigator?.userAgent || 'unknown');
+    const browser = detectBrowserLabel();
+    const key = `${appId}:${args.reason}:${String(args.previewUrl || '')}:${browser}`;
+    if (lastCookieBlockReportKeyRef.current === key) return;
+    lastCookieBlockReportKeyRef.current = key;
+
+    void reportPreviewTimeout({
+      appId,
+      code: pollingCodeRef.current || undefined,
+      status: 'iframe_cookie_blocked',
+      reason: args.reason,
+      message: args.message,
+      previewUrl: args.previewUrl || previewUrlRef.current,
+      browser,
+      userAgent: ua,
+    });
+  };
 
   const normalizeConfigJson = (raw: string): string => {
     try {
@@ -984,6 +1020,12 @@ export default function NavBar() {
       try { onPreviewReadyChange?.(true); } catch { }
       return;
     }
+
+    reportCookieIframeBlocked({
+      previewUrl,
+      reason: 'safari_third_party_cookie_iframe_policy',
+      message: 'Safari blocked embedded preview cookie; switched to external preview tab fallback.',
+    });
 
     lastExternalPreviewOpenedUrlRef.current = previewUrl;
     let opened: Window | null = null;
@@ -2817,6 +2859,11 @@ export default function NavBar() {
             setError('Preview couldn’t load in this iframe because the required routing cookie appears blocked. Necessary cookies are required for app building and connecting this preview. We will automatically restart the preview in a few seconds.');
             setCookieRecoveryPromptVisible(true);
             setCanRetry(true);
+            reportCookieIframeBlocked({
+              previewUrl,
+              reason: 'iframe_load_timeout_cookie_likely',
+              message: 'Preview couldn’t load in iframe due to likely routing-cookie block.',
+            });
             scheduleAutomaticPreviewRestart('iframe_load_timeout_cookie_likely', 6000);
           } else {
             setError(`Unable to load preview at ${previewUrl}. Try Reconnect, or use Start fresh to start a new machine.`);
@@ -3150,6 +3197,11 @@ export default function NavBar() {
                 setError('Preview couldn’t load in this iframe because the required routing cookie appears blocked or not ready yet. Necessary cookies are required for app building and connecting this preview. We will automatically restart the preview in a few seconds.');
                 setCookieRecoveryPromptVisible(true);
                 setCanRetry(true);
+                reportCookieIframeBlocked({
+                  previewUrl,
+                  reason: 'iframe_onerror_hub_cookie_or_routing_issue',
+                  message: 'Iframe onError on hub preview URL; likely cookie/routing block in embedded context.',
+                });
                 setIsLoading(false);
                 setIsPolling(false);
                 setConnectingToExisting(false);
