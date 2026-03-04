@@ -393,38 +393,18 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     return isSafari && !nonSafariMarkers.some((marker) => ua.includes(marker));
   };
 
-  const getSiteKey = (hostname: string): string => {
-    const host = String(hostname || '').trim().toLowerCase();
-    if (!host) return '';
-    if (host === 'localhost' || host.endsWith('.localhost')) return 'localhost';
-    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(':')) return host;
-    const parts = host.split('.').filter(Boolean);
-    if (parts.length <= 2) return host;
-    return parts.slice(-2).join('.');
-  };
-
-  const isSameSiteHost = (a: string, b: string): boolean => {
-    const sa = getSiteKey(a);
-    const sb = getSiteKey(b);
-    return Boolean(sa && sb && sa === sb);
+  const isEdgeLikeBrowser = (): boolean => {
+    if (typeof navigator === 'undefined') return false;
+    const ua = String(navigator.userAgent || '').toLowerCase();
+    return ua.includes('edg/') || ua.includes('edgios');
   };
 
   const shouldBypassIframeForBrowserCookiePolicy = (url: string): boolean => {
     if (forceExternalPreviewRef.current && isHubPreviewUrl(url)) return true;
 
-    const normalized = normalizePreviewUrlHost(url);
-    try {
-      const u = new URL(normalized, typeof window !== 'undefined' ? window.location.origin : undefined);
-      if (!isHubHost(u.hostname.toLowerCase())) return false;
-
-      // On same-site embeds (e.g. kloner.app -> preview.kloner.app), try iframe first even on Safari.
-      // Safari may still fail later; onError/timeout handlers will then switch to external mode.
-      if (typeof window !== 'undefined' && isSameSiteHost(window.location.hostname, u.hostname)) {
-        return false;
-      }
-    } catch {
-      return false;
-    }
+    // Safari can still block/embed-blank preview iframes even after users disable
+    // cross-site tracking, and this can affect both hub-host and proxied preview URLs.
+    // Prefer external mode up-front for reliability.
     return isSafariLikeBrowser();
   };
 
@@ -1110,8 +1090,8 @@ export default function NavBar() {
 
     reportCookieIframeBlocked({
       previewUrl,
-      reason: 'safari_third_party_cookie_iframe_policy',
-      message: 'Safari blocked embedded preview cookie; switched to external preview tab fallback.',
+      reason: 'safari_iframe_embed_policy',
+      message: 'Safari blocked or white-screened embedded preview iframe; switched to external preview tab fallback.',
     });
 
     lastExternalPreviewOpenedUrlRef.current = previewUrl;
@@ -3332,19 +3312,26 @@ export default function NavBar() {
                 if (!isPolling) setIsPolling(true);
 
                 // White-screen watchdog: iframe navigated, but preview didn't become interactive.
-                // Recover once automatically, then surface a clear manual action.
+                // Recover once automatically, then escalate on strict browsers (Safari/Edge)
+                // to external mode instead of leaving a blank frame.
                 iframePostLoadTimeoutRef.current = setTimeout(() => {
                   if (backendReadyRef.current) return;
-                  if (!previewUrlRef.current) return;
+                  const currentUrl = previewUrlRef.current;
+                  if (!currentUrl) return;
                   if (iframePostLoadRecoveryCountRef.current < 1) {
                     iframePostLoadRecoveryCountRef.current += 1;
                     hardReloadPreview('iframe_loaded_but_not_interactive');
                     return;
                   }
 
+                  if (isHubPreviewUrl(currentUrl) && (isSafariLikeBrowser() || isEdgeLikeBrowser())) {
+                    switchToExternalPreviewMode(currentUrl, 'iframe_loaded_but_not_interactive_strict_browser');
+                    return;
+                  }
+
                   setCanRetry(true);
                   setError('Preview loaded but did not become interactive. Refresh first. If it still stays blank, use Rebuild to start a fresh machine.');
-                }, 20000);
+                }, 12000);
               }
               // Reset asset failure count on successful load
               assetFailureCountRef.current = 0;
