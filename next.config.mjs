@@ -16,10 +16,11 @@ const nextConfig = {
     async headers() {
         return [
             {
-                // Enable COEP/COOP for dashboard view which embeds the proxy iframe
+                // Keep COOP for popup behavior on dashboard routes.
+                // Do not force COEP here; strict COEP blocks cross-origin preview iframes
+                // (including redirects) in Safari and other strict browsers.
                 source: '/dashboard/:path*',
                 headers: [
-                    { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp' },
                     // Allow OAuth popups (e.g. Google sign-in) while keeping COOP enabled.
                     { key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' },
                 ],

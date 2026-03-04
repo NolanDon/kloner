@@ -3027,39 +3027,24 @@ export default function NavBar() {
             {canRetry && (
               (() => {
                 const normalized = String(error || '').toLowerCase();
-                const hasRebuildAction = typeof onRequestRebuild === 'function';
                 const cookieRelated = cookieRecoveryPromptVisible || looksLikeCookieIframeIssue(normalized);
 
                 return (
               <div className="space-y-2">
               {cookieRelated ? (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                  Necessary cookies are required for embedded preview routing. If you just accepted necessary cookies, restart now and we’ll reconnect automatically.
+                  Your browser privacy settings may block embedded preview routing. Use Refresh to retry, or open the preview in a separate tab for the most reliable connection.
                 </div>
               ) : null}
               <button
                 onClick={retryApp}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs bg-accent text-white rounded-lg hover:bg-[#e54f1a] transition-colors"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs bg-accent text-white hover:bg-[#e54f1a] transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
                 Refresh
               </button>
-              {hasRebuildAction ? (
-                <button
-                  onClick={() => {
-                    try {
-                      onRequestRebuild();
-                    } catch {
-                      retryApp();
-                    }
-                  }}
-                  className="inline-flex ml-2 items-center gap-2 px-4 py-2 rounded-full text-xs border border-black/15 bg-white text-black/80 hover:bg-black/5 transition-colors"
-                >
-                  Rebuild
-                </button>
-              ) : null}
               {cookieRelated ? (
                 <button
                   onClick={retryApp}
@@ -3189,7 +3174,7 @@ export default function NavBar() {
               <div className="w-full max-w-xl rounded-2xl border border-black/10 bg-white p-6 text-center shadow-sm">
                 <div className="text-lg font-semibold text-black/90">Preview opened outside iframe</div>
                 <div className="mt-2 text-sm text-black/70">
-                  Safari blocks the third-party routing cookie needed for embedded previews, so we opened your live preview in a separate tab automatically.
+                  Safari may block embedded preview routing in iframes, so we opened your live preview in a separate tab automatically.
                 </div>
                 <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
                   <button
@@ -3245,7 +3230,7 @@ export default function NavBar() {
             src={activePreviewUrl}
             className="w-full h-full border border-black/10 rounded-lg"
             title="App Preview"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
             onLoad={() => {
               console.log('[WebContainerRunner] iframe onLoad (navigation complete):', previewUrl);
 
