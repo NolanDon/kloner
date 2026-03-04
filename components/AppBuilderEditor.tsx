@@ -93,6 +93,43 @@ const IMAGE_PLACEMENT_PLACEHOLDERS = [
     "insert this image in the footer",
 ];
 
+const APP_BUILDER_COOKIE_CONSENT_KEY = "kloner.appBuilder.necessaryCookiesAccepted.v1";
+const APP_BUILDER_COOKIE_CONSENT_COOKIE = "kloner_app_builder_nc";
+
+function getCookieValue(name: string): string | null {
+    if (typeof document === "undefined") return null;
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = document.cookie.match(new RegExp(`(?:^|; )${escaped}=([^;]*)`));
+    return match ? decodeURIComponent(match[1] || "") : null;
+}
+
+function hasAcceptedBuilderNecessaryCookies(): boolean {
+    if (typeof window === "undefined") return false;
+
+    try {
+        const local = window.localStorage.getItem(APP_BUILDER_COOKIE_CONSENT_KEY);
+        if (local === "1") return true;
+    } catch {
+        // ignore
+    }
+
+    const cookie = getCookieValue(APP_BUILDER_COOKIE_CONSENT_COOKIE);
+    return cookie === "1";
+}
+
+function persistBuilderNecessaryCookiesConsent(): void {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+
+    try {
+        window.localStorage.setItem(APP_BUILDER_COOKIE_CONSENT_KEY, "1");
+    } catch {
+        // ignore
+    }
+
+    const secure = window.location.protocol === "https:" ? "; Secure" : "";
+    document.cookie = `${APP_BUILDER_COOKIE_CONSENT_COOKIE}=1; Path=/; Max-Age=${60 * 60 * 24 * 365}; SameSite=Lax${secure}`;
+}
+
 function formatDeployUrlShortLabel(url: string | null): string {
     if (!url) return "Open live site";
     try {
@@ -481,6 +518,8 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
     const [supabaseDbStatusText, setSupabaseDbStatusText] = useState<string | null>(null);
     const [supabaseDbReason, setSupabaseDbReason] = useState<string | null>(null);
     const [supabaseDbLastCheckedAt, setSupabaseDbLastCheckedAt] = useState<number | null>(null);
+    const [cookiesConsentResolved, setCookiesConsentResolved] = useState(false);
+    const [acceptedNecessaryCookies, setAcceptedNecessaryCookies] = useState(false);
     const supabaseVerifyInFlightRef = useRef(false);
     const lastSupabaseVerifyAtRef = useRef(0);
     const supabaseConnectedRef = useRef<boolean | null>(null);
@@ -490,6 +529,22 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
     useEffect(() => {
         supabaseConnectedRef.current = supabaseConnected;
     }, [supabaseConnected]);
+
+    useEffect(() => {
+        const accepted = hasAcceptedBuilderNecessaryCookies();
+        setAcceptedNecessaryCookies(accepted);
+        setCookiesConsentResolved(true);
+    }, []);
+
+    const acceptNecessaryCookiesAndContinue = useCallback(() => {
+        persistBuilderNecessaryCookiesConsent();
+        setAcceptedNecessaryCookies(true);
+        setCookiesConsentResolved(true);
+        setPreviewMode("webcontainer");
+        setAutoPreviewError(null);
+        setReconnectKey((k) => k + 1);
+        setRefreshKey((k) => k + 1);
+    }, []);
 
         const refreshSupabaseStatusFromApi = useCallback(async (): Promise<boolean> => {
             try {
@@ -3541,6 +3596,52 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                                 Retry
                             </button>
                         </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (!cookiesConsentResolved) {
+        return <KlonerLoader />;
+    }
+
+    if (!acceptedNecessaryCookies) {
+        return (
+            <div className="fixed inset-0 z-[20000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="w-full max-w-lg rounded-2xl border border-neutral-200 bg-white shadow-2xl overflow-hidden">
+                    <div className="border-b border-neutral-200 px-5 py-4 bg-gradient-to-b from-gray-50 to-white">
+                        <div className="text-lg font-semibold text-neutral-900">Accept necessary cookies</div>
+                        <div className="mt-1 text-sm text-neutral-600">Required before opening the app builder</div>
+                    </div>
+
+                    <div className="px-5 py-4 space-y-3">
+                        <p className="text-sm text-neutral-700">
+                            Necessary cookies are absolutely required for app building and for connecting your preview to our application inside the embedded editor.
+                        </p>
+                        <p className="text-sm text-neutral-700">
+                            Without this, some browsers may block the routing cookie used by the preview iframe and show a preview load error.
+                        </p>
+                        <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600">
+                            This only enables essential app-builder session/routing cookies. No optional marketing cookies are required here.
+                        </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 border-t border-neutral-200 px-5 py-4">
+                        <button
+                            type="button"
+                            onClick={() => onCloseRef.current?.()}
+                            className="px-4 py-2 text-sm font-medium text-neutral-700 bg-white border border-neutral-200 rounded-full hover:bg-neutral-50"
+                        >
+                            Close
+                        </button>
+                        <button
+                            type="button"
+                            onClick={acceptNecessaryCookiesAndContinue}
+                            className="px-4 py-2 text-sm font-semibold text-white bg-[#F55F2A] rounded-full hover:bg-[#E04E1B]"
+                        >
+                            Accept necessary cookies
+                        </button>
                     </div>
                 </div>
             </div>

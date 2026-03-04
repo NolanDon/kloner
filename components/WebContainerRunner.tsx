@@ -127,6 +127,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const [showHmrWarning, setShowHmrWarning] = useState(true);
   const [hmrWsStatus, setHmrWsStatus] = useState<'unknown' | 'ok' | 'blocked'>('unknown');
   const [error, setError] = useState<string | null>(null);
+  const [cookieRecoveryPromptVisible, setCookieRecoveryPromptVisible] = useState(false);
   const [canRetry, setCanRetry] = useState(false);
   const [startAttempt, setStartAttempt] = useState(0);
   const [loadingStatus, setLoadingStatus] = useState('');
@@ -325,6 +326,18 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     } catch {
       return null;
     }
+  };
+
+  const looksLikeCookieIframeIssue = (message: string): boolean => {
+    const m = String(message || '').toLowerCase();
+    if (!m) return false;
+    return (
+      (m.includes('cookie') && m.includes('iframe')) ||
+      m.includes('routing cookie') ||
+      m.includes('third-party cookies') ||
+      m.includes('third party cookies') ||
+      m.includes('embedded iframe')
+    );
   };
 
   const stopAllTimers = () => {
@@ -625,6 +638,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
 
     setStartAttempt(0);
     setError(null);
+    setCookieRecoveryPromptVisible(false);
     setIsPolling(false); // Reset polling state
     setPreviewUrl(null);
     setCanRetry(false);
@@ -641,6 +655,22 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
 
     // Do not clear stored container code on retry.
     // Retry should attempt to reconnect to the saved machine first.
+  };
+
+  const scheduleAutomaticPreviewRestart = (reason: string, delayMs: number = 6000) => {
+    if (retryScheduledRef.current) return;
+    if (totalAttemptsRef.current >= maxTotalAttempts) return;
+
+    retryScheduledRef.current = true;
+    if (automaticRetryTimeoutRef.current) {
+      clearTimeout(automaticRetryTimeoutRef.current);
+    }
+
+    automaticRetryTimeoutRef.current = setTimeout(() => {
+      console.log(`[WebContainerRunner] Automatic preview restart (${reason})`);
+      retryScheduledRef.current = false;
+      retryApp();
+    }, delayMs);
   };
   const proxyBaseRef = useRef<string | null>(null);
   const previewUrlRef = useRef<string | null>(null);
@@ -2721,8 +2751,17 @@ export default function NavBar() {
           }
 
           // If backend had already declared ready, treat this as a real failure.
-          setError(`Unable to load preview at ${previewUrl}. Try Reconnect, or use Start fresh to start a new machine.`);
-          setCanRetry(true);
+          const cookieLikely = String(previewUrl || '').includes('tracksite-hub.fly.dev');
+          if (cookieLikely) {
+            setError('Preview couldn’t load in this iframe because the required routing cookie appears blocked. Necessary cookies are required for app building and connecting this preview. We will automatically restart the preview in a few seconds.');
+            setCookieRecoveryPromptVisible(true);
+            setCanRetry(true);
+            scheduleAutomaticPreviewRestart('iframe_load_timeout_cookie_likely', 6000);
+          } else {
+            setError(`Unable to load preview at ${previewUrl}. Try Reconnect, or use Start fresh to start a new machine.`);
+            setCookieRecoveryPromptVisible(false);
+            setCanRetry(true);
+          }
           setIsLoading(false);
           setIsPolling(false);
           setConnectingToExisting(false);
@@ -2774,8 +2813,15 @@ export default function NavBar() {
                   : retryApp;
 
                 const label = useRebuild ? 'Rebuild' : 'Try Again';
+                const cookieRelated = cookieRecoveryPromptVisible || looksLikeCookieIframeIssue(normalized);
 
                 return (
+              <div className="space-y-2">
+              {cookieRelated ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  Necessary cookies are required for embedded preview routing. If you just accepted necessary cookies, restart now and we’ll reconnect automatically.
+                </div>
+              ) : null}
               <button
                 onClick={onClick}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs bg-accent text-white rounded-lg hover:bg-[#e54f1a] transition-colors"
@@ -2785,6 +2831,15 @@ export default function NavBar() {
                 </svg>
                 {label}
               </button>
+              {cookieRelated ? (
+                <button
+                  onClick={retryApp}
+                  className="inline-flex ml-2 items-center gap-2 px-4 py-2 rounded-full text-xs border border-amber-300 bg-white text-amber-900 hover:bg-amber-50 transition-colors"
+                >
+                  Restart preview now
+                </button>
+              ) : null}
+              </div>
                 );
               })()
             )}
@@ -2992,7 +3047,8 @@ export default function NavBar() {
 
               // Check if this looks like a DNS/network error or preview routing issue
               if (previewUrl.includes('tracksite-hub.fly.dev')) {
-                setError(`Preview failed to load. This may be due to cookie/session issues or the preview not being ready yet. Automatically refreshing in 10 seconds...`);
+                setError('Preview couldn’t load in this iframe because the required routing cookie appears blocked or not ready yet. Necessary cookies are required for app building and connecting this preview. We will automatically restart the preview in a few seconds.');
+                setCookieRecoveryPromptVisible(true);
                 setCanRetry(true);
                 setIsLoading(false);
                 setIsPolling(false);
@@ -3003,17 +3059,10 @@ export default function NavBar() {
                 appLoadedSuccessfullyRef.current = false;
                 setPreviewUrl(null); // Hide the iframe
                 try { onPreviewReadyChange?.(false); } catch { }
-                // Automatically retry after 10 seconds for hub domain errors (only if not already scheduled)
-                if (!retryScheduledRef.current && totalAttemptsRef.current < maxTotalAttempts) {
-                  retryScheduledRef.current = true;
-                  automaticRetryTimeoutRef.current = setTimeout(() => {
-                    console.log('Automatically retrying preview load...');
-                    retryScheduledRef.current = false;
-                    retryApp();
-                  }, 10000);
-                }
+                scheduleAutomaticPreviewRestart('iframe_onerror_hub', 6000);
               } else if (previewUrl.includes('.fly.dev') || previewUrl.includes('localhost')) {
                 setError(`Unable to connect to ${previewUrl}. The deployment may still be starting up or has failed. Please try again in a few minutes.`);
+                setCookieRecoveryPromptVisible(false);
                 setCanRetry(true);
                 setIsLoading(false);
                 setIsPolling(false);
@@ -3025,6 +3074,7 @@ export default function NavBar() {
                 setPreviewUrl(null); // Hide the iframe
                 try { onPreviewReadyChange?.(false); } catch { }
               } else {
+                setCookieRecoveryPromptVisible(false);
                 handleAssetFailure();
               }
             }}
