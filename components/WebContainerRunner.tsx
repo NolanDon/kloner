@@ -188,10 +188,44 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const lastStatusFetchAtRef = useRef<number>(0);
   const HARD_POLL_TIMEOUT_MS = 12 * 60 * 1000;
 
+  const DEFAULT_HUB_HOST = 'tracksite-hub.fly.dev';
+  const CUSTOM_PREVIEW_HOST = String(process.env.NEXT_PUBLIC_PREVIEW_HOST || 'preview.kloner.app').trim().toLowerCase();
+  const HUB_HOSTS = new Set([DEFAULT_HUB_HOST, CUSTOM_PREVIEW_HOST].filter(Boolean));
+
+  const isHubHost = (host: string): boolean => HUB_HOSTS.has(String(host || '').toLowerCase());
+
+  const normalizePreviewUrlHost = (maybeUrl: string): string => {
+    const raw = String(maybeUrl || '').trim();
+    if (!raw) return raw;
+    if (raw.startsWith('/')) return raw;
+
+    try {
+      const u = new URL(raw);
+      if (u.hostname.toLowerCase() === DEFAULT_HUB_HOST && CUSTOM_PREVIEW_HOST && CUSTOM_PREVIEW_HOST !== DEFAULT_HUB_HOST) {
+        u.hostname = CUSTOM_PREVIEW_HOST;
+      }
+      return u.toString();
+    } catch {
+      return raw;
+    }
+  };
+
+  const isHubPreviewUrl = (url: string): boolean => {
+    const normalized = normalizePreviewUrlHost(url);
+    try {
+      const u = new URL(normalized, typeof window !== 'undefined' ? window.location.origin : undefined);
+      const parts = u.pathname.split('/').filter(Boolean);
+      return isHubHost(u.hostname.toLowerCase()) && parts.length >= 2 && parts[0] === 'preview' && Boolean(parts[1]);
+    } catch {
+      return false;
+    }
+  };
+
   const derivePreviewCodeFromUrl = (url: string): string | null => {
     try {
-      const u = new URL(url, typeof window !== 'undefined' ? window.location.origin : undefined);
-      // Hub URLs look like: https://tracksite-hub.fly.dev/preview/<code>?t=<token>
+      const normalized = normalizePreviewUrlHost(url);
+      const u = new URL(normalized, typeof window !== 'undefined' ? window.location.origin : undefined);
+      // Hub URLs look like: https://<hub-host>/preview/<code>?t=<token>
       const parts = u.pathname.split('/').filter(Boolean);
       if (parts.length >= 2 && parts[0] === 'preview') {
         const code = String(parts[1] || '').trim();
@@ -204,13 +238,13 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   };
 
   const isValidPreviewUrlCandidate = (maybeUrl: string): boolean => {
-    const raw = String(maybeUrl || '').trim();
+    const raw = normalizePreviewUrlHost(maybeUrl);
     if (!raw) return false;
 
     try {
       const u = new URL(raw, typeof window !== 'undefined' ? window.location.origin : undefined);
       const host = u.hostname.toLowerCase();
-      if (host === 'tracksite-hub.fly.dev') {
+      if (isHubHost(host)) {
         // Never navigate to hub root; hub previews must be /preview/<code>(/path)? with a viewer token.
         const parts = u.pathname.split('/').filter(Boolean);
         return parts.length >= 2 && parts[0] === 'preview' && Boolean(parts[1]);
@@ -321,10 +355,17 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
 
   const buildHubStatusUrl = (code: string, deploymentUrl: string): string | null => {
     try {
-      const u = new URL(deploymentUrl, typeof window !== 'undefined' ? window.location.origin : undefined);
+      const normalized = normalizePreviewUrlHost(deploymentUrl);
+      const u = new URL(normalized, typeof window !== 'undefined' ? window.location.origin : undefined);
       const token = u.searchParams.get('t');
       if (!token) return null;
-      return `https://tracksite-hub.fly.dev/preview/${encodeURIComponent(code)}/status?t=${encodeURIComponent(token)}`;
+
+      const statusPath = `/preview/${encodeURIComponent(code)}/status?t=${encodeURIComponent(token)}`;
+      if (isHubHost(u.hostname.toLowerCase())) {
+        return `${u.origin}${statusPath}`;
+      }
+
+      return `https://${DEFAULT_HUB_HOST}${statusPath}`;
     } catch {
       return null;
     }
@@ -351,8 +392,13 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   };
 
   const shouldBypassIframeForBrowserCookiePolicy = (url: string): boolean => {
-    const s = String(url || '').toLowerCase();
-    if (!s.includes('tracksite-hub.fly.dev')) return false;
+    const normalized = normalizePreviewUrlHost(url);
+    try {
+      const u = new URL(normalized, typeof window !== 'undefined' ? window.location.origin : undefined);
+      if (u.hostname.toLowerCase() !== DEFAULT_HUB_HOST) return false;
+    } catch {
+      return false;
+    }
     return isSafariLikeBrowser();
   };
 
@@ -1075,7 +1121,7 @@ export default function NavBar() {
       return;
     }
 
-    if (u.hostname.toLowerCase() !== 'tracksite-hub.fly.dev') return;
+    if (!isHubHost(u.hostname.toLowerCase())) return;
     const wsUrl = `${u.protocol === 'https:' ? 'wss:' : 'ws:'}//${u.host}/_next/webpack-hmr`;
     if (lastHmrWsCheckKeyRef.current === wsUrl && hmrWsStatus !== 'unknown') return;
     lastHmrWsCheckKeyRef.current = wsUrl;
@@ -1163,7 +1209,7 @@ export default function NavBar() {
     if (!currentUrl) return;
     if (!iframeLoadedSuccessfullyRef.current) return;
     if (lastAppServerKindRef.current !== 'next-dev') return;
-    if (!String(currentUrl).includes('tracksite-hub.fly.dev')) return;
+    if (!isHubPreviewUrl(String(currentUrl))) return;
 
     // If the HMR websocket is healthy, prefer letting HMR update the page.
     // The whole point of this workaround is when HMR is blocked/broken.
@@ -1805,7 +1851,7 @@ export default function NavBar() {
                 setConnectingToExisting(false);
                 setIsLoading(false);
                 setIsPolling(false);
-                setError('Failed to reconnect to the existing machine. Try Refresh first; if it still fails, use Rebuild (Start fresh).');
+                setError('Failed to reconnect to the existing machine. Try Refresh first, if it still fails, please contact support.');
                 setCanRetry(true);
                 return;
               }
@@ -1819,7 +1865,7 @@ export default function NavBar() {
               setConnectingToExisting(false);
               setIsLoading(false);
               setIsPolling(false);
-              setError('No usable existing machine to reconnect to. Try Refresh first; if it still fails, use Rebuild to create a new machine.');
+              setError('No usable existing machine to reconnect to. Try Refresh first, if it still fails, please contact support.');
               setCanRetry(true);
               return;
             }
@@ -2001,7 +2047,7 @@ export default function NavBar() {
             setConnectingToExisting(false);
             setLoadingStatus('');
             setCurrentStatusData(null);
-            setError('Preview is taking longer than expected (12 minute timeout). Try Refresh first; if it still fails, use Rebuild to create a new machine.');
+            setError('Preview is taking longer than expected (12 minute timeout). Try Refresh first, if it still fails, please contact support.');
             setCanRetry(true);
             return;
           }
@@ -2140,7 +2186,8 @@ export default function NavBar() {
             const status = String((statusData as any)?.status || '').toLowerCase();
             const uiStage = String((statusData as any)?.uiStage || '').toLowerCase();
             const readyFlag = Boolean((statusData as any)?.ready);
-            const deploymentUrl = String((statusData as any)?.url || '').trim();
+            const deploymentUrlRaw = String((statusData as any)?.url || '').trim();
+            const deploymentUrl = deploymentUrlRaw ? normalizePreviewUrlHost(deploymentUrlRaw) : '';
             const appServerKindRaw = String((statusData as any)?.appServerKind || '').toLowerCase();
             const appServerKind = (appServerKindRaw === 'fallback' || appServerKindRaw === 'next-dev' || appServerKindRaw === 'next-prod')
               ? (appServerKindRaw as any)
@@ -2190,7 +2237,7 @@ export default function NavBar() {
               setIsLoading(false);
               setConnectingToExisting(false);
               setLoadingStatus('');
-              setError('Preview stopped. Try Refresh first; if it still fails, use Rebuild to create a new machine.');
+              setError('Preview stopped. Try Refresh first, if it still fails, please contact support.');
               setCanRetry(true);
               setPreviewUrl(null);
               return;
@@ -2488,7 +2535,7 @@ export default function NavBar() {
               setConnectingToExisting(false);
               setCurrentStatusData(null); // Clear status data
               setLoadingStatus(''); // Clear loading status on timeout
-              setError('Build is taking longer than expected. The app may still be starting up. Try Refresh first; if it still fails, use Rebuild to start a new machine.');
+              setError('Build is taking longer than expected. The app may still be starting up. Try Refresh first, if it still fails, please contact support.');
               setCanRetry(true);
               setPreviewUrl(null);
               stopAllTimers();
@@ -2854,7 +2901,7 @@ export default function NavBar() {
           }
 
           // If backend had already declared ready, treat this as a real failure.
-          const cookieLikely = String(previewUrl || '').includes('tracksite-hub.fly.dev');
+          const cookieLikely = isHubPreviewUrl(String(previewUrl || ''));
           if (cookieLikely) {
             setError('Preview couldn’t load in this iframe because the required routing cookie appears blocked. Necessary cookies are required for app building and connecting this preview. We will automatically restart the preview in a few seconds.');
             setCookieRecoveryPromptVisible(true);
@@ -3193,7 +3240,7 @@ export default function NavBar() {
               }
 
               // Check if this looks like a DNS/network error or preview routing issue
-              if (previewUrl.includes('tracksite-hub.fly.dev')) {
+              if (isHubPreviewUrl(previewUrl)) {
                 setError('Preview couldn’t load in this iframe because the required routing cookie appears blocked or not ready yet. Necessary cookies are required for app building and connecting this preview. We will automatically restart the preview in a few seconds.');
                 setCookieRecoveryPromptVisible(true);
                 setCanRetry(true);
