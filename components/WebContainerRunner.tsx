@@ -401,11 +401,12 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
 
   const shouldBypassIframeForBrowserCookiePolicy = (url: string): boolean => {
     if (forceExternalPreviewRef.current && isHubPreviewUrl(url)) return true;
+    if (!isSafariLikeBrowser()) return false;
 
-    // Safari can still block/embed-blank preview iframes even after users disable
-    // cross-site tracking, and this can affect both hub-host and proxied preview URLs.
-    // Prefer external mode up-front for reliability.
-    return isSafariLikeBrowser();
+    // Avoid Safari false-positives: do not bypass iframe on first load.
+    // Only auto-bypass after we've observed an embed failure for this preview URL/code.
+    const key = derivePreviewCodeFromUrl(url) || normalizePreviewUrlHost(url);
+    return Boolean(key && safariEmbedFailureByCodeRef.current[key]);
   };
 
   const detectBrowserLabel = (): string => {
@@ -784,6 +785,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const lastExternalPreviewOpenedUrlRef = useRef<string | null>(null);
   const lastCookieBlockReportKeyRef = useRef<string>('');
   const forceExternalPreviewRef = useRef(false);
+  const safariEmbedFailureByCodeRef = useRef<Record<string, number>>({});
   const reconnectOnlyRef = useRef(false);
   const filesRef = useRef(files);
   const startRunIdRef = useRef(0);
@@ -811,9 +813,24 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     });
   };
 
+  const markSafariEmbedFailure = (url: string) => {
+    if (!isSafariLikeBrowser()) return;
+    const key = derivePreviewCodeFromUrl(url) || normalizePreviewUrlHost(url);
+    if (!key) return;
+    safariEmbedFailureByCodeRef.current[key] = (safariEmbedFailureByCodeRef.current[key] || 0) + 1;
+  };
+
+  const clearSafariEmbedFailure = (url: string) => {
+    const key = derivePreviewCodeFromUrl(url) || normalizePreviewUrlHost(url);
+    if (!key) return;
+    delete safariEmbedFailureByCodeRef.current[key];
+  };
+
   const switchToExternalPreviewMode = (url: string, reason: string) => {
     const normalizedUrl = normalizePreviewUrlHost(url);
     if (!normalizedUrl) return;
+
+    markSafariEmbedFailure(normalizedUrl);
 
     forceExternalPreviewRef.current = true;
     setExternalPreviewMode(true);
@@ -1130,6 +1147,10 @@ export default function NavBar() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (!previewUrl) return;
+    if (externalPreviewMode) return;
+    // Safari frequently reports noisy websocket handshake failures here even when the
+    // preview is otherwise usable; skip proactive probing to avoid false negatives.
+    if (isSafariLikeBrowser()) return;
 
     // Only relevant for hub + next-dev.
     const kind = String((currentStatusData as any)?.appServerKind || '').toLowerCase();
@@ -1143,8 +1164,8 @@ export default function NavBar() {
     }
 
     if (!isHubHost(u.hostname.toLowerCase())) return;
-    const wsUrl = `${u.protocol === 'https:' ? 'wss:' : 'ws:'}//${u.host}/_next/webpack-hmr`;
-    if (lastHmrWsCheckKeyRef.current === wsUrl && hmrWsStatus !== 'unknown') return;
+    const wsUrl = `${u.protocol === 'https:' ? 'wss:' : 'ws:'}//${u.host}/_next/webpack-hmr?page=/`;
+    if (lastHmrWsCheckKeyRef.current === wsUrl) return;
     lastHmrWsCheckKeyRef.current = wsUrl;
 
     if (hmrWsTimeoutRef.current) {
@@ -1158,7 +1179,7 @@ export default function NavBar() {
 
     let settled = false;
     let opened = false;
-    const settle = (next: 'ok' | 'blocked') => {
+    const settle = (next: 'ok' | 'unknown') => {
       if (settled) return;
       settled = true;
       setHmrWsStatus(next);
@@ -1182,16 +1203,16 @@ export default function NavBar() {
         settle('ok');
       };
       ws.onerror = () => {
-        settle('blocked');
+        settle('unknown');
       };
       ws.onclose = () => {
-        if (!opened) settle('blocked');
+        if (!opened) settle('unknown');
       };
 
       // Timeout: if it doesn't open quickly, treat as blocked.
-      hmrWsTimeoutRef.current = setTimeout(() => settle('blocked'), 3000);
+      hmrWsTimeoutRef.current = setTimeout(() => settle('unknown'), 3000);
     } catch {
-      settle('blocked');
+      settle('unknown');
     }
 
     return () => {
@@ -1204,7 +1225,7 @@ export default function NavBar() {
         hmrWsRef.current = null;
       }
     };
-  }, [previewUrl, (currentStatusData as any)?.appServerKind, hmrWsStatus]);
+  }, [previewUrl, (currentStatusData as any)?.appServerKind, externalPreviewMode]);
 
   // If the iframe has loaded and we later confirm HMR websocket health,
   // the preview is effectively interactive even if the backend `ready` flag lags.
@@ -3181,6 +3202,7 @@ export default function NavBar() {
                     type="button"
                     onClick={() => {
                       forceExternalPreviewRef.current = false;
+                      clearSafariEmbedFailure(activePreviewUrl);
                       setExternalPreviewMode(false);
                       setExternalPreviewAutoOpenFailed(false);
                       iframeLoadedSuccessfullyRef.current = false;
@@ -3233,6 +3255,8 @@ export default function NavBar() {
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
             onLoad={() => {
               console.log('[WebContainerRunner] iframe onLoad (navigation complete):', previewUrl);
+
+              clearSafariEmbedFailure(activePreviewUrl);
 
               if (iframePostLoadTimeoutRef.current) {
                 clearTimeout(iframePostLoadTimeoutRef.current);
