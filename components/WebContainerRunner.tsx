@@ -2301,16 +2301,6 @@ export default function NavBar() {
                 });
               }
 
-              // Keep a visible connected/loading status until the iframe actually finishes loading.
-              setCurrentStatusData((prev: any) => ({
-                ...(prev && typeof prev === 'object' ? prev : {}),
-                ...(statusData && typeof statusData === 'object' ? statusData : {}),
-                uiTitle: 'Connected to machine',
-                uiMessage: 'Connected to machine. Finalizing preview render…',
-                updatedAt: Date.now(),
-              }));
-              setLoadingStatus('Connected to machine. Finalizing preview render…');
-
               // If the parent wants to run its own "Refresh" behavior, notify it once.
               // This is intentionally the AppBuilderEditor "Refresh" (reconnect) semantics.
               if (readyUrl && typeof onBackendReady === 'function') {
@@ -2343,10 +2333,12 @@ export default function NavBar() {
               // Default behavior (no parent callback): reload the iframe by cache-busting the URL
               // (preserving the viewer token `t`).
               if (isValidPreviewUrlCandidate(readyUrl)) {
-                proxyBaseRef.current = readyUrl;
-                setPreviewUrl(withCacheBust(readyUrl));
+                // Prevent a reload loop: if we're already on this base URL, do not keep appending new cache-busters.
+                if (proxyBaseRef.current !== readyUrl || !previewUrlRef.current) {
+                  proxyBaseRef.current = readyUrl;
+                  setPreviewUrl(withCacheBust(readyUrl));
+                }
               }
-              setLoadingStatus(`Connected to machine ${(statusData as any)?.machineId}! Finalizing preview render...`);
               if (!iframeLoadedSuccessfullyRef.current) {
                 setIsPolling(true);
                 setIsLoading(false);
@@ -3054,15 +3046,6 @@ export default function NavBar() {
       )}
       {previewUrl && !error ? (
         <div className="relative w-full h-full">
-          {!externalPreviewMode && (isLoading || isPolling || !!currentStatusData || !!loadingStatus) ? (
-            <div className="absolute inset-x-3 top-3 z-10 rounded-xl border border-black/10 bg-white/92 px-3 py-2 shadow-sm backdrop-blur-sm">
-              <div className="flex items-center gap-2 text-xs text-black/80">
-                <span className="inline-flex h-2 w-2 rounded-full bg-accent animate-pulse" />
-                <span className="font-medium">Machine connected</span>
-                <span className="text-black/50">— {String(loadingStatus || currentStatusData?.uiMessage || 'Waiting for preview render…')}</span>
-              </div>
-            </div>
-          ) : null}
           {/* {hmrWsStatus === 'blocked' && showHmrWarning ? (
             <div className="absolute left-3 top-3 z-10 max-w-[min(520px,92vw)] rounded-xl border border-amber-200 bg-amber-50/90 px-3 py-2 text-xs text-amber-900 shadow-sm backdrop-blur-sm">
               <div className="flex items-start justify-between gap-3">
@@ -3282,6 +3265,7 @@ export default function NavBar() {
               } else if (uiReady) {
                 // Don't block chat just because the backend hasn't flipped the final `ready` flag yet.
                 try { onPreviewReadyChange?.(true); } catch { }
+                if (loadingStatus) setLoadingStatus('');
                 // Keep polling in the background until `ready === true`.
                 if (!isPolling) setIsPolling(true);
               } else {
