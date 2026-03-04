@@ -55,11 +55,21 @@ function normalizeError(e: unknown): string {
         if (code.includes("auth/popup-blocked")) return "Popup was blocked by the browser.";
         if (code.includes("auth/invalid-email")) return "Invalid email.";
         if (code.includes("auth/missing-password")) return "Password required.";
+        if (code.includes("auth/invalid-credential")) return "Incorrect email or password.";
+        if (code.includes("auth/invalid-login-credentials")) return "Incorrect email or password.";
         if (code.includes("auth/wrong-password")) return "Incorrect email or password.";
         if (code.includes("auth/user-not-found")) return "Account not found.";
+        if (code.includes("auth/user-disabled")) return "This account is disabled. Contact support if this is unexpected.";
         if (code.includes("auth/email-already-in-use")) return "Email already registered.";
+        if (code.includes("auth/weak-password")) return "Password is too weak. Use at least 6 characters.";
+        if (code.includes("auth/network-request-failed")) return "Network error. Check your connection and try again.";
         if (code.includes("auth/too-many-requests")) return "Too many attempts. Try again later.";
-        return e.message ?? "Request failed.";
+
+        const rawMessage = String(e.message || "");
+        const looksLikeRawFirebase =
+            rawMessage.includes("Firebase: Error") ||
+            /auth\/[a-z0-9-]+/i.test(rawMessage);
+        return looksLikeRawFirebase ? "Couldn’t sign in. Please try again." : (rawMessage || "Request failed.");
     }
     if (e instanceof Error) return e.message;
     return "Request failed.";

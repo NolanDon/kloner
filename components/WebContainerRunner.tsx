@@ -1798,34 +1798,23 @@ export default function NavBar() {
                 setConnectingToExisting(false);
                 setLoadingStatus('Saved machine expired. Starting a new machine…');
               } else if (statusResponse.status >= 500) {
-                // Treat 5xx as transient backend/hub issues. Do NOT clear stored code
-                // or create a new machine; instead, keep listening until status recovers.
+                // 5xx often means stale routing / dead saved machine / transient hub issue.
+                // Retry briefly, then clear stale saved code and continue to fresh machine creation
+                // instead of trapping the user in reconnect polling.
                 console.log(
-                  `⚠️ Status service error for container ${existingCode}: ${statusResponse.status} ${statusResponse.statusText}. Entering polling mode instead of creating a new machine.`
+                  `⚠️ Status service error for container ${existingCode}: ${statusResponse.status} ${statusResponse.statusText}. Retrying briefly before fresh-machine fallback.`
                 );
 
-                setIsLoading(false);
-                setIsPolling(true);
-                setConnectingToExisting(true);
-                setError(null);
-                setCanRetry(false);
-                setCurrentStatusData(null);
-                setLoadingStatus('');
-
                 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+                let recovered = false;
 
-                const startedAt = Date.now();
-                let attempt = 0;
-                while (startRunIdRef.current === runId && Date.now() - startedAt < 360000) {
-                  attempt += 1;
+                for (let attempt = 1; attempt <= 3; attempt += 1) {
+                  if (startRunIdRef.current !== runId) return;
+
+                  const waitMs = 800 * attempt;
+                  await sleep(waitMs);
+
                   try {
-                    // Throttle status checks to avoid spamming when the status service is unhealthy.
-                    const now = Date.now();
-                    const last = lastStatusFetchAtRef.current || 0;
-                    const waitForThrottle = Math.max(0, MIN_STATUS_FETCH_INTERVAL_MS - (now - last));
-                    if (waitForThrottle > 0) await sleep(waitForThrottle);
-                    lastStatusFetchAtRef.current = Date.now();
-
                     const headers = await getAuthenticatedHeaders();
                     const res = await fetch(
                       `/api/webcontainer-status?code=${encodeURIComponent(existingCode)}&appId=${encodeURIComponent(appId)}`,
@@ -1834,66 +1823,63 @@ export default function NavBar() {
 
                     if (startRunIdRef.current !== runId) return;
 
-                    if (res.status === 404 || res.status === 409) {
-                      const data = await res.json().catch(() => ({} as any));
-                      setIsPolling(false);
-                      setConnectingToExisting(false);
-                      setIsLoading(false);
-                      setError(String((data as any)?.error || 'Preview expired.'));
-                      setCanRetry(true);
-                      // code is invalid/expired; allow normal flow to create a new machine
+                    if (res.status === 404 || res.status === 409 || res.status === 410) {
+                      console.log(`🗑️ Saved container ${existingCode} became invalid during retry (${res.status}); clearing and creating fresh.`);
                       await clearStoredContainerCodeEverywhere(appId, user);
                       break;
                     }
 
-                    if (res.ok) {
-                      const statusData = await res.json().catch(() => ({} as any));
-                      setCurrentStatusData(statusData);
+                    if (!res.ok) continue;
 
-                      const status = String((statusData as any)?.status || '').toLowerCase();
-                      const isReady =
-                        status === 'ready' ||
-                        ['running', 'compiled', 'started', 'online', 'active', 'completed', 'finished'].includes(status);
-                      const url = String((statusData as any)?.url || '').trim();
+                    const statusData = await res.json().catch(() => ({} as any));
+                    const status = String((statusData as any)?.status || '').toLowerCase();
+                    const url = String((statusData as any)?.url || '').trim();
+                    const isReady =
+                      status === 'ready' ||
+                      ['running', 'compiled', 'started', 'online', 'active', 'completed', 'finished'].includes(status);
 
-                      if (url && isReady) {
-                        const probe = await probePreviewUrl(appId, url);
-                        if (startRunIdRef.current !== runId) return;
-                        if (probe.reachable) {
-                          pollingCodeRef.current = existingCode;
-                          iframeLoadedSuccessfullyRef.current = false;
-                          setPreviewUrl(url);
-                          setIsPolling(false);
-                          setConnectingToExisting(false);
-                          setIsLoading(false);
-                          setLoadingStatus(`Connected to machine ${statusData.machineId}!`);
-                          appLoadedSuccessfullyRef.current = true;
-                          return;
-                        }
+                    if (!url || !isReady) continue;
 
-                        if (probe.status === 404 || probe.status === 410) {
-                          await clearStoredContainerCodeEverywhere(appId, user);
-                          break;
-                        }
+                    const probe = await probePreviewUrl(appId, url);
+                    if (startRunIdRef.current !== runId) return;
+                    if (!probe.reachable) {
+                      if (probe.status === 404 || probe.status === 410) {
+                        await clearStoredContainerCodeEverywhere(appId, user);
+                        break;
                       }
+                      continue;
                     }
-                  } catch {
-                    // ignore transient errors; keep polling
-                  }
 
-                  // Backoff (in addition to the throttle above).
-                  const waitMs = Math.min(9000, 1200 + attempt * 400);
-                  await sleep(waitMs);
+                    console.log(`✅ Recovered saved machine ${existingCode} after transient status-service failure.`);
+                    pollingCodeRef.current = existingCode;
+                    iframeLoadedSuccessfullyRef.current = false;
+                    setPreviewUrl(url);
+                    setConnectingToExisting(false);
+                    setIsPolling(false);
+                    setIsLoading(false);
+                    setError(null);
+                    setCanRetry(false);
+                    setLoadingStatus(`Connected to machine ${statusData.machineId}!`);
+                    appLoadedSuccessfullyRef.current = true;
+                    recovered = true;
+                    return;
+                  } catch {
+                    // transient retry only
+                  }
                 }
 
                 if (startRunIdRef.current !== runId) return;
-                // If we didn't connect, stop polling and show a neutral error.
-                setIsPolling(false);
-                setConnectingToExisting(false);
-                setIsLoading(false);
-                setError('Temporary backend issue while checking your saved machine. Please wait a moment and try Reconnect again.');
-                setCanRetry(false);
-                return;
+                if (!recovered) {
+                  console.log(`🧹 Saved machine ${existingCode} did not recover after status 5xx retries; clearing and starting fresh machine.`);
+                  await clearStoredContainerCodeEverywhere(appId, user);
+                  setConnectingToExisting(false);
+                  setIsPolling(false);
+                  setIsLoading(false);
+                  setError(null);
+                  setCanRetry(false);
+                  setCurrentStatusData(null);
+                  setLoadingStatus('Saved machine unavailable. Starting a fresh machine…');
+                }
               } else {
                 console.log(`❌ Failed to get status for container ${existingCode}: ${statusResponse.status} ${statusResponse.statusText}`);
               }
