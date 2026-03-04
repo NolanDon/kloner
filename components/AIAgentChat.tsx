@@ -256,7 +256,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         return () => document.removeEventListener("keydown", onKey);
     }, [topupModalOpen]);
     const makeWelcomeMessage = useCallback((ctx?: AIAgentChatProps["welcomeContext"]) => {
-        const base = "Welcome — let’s build this step by step.";
+        const base = "Agent ready.";
 
         const cleanOneLine = (v: unknown, max = 180) => {
             const raw = typeof v === "string" ? v : "";
@@ -279,13 +279,15 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             contextLine = `You're starting from the ${templateName} template.`;
         }
 
-        const question = prompt
-            ? "Want me to implement this now, or adjust the direction first?"
-            : urlRaw
-                ? "Do you want a close match first, or start customizing now?"
-                : "What should we work on first?";
-
-        return [base, "", contextLine, "", "I can help with layout, styling, images, and features.", "", question]
+        return [
+            base,
+            "",
+            contextLine,
+            "",
+            "I can help with layout, styling, images, copy, and features.",
+            "Ideas to start: improve the hero, tighten spacing, add a pricing section, or refine mobile responsiveness.",
+            "Tell me what direction you want, and I’ll implement it.",
+        ]
             .filter(Boolean)
             .join("\n");
     }, []);

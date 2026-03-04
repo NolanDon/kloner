@@ -289,7 +289,7 @@ const items = [
   },
   {
     title: "Deploy",
-    text: "Finally, name and deploy your website with just a few clicks to Vercel and view your live project within minutes.",
+    text: "Finally, name and deploy your website with just a few clicks and have your live project within minutes.",
     step: 4,
     Modal: DeployModal as ModalWithProgress,
     needsProgress: true,
