@@ -742,6 +742,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     setCookieRecoveryPromptVisible(false);
     setIsPolling(false); // Reset polling state
     setPreviewUrl(null);
+    previewUrlFirstSeenAtRef.current = 0;
     setCanRetry(false);
     setLoadingStatus(''); // Clear loading status on retry
     setCurrentStatusData(null); // Clear status data on retry
@@ -775,6 +776,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   };
   const proxyBaseRef = useRef<string | null>(null);
   const previewUrlRef = useRef<string | null>(null);
+  const previewUrlFirstSeenAtRef = useRef<number>(0);
   const hmrWsRef = useRef<WebSocket | null>(null);
   const hmrWsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastHmrWsCheckKeyRef = useRef<string>('');
@@ -1064,6 +1066,11 @@ export default function NavBar() {
 
   useEffect(() => {
     previewUrlRef.current = previewUrl;
+    if (previewUrl) {
+      if (!previewUrlFirstSeenAtRef.current) previewUrlFirstSeenAtRef.current = Date.now();
+    } else {
+      previewUrlFirstSeenAtRef.current = 0;
+    }
   }, [previewUrl]);
 
   useEffect(() => {
@@ -1372,6 +1379,7 @@ export default function NavBar() {
     setIsPolling(false);
     setConnectingToExisting(false);
     setPreviewUrl(null);
+    previewUrlFirstSeenAtRef.current = 0;
     setError(null);
     setCanRetry(false);
     setLoadingStatus('');
@@ -1406,6 +1414,7 @@ export default function NavBar() {
     setIsPolling(false);
     setConnectingToExisting(true);
     setPreviewUrl(null);
+    previewUrlFirstSeenAtRef.current = 0;
     setError(null);
     setCanRetry(false);
     setLoadingStatus('');
@@ -2987,6 +2996,36 @@ export default function NavBar() {
     };
   }, [previewUrl, onPreviewReadyChange, externalPreviewMode]);
 
+  const previewStatus = String((currentStatusData as any)?.status || '').toLowerCase();
+  const previewInteractiveByStatus = [
+    'ready',
+    'running',
+    'compiled',
+    'started',
+    'completed',
+    'finished',
+    'active',
+    'online',
+  ].includes(previewStatus);
+  const previewUrlAgeMs = previewUrlFirstSeenAtRef.current > 0 ? Date.now() - previewUrlFirstSeenAtRef.current : 0;
+  const loadingLower = String(loadingStatus || '').toLowerCase();
+  const stuckConnectingWithUrl =
+    Boolean(previewUrl) &&
+    isPolling &&
+    !externalPreviewMode &&
+    !backendReadyRef.current &&
+    !previewInteractiveByStatus &&
+    (connectingToExisting || loadingLower.includes('connecting to machine')) &&
+    previewUrlAgeMs > 45_000;
+
+  const canRenderEmbeddedFrame =
+    backendReadyRef.current ||
+    hmrWsStatus === 'ok' ||
+    previewInteractiveByStatus ||
+    stuckConnectingWithUrl;
+  const showPreviewSurface = Boolean(previewUrl) && !error && (externalPreviewMode || canRenderEmbeddedFrame);
+  const activePreviewUrl = previewUrl || '';
+
   return (
     <div className="h-full flex flex-col bg-white text-black/90 border border-black/10 rounded-2xl shadow">
       {error && (
@@ -3044,7 +3083,7 @@ export default function NavBar() {
           </div>
         </div>
       )}
-      {previewUrl && !error ? (
+      {showPreviewSurface ? (
         <div className="relative w-full h-full">
           {/* {hmrWsStatus === 'blocked' && showHmrWarning ? (
             <div className="absolute left-3 top-3 z-10 max-w-[min(520px,92vw)] rounded-xl border border-amber-200 bg-amber-50/90 px-3 py-2 text-xs text-amber-900 shadow-sm backdrop-blur-sm">
@@ -3183,7 +3222,7 @@ export default function NavBar() {
                     onClick={() => {
                       let opened: Window | null = null;
                       try {
-                        opened = window.open(previewUrl, '_blank', 'noopener,noreferrer');
+                        opened = window.open(activePreviewUrl, '_blank', 'noopener,noreferrer');
                       } catch {
                         opened = null;
                       }
@@ -3211,7 +3250,7 @@ export default function NavBar() {
           ) : (
           <iframe
             key={iframeKey}
-            src={previewUrl}
+            src={activePreviewUrl}
             className="w-full h-full border border-black/10 rounded-lg"
             title="App Preview"
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
@@ -3301,9 +3340,9 @@ export default function NavBar() {
               }
 
               // Check if this looks like a DNS/network error or preview routing issue
-              if (isHubPreviewUrl(previewUrl)) {
+              if (isHubPreviewUrl(activePreviewUrl)) {
                 if (isSafariLikeBrowser()) {
-                  switchToExternalPreviewMode(previewUrl, 'safari_iframe_onerror_hub_preview');
+                  switchToExternalPreviewMode(activePreviewUrl, 'safari_iframe_onerror_hub_preview');
                   return;
                 }
                 setError('Preview couldn’t load in this iframe because the required routing cookie appears blocked or not ready yet. Necessary cookies are required for app building and connecting this preview. We will automatically restart the preview in a few seconds.');
@@ -3324,8 +3363,8 @@ export default function NavBar() {
                 setPreviewUrl(null); // Hide the iframe
                 try { onPreviewReadyChange?.(false); } catch { }
                 scheduleAutomaticPreviewRestart('iframe_onerror_hub', 6000);
-              } else if (previewUrl.includes('.fly.dev') || previewUrl.includes('localhost')) {
-                setError(`Unable to connect to ${previewUrl}. The deployment may still be starting up or has failed. Please try again in a few minutes.`);
+              } else if (activePreviewUrl.includes('.fly.dev') || activePreviewUrl.includes('localhost')) {
+                setError(`Unable to connect to ${activePreviewUrl}. The deployment may still be starting up or has failed. Please try again in a few minutes.`);
                 setCookieRecoveryPromptVisible(false);
                 setCanRetry(true);
                 setIsLoading(false);
