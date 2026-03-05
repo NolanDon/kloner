@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStripe } from "@/lib/stripe";
 import { FieldValue } from "firebase-admin/firestore";
-import { assertCsrf, getAdminDb, verifySession } from "@/app/api/_lib/auth";
+import { assertCsrf, getAdminAuth, getAdminDb, verifySession } from "@/app/api/_lib/auth";
 import { captureCriticalEvent, captureException } from "@/lib/observability";
 
 export const runtime = "nodejs";
@@ -17,6 +17,13 @@ function cleanInt(v: unknown): number | null {
     const n = typeof v === "number" ? v : typeof v === "string" ? Number.parseInt(v, 10) : NaN;
     if (!Number.isFinite(n)) return null;
     return Math.max(0, Math.floor(n));
+}
+
+function readBearerToken(req: NextRequest): string | null {
+    const authHeader = req.headers.get("authorization") || "";
+    if (!authHeader.toLowerCase().startsWith("bearer ")) return null;
+    const token = authHeader.slice(7).trim();
+    return token || null;
 }
 
 async function applyTopup(params: {
@@ -155,8 +162,19 @@ async function applyTopup(params: {
 
 export async function POST(req: NextRequest) {
     try {
-        assertCsrf(req);
-        const decoded = await verifySession(req);
+        let decoded: any;
+
+        try {
+            assertCsrf(req);
+            decoded = await verifySession(req);
+        } catch (sessionErr) {
+            const bearer = readBearerToken(req);
+            if (!bearer) {
+                throw sessionErr;
+            }
+            decoded = await getAdminAuth().verifyIdToken(bearer, true);
+        }
+
         const uid = decoded.uid;
 
         const db = getAdminDb();

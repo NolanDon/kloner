@@ -22,7 +22,7 @@ async function fetchCsrf(): Promise<string | null> {
 }
 
 export default function CreditTopupReturnHandler(): JSX.Element | null {
-    const { loading: authLoading } = useAuth();
+    const { user, loading: authLoading } = useAuth();
     const { showAlert } = useModal();
     const handledRef = useRef(false);
 
@@ -100,11 +100,13 @@ export default function CreditTopupReturnHandler(): JSX.Element | null {
         void (async () => {
             try {
                 const csrf = await fetchCsrf();
+                const idToken = await user?.getIdToken?.().catch(() => null);
                 const res = await fetch("/api/billing/confirm-credit-topup", {
                     method: "POST",
                     headers: {
                         "content-type": "application/json",
                         ...(csrf ? { "x-csrf": csrf } : {}),
+                        ...(idToken ? { authorization: `Bearer ${idToken}` } : {}),
                     },
                     credentials: "include",
                     cache: "no-store",
@@ -158,7 +160,7 @@ export default function CreditTopupReturnHandler(): JSX.Element | null {
                 closePopupIfPossible();
             }
         })();
-    }, [authLoading, showAlert]);
+    }, [authLoading, showAlert, user]);
 
     return null;
 }

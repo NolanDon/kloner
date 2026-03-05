@@ -53,6 +53,13 @@ function normalizeNextPath(input: unknown): string | null {
     return raw;
 }
 
+function readBearerToken(req: NextRequest): string | null {
+    const authHeader = req.headers.get("authorization") || "";
+    if (!authHeader.toLowerCase().startsWith("bearer ")) return null;
+    const token = authHeader.slice(7).trim();
+    return token || null;
+}
+
 async function handler(req: NextRequest, uid: string, sessionClaims?: Record<string, unknown>) {
     const db = getAdminDb();
 
@@ -164,8 +171,19 @@ async function handler(req: NextRequest, uid: string, sessionClaims?: Record<str
 
 export async function POST(req: NextRequest) {
     try {
-        assertCsrf(req);
-        const decoded = await verifySession(req);
+        let decoded: any;
+
+        try {
+            assertCsrf(req);
+            decoded = await verifySession(req);
+        } catch (sessionErr) {
+            const bearer = readBearerToken(req);
+            if (!bearer) {
+                throw sessionErr;
+            }
+            decoded = await getAdminAuth().verifyIdToken(bearer, true);
+        }
+
         const uid = decoded.uid;
         const claims = (decoded as any) as Record<string, unknown>;
         const response = await handler(req, uid, claims);
