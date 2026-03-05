@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Bot, RotateCcw, Database, FileText, RefreshCw, X, AlertTriangle, ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
+import { Send, Bot, RotateCcw, Database, FileText, RefreshCw, X, AlertTriangle, ChevronDown, ChevronUp, ExternalLink, Copy, Check } from "lucide-react";
 import { ensureSessionAndCsrf } from "@/lib/auth-client";
 import { useAuth } from "@/src/hooks/useAuth";
 import { db } from "@/lib/firebase";
@@ -381,6 +381,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     const [migrationAcknowledge, setMigrationAcknowledge] = useState(false);
     const [migrationConfirmText, setMigrationConfirmText] = useState("");
     const [migrationShowSqlInModal, setMigrationShowSqlInModal] = useState(false);
+    const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
 
     const [stagedBundles, setStagedBundles] = useState<StagedBundle[]>([]);
 
@@ -1256,6 +1257,38 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             });
         },
         [saveChatNow],
+    );
+
+    const copyMessageText = useCallback(
+        async (message: Message) => {
+            const text = String(message.content || "").trim();
+            if (!text) return;
+
+            try {
+                if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+                    await navigator.clipboard.writeText(text);
+                } else if (typeof document !== "undefined") {
+                    const textarea = document.createElement("textarea");
+                    textarea.value = text;
+                    textarea.setAttribute("readonly", "true");
+                    textarea.style.position = "fixed";
+                    textarea.style.opacity = "0";
+                    document.body.appendChild(textarea);
+                    textarea.focus();
+                    textarea.select();
+                    document.execCommand("copy");
+                    document.body.removeChild(textarea);
+                }
+
+                setCopiedMessageId(message.id);
+                window.setTimeout(() => {
+                    setCopiedMessageId((current) => (current === message.id ? null : current));
+                }, 1500);
+            } catch {
+                void showAlert("Could not copy this message. Please copy it manually.", "Copy failed");
+            }
+        },
+        [showAlert],
     );
 
     // Save chat history via server (debounced)
@@ -2450,15 +2483,30 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                 : "bg-orange-50 border border-orange-200"
                                 }`}
                         >
-                            <button
-                                type="button"
-                                onClick={() => dismissMessage(message.id)}
-                                className="absolute top-1.5 right-1.5 rounded p-1 text-gray-500 hover:text-gray-900 hover:bg-black/5 opacity-0 group-hover:opacity-100 focus:opacity-100"
-                                title="Dismiss message"
-                                aria-label="Dismiss message"
-                            >
-                                <X className="h-3.5 w-3.5" />
-                            </button>
+                            <div className="absolute top-1.5 right-1.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+                                <button
+                                    type="button"
+                                    onClick={() => void copyMessageText(message)}
+                                    className="rounded p-1 text-gray-500 hover:text-gray-900 hover:bg-black/5"
+                                    title={copiedMessageId === message.id ? "Copied" : "Copy message"}
+                                    aria-label={copiedMessageId === message.id ? "Copied" : "Copy message"}
+                                >
+                                    {copiedMessageId === message.id ? (
+                                        <Check className="h-3.5 w-3.5" />
+                                    ) : (
+                                        <Copy className="h-3.5 w-3.5" />
+                                    )}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => dismissMessage(message.id)}
+                                    className="rounded p-1 text-gray-500 hover:text-gray-900 hover:bg-black/5"
+                                    title="Dismiss message"
+                                    aria-label="Dismiss message"
+                                >
+                                    <X className="h-3.5 w-3.5" />
+                                </button>
+                            </div>
 
                             <div className="whitespace-pre-wrap break-words text-sm">{renderTextWithLinks(message.content)}</div>
 

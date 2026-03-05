@@ -120,25 +120,26 @@ export default function HeroContent({
   }
 
   return (
-    <div className="relative z-20 flex h-full w-full items-center justify-center px-4 sm:px-6">
+    <div className="relative z-20 flex h-full w-full items-center justify-center px-4 sm:px-6 py-[clamp(1.25rem,3.5vh,2.5rem)]">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8 }}
-        className="w-full max-w-[720px] text-center pt-20 sm:pt-0"
+        className="w-full max-w-[720px] text-center"
       >
         <h1
-          className={`${displayClassName} leading-[0.95] font-bold text-[3rem] sm:text-[4.25rem] md:text-[5.5rem] tracking-tight text-white`}
+          className={`${displayClassName} leading-[0.95] font-bold tracking-tight text-white`}
+          style={{ fontSize: "clamp(3rem, min(12vw, 8.8vh), 5.5rem)" }}
         >
           Clone, Customize <br /> & Deploy.
         </h1>
 
-        <p className="mt-5 sm:mt-6 text-white/90 text-base sm:text-lg md:text-xl max-w-xl mx-auto font-medium">
+        <p className="mt-[clamp(0.75rem,2.2vh,1.5rem)] text-white/90 text-base sm:text-lg md:text-xl max-w-xl mx-auto font-medium">
           Enter a description, or drop a link
           to generate your next ready-to-ship project.
         </p>
 
-        <form onSubmit={onSubmit} className="mt-8 sm:mt-10 w-full max-w-2xl mx-auto">
+        <form onSubmit={onSubmit} className="mt-[clamp(1rem,3.2vh,2.5rem)] w-full max-w-2xl mx-auto">
           <div className="mb-3 flex items-center justify-center gap-2 text-xs text-white/80">
             <button
               type="button"
@@ -251,7 +252,7 @@ export default function HeroContent({
           </div>
         </form>
 
-        <div className="mt-10 sm:mt-12 flex justify-center">
+        <div className="mt-[clamp(1rem,3.8vh,3rem)] flex justify-center">
           <a
             href="/community-builds"
             className="group inline-flex items-center gap-2 text-white/80 hover:text-white transition-all"
