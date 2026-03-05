@@ -930,6 +930,27 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
     const [vercelConnectOpening, setVercelConnectOpening] = useState(false);
     const [generationEver, setGenerationEver] = useState(false);
 
+    const handleCompileErrorFixRequest = useCallback((payload: {
+        appId: string;
+        code: string;
+        actionType: "quick_fix_compile";
+        fixAction?: string;
+        compileError: {
+            summary: string;
+            detail: string;
+            fingerprint: string;
+        };
+    }) => {
+        setViewMode("ai");
+        if (isMobile) setMobileTab("prompt");
+        if (typeof window === "undefined") return;
+        try {
+            window.dispatchEvent(new CustomEvent("kloner:compile-error-fix-request", { detail: payload }));
+        } catch {
+            // ignore
+        }
+    }, [isMobile]);
+
     useEffect(() => {
         stagedImagesRef.current = stagedImages;
     }, [stagedImages]);
@@ -4236,6 +4257,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                                         files={effectivePreviewFiles}
                                         onFileChange={handleFileChangeFromContainer}
                                         onPreviewReadyChange={setIsWebPreviewReady}
+                                        onCompileErrorFixRequest={handleCompileErrorFixRequest}
                                         onBackendReady={() => {
                                             // Keep mode pinned to webcontainer, but do not auto-reconnect.
                                             // Auto-incrementing reconnectKey here causes a reconnect loop

@@ -29,11 +29,22 @@ interface WebContainerRunnerProps {
     maxPollingRetries?: number;
     maxContainerNotFound?: number;
   };
+  onCompileErrorFixRequest?: (payload: {
+    appId: string;
+    code: string;
+    actionType: 'quick_fix_compile';
+    fixAction?: string;
+    compileError: {
+      summary: string;
+      detail: string;
+      fingerprint: string;
+    };
+  }) => void;
   navigatePath?: string | null;
   navigatePathToken?: number;
 }
 
-export default function WebContainerRunner({ appId, files, onFileChange, onPreviewReadyChange, onBackendReady, onRequestRebuild, reloadToken, applyToken, restartToken, reconnectToken, forceFreshStart, pollingConfig, navigatePath, navigatePathToken }: WebContainerRunnerProps) {
+export default function WebContainerRunner({ appId, files, onFileChange, onPreviewReadyChange, onBackendReady, onRequestRebuild, onCompileErrorFixRequest, reloadToken, applyToken, restartToken, reconnectToken, forceFreshStart, pollingConfig, navigatePath, navigatePathToken }: WebContainerRunnerProps) {
 
   type DebugEvent = {
     ts: number;
@@ -127,6 +138,17 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const [showHmrWarning, setShowHmrWarning] = useState(true);
   const [hmrWsStatus, setHmrWsStatus] = useState<'unknown' | 'ok' | 'blocked'>('unknown');
   const [error, setError] = useState<string | null>(null);
+  const [compileErrorState, setCompileErrorState] = useState<{
+    code: string;
+    summary: string;
+    detail: string;
+    fingerprint: string;
+    quickFixEligible: boolean;
+    noCredit: boolean;
+    actionType: 'quick_fix_compile';
+    fixAction?: string;
+    canShowFreeFixCta: boolean;
+  } | null>(null);
   const [cookieRecoveryPromptVisible, setCookieRecoveryPromptVisible] = useState(false);
   const [externalPreviewMode, setExternalPreviewMode] = useState(false);
   const [externalPreviewAutoOpenFailed, setExternalPreviewAutoOpenFailed] = useState(false);
@@ -174,6 +196,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const lastReadyUrlRef = useRef<string | null>(null);
   const lastBackendReadyNotifyRef = useRef<string | null>(null);
   const autoRebuildByCodeRef = useRef<Record<string, true>>({});
+  const compileErrorSeenByFingerprintRef = useRef<Record<string, true>>({});
+  const compileErrorActiveFingerprintRef = useRef<string | null>(null);
   const iframePostLoadRecoveryCountRef = useRef<number>(0);
   const lastAppServerKindRef = useRef<'fallback' | 'next-dev' | 'next-prod' | ''>('');
   const stickyProgressByCodeRef = useRef<Record<string, number>>({});
@@ -182,11 +206,11 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   // Default status polling interval while the preview is booting/compiling.
   // We keep this relatively infrequent; readiness is primarily driven by the
   // preview URL/iframe once available.
-  const POLL_INTERVAL_MS = 10_000;
+  const POLL_INTERVAL_MS = 1_500;
 
   // Throttle: regardless of code path, never issue status checks more frequently
   // than this (prevents duplicate loops and tight retry paths from spamming).
-  const MIN_STATUS_FETCH_INTERVAL_MS = 3_000;
+  const MIN_STATUS_FETCH_INTERVAL_MS = 1_200;
   const lastStatusFetchAtRef = useRef<number>(0);
   const HARD_POLL_TIMEOUT_MS = 12 * 60 * 1000;
 
@@ -506,6 +530,61 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     }
   };
 
+  const emitCompileErrorTelemetry = useCallback((kind: 'compile_error_seen' | 'compile_error_fix_clicked' | 'compile_error_fix_sent' | 'compile_error_recovered', detail: Record<string, any>) => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.dispatchEvent(
+        new CustomEvent('kloner:ai-agent-event', {
+          detail: {
+            kind,
+            ts: Date.now(),
+            appId,
+            ...detail,
+          },
+        })
+      );
+    } catch {
+      // ignore
+    }
+  }, [appId]);
+
+  const getCompileErrorStateFromStatus = useCallback((code: string, statusData: any) => {
+    const compileError = statusData?.compileError && typeof statusData.compileError === 'object' ? statusData.compileError : {};
+    const summary = String(compileError?.summary || '').trim();
+    const detail = String(compileError?.detail || statusData?.error || statusData?.uiMessage || '').trim();
+    const fingerprint = String(compileError?.fingerprint || `${code}:${summary || 'compile_error'}`).trim();
+    const quickFixEligible = compileError?.quickFixEligible === true;
+    const noCredit = compileError?.noCredit === true;
+    const fixActionFromCompileError = String(compileError?.fixAction || '').trim();
+
+    const status = String(statusData?.status || '').toLowerCase();
+    const uiStage = String(statusData?.uiStage || '').toLowerCase();
+    const quickActions = Array.isArray(statusData?.quickActions) ? statusData.quickActions : [];
+    const quickFixAction = quickActions.find((action: any) => String(action?.type || '').toLowerCase() === 'quick_fix_compile');
+    const quickFixNoCredit = quickFixAction?.noCredit === true;
+    const fixActionId = String(fixActionFromCompileError || quickFixAction?.id || quickFixAction?.actionId || '').trim();
+
+    const compileErrorActive =
+      Boolean(summary) ||
+      uiStage === 'compile_error' ||
+      (status === 'error' && Boolean(quickFixAction));
+
+    if (!compileErrorActive) return null;
+
+    const normalizedSummary = summary || 'Compilation failed while preparing your preview.';
+    return {
+      code,
+      summary: normalizedSummary,
+      detail,
+      fingerprint,
+      quickFixEligible,
+      noCredit,
+      actionType: 'quick_fix_compile' as const,
+      fixAction: fixActionId || undefined,
+      canShowFreeFixCta: quickFixEligible && noCredit && Boolean(quickFixAction) && quickFixNoCredit,
+    };
+  }, []);
+
   // Helper function to get stored container code for this app
   const getStoredContainerCode = async (appId: string, user: any): Promise<string | null> => {
     // First try localStorage
@@ -726,6 +805,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
 
     setStartAttempt(0);
     setError(null);
+    setCompileErrorState(null);
     setCookieRecoveryPromptVisible(false);
     setIsPolling(false); // Reset polling state
     setPreviewUrl(null);
@@ -741,6 +821,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     appLoadedSuccessfullyRef.current = false; // Reset server success flag
     iframeLoadedSuccessfullyRef.current = false; // Reset iframe success flag
     pollingCodeRef.current = null; // Reset polling code
+    compileErrorActiveFingerprintRef.current = null;
     iframePostLoadRecoveryCountRef.current = 0;
     if (iframePostLoadTimeoutRef.current) {
       clearTimeout(iframePostLoadTimeoutRef.current);
@@ -1524,6 +1605,8 @@ export default function NavBar() {
 
         setIsLoading(true);
         setError(null);
+        setCompileErrorState(null);
+        compileErrorActiveFingerprintRef.current = null;
         setIsPolling(false); // Reset polling state
         setPreviewUrl(null);
         setConnectingToExisting(false);
@@ -2228,6 +2311,33 @@ export default function NavBar() {
 
             lastAppServerKindRef.current = appServerKind;
 
+            const compileErrorInfo = getCompileErrorStateFromStatus(code, statusData);
+            if (compileErrorInfo) {
+              setCompileErrorState(compileErrorInfo);
+              setError(null);
+              setCanRetry(true);
+              setCookieRecoveryPromptVisible(false);
+              setIsPolling(true);
+              setIsLoading(false);
+              setConnectingToExisting(false);
+
+              const fingerprintKey = compileErrorInfo.fingerprint || `${code}:compile_error`;
+              compileErrorActiveFingerprintRef.current = fingerprintKey;
+
+              if (!compileErrorSeenByFingerprintRef.current[fingerprintKey]) {
+                compileErrorSeenByFingerprintRef.current[fingerprintKey] = true;
+                emitCompileErrorTelemetry('compile_error_seen', {
+                  code,
+                  fingerprint: fingerprintKey,
+                  actionType: compileErrorInfo.actionType,
+                  fixAction: compileErrorInfo.fixAction || null,
+                });
+              }
+
+              statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
+              return;
+            }
+
             // If the backend reports `status=ready` but `ready=false`, we still want to refresh the iframe
             // once (without changing the URL) because the hub may have switched from a waiting page to the app.
             if (status && status !== lastReportedStatusRef.current) {
@@ -2290,6 +2400,15 @@ export default function NavBar() {
 
             // Completion contract: only stop polling when `ready === true`.
             if (readyFlag) {
+              const recoveredFingerprint = compileErrorActiveFingerprintRef.current;
+              if (recoveredFingerprint) {
+                emitCompileErrorTelemetry('compile_error_recovered', {
+                  code,
+                  fingerprint: recoveredFingerprint,
+                });
+              }
+              compileErrorActiveFingerprintRef.current = null;
+              setCompileErrorState(null);
               backendReadyRef.current = true;
               const readyUrl = deploymentUrl || latestDeploymentUrlRef.current;
               console.log('Deployment ready at:', readyUrl);
@@ -2609,6 +2728,7 @@ export default function NavBar() {
         console.error('Error starting app:', err);
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         setError(errorMessage);
+        setCompileErrorState(null);
         setIsPolling(false); // Reset polling state on error
         pollingRetryCountRef.current = 0; // Reset polling retry count
 
@@ -3022,7 +3142,7 @@ export default function NavBar() {
     hmrWsStatus === 'ok' ||
     previewInteractiveByStatus ||
     stuckConnectingWithUrl;
-  const showPreviewSurface = Boolean(previewUrl) && !error && (externalPreviewMode || canRenderEmbeddedFrame);
+  const showPreviewSurface = Boolean(previewUrl) && !error && !compileErrorState && (externalPreviewMode || canRenderEmbeddedFrame);
   const activePreviewUrl = previewUrl || '';
 
   return (
@@ -3067,6 +3187,58 @@ export default function NavBar() {
           </div>
         </div>
       )}
+      {compileErrorState && !error ? (
+        <div className="p-4 border-b border-black/10 bg-red-50/40">
+          <div className="space-y-3">
+            <p className="text-red-700 text-sm">{compileErrorState.summary}</p>
+
+            {compileErrorState.detail ? (
+              <details className="rounded-lg border border-red-200 bg-white px-3 py-2">
+                <summary className="cursor-pointer select-none text-xs font-semibold text-red-800">Technical details</summary>
+                <pre className="mt-2 whitespace-pre-wrap text-xs text-red-900/90">{compileErrorState.detail}</pre>
+              </details>
+            ) : null}
+
+            <div className="flex flex-wrap items-center gap-2">
+              {compileErrorState.canShowFreeFixCta ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    emitCompileErrorTelemetry('compile_error_fix_clicked', {
+                      code: compileErrorState.code,
+                      fingerprint: compileErrorState.fingerprint,
+                      actionType: compileErrorState.actionType,
+                      fixAction: compileErrorState.fixAction || null,
+                    });
+                    onCompileErrorFixRequest?.({
+                      appId,
+                      code: compileErrorState.code,
+                      actionType: compileErrorState.actionType,
+                      fixAction: compileErrorState.fixAction,
+                      compileError: {
+                        summary: compileErrorState.summary,
+                        detail: compileErrorState.detail,
+                        fingerprint: compileErrorState.fingerprint,
+                      },
+                    });
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs bg-accent text-white hover:bg-[#e54f1a] transition-colors"
+                >
+                  Fix compile error (free)
+                </button>
+              ) : null}
+
+              <button
+                type="button"
+                onClick={retryApp}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs border border-black/15 bg-white text-black/80 hover:bg-black/5 transition-colors"
+              >
+                Refresh
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {showPreviewSurface ? (
         <div className="relative w-full h-full">
           {/* {hmrWsStatus === 'blocked' && showHmrWarning ? (
@@ -3400,7 +3572,7 @@ export default function NavBar() {
           />
           )}
         </div>
-      ) : !error ? (
+      ) : !error && !compileErrorState ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center max-w-md">
             {isPolling ? (

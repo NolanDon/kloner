@@ -71,6 +71,18 @@ type AIAgentChatProps = {
     };
 };
 
+type CompileErrorQuickFixContext = {
+    appId: string;
+    code: string;
+    actionType: "quick_fix_compile";
+    fixAction?: string;
+    compileError: {
+        summary: string;
+        detail: string;
+        fingerprint: string;
+    };
+};
+
 type RestorePointItem = {
     id: string;
     label: string;
@@ -136,6 +148,27 @@ function renderTextWithLinks(text: string): React.ReactNode {
             </a>
         );
     });
+}
+
+function buildCompileFixPrefill(ctx: CompileErrorQuickFixContext): string {
+    const immutableContext = {
+        appId: ctx.appId,
+        code: ctx.code,
+        actionType: ctx.actionType,
+        fixAction: ctx.fixAction || null,
+        compileError: {
+            summary: ctx.compileError.summary,
+            detail: ctx.compileError.detail,
+            fingerprint: ctx.compileError.fingerprint,
+        },
+    };
+
+    return [
+        "Please fix this compile error using the immutable context below.",
+        "",
+        "Context (immutable in free-fix mode):",
+        JSON.stringify(immutableContext, null, 2),
+    ].join("\n");
 }
 
 export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, welcomeContext }: AIAgentChatProps) {
@@ -302,6 +335,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         },
     ]);
     const [input, setInput] = useState("");
+    const [freeCompileFixContext, setFreeCompileFixContext] = useState<CompileErrorQuickFixContext | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isHydrated, setIsHydrated] = useState(false);
     const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
@@ -336,7 +370,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     const supabaseDbHealthInFlightRef = useRef(false);
     const lastSupabaseDbHealthAtRef = useRef(0);
 
-    const chatDisabled = previewReady === false;
+    const chatDisabled = previewReady === false && !freeCompileFixContext;
 
     const didSyncSupabasePreviewEnvRef = useRef(false);
 
@@ -567,6 +601,51 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             // ignore
         }
     }, []);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        const onCompileFix = (event: Event) => {
+            const detail = (event as CustomEvent<any>)?.detail || {};
+            const code = typeof detail?.code === "string" ? detail.code.trim() : "";
+            const actionType = String(detail?.actionType || "").toLowerCase();
+            const summary = typeof detail?.compileError?.summary === "string" ? detail.compileError.summary.trim() : "";
+            const detailText = typeof detail?.compileError?.detail === "string" ? detail.compileError.detail : "";
+            const fingerprint = typeof detail?.compileError?.fingerprint === "string" ? detail.compileError.fingerprint.trim() : "";
+            if (!code || actionType !== "quick_fix_compile" || !summary || !fingerprint) return;
+
+            const ctx: CompileErrorQuickFixContext = {
+                appId: String(detail?.appId || appId),
+                code,
+                actionType: "quick_fix_compile",
+                fixAction: typeof detail?.fixAction === "string" ? detail.fixAction : undefined,
+                compileError: {
+                    summary,
+                    detail: detailText,
+                    fingerprint,
+                },
+            };
+
+            const prefill = buildCompileFixPrefill(ctx);
+            setFreeCompileFixContext(ctx);
+            setInput(prefill);
+            setMessages((prev) => [
+                ...prev,
+                {
+                    id: `compile_fix_ready_${Date.now()}`,
+                    role: "assistant",
+                    content: "Free compile-fix context is prepared and locked. Send as-is to use free mode.",
+                    timestamp: new Date(),
+                    type: "text",
+                },
+            ]);
+        };
+
+        window.addEventListener("kloner:compile-error-fix-request", onCompileFix as EventListener);
+        return () => {
+            window.removeEventListener("kloner:compile-error-fix-request", onCompileFix as EventListener);
+        };
+    }, [appId]);
 
     const withCsrfHeaders = useCallback(async () => {
         // Always fetch a fresh CSRF token to avoid stale token issues
@@ -1778,6 +1857,9 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         if (chatDisabled) return;
         if (!input.trim() || isLoading) return;
 
+        const compileFixPrefill = freeCompileFixContext ? buildCompileFixPrefill(freeCompileFixContext) : "";
+        const isFreeCompileFixMode = Boolean(freeCompileFixContext && input === compileFixPrefill);
+
         // Special-case: applying a previously proposed migration.
         // This should not spend AI credits and should not hit /api/ai-agent.
         const applyMatch = input.trim().match(/^APPLY\s+([0-9a-fA-F-]{36})$/);
@@ -1885,7 +1967,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         }
 
         // If we can see the remaining balance and it's insufficient, block early.
-        if (typeof aiCreditsRemaining === "number" && aiCreditsRemaining < AI_EDIT_COST) {
+        if (!isFreeCompileFixMode && typeof aiCreditsRemaining === "number" && aiCreditsRemaining < AI_EDIT_COST) {
             const upgrade = "/price";
             const topup = "/price#topup";
             const errorMessage: Message = {
@@ -1923,7 +2005,18 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 messageLen: input.length,
                 messagePreview: input.slice(0, 280),
                 historyCount: Math.min(messages.length + 1, 11),
+                freeCompileFixMode: isFreeCompileFixMode,
             });
+
+            if (isFreeCompileFixMode && freeCompileFixContext) {
+                dispatchAiAgentEvent("compile_error_fix_sent", {
+                    appId,
+                    code: freeCompileFixContext.code,
+                    fingerprint: freeCompileFixContext.compileError.fingerprint,
+                    actionType: freeCompileFixContext.actionType,
+                    fixAction: freeCompileFixContext.fixAction || null,
+                });
+            }
 
             const res = await fetch("/api/ai-agent", {
                 method: "POST",
@@ -1932,7 +2025,18 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                     message: input,
                     appId,
                     conversationHistory: [...messages.slice(-10), userMessage],
-                    databaseConnections
+                    databaseConnections,
+                    quickActionContext: isFreeCompileFixMode && freeCompileFixContext
+                        ? {
+                            type: freeCompileFixContext.actionType,
+                            fixAction: freeCompileFixContext.fixAction || null,
+                            code: freeCompileFixContext.code,
+                            compileErrorFingerprint: freeCompileFixContext.compileError.fingerprint,
+                            compileErrorSummary: freeCompileFixContext.compileError.summary,
+                            compileErrorDetail: freeCompileFixContext.compileError.detail,
+                            noCreditRequested: true,
+                          }
+                        : null,
                 }),
             });
 
@@ -2168,6 +2272,10 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                         fetchRestorePoints();
                     }
                 }
+            }
+
+            if (isFreeCompileFixMode) {
+                setFreeCompileFixContext(null);
             }
         } catch (err: any) {
             dispatchAiAgentEvent("client_error", {
@@ -3043,11 +3151,39 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                     </div>
                 ) : null}
 
+                {freeCompileFixContext ? (
+                    <div className="mb-2 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12px] text-emerald-900">
+                        Free compile-fix mode is active. Keep the payload unchanged to send a free quick fix.
+                    </div>
+                ) : null}
+
                 <div className="flex items-stretch overflow-hidden rounded-xl border border-gray-300 bg-white">
                     <textarea
                         ref={inputRef}
                         value={input}
-                        onChange={(e) => setInput(e.target.value)}
+                        onChange={(e) => {
+                            const nextValue = e.target.value;
+                            if (freeCompileFixContext) {
+                                const lockedValue = buildCompileFixPrefill(freeCompileFixContext);
+                                if (nextValue !== lockedValue) {
+                                    const notice = "Free compile-fix mode was disabled because the immutable context was edited. This request now uses normal billed mode.";
+                                    setFreeCompileFixContext(null);
+                                    setInput(nextValue);
+                                    setMessages((prev) => [
+                                        ...prev,
+                                        {
+                                            id: `compile_fix_unlocked_${Date.now()}`,
+                                            role: "assistant",
+                                            content: notice,
+                                            timestamp: new Date(),
+                                            type: "text",
+                                        },
+                                    ]);
+                                    return;
+                                }
+                            }
+                            setInput(nextValue);
+                        }}
                         onKeyPress={handleKeyPress}
                         placeholder="Ask me to build something..."
                         className="flex-1 resize-none bg-transparent p-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none"
