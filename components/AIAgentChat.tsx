@@ -3168,7 +3168,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                         </div>
                                         <div className="mt-1 text-[12px] text-neutral-700">
                                             {proSavingsPct > 0
-                                                ? `This top-up is about ${proSavingsPct}% more than one month of Pro.`
+                                                ? `Save roughly ${proSavingsPct}% on this purchase by upgrading your account to Pro instead.`
                                                 : "Pro can be better value than repeated top-ups as usage grows."}
                                         </div>
                                         <button
@@ -3179,7 +3179,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                             }}
                                             className="mt-3 inline-flex rounded-full border border-accent/30 bg-white px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent/5"
                                         >
-                                            Upgrade to Pro
+                                            Upgrade to Pro Instead
                                         </button>
                                     </div>
                                 ) : null}
