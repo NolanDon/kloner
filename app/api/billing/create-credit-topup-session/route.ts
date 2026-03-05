@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getStripe } from "@/lib/stripe";
 import { assertCsrf, getAdminAuth, getAdminDb, verifySession } from "@/app/api/_lib/auth";
 import { linkCustomerToUid } from "@/app/api/_lib/billing";
-import { getAuthoritativeUserTier } from "@/app/api/_lib/userTier";
 import { captureCriticalEvent, captureException } from "@/lib/observability";
 
 export const runtime = "nodejs";
@@ -10,13 +9,8 @@ export const dynamic = "force-dynamic";
 
 const stripe = getStripe();
 
-type Tier = "free" | "pro" | "agency" | "enterprise" | "unknown";
-
-function normalizeTier(raw: unknown): Tier {
-    const t = typeof raw === "string" ? raw.toLowerCase().trim() : "";
-    if (t === "pro" || t === "agency" || t === "free" || t === "enterprise" || t === "unknown") return t;
-    return "free";
-}
+const STRATEGIC_MIN_UNIT_PRICE_CENTS = 8;
+const DEFAULT_UNIT_PRICE_CENTS = 10;
 
 function readIntEnv(name: string, fallback: number): number {
     const raw = process.env[name];
@@ -26,7 +20,10 @@ function readIntEnv(name: string, fallback: number): number {
 
 function getTopUpConfig() {
     const currency = (process.env.STRIPE_AI_EDIT_TOPUP_CURRENCY || "usd").toLowerCase();
-    const unitPriceCents = readIntEnv("STRIPE_AI_EDIT_CREDIT_UNIT_PRICE_CENTS", 3);
+    const unitPriceCents = Math.max(
+        STRATEGIC_MIN_UNIT_PRICE_CENTS,
+        readIntEnv("STRIPE_AI_EDIT_CREDIT_UNIT_PRICE_CENTS", DEFAULT_UNIT_PRICE_CENTS),
+    );
     const minCredits = readIntEnv("STRIPE_AI_EDIT_TOPUP_MIN_CREDITS", 50);
     const maxCredits = readIntEnv("STRIPE_AI_EDIT_TOPUP_MAX_CREDITS", 5000);
     const stepCredits = readIntEnv("STRIPE_AI_EDIT_TOPUP_STEP_CREDITS", 50);
@@ -78,7 +75,7 @@ function readBearerToken(req: NextRequest): string | null {
     return token || null;
 }
 
-async function handler(req: NextRequest, uid: string, sessionClaims?: Record<string, unknown>) {
+async function handler(req: NextRequest, uid: string) {
     const db = getAdminDb();
 
     const body = await req.json().catch(() => ({} as any));
@@ -101,23 +98,6 @@ async function handler(req: NextRequest, uid: string, sessionClaims?: Record<str
         return NextResponse.json(
             { error: `Credits must be in increments of ${stepCredits}.` },
             { status: 400 },
-        );
-    }
-
-    // Prefer custom claims for realtime entitlement; fallback to authoritative tier when claims are missing.
-    const claimsTier = normalizeTier(sessionClaims?.userTier ?? sessionClaims?.tier);
-    const tier = (claimsTier && claimsTier !== "free") ? claimsTier : await getAuthoritativeUserTier(uid);
-
-    if (tier !== "pro" && tier !== "agency") {
-        return NextResponse.json(
-            {
-                error: "Credit top-ups are available for Pro and Agency only.",
-                meta: {
-                    detectedTier: tier,
-                    detectedTierSource: claimsTier && claimsTier !== "free" ? "customClaims" : "authoritative",
-                },
-            },
-            { status: 403 },
         );
     }
 
@@ -222,8 +202,7 @@ export async function POST(req: NextRequest) {
         }
 
         const uid = decoded.uid;
-        const claims = (decoded as any) as Record<string, unknown>;
-        const response = await handler(req, uid, claims);
+        const response = await handler(req, uid);
         if (response.status >= 400) {
             await captureCriticalEvent({
                 source: "vercel",

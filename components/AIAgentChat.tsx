@@ -238,7 +238,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 const unitPriceCents =
                     typeof data.unitPriceCents === "number" && Number.isFinite(data.unitPriceCents)
                         ? Math.max(1, Math.floor(data.unitPriceCents))
-                        : 3;
+                        : 10;
                 const minCredits =
                     typeof data.minCredits === "number" && Number.isFinite(data.minCredits)
                         ? Math.max(1, Math.floor(data.minCredits))
@@ -3128,7 +3128,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                         </div>
                                         <div className="mt-2 text-2xl font-semibold text-neutral-900">
                                             {(() => {
-                                                const unit = topupConfig?.unitPriceCents ?? 3;
+                                                const unit = topupConfig?.unitPriceCents ?? 10;
                                                 const currency = (topupConfig?.currency ?? "usd").toLowerCase();
                                                 const amount = ((topupCredits * unit) / 100).toFixed(2);
                                                 return currency === "usd" ? `$${amount}` : `${currency.toUpperCase()} ${amount}`;
