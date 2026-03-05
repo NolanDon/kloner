@@ -4539,7 +4539,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                                     <button
                                         onClick={() => void openDatabaseConnect()}
                                         className="inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold border border-neutral-300 bg-white text-neutral-800"
-                                        title={supabaseConnected && (supabaseProjectName || supabaseProjectRef) ? `Connected to: ${supabaseProjectName || supabaseProjectRef}` : supabaseConnected ? "Open Supabase" : "Connect DB"}
+                                        title={supabaseConnected && (supabaseProjectName || supabaseProjectRef) ? `Connected to: ${supabaseProjectName || supabaseProjectRef}` : supabaseConnected ? "Open Supabase" : "Connect Database"}
                                     >
                                         <Database className="h-4 w-4 shrink-0" />
                                         {supabaseConnected && (supabaseProjectName || supabaseProjectRef) ? (

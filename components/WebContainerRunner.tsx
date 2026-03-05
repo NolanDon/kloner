@@ -155,6 +155,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const [canRetry, setCanRetry] = useState(false);
   const [startAttempt, setStartAttempt] = useState(0);
   const [loadingStatus, setLoadingStatus] = useState('');
+  const [isApplyRefreshing, setIsApplyRefreshing] = useState(false);
   const [currentStatusData, setCurrentStatusData] = useState<any>(null); // Store latest status data for UI
   const [connectingToExisting, setConnectingToExisting] = useState(false); // Track if connecting to existing machine
   // Prevent duplicate starts for the *same* set of inputs. This avoids the
@@ -2967,18 +2968,28 @@ export default function NavBar() {
     if (lastApplyTokenRef.current === applyToken) return;
     lastApplyTokenRef.current = applyToken;
 
+    setIsApplyRefreshing(true);
+
     if (applyReloadTimeoutRef.current) {
       clearTimeout(applyReloadTimeoutRef.current);
       applyReloadTimeoutRef.current = null;
     }
 
     // If HMR is healthy, do nothing.
-    if (hmrWsStatus === 'ok') return;
+    if (hmrWsStatus === 'ok') {
+      const doneTimer = setTimeout(() => {
+        setIsApplyRefreshing(false);
+      }, 1800);
+      return () => {
+        clearTimeout(doneTimer);
+      };
+    }
 
     // Wait for Next to finish recompiling, otherwise we reload old output.
     const delayMs = 3000;
     applyReloadTimeoutRef.current = setTimeout(() => {
       applyReloadTimeoutRef.current = null;
+      setIsApplyRefreshing(false);
       if (!iframeLoadedSuccessfullyRef.current) return;
       if (!previewUrlRef.current) return;
       hardReloadPreview('apply_finished');
@@ -3144,6 +3155,7 @@ export default function NavBar() {
     stuckConnectingWithUrl;
   const showPreviewSurface = Boolean(previewUrl) && !error && !compileErrorState && (externalPreviewMode || canRenderEmbeddedFrame);
   const activePreviewUrl = previewUrl || '';
+  const showApplyRefreshingOverlay = showPreviewSurface && isApplyRefreshing;
 
   return (
     <div className="h-full flex flex-col bg-white text-black/90 border border-black/10 rounded-2xl shadow">
@@ -3241,6 +3253,18 @@ export default function NavBar() {
       ) : null}
       {showPreviewSurface ? (
         <div className="relative w-full h-full">
+          {showApplyRefreshingOverlay ? (
+            <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/85 backdrop-blur-[1px]">
+              <div className="text-center max-w-md">
+                <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
+                {renderLiveStatusLine({
+                  uiStage: 'applying_changes',
+                  uiMessage: 'Refreshing app with new changes…',
+                  updatedAt: Date.now(),
+                })}
+              </div>
+            </div>
+          ) : null}
           {/* {hmrWsStatus === 'blocked' && showHmrWarning ? (
             <div className="absolute left-3 top-3 z-10 max-w-[min(520px,92vw)] rounded-xl border border-amber-200 bg-amber-50/90 px-3 py-2 text-xs text-amber-900 shadow-sm backdrop-blur-sm">
               <div className="flex items-start justify-between gap-3">

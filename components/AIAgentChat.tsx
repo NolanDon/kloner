@@ -120,7 +120,7 @@ function renderTextWithLinks(text: string): React.ReactNode {
         // Make in-app pricing links look like CTAs (not raw URLs).
         if (isPricePath) {
             const isTopup = part === "/price#topup";
-            const label = isTopup ? "Top up credits" : "View pricing";
+            const label = isTopup ? "Add credits" : "View pricing";
             const classes = isTopup
                 ? "inline-flex items-center justify-center rounded-full bg-[#F55F2A] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#e35625]"
                 : "inline-flex items-center justify-center rounded-full border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-900 hover:bg-neutral-50";
@@ -172,7 +172,7 @@ function buildCompileFixPrefill(ctx: CompileErrorQuickFixContext): string {
 }
 
 export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, welcomeContext }: AIAgentChatProps) {
-    const { user, userTier } = useAuth();
+    const { user } = useAuth();
     const { showConfirm, showAlert } = useModal();
     const AI_EDIT_COST = 5;
     const TOPUP_COMING_SOON = false;
@@ -1968,15 +1968,12 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
         // If we can see the remaining balance and it's insufficient, block early.
         if (!isFreeCompileFixMode && typeof aiCreditsRemaining === "number" && aiCreditsRemaining < AI_EDIT_COST) {
-            const upgrade = "/price";
             const topup = "/price#topup";
             const errorMessage: Message = {
                 id: `error_${Date.now()}`,
                 role: "assistant",
                 content:
-                    userTier === "pro" || userTier === "agency"
-                        ? `You have used all AI edit credits for this month.\nTop up credits: ${topup}`
-                        : `You have used all AI edit credits for this month.\nUpgrade to get more credits: ${upgrade}`,
+                    `You have used all AI edit credits for this month.\nAdd credits: ${topup}`,
                 timestamp: new Date(),
                 type: "text",
             };
