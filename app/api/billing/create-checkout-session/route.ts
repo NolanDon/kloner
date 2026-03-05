@@ -4,6 +4,7 @@ import { getStripe } from "@/lib/stripe";
 import admin from "firebase-admin";
 import { linkCustomerToUid } from "../../_lib/billing";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
+import { captureCriticalEvent, captureException } from "@/lib/observability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,6 +17,51 @@ const TRIAL_DAYS = 7;
 // Exit-offer rules
 const EXIT_OFFER_MS = 15 * 60 * 1000;
 const EXIT_OFFER_SKEW_MS = 30 * 1000; // client clock tolerance
+
+async function notifyStripeSubscriptionError(params: {
+    action: string;
+    uid: string;
+    error: any;
+    extra?: Record<string, unknown>;
+}) {
+    const { action, uid, error, extra } = params;
+    const status =
+        typeof error?.statusCode === "number"
+            ? error.statusCode
+            : typeof error?.status === "number"
+              ? error.status
+              : 500;
+
+    if (status >= 500) {
+        await captureException({
+            source: "vercel",
+            error,
+            route: "/api/billing/create-checkout-session",
+            method: "POST",
+            action,
+            statusCode: status,
+            service: "billing-subscription",
+            userId: uid,
+            extra,
+        });
+        return;
+    }
+
+    await captureCriticalEvent({
+        source: "vercel",
+        severity: "critical",
+        statusCode: status,
+        route: "/api/billing/create-checkout-session",
+        method: "POST",
+        action,
+        service: "billing-subscription",
+        userId: uid,
+        message: typeof error?.message === "string" ? error.message : "Stripe subscription flow error",
+        errorName: typeof error?.type === "string" ? error.type : undefined,
+        stack: typeof error?.stack === "string" ? error.stack : undefined,
+        extra,
+    });
+}
 
 function pickExitPromoId(isProd: boolean) {
     const promo = isProd
@@ -93,8 +139,9 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         return NextResponse.json({ error: "Missing plan" }, { status: 400 });
     }
 
-    // Only Pro gets a free trial. Agency starts paid immediately.
-    const includeTrial = plan === "pro";
+    // Only Pro can be eligible for trial. Final decision is made after checking
+    // Stripe subscription history for this customer.
+    const trialCandidate = plan === "pro";
 
     const isProd = process.env.NODE_ENV === "production";
 
@@ -125,41 +172,29 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
 
     let customerId: string | undefined = userData.stripeCustomerId;
 
-    // Check for existing active/trialing subscriptions to prevent duplicates
-    if (customerId) {
-        const existingSubs = await stripe.subscriptions.list({
-            customer: customerId,
-            status: "all",
-            limit: 10,
-        });
-
-        const activeOrTrialing = existingSubs.data.filter(
-            (sub) => sub.status === "active" || sub.status === "trialing"
-        );
-
-        if (activeOrTrialing.length > 0) {
-            return NextResponse.json(
-                {
-                    error: "You already have an active subscription. Please manage your existing subscription instead.",
-                    existingSubscription: true,
-                },
-                { status: 400 }
-            );
-        }
-    }
-
     if (!customerId) {
         const authUser = await admin.auth().getUser(uid);
         const email = authUser.email ?? undefined;
 
-        const customer = await stripe.customers.create({
-            email,
-            metadata: {
-                firebaseUid: uid,
-                ...(affiliateRef ? { affiliateRef } : {}),
-                ...(affiliateSource ? { affiliateSource } : {}),
-            },
-        });
+        let customer;
+        try {
+            customer = await stripe.customers.create({
+                email,
+                metadata: {
+                    firebaseUid: uid,
+                    ...(affiliateRef ? { affiliateRef } : {}),
+                    ...(affiliateSource ? { affiliateSource } : {}),
+                },
+            });
+        } catch (err: any) {
+            await notifyStripeSubscriptionError({
+                action: "billing.createCheckoutSession.createCustomer",
+                uid,
+                error: err,
+                extra: { plan, email: email || null },
+            });
+            throw err;
+        }
 
         customerId = customer.id;
 
@@ -180,6 +215,43 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
             }
         }
     }
+
+    let existingSubs;
+    try {
+        existingSubs = await stripe.subscriptions.list({
+            customer: customerId,
+            status: "all",
+            limit: 100,
+        });
+    } catch (err: any) {
+        await notifyStripeSubscriptionError({
+            action: "billing.createCheckoutSession.listSubscriptions",
+            uid,
+            error: err,
+            extra: { plan, customerId },
+        });
+        throw err;
+    }
+
+    const activeOrTrialing = existingSubs.data.filter(
+        (sub) => sub.status === "active" || sub.status === "trialing"
+    );
+
+    if (activeOrTrialing.length > 0) {
+        return NextResponse.json(
+            {
+                error: "You already have an active subscription. Please manage your existing subscription instead.",
+                existingSubscription: true,
+            },
+            { status: 400 }
+        );
+    }
+
+    // Anti-abuse: one free trial per customer lifecycle.
+    // If this customer has any prior subscription history (including canceled),
+    // do not attach a new trial.
+    const hasAnySubscriptionHistory = existingSubs.data.length > 0;
+    const includeTrial = trialCandidate && !hasAnySubscriptionHistory;
 
     const appOrigin = isProd
         ? process.env.NEXT_PUBLIC_APP_ORIGIN || "https://kloner.app"
@@ -251,22 +323,33 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
     }
 
     // Stripe constraint: cannot send allow_promotion_codes with discounts.
-    const session = await stripe.checkout.sessions.create({
-        mode: "subscription",
-        customer: customerId,
-        client_reference_id: uid,
-        line_items: [{ price: priceId, quantity: 1 }],
-        success_url: successUrl,
-        cancel_url: cancelUrl,
-        metadata: baseMeta,
-
-        ...(discounts?.length ? { discounts } : { allow_promotion_codes: true }),
-
-        subscription_data: {
-            ...(includeTrial ? { trial_period_days: TRIAL_DAYS } : {}),
+    let session;
+    try {
+        session = await stripe.checkout.sessions.create({
+            mode: "subscription",
+            customer: customerId,
+            client_reference_id: uid,
+            line_items: [{ price: priceId, quantity: 1 }],
+            success_url: successUrl,
+            cancel_url: cancelUrl,
             metadata: baseMeta,
-        },
-    });
+
+            ...(discounts?.length ? { discounts } : { allow_promotion_codes: true }),
+
+            subscription_data: {
+                ...(includeTrial ? { trial_period_days: TRIAL_DAYS } : {}),
+                metadata: baseMeta,
+            },
+        });
+    } catch (err: any) {
+        await notifyStripeSubscriptionError({
+            action: "billing.createCheckoutSession.createSession",
+            uid,
+            error: err,
+            extra: { plan, customerId, priceId, includeTrial, hasDiscounts: Boolean(discounts?.length) },
+        });
+        throw err;
+    }
 
     return NextResponse.json({ url: session.url }, { status: 200 });
 }

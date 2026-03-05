@@ -118,7 +118,17 @@ export async function POST(
             !!stripeSubId &&
             (stripeStatus === "active" || stripeStatus === "trialing");
 
-        if (userTier === "free" && (looksPaidButTierFree || (tierSource && tierSource !== "stripe"))) {
+        const needsDowngradeReconcile =
+            userTier !== "free" &&
+            (!stripeSubId ||
+                stripeStatus === "canceled" ||
+                stripeStatus === "incomplete_expired" ||
+                stripeStatus === "paused" ||
+                stripeStatus === "past_due" ||
+                stripeStatus === "unpaid" ||
+                stripeStatus === "incomplete");
+
+        if (looksPaidButTierFree || needsDowngradeReconcile || (tierSource && tierSource !== "stripe")) {
             try {
                 const refreshed = await refreshTierFromStripeForUid(uid);
                 userTier = refreshed === "pro" || refreshed === "agency" ? refreshed : "free";

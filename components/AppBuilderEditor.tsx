@@ -935,6 +935,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
         code: string;
         actionType: "quick_fix_compile";
         fixAction?: string;
+        autoSend?: boolean;
         compileError: {
             summary: string;
             detail: string;

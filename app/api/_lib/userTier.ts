@@ -56,8 +56,21 @@ export async function getAuthoritativeUserTier(uid: string): Promise<UserTier> {
     if (overrideTier) return overrideTier;
 
     const source: string | undefined = userData.tierSource;
+    const storedTier = (userData.tier as UserTier) || "free";
+    const stripeStatus = typeof userData?.stripeStatus === "string" ? userData.stripeStatus : null;
+    const stripeSubId = typeof userData?.stripeSubscriptionId === "string" ? userData.stripeSubscriptionId.trim() : "";
 
-    if (!source || source !== "stripe") {
+    const needsDowngradeReconcile =
+        storedTier !== "free" &&
+        (!stripeSubId ||
+            stripeStatus === "canceled" ||
+            stripeStatus === "incomplete_expired" ||
+            stripeStatus === "paused" ||
+            stripeStatus === "past_due" ||
+            stripeStatus === "unpaid" ||
+            stripeStatus === "incomplete");
+
+    if (!source || source !== "stripe" || needsDowngradeReconcile) {
         // This helper already updates Firestore and returns the tier.
         const tier = await refreshTierFromStripeForUid(uid);
 
@@ -68,5 +81,5 @@ export async function getAuthoritativeUserTier(uid: string): Promise<UserTier> {
         return tier;
     }
 
-    return (userData.tier as UserTier) || "free";
+    return storedTier;
 }

@@ -23,6 +23,10 @@ const setUserTierFromStripe = jest.fn<Promise<void>, [string, string, any]>(asyn
 const mapPriceToTier = jest.fn<string, [string | null]>((priceId: string | null) =>
     priceId ? "pro" : "free",
 );
+const effectiveTierFromStripeSubscription = jest.fn<string, [any]>((args: any) => {
+    const status = typeof args?.status === "string" ? args.status : "";
+    return status === "active" || status === "trialing" ? args?.mappedTier || "free" : "free";
+});
 const getUidForStripeCustomer = jest.fn<Promise<string | null>, [string]>(async () => "uid_1");
 
 jest.mock("../../_lib/billing", () => {
@@ -31,6 +35,7 @@ jest.mock("../../_lib/billing", () => {
         getUidForStripeCustomer: (customerId: string) => getUidForStripeCustomer(customerId),
         linkCustomerToUid: (customerId: string, uid: string) => linkCustomerToUid(customerId, uid),
         mapPriceToTier: (priceId: string | null) => mapPriceToTier(priceId),
+        effectiveTierFromStripeSubscription: (args: any) => effectiveTierFromStripeSubscription(args),
         setUserTierFromStripe: (uid: string, tier: string, stripeData: any) =>
             setUserTierFromStripe(uid, tier, stripeData),
     };
@@ -60,6 +65,7 @@ describe("POST /api/stripe/webhook", () => {
         linkCustomerToUid.mockClear();
         setUserTierFromStripe.mockClear();
         mapPriceToTier.mockClear();
+        effectiveTierFromStripeSubscription.mockClear();
         getUidForStripeCustomer.mockClear();
 
         process.env.STRIPE_WEBHOOK_SECRET_TEST = "whsec_test";

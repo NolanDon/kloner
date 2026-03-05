@@ -6,6 +6,7 @@ import { getStripe } from "@/lib/stripe";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { getSubscriptionIdForUid } from "../../_lib/billing";
 import { monthlyLimitFor, type UserTier } from "@/src/lib/credits";
+import { captureCriticalEvent, captureException } from "@/lib/observability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,9 +62,50 @@ async function handler(req: NextRequest, uid: string) {
         );
     }
 
-    const updatedRaw = (await stripe.subscriptions.update(subId, {
-        cancel_at_period_end: atPeriodEnd,
-    })) as unknown as Record<string, any>;
+    let updatedRaw: Record<string, any>;
+    try {
+        updatedRaw = (await stripe.subscriptions.update(subId, {
+            cancel_at_period_end: atPeriodEnd,
+        })) as unknown as Record<string, any>;
+    } catch (error: any) {
+        const status =
+            typeof error?.statusCode === "number"
+                ? error.statusCode
+                : typeof error?.status === "number"
+                  ? error.status
+                  : 500;
+
+        if (status >= 500) {
+            await captureException({
+                source: "vercel",
+                error,
+                route: "/api/billing/cancel-subscription",
+                method: "POST",
+                action: "billing.cancelSubscription.update",
+                statusCode: status,
+                service: "billing-subscription",
+                userId: uid,
+                extra: { subId, atPeriodEnd },
+            });
+        } else {
+            await captureCriticalEvent({
+                source: "vercel",
+                severity: "critical",
+                statusCode: status,
+                route: "/api/billing/cancel-subscription",
+                method: "POST",
+                action: "billing.cancelSubscription.update",
+                service: "billing-subscription",
+                userId: uid,
+                message: typeof error?.message === "string" ? error.message : "Stripe cancel subscription failed",
+                errorName: typeof error?.type === "string" ? error.type : undefined,
+                stack: typeof error?.stack === "string" ? error.stack : undefined,
+                extra: { subId, atPeriodEnd },
+            });
+        }
+
+        throw error;
+    }
 
     const stripeStatus = typeof updatedRaw.status === "string" ? updatedRaw.status : null;
     const stripeTrialEnd = typeof updatedRaw.trial_end === "number" ? updatedRaw.trial_end : null;

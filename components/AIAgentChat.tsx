@@ -607,6 +607,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
         const onCompileFix = (event: Event) => {
             const detail = (event as CustomEvent<any>)?.detail || {};
+            const autoSend = detail?.autoSend === true;
             const code = typeof detail?.code === "string" ? detail.code.trim() : "";
             const actionType = String(detail?.actionType || "").toLowerCase();
             const summary = typeof detail?.compileError?.summary === "string" ? detail.compileError.summary.trim() : "";
@@ -629,12 +630,20 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             const prefill = buildCompileFixPrefill(ctx);
             setFreeCompileFixContext(ctx);
             setInput(prefill);
+
+            if (autoSend) {
+                setTimeout(() => {
+                    void sendMessage({ forcedInput: prefill, forcedCompileFixContext: ctx });
+                }, 0);
+                return;
+            }
+
             setMessages((prev) => [
                 ...prev,
                 {
                     id: `compile_fix_ready_${Date.now()}`,
                     role: "assistant",
-                    content: "Free compile-fix context is prepared and locked. Send as-is to use free mode.",
+                    content: "Compile fix is ready. Send as-is to use free mode.",
                     timestamp: new Date(),
                     type: "text",
                 },
@@ -1868,22 +1877,25 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         }
     }, [applyRestorePoint, checkpoints, lastRestorePointId, onFileEdit]);
 
-    const sendMessage = async () => {
-        if (chatDisabled) return;
-        if (!input.trim() || isLoading) return;
+    const sendMessage = async (opts?: { forcedInput?: string; forcedCompileFixContext?: CompileErrorQuickFixContext }) => {
+        const messageInput = typeof opts?.forcedInput === "string" ? opts.forcedInput : input;
+        const activeCompileFixContext = opts?.forcedCompileFixContext ?? freeCompileFixContext;
 
-        const compileFixPrefill = freeCompileFixContext ? buildCompileFixPrefill(freeCompileFixContext) : "";
-        const isFreeCompileFixMode = Boolean(freeCompileFixContext && input === compileFixPrefill);
+        if (chatDisabled) return;
+        if (!messageInput.trim() || isLoading) return;
+
+        const compileFixPrefill = activeCompileFixContext ? buildCompileFixPrefill(activeCompileFixContext) : "";
+        const isFreeCompileFixMode = Boolean(activeCompileFixContext && messageInput === compileFixPrefill);
 
         // Special-case: applying a previously proposed migration.
         // This should not spend AI credits and should not hit /api/ai-agent.
-        const applyMatch = input.trim().match(/^APPLY\s+([0-9a-fA-F-]{36})$/);
+        const applyMatch = messageInput.trim().match(/^APPLY\s+([0-9a-fA-F-]{36})$/);
         if (applyMatch) {
             const proposalId = applyMatch[1];
             const userMessage: Message = {
                 id: `user_${Date.now()}`,
                 role: "user",
-                content: input.trim(),
+                content: messageInput.trim(),
                 timestamp: new Date(),
                 type: "text",
             };
@@ -1999,7 +2011,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         const userMessage: Message = {
             id: `user_${Date.now()}`,
             role: "user",
-            content: input,
+            content: messageInput,
             timestamp: new Date(),
             type: "text"
         };
@@ -2014,19 +2026,19 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             dispatchAiAgentEvent("request", {
                 appId,
                 userId: user?.uid || null,
-                messageLen: input.length,
-                messagePreview: input.slice(0, 280),
+                messageLen: messageInput.length,
+                messagePreview: messageInput.slice(0, 280),
                 historyCount: Math.min(messages.length + 1, 11),
                 freeCompileFixMode: isFreeCompileFixMode,
             });
 
-            if (isFreeCompileFixMode && freeCompileFixContext) {
+            if (isFreeCompileFixMode && activeCompileFixContext) {
                 dispatchAiAgentEvent("compile_error_fix_sent", {
                     appId,
-                    code: freeCompileFixContext.code,
-                    fingerprint: freeCompileFixContext.compileError.fingerprint,
-                    actionType: freeCompileFixContext.actionType,
-                    fixAction: freeCompileFixContext.fixAction || null,
+                    code: activeCompileFixContext.code,
+                    fingerprint: activeCompileFixContext.compileError.fingerprint,
+                    actionType: activeCompileFixContext.actionType,
+                    fixAction: activeCompileFixContext.fixAction || null,
                 });
             }
 
@@ -2034,18 +2046,18 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 method: "POST",
                 headers,
                 body: JSON.stringify({
-                    message: input,
+                                        message: messageInput,
                     appId,
                     conversationHistory: [...messages.slice(-10), userMessage],
                     databaseConnections,
-                    quickActionContext: isFreeCompileFixMode && freeCompileFixContext
+                                        quickActionContext: isFreeCompileFixMode && activeCompileFixContext
                         ? {
-                            type: freeCompileFixContext.actionType,
-                            fixAction: freeCompileFixContext.fixAction || null,
-                            code: freeCompileFixContext.code,
-                            compileErrorFingerprint: freeCompileFixContext.compileError.fingerprint,
-                            compileErrorSummary: freeCompileFixContext.compileError.summary,
-                            compileErrorDetail: freeCompileFixContext.compileError.detail,
+                                                        type: activeCompileFixContext.actionType,
+                                                        fixAction: activeCompileFixContext.fixAction || null,
+                                                        code: activeCompileFixContext.code,
+                                                        compileErrorFingerprint: activeCompileFixContext.compileError.fingerprint,
+                                                        compileErrorSummary: activeCompileFixContext.compileError.summary,
+                                                        compileErrorDetail: activeCompileFixContext.compileError.detail,
                             noCreditRequested: true,
                           }
                         : null,
@@ -2193,7 +2205,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 // This prevents the preview from breaking on missing schema until the user confirms the migration.
                 if (hasDbMigrations) {
                     const bundleId = `staged_${Date.now()}`;
-                    const label = `AI edit (staged): ${input.slice(0, 50)}...`;
+                    const label = `AI edit (staged): ${messageInput.slice(0, 50)}...`;
                     const fileEdits = (data.fileEdits as Array<any>)
                         .filter((e) => e && typeof e.path === "string" && typeof e.content === "string")
                         .map((e) => ({ path: e.path, content: e.content }));
@@ -2260,7 +2272,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                     }
 
                 } else {
-                    createCheckpoint(`AI edit: ${input.slice(0, 50)}...`);
+                    createCheckpoint(`AI edit: ${messageInput.slice(0, 50)}...`);
 
                     data.fileEdits.forEach((edit: { path: string; content: string }) => {
                         onFileEdit(edit.path, edit.content, creditRequestId);
@@ -3204,7 +3216,9 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                     />
                     <button
                         type="button"
-                        onClick={sendMessage}
+                        onClick={() => {
+                            void sendMessage();
+                        }}
                         disabled={!input.trim() || isLoading || chatDisabled}
                         className="flex w-14 items-center justify-center border-l border-gray-200 bg-white text-accent transition hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                         aria-label="Send message"

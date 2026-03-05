@@ -2,9 +2,12 @@
 import admin from "firebase-admin";
 import { getStripe } from "@/lib/stripe";
 import { monthlyLimitFor, type CreditKind as CoreCreditKind } from "@/src/lib/credits";
+import { captureCriticalEvent, captureException } from "@/lib/observability";
 
 export type UserTier = "free" | "pro" | "agency";
 export type Tier = UserTier;
+
+const DEFAULT_PAYMENT_FAILURE_GRACE_DAYS = 3;
 
 const stripe = getStripe();
 
@@ -106,6 +109,31 @@ function computeCreditPeriodEnd(stripeData?: { currentPeriodEnd?: number | null 
     return new Date(firstNextMonth.getTime() - 1);
 }
 
+function readAiEditsBucket(data: any): Record<string, any> | null {
+    const bucket = data?.["credits.aiEdits"] || (data?.credits && data.credits.aiEdits) || null;
+    return bucket && typeof bucket === "object" ? bucket : null;
+}
+
+function normalizeNonNegativeInt(value: unknown): number | null {
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return null;
+    return Math.floor(value);
+}
+
+function inferBonusRemaining(bucket: Record<string, any> | null): number {
+    if (!bucket) return 0;
+
+    const explicit = normalizeNonNegativeInt((bucket as any).bonusRemaining);
+    if (explicit !== null) return explicit;
+
+    const remaining = normalizeNonNegativeInt((bucket as any).remaining);
+    const monthlyLimit = normalizeNonNegativeInt((bucket as any).monthlyLimit);
+    if (remaining !== null && monthlyLimit !== null) {
+        return Math.max(0, remaining - monthlyLimit);
+    }
+
+    return 0;
+}
+
 export async function setUserTierFromStripe(
     uid: string,
     tier: Tier,
@@ -193,20 +221,29 @@ export async function setUserTierFromStripe(
         }
 
         if (editLimit !== undefined && editLimit !== null) {
+            const existingAiBucket = readAiEditsBucket(existingData);
+            const existingBonus = inferBonusRemaining(existingAiBucket);
             update["credits.aiEdits"] =
                 editLimit === 0
-                    ? { monthlyLimit: 0, remaining: null, periodEnd: periodEndTs }
-                    : { monthlyLimit: editLimit, remaining: editLimit, periodEnd: periodEndTs };
+                    ? {
+                          monthlyLimit: 0,
+                          remaining: null,
+                          periodEnd: periodEndTs,
+                          ...(existingBonus > 0 ? { bonusRemaining: existingBonus } : {}),
+                      }
+                    : {
+                          monthlyLimit: editLimit,
+                          remaining: editLimit + existingBonus,
+                          periodEnd: periodEndTs,
+                          ...(existingBonus > 0 ? { bonusRemaining: existingBonus } : {}),
+                      };
         }
     } else {
         // Self-heal: if aiEdits bucket is out of sync with the tier, fix it without forcing
         // a full credit reset for other buckets.
         const editLimit = monthlyLimitFor(tier, "edit" as CoreCreditKind);
         if (editLimit !== undefined && editLimit !== null) {
-            const rawBucket =
-                existingData["credits.aiEdits"] ||
-                (existingData.credits && (existingData.credits as any).aiEdits) ||
-                null;
+            const rawBucket = readAiEditsBucket(existingData);
 
             const currentMonthly =
                 rawBucket && typeof rawBucket.monthlyLimit === "number" && rawBucket.monthlyLimit >= 0
@@ -216,10 +253,21 @@ export async function setUserTierFromStripe(
             if (currentMonthly !== editLimit) {
                 const periodEndDate = computeCreditPeriodEnd(stripeData);
                 const periodEndTs = admin.firestore.Timestamp.fromDate(periodEndDate);
+                const existingBonus = inferBonusRemaining(rawBucket);
                 update["credits.aiEdits"] =
                     editLimit === 0
-                        ? { monthlyLimit: 0, remaining: null, periodEnd: periodEndTs }
-                        : { monthlyLimit: editLimit, remaining: editLimit, periodEnd: periodEndTs };
+                        ? {
+                              monthlyLimit: 0,
+                              remaining: null,
+                              periodEnd: periodEndTs,
+                              ...(existingBonus > 0 ? { bonusRemaining: existingBonus } : {}),
+                          }
+                        : {
+                              monthlyLimit: editLimit,
+                              remaining: editLimit + existingBonus,
+                              periodEnd: periodEndTs,
+                              ...(existingBonus > 0 ? { bonusRemaining: existingBonus } : {}),
+                          };
             }
         }
     }
@@ -287,6 +335,54 @@ function pickBestSubscription(subs: any[]): any | null {
     return scored[0]?.s ?? subs[0];
 }
 
+function readPaymentFailureGraceSeconds(): number {
+    const raw = process.env.STRIPE_SUBSCRIPTION_PAYMENT_GRACE_DAYS;
+    const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+    const days = Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_PAYMENT_FAILURE_GRACE_DAYS;
+    return days * 24 * 60 * 60;
+}
+
+export function effectiveTierFromStripeSubscription(params: {
+    mappedTier: Tier;
+    status?: string | null;
+    currentPeriodEnd?: number | null;
+    trialEnd?: number | null;
+    created?: number | null;
+    nowMs?: number;
+}): Tier {
+    const {
+        mappedTier,
+        status,
+        currentPeriodEnd,
+        trialEnd,
+        created,
+        nowMs = Date.now(),
+    } = params;
+
+    const normalized = typeof status === "string" ? status.trim().toLowerCase() : "";
+    if (normalized === "active" || normalized === "trialing") return mappedTier;
+
+    const graceStatuses = new Set(["past_due", "unpaid", "incomplete"]);
+    if (!graceStatuses.has(normalized)) return "free";
+
+    const nowSec = Math.floor(nowMs / 1000);
+    const graceSec = readPaymentFailureGraceSeconds();
+    const anchorSec =
+        typeof currentPeriodEnd === "number" && Number.isFinite(currentPeriodEnd) && currentPeriodEnd > 0
+            ? currentPeriodEnd
+            : typeof trialEnd === "number" && Number.isFinite(trialEnd) && trialEnd > 0
+              ? trialEnd
+              : typeof created === "number" && Number.isFinite(created) && created > 0
+                ? created
+                : nowSec;
+
+    if (nowSec <= anchorSec + graceSec) {
+        return mappedTier;
+    }
+
+    return "free";
+}
+
 export async function refreshTierFromStripeForUid(uid: string): Promise<Tier> {
     const userRef = db.collection("kloner_users").doc(uid);
     const snap = await userRef.get();
@@ -329,12 +425,49 @@ export async function refreshTierFromStripeForUid(uid: string): Promise<Tier> {
         return "free";
     }
 
-    const subs = await stripe.subscriptions.list({
-        customer: customerId,
-        status: "all",
-        // don’t assume the first one is the right one; Stripe returns most-recent, not “best”
-        limit: 10,
-    });
+    let subs;
+    try {
+        subs = await stripe.subscriptions.list({
+            customer: customerId,
+            status: "all",
+            // don’t assume the first one is the right one; Stripe returns most-recent, not “best”
+            limit: 10,
+        });
+    } catch (error: any) {
+        const status =
+            typeof error?.statusCode === "number"
+                ? error.statusCode
+                : typeof error?.status === "number"
+                  ? error.status
+                  : 500;
+
+        if (status >= 500) {
+            await captureException({
+                source: "vercel",
+                error,
+                action: "billing.refreshTier.listSubscriptions",
+                statusCode: status,
+                service: "billing-subscription",
+                userId: uid,
+                extra: { customerId },
+            });
+        } else {
+            await captureCriticalEvent({
+                source: "vercel",
+                severity: "critical",
+                statusCode: status,
+                action: "billing.refreshTier.listSubscriptions",
+                service: "billing-subscription",
+                userId: uid,
+                message: typeof error?.message === "string" ? error.message : "Stripe subscription list failed",
+                errorName: typeof error?.type === "string" ? error.type : undefined,
+                stack: typeof error?.stack === "string" ? error.stack : undefined,
+                extra: { customerId },
+            });
+        }
+
+        throw error;
+    }
 
     if (!subs.data.length) {
         await setUserTierFromStripe(uid, "free", {
@@ -370,7 +503,13 @@ export async function refreshTierFromStripeForUid(uid: string): Promise<Tier> {
 
     // IMPORTANT: during trial, user has paid access; treat as the tier they selected.
     // Otherwise (canceled/unpaid/etc) downgrade to free.
-    const effectiveTier: Tier = status === "active" || status === "trialing" ? tier : "free";
+    const effectiveTier: Tier = effectiveTierFromStripeSubscription({
+        mappedTier: tier,
+        status,
+        currentPeriodEnd,
+        trialEnd,
+        created: typeof subAny.created === "number" ? subAny.created : null,
+    });
 
     await setUserTierFromStripe(uid, effectiveTier, {
         customerId,

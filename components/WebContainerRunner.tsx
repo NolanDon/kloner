@@ -34,6 +34,7 @@ interface WebContainerRunnerProps {
     code: string;
     actionType: 'quick_fix_compile';
     fixAction?: string;
+    autoSend?: boolean;
     compileError: {
       summary: string;
       detail: string;
@@ -3200,53 +3201,57 @@ export default function NavBar() {
         </div>
       )}
       {compileErrorState && !error ? (
-        <div className="p-4 border-b border-black/10 bg-red-50/40">
-          <div className="space-y-3">
-            <p className="text-red-700 text-sm">{compileErrorState.summary}</p>
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/20 px-4">
+          <div className="w-full max-w-2xl rounded-2xl border border-black/10 bg-white shadow-2xl">
+            <div className="space-y-4 p-5 sm:p-6">
+              <p className="text-sm text-neutral-800">Something went wrong during compilation.</p>
 
-            {compileErrorState.detail ? (
-              <details className="rounded-lg border border-red-200 bg-white px-3 py-2">
-                <summary className="cursor-pointer select-none text-xs font-semibold text-red-800">Technical details</summary>
-                <pre className="mt-2 whitespace-pre-wrap text-xs text-red-900/90">{compileErrorState.detail}</pre>
+              <details className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2">
+                <summary className="cursor-pointer select-none text-xs font-medium text-neutral-500">Technical details</summary>
+                <pre className="mt-2 whitespace-pre-wrap text-xs text-neutral-700">
+                  {compileErrorState.summary}
+                  {compileErrorState.detail ? `\n\n${compileErrorState.detail}` : ""}
+                </pre>
               </details>
-            ) : null}
 
-            <div className="flex flex-wrap items-center gap-2">
-              {compileErrorState.canShowFreeFixCta ? (
+              <div className="flex flex-wrap items-center gap-2">
+                {compileErrorState.canShowFreeFixCta ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      emitCompileErrorTelemetry('compile_error_fix_clicked', {
+                        code: compileErrorState.code,
+                        fingerprint: compileErrorState.fingerprint,
+                        actionType: compileErrorState.actionType,
+                        fixAction: compileErrorState.fixAction || null,
+                      });
+                      onCompileErrorFixRequest?.({
+                        appId,
+                        code: compileErrorState.code,
+                        actionType: compileErrorState.actionType,
+                        fixAction: compileErrorState.fixAction,
+                        autoSend: true,
+                        compileError: {
+                          summary: compileErrorState.summary,
+                          detail: compileErrorState.detail,
+                          fingerprint: compileErrorState.fingerprint,
+                        },
+                      });
+                    }}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs bg-accent text-white hover:bg-[#e54f1a] transition-colors"
+                  >
+                    Fix with AI
+                  </button>
+                ) : null}
+
                 <button
                   type="button"
-                  onClick={() => {
-                    emitCompileErrorTelemetry('compile_error_fix_clicked', {
-                      code: compileErrorState.code,
-                      fingerprint: compileErrorState.fingerprint,
-                      actionType: compileErrorState.actionType,
-                      fixAction: compileErrorState.fixAction || null,
-                    });
-                    onCompileErrorFixRequest?.({
-                      appId,
-                      code: compileErrorState.code,
-                      actionType: compileErrorState.actionType,
-                      fixAction: compileErrorState.fixAction,
-                      compileError: {
-                        summary: compileErrorState.summary,
-                        detail: compileErrorState.detail,
-                        fingerprint: compileErrorState.fingerprint,
-                      },
-                    });
-                  }}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs bg-accent text-white hover:bg-[#e54f1a] transition-colors"
+                  onClick={retryApp}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs border border-black/15 bg-white text-black/80 hover:bg-black/5 transition-colors"
                 >
-                  Fix compile error (free)
+                  Refresh
                 </button>
-              ) : null}
-
-              <button
-                type="button"
-                onClick={retryApp}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs border border-black/15 bg-white text-black/80 hover:bg-black/5 transition-colors"
-              >
-                Refresh
-              </button>
+              </div>
             </div>
           </div>
         </div>

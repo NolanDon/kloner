@@ -261,6 +261,72 @@ describe("POST /api/billing/create-checkout-session", () => {
         expect(typeof body.error).toBe("string");
     });
 
+    it("does not grant a second trial when customer has prior canceled subscription history", async () => {
+        (process.env as any).NODE_ENV = "production";
+        process.env.NEXT_PUBLIC_APP_ORIGIN = "https://kloner.app";
+        process.env.STRIPE_PRICE_PRO_PROD = "price_live_pro";
+
+        const { db } = createFirestoreMock({ stripeCustomerId: "cus_1" });
+
+        jest.doMock("firebase-admin", () => ({
+            __esModule: true,
+            default: {
+                apps: [{}],
+                firestore: () => db,
+                auth: () => ({ getUser: async () => ({ email: "a@b.com" }) }),
+            },
+        }));
+
+        const sessionsCreate = jest.fn<Promise<{ url: string }>, [any]>(async (_payload: any) => ({
+            url: "https://stripe/checkout",
+        }));
+
+        jest.doMock("@/lib/stripe", () => ({
+            __esModule: true,
+            getStripe: () => ({
+                subscriptions: {
+                    list: async () => ({
+                        data: [
+                            {
+                                id: "sub_old",
+                                status: "canceled",
+                                trial_end: Math.floor(Date.now() / 1000) - 86400,
+                            },
+                        ],
+                    }),
+                },
+                customers: {
+                    create: async () => ({ id: "cus_1" }),
+                    update: async () => ({}),
+                },
+                promotionCodes: {
+                    list: async () => ({ data: [] }),
+                },
+                checkout: {
+                    sessions: {
+                        create: sessionsCreate,
+                    },
+                },
+            }),
+        }));
+
+        const { POST } = await import("./route");
+
+        const req = {
+            url: "https://example.com/api/billing/create-checkout-session",
+            json: async () => ({ plan: "pro" }),
+        } as any;
+
+        const res: any = await POST(req);
+        const body = await res.json();
+
+        expect(res.status).toBe(200);
+        expect(body.url).toBe("https://stripe/checkout");
+
+        const payload = sessionsCreate.mock.calls[0]?.[0];
+        expect(payload.subscription_data?.trial_period_days).toBeUndefined();
+    });
+
     it("creates customer when none exists, links customer->uid, and writes stripeCustomerId to Firestore", async () => {
         (process.env as any).NODE_ENV = "test";
         process.env.NEXT_PUBLIC_APP_ORIGIN = "http://localhost:3000";

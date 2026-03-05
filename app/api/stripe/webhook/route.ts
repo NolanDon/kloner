@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import admin from "firebase-admin";
 import {
+    effectiveTierFromStripeSubscription,
     getUidForStripeCustomer,
     linkCustomerToUid,
     mapPriceToTier,
@@ -748,7 +749,13 @@ export async function POST(req: NextRequest) {
 
                 const tier = mapPriceToTier(priceId);
                 const status = sub.status;
-                const effectiveTier = status === "active" || status === "trialing" ? tier : "free";
+                const effectiveTier = effectiveTierFromStripeSubscription({
+                    mappedTier: tier,
+                    status,
+                    currentPeriodEnd: (sub as any).current_period_end ?? null,
+                    trialEnd: (sub as any).trial_end ?? null,
+                    created: typeof (sub as any).created === "number" ? (sub as any).created : null,
+                });
 
                 await setUserTierFromStripe(uid, effectiveTier, {
                     customerId,

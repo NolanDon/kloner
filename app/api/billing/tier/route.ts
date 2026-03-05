@@ -141,10 +141,21 @@ export async function GET(req: NextRequest) {
                     !!stripeSubId &&
                     (stripeStatus === "active" || stripeStatus === "trialing");
 
+                const needsDowngradeReconcile =
+                    storedTier !== "free" &&
+                    (!stripeSubId ||
+                        stripeStatus === "canceled" ||
+                        stripeStatus === "incomplete_expired" ||
+                        stripeStatus === "paused" ||
+                        stripeStatus === "past_due" ||
+                        stripeStatus === "unpaid" ||
+                        stripeStatus === "incomplete");
+
                 // force refresh, or if we don't yet trust that Firestore tier
                 if (
                     refresh ||
                     looksPaidButTierFree ||
+                    needsDowngradeReconcile ||
                     !source || // no source set yet
                     source !== "stripe" // make Stripe the source of truth
                 ) {
