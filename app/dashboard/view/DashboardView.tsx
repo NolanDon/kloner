@@ -598,6 +598,7 @@ type RenderCardProps = {
     setShowCreditsPaywall: (mode: "deploy" | null) => void;
     push: (message: string, level?: string) => void;
     retryRender: (render: { id: string; key?: string | null }) => void; // ← new
+    onRenameRender: (id: string, name: string) => Promise<void>;
 };
 
 // ============================================================================
@@ -629,6 +630,7 @@ function RenderCardInner({
     unarchiveRender,
     onShareWithCommunity,
     push, // Add this to props if not already there
+    onRenameRender,
 }: RenderCardProps) {
     const router = useRouter();
 
@@ -767,6 +769,40 @@ function RenderCardInner({
 
     const isDeployedFlag = isDeployed;
     const isArchivedFlag = isArchived;
+    const renderDisplayName = (() => {
+        const hinted = String(r.nameHint || "").trim();
+        if (hinted) return hinted;
+        try {
+            const rawUrl = String((r as any)?.url || "").trim();
+            if (rawUrl) return new URL(rawUrl).hostname.replace(/^www\./, "");
+        } catch {
+            // ignore
+        }
+        return `Render ${String(r.id || "").slice(0, 8)}`;
+    })();
+    const [isEditingName, setIsEditingName] = useState(false);
+    const [nameDraft, setNameDraft] = useState(renderDisplayName);
+
+    useEffect(() => {
+        if (!isEditingName) {
+            setNameDraft(renderDisplayName);
+        }
+    }, [isEditingName, renderDisplayName]);
+
+    const submitRenderRename = useCallback(async () => {
+        const trimmed = nameDraft.trim();
+        if (!trimmed) {
+            setNameDraft(renderDisplayName);
+            setIsEditingName(false);
+            return;
+        }
+        if (trimmed === renderDisplayName) {
+            setIsEditingName(false);
+            return;
+        }
+        await onRenameRender(r.id, trimmed);
+        setIsEditingName(false);
+    }, [nameDraft, onRenameRender, r.id, renderDisplayName]);
 
     const showIframe = !!r.html?.trim();
 
@@ -1026,6 +1062,70 @@ function RenderCardInner({
 
                 <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
                     <div className="pointer-events-auto flex max-w-xs flex-col items-stretch rounded-xl border border-neutral-200 bg-white/80 p-3 text-xs shadow-lg backdrop-blur-sm md:max-w-sm">
+                        <div className="mb-3 rounded-lg border border-neutral-300 bg-white/90 px-2.5 py-1.5 shadow-sm">
+                            {isEditingName ? (
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        value={nameDraft}
+                                        onChange={(e) => setNameDraft(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === "Enter") {
+                                                e.preventDefault();
+                                                void submitRenderRename();
+                                            }
+                                            if (e.key === "Escape") {
+                                                e.preventDefault();
+                                                setNameDraft(renderDisplayName);
+                                                setIsEditingName(false);
+                                            }
+                                        }}
+                                        className="min-w-0 flex-1 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm font-medium text-neutral-900 outline-none focus:border-neutral-400"
+                                        aria-label="Rename website"
+                                        maxLength={80}
+                                        autoFocus
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => void submitRenderRename()}
+                                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50"
+                                        aria-label="Save name"
+                                        title="Save"
+                                    >
+                                        <CheckCheck className="h-3.5 w-3.5" />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setNameDraft(renderDisplayName);
+                                            setIsEditingName(false);
+                                        }}
+                                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50"
+                                        aria-label="Cancel rename"
+                                        title="Cancel"
+                                    >
+                                        <X className="h-3.5 w-3.5" />
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-2">
+                                    <div
+                                        className="min-w-0 flex-1 truncate text-center text-sm font-semibold text-neutral-900"
+                                        title={renderDisplayName}
+                                    >
+                                        {renderDisplayName}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsEditingName(true)}
+                                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50"
+                                        aria-label="Edit website name"
+                                        title="Edit name"
+                                    >
+                                        <Edit2 className="h-3.5 w-3.5" />
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                         {/* top row: deploy / customize */}
                         {!shareOpen && (
                             <div className="flex w-full flex-row flex-nowrap items-stretch font-semibold gap-2">
@@ -1454,6 +1554,7 @@ function AppCard({
     isArchiving,
     onCustomize,
     onArchive,
+    onRename,
     onDeploy,
     onDelete,
 }: {
@@ -1462,12 +1563,37 @@ function AppCard({
     isArchiving: boolean;
     onCustomize: (appId: string) => void;
     onArchive: (appId: string) => void;
+    onRename: (appId: string, name: string) => Promise<void>;
     onDeploy: (app: { id: string; name: string }) => void;
     onDelete: (appId: string) => void;
 }) {
     const router = useRouter();
 
     const isDeployedFlag = Boolean((app as any)?.isDeployed) || Boolean((app as any)?.productionUrl) || Boolean((app as any)?.lastDeployUrl);
+    const appDisplayName = String(app.name || app.id.slice(0, 10)).trim();
+    const [isEditingName, setIsEditingName] = useState(false);
+    const [nameDraft, setNameDraft] = useState(appDisplayName);
+
+    useEffect(() => {
+        if (!isEditingName) {
+            setNameDraft(appDisplayName);
+        }
+    }, [appDisplayName, isEditingName]);
+
+    const submitAppRename = useCallback(async () => {
+        const trimmed = nameDraft.trim();
+        if (!trimmed) {
+            setNameDraft(appDisplayName);
+            setIsEditingName(false);
+            return;
+        }
+        if (trimmed === appDisplayName) {
+            setIsEditingName(false);
+            return;
+        }
+        await onRename(app.id, trimmed);
+        setIsEditingName(false);
+    }, [app.id, appDisplayName, nameDraft, onRename]);
 
     return (
         <div className="relative flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm hover:shadow-md transition-shadow">
@@ -1490,19 +1616,75 @@ function AppCard({
                 v2
             </span>
 
-            {/* App name badge - bottom right */}
-            <span
-                className="absolute right-2 bottom-2 z-40 inline-flex max-w-[180px] items-center truncate rounded-full border border-neutral-200 bg-white/85 px-2 py-0.5 text-[10px] font-medium text-neutral-800 shadow-sm"
-                title={app.name || "App"}
-            >
-                {app.name || app.id.slice(0, 10)}
-            </span>
-
             {/* Main visual area */}
             <div className="relative aspect-[3/3] w-full overflow-hidden flex flex-col items-center justify-center bg-gradient-to-br from-neutral-50 to-neutral-100">
                 {/* Action buttons overlay */}
                 <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
                     <div className="pointer-events-auto flex max-w-xs flex-col items-stretch rounded-xl border border-neutral-200 bg-white/80 p-3 text-xs shadow-lg backdrop-blur-sm">
+                        <div className="mb-3 rounded-lg border border-neutral-300 bg-white/90 px-2.5 py-1.5 shadow-sm">
+                            {isEditingName ? (
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        value={nameDraft}
+                                        onChange={(e) => setNameDraft(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === "Enter") {
+                                                e.preventDefault();
+                                                void submitAppRename();
+                                            }
+                                            if (e.key === "Escape") {
+                                                e.preventDefault();
+                                                setNameDraft(appDisplayName);
+                                                setIsEditingName(false);
+                                            }
+                                        }}
+                                        className="min-w-0 flex-1 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm font-medium text-neutral-900 outline-none focus:border-neutral-400"
+                                        aria-label="Rename app"
+                                        maxLength={80}
+                                        autoFocus
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => void submitAppRename()}
+                                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50"
+                                        aria-label="Save app name"
+                                        title="Save"
+                                    >
+                                        <CheckCheck className="h-3.5 w-3.5" />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setNameDraft(appDisplayName);
+                                            setIsEditingName(false);
+                                        }}
+                                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50"
+                                        aria-label="Cancel rename"
+                                        title="Cancel"
+                                    >
+                                        <X className="h-3.5 w-3.5" />
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-2">
+                                    <div
+                                        className="min-w-0 flex-1 truncate text-center text-sm font-semibold text-neutral-900"
+                                        title={appDisplayName || "App"}
+                                    >
+                                        {appDisplayName || "App"}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsEditingName(true)}
+                                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50"
+                                        aria-label="Edit app name"
+                                        title="Edit name"
+                                    >
+                                        <Edit2 className="h-3.5 w-3.5" />
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                         <div className="flex w-full flex-row flex-nowrap items-stretch font-semibold gap-2">
                             <button
                                 type="button"
@@ -2874,6 +3056,58 @@ export default function PreviewPage(): JSX.Element {
             }
         },
         [user],
+    );
+
+    const handleRenameRenderCard = useCallback(
+        async (renderId: string, name: string) => {
+            if (!user) return;
+            const trimmed = name.trim();
+            if (!trimmed) return;
+
+            setRenders((prev) =>
+                prev.map((item) =>
+                    item.id === renderId ? { ...item, nameHint: trimmed } : item,
+                ),
+            );
+
+            try {
+                await updateDoc(
+                    doc(db, "kloner_users", user.uid, "kloner_renders", renderId),
+                    { nameHint: trimmed },
+                );
+                push("Website name updated", "ok");
+            } catch (err) {
+                console.error("Failed to rename render", err);
+                push("Failed to rename website. Please try again.", "err");
+            }
+        },
+        [push, user],
+    );
+
+    const handleRenameAppCard = useCallback(
+        async (appId: string, name: string) => {
+            if (!user) return;
+            const trimmed = name.trim();
+            if (!trimmed) return;
+
+            setApps((prev) =>
+                prev.map((item) =>
+                    item.id === appId ? { ...item, name: trimmed } : item,
+                ),
+            );
+
+            try {
+                await updateDoc(
+                    doc(db, "kloner_users", user.uid, "kloner_apps", appId),
+                    { name: trimmed, updatedAt: serverTimestamp() },
+                );
+                push("App name updated", "ok");
+            } catch (err) {
+                console.error("Failed to rename app", err);
+                push("Failed to rename app. Please try again.", "err");
+            }
+        },
+        [push, user],
     );
 
     // ---- state ----
@@ -6955,6 +7189,7 @@ export default function PreviewPage(): JSX.Element {
                                             setAppBuilderOpen(true);
                                         }}
                                         onArchive={handleArchiveApp}
+                                        onRename={handleRenameAppCard}
                                         onDeploy={(app) => openAppDeployWizard(app)}
                                         onDelete={handleDeleteApp}
                                     />
@@ -7071,6 +7306,7 @@ export default function PreviewPage(): JSX.Element {
                                         unarchiveRender={handleUnarchiveRender}
                                         onShareWithCommunity={handleShareWithCommunity}
                                         retryRender={retryRender}
+                                        onRenameRender={handleRenameRenderCard}
                                     />
 
                                 ))}
@@ -7086,6 +7322,7 @@ export default function PreviewPage(): JSX.Element {
                                             setAppBuilderOpen(true);
                                         }}
                                         onArchive={handleArchiveApp}
+                                        onRename={handleRenameAppCard}
                                         onDeploy={(app) => openAppDeployWizard(app)}
                                         onDelete={handleDeleteApp}
                                     />
