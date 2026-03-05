@@ -172,9 +172,12 @@ function buildCompileFixPrefill(ctx: CompileErrorQuickFixContext): string {
 }
 
 export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, welcomeContext }: AIAgentChatProps) {
-    const { user } = useAuth();
+    const { user, userTier } = useAuth();
     const { showConfirm, showAlert } = useModal();
     const AI_EDIT_COST = 5;
+    const PRO_MONTHLY_PRICE_USD = Number.isFinite(Number(process.env.NEXT_PUBLIC_PRO_MONTHLY_PRICE_USD))
+        ? Math.max(1, Number(process.env.NEXT_PUBLIC_PRO_MONTHLY_PRICE_USD))
+        : 29;
     const TOPUP_COMING_SOON = false;
     // Supabase OAuth setup is safe to expose in production (still requires session + CSRF on the server).
     const allowDatabaseSetupUi = true;
@@ -221,6 +224,21 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         for (let v = min; v <= max && values.length < 20; v += Math.max(1, step)) values.push(v);
         return values.length ? values : [min];
     })();
+
+    const topupUnitCents = topupConfig?.unitPriceCents ?? 10;
+    const topupCurrency = (topupConfig?.currency ?? "usd").toLowerCase();
+    const selectedTopupAmount = (topupCredits * topupUnitCents) / 100;
+    const showProUpgradeAlternative =
+        topupCurrency === "usd" && (userTier === "free" || userTier == null);
+    const proSavingsPct =
+        selectedTopupAmount > PRO_MONTHLY_PRICE_USD
+            ? Math.max(
+                  0,
+                  Math.round(
+                      ((selectedTopupAmount - PRO_MONTHLY_PRICE_USD) / selectedTopupAmount) * 100,
+                  ),
+              )
+            : 0;
 
     useEffect(() => {
         if (!topupModalOpen) return;
@@ -3139,6 +3157,32 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                         </div>
                                     </div>
                                 </div>
+
+                                {showProUpgradeAlternative ? (
+                                    <div className="mt-4 rounded-2xl border border-accent/20 bg-accent/5 p-4">
+                                        <div className="text-[12px] font-semibold uppercase tracking-[0.08em] text-accent">
+                                            Pro alternative
+                                        </div>
+                                        <div className="mt-1 text-sm font-semibold text-neutral-900">
+                                            Upgrade to Pro for ${PRO_MONTHLY_PRICE_USD.toFixed(0)}/month
+                                        </div>
+                                        <div className="mt-1 text-[12px] text-neutral-700">
+                                            {proSavingsPct > 0
+                                                ? `This top-up is about ${proSavingsPct}% more than one month of Pro.`
+                                                : "Pro can be better value than repeated top-ups as usage grows."}
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setTopupModalOpen(false);
+                                                window.location.href = "/price";
+                                            }}
+                                            className="mt-3 inline-flex rounded-full border border-accent/30 bg-white px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent/5"
+                                        >
+                                            Upgrade to Pro
+                                        </button>
+                                    </div>
+                                ) : null}
 
                                 <div className="mt-5 flex flex-col gap-2">
                                     <button
