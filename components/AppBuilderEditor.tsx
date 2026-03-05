@@ -3829,7 +3829,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                                         ) : null}
                                     </span>
                                 ) : (
-                                    <span>Connect DB</span>
+                                    <span>Connect Database</span>
                                 )}
                             </button>
 
@@ -4575,7 +4575,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                                                 <span className="max-w-[140px] truncate">{supabaseProjectName || supabaseProjectRef}</span>
                                             </span>
                                         ) : (
-                                            <span>{supabaseConnected ? "Database" : "Connect DB"}</span>
+                                            <span>{supabaseConnected ? "Database" : "Connect Database"}</span>
                                         )}
                                     </button>
                                 </div>
