@@ -674,52 +674,38 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
     useEffect(() => {
         if (typeof window === "undefined") return;
-        if (!user?.uid) return;
 
-        const url = new URL(window.location.href);
-        const topup = url.searchParams.get("topup");
-        const sessionId = url.searchParams.get("session_id");
-        if (topup !== "success" || !sessionId) return;
+        const onTopupMessage = (event: MessageEvent) => {
+            if (event.origin !== window.location.origin) return;
 
-        let cancelled = false;
+            const payload = (event.data || {}) as any;
+            if (payload?.type !== "kloner:credit-topup") return;
 
-        void (async () => {
-            try {
-                const headers = await withCsrfHeaders();
-                const res = await fetch("/api/billing/confirm-credit-topup", {
-                    method: "POST",
-                    headers,
-                    credentials: "include",
-                    cache: "no-store",
-                    body: JSON.stringify({ sessionId }),
-                });
-
-                const data = (await res.json().catch(() => ({}))) as any;
-                if (cancelled) return;
-
-                if (res.ok) {
-                    const credits = typeof data?.credits === "number" ? data.credits : null;
-                    await showAlert(
-                        credits ? `Added ${credits.toLocaleString()} AI credits to your account.` : "Top-up confirmed.",
-                        "Credits added",
-                    );
-                } else {
-                    console.warn("confirm-credit-topup failed", data);
-                }
-
-                // Clean up query params so refresh doesn't re-confirm.
-                url.searchParams.delete("topup");
-                url.searchParams.delete("session_id");
-                window.history.replaceState({}, "", url.toString());
-            } catch {
-                // ignore
+            const status = typeof payload?.status === "string" ? payload.status : "";
+            if (status === "success") {
+                const credits = typeof payload?.credits === "number" ? payload.credits : null;
+                void showAlert(
+                    credits ? `Added ${credits.toLocaleString()} AI credits to your account.` : "Top-up confirmed.",
+                    "Credits added",
+                );
+                return;
             }
-        })();
 
-        return () => {
-            cancelled = true;
+            if (status === "cancel") {
+                void showAlert("Checkout canceled.", "Top up");
+                return;
+            }
+
+            const errorMessage =
+                typeof payload?.error === "string" && payload.error
+                    ? payload.error
+                    : "Could not confirm your top-up yet. If you were charged, credits should apply shortly.";
+            void showAlert(errorMessage, "Top up");
         };
-    }, [showAlert, user?.uid, withCsrfHeaders]);
+
+        window.addEventListener("message", onTopupMessage);
+        return () => window.removeEventListener("message", onTopupMessage);
+    }, [showAlert]);
 
     const startCreditTopup = useCallback(async (credits: number) => {
         if (topupBusy) return;
@@ -727,22 +713,12 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
         const nextPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
 
-        if (!user?.uid) {
-            window.location.href = `/login?next=${encodeURIComponent(nextPath)}`;
-            return;
-        }
-
         const creditsInt = Number.isFinite(credits) ? Math.max(1, Math.floor(credits)) : 0;
         if (!creditsInt) return;
 
         setTopupBusy(true);
         try {
-            const cfg = topupConfig;
-            const unitPriceCents = typeof cfg?.unitPriceCents === "number" ? cfg.unitPriceCents : 3;
-            const currency = typeof cfg?.currency === "string" ? cfg.currency : "usd";
-            void unitPriceCents;
-            void currency;
-
+            await ensureSessionAndCsrf().catch(() => null);
             const headers = await withCsrfHeaders();
             const res = await fetch("/api/billing/create-credit-topup-session", {
                 method: "POST",
@@ -752,7 +728,12 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             });
 
             if (res.status === 401) {
-                window.location.href = `/login?next=${encodeURIComponent(nextPath)}`;
+                const loginUrl = `/login?next=${encodeURIComponent(nextPath)}`;
+                await showAlert("Your session expired. Please sign in again to continue checkout.", "Sign in required");
+                const loginWindow = window.open(loginUrl, "_blank", "noopener,noreferrer");
+                if (!loginWindow) {
+                    window.location.href = loginUrl;
+                }
                 return;
             }
 
@@ -763,11 +744,23 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 return;
             }
 
+            const popup = window.open(
+                url,
+                "kloner-credit-topup",
+                "width=520,height=760,menubar=no,toolbar=no,location=yes,resizable=yes,scrollbars=yes,status=no",
+            );
+
+            if (popup) {
+                popup.focus();
+                return;
+            }
+
+            await showAlert("Popup was blocked by your browser. Opening checkout in this tab.", "Top up");
             window.location.href = url;
         } finally {
             setTopupBusy(false);
         }
-    }, [showAlert, topupBusy, topupConfig, user?.uid, withCsrfHeaders]);
+    }, [showAlert, topupBusy, withCsrfHeaders]);
 
     const checkSupabaseDbHealth = useCallback(async (opts?: { silent?: boolean }) => {
         if (!user?.uid) {
@@ -3042,7 +3035,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                         }}
                         disabled={topupBusy}
                     >
-                        <span>{topupBusy ? "Redirecting…" : "Add credits"}</span>
+                        <span>{topupBusy ? "Opening checkout…" : "Add credits"}</span>
                         <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
                     </button>
                 </div>

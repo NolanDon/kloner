@@ -40,6 +40,31 @@ export default function CreditTopupReturnHandler(): JSX.Element | null {
 
         handledRef.current = true;
 
+        const notifyOpener = (payload: Record<string, unknown>): boolean => {
+            try {
+                if (!window.opener || window.opener.closed) return false;
+                window.opener.postMessage(
+                    {
+                        type: "kloner:credit-topup",
+                        ...payload,
+                    },
+                    window.location.origin,
+                );
+                return true;
+            } catch {
+                return false;
+            }
+        };
+
+        const closePopupIfPossible = () => {
+            if (!window.opener || window.opener.closed) return;
+            try {
+                window.close();
+            } catch {
+                // ignore
+            }
+        };
+
         const cleanup = () => {
             url.searchParams.delete("topup");
             url.searchParams.delete("session_id");
@@ -47,6 +72,12 @@ export default function CreditTopupReturnHandler(): JSX.Element | null {
         };
 
         if (topup === "cancel") {
+            if (notifyOpener({ status: "cancel" })) {
+                cleanup();
+                closePopupIfPossible();
+                return;
+            }
+
             void (async () => {
                 try {
                     await showAlert("Checkout canceled.", "Top up");
@@ -60,7 +91,9 @@ export default function CreditTopupReturnHandler(): JSX.Element | null {
         }
 
         if (!sessionId) {
+            notifyOpener({ status: "error", error: "Missing checkout session id." });
             cleanup();
+            closePopupIfPossible();
             return;
         }
 
@@ -82,17 +115,36 @@ export default function CreditTopupReturnHandler(): JSX.Element | null {
 
                 if (res.ok) {
                     const credits = typeof data?.credits === "number" ? data.credits : null;
+                    if (notifyOpener({ status: "success", credits })) {
+                        return;
+                    }
                     await showAlert(
                         credits ? `Added ${credits.toLocaleString()} AI credits to your account.` : "Top-up confirmed.",
                         "Credits added",
                     );
                 } else {
+                    const errorMessage =
+                        typeof data?.error === "string" && data.error
+                            ? data.error
+                            : "Could not confirm your top-up yet. If you were charged, it may apply shortly.";
+
+                    if (notifyOpener({ status: "error", error: errorMessage })) {
+                        return;
+                    }
                     await showAlert(
-                        typeof data?.error === "string" && data.error ? data.error : "Could not confirm your top-up yet. If you were charged, it may apply shortly.",
+                        errorMessage,
                         "Top up",
                     );
                 }
             } catch {
+                if (
+                    notifyOpener({
+                        status: "error",
+                        error: "Could not confirm your top-up yet. If you were charged, it may apply shortly.",
+                    })
+                ) {
+                    return;
+                }
                 try {
                     await showAlert(
                         "Could not confirm your top-up yet. If you were charged, it may apply shortly.",
@@ -103,6 +155,7 @@ export default function CreditTopupReturnHandler(): JSX.Element | null {
                 }
             } finally {
                 cleanup();
+                closePopupIfPossible();
             }
         })();
     }, [authLoading, showAlert]);
