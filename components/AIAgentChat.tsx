@@ -718,16 +718,35 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
         setTopupBusy(true);
         try {
-            await ensureSessionAndCsrf().catch(() => null);
-            const headers = await withCsrfHeaders();
-            const res = await fetch("/api/billing/create-credit-topup-session", {
-                method: "POST",
-                headers,
-                credentials: "include",
-                body: JSON.stringify({ credits: creditsInt, next: nextPath }),
-            });
+            const requestSession = async () => {
+                const ensuredCsrf = await ensureSessionAndCsrf().catch(() => null);
+                const headers = await withCsrfHeaders();
+                if (ensuredCsrf && !headers["x-csrf"]) {
+                    headers["x-csrf"] = ensuredCsrf;
+                }
 
-            if (res.status === 401) {
+                const response = await fetch("/api/billing/create-credit-topup-session", {
+                    method: "POST",
+                    headers,
+                    credentials: "include",
+                    body: JSON.stringify({ credits: creditsInt, next: nextPath }),
+                });
+
+                const data = (await response.json().catch(() => ({}))) as any;
+                return { response, data };
+            };
+
+            let { response, data } = await requestSession();
+
+            if (response.status === 401 || response.status === 403) {
+                const err = typeof data?.error === "string" ? data.error.toLowerCase() : "";
+                const looksRecoverable = err.includes("csrf") || err.includes("session") || err.includes("unauthorized");
+                if (looksRecoverable) {
+                    ({ response, data } = await requestSession());
+                }
+            }
+
+            if (response.status === 401) {
                 const loginUrl = `/login?next=${encodeURIComponent(nextPath)}`;
                 await showAlert("Your session expired. Please sign in again to continue checkout.", "Sign in required");
                 const loginWindow = window.open(loginUrl, "_blank", "noopener,noreferrer");
@@ -737,9 +756,16 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 return;
             }
 
-            const data = (await res.json().catch(() => ({}))) as any;
             const url = typeof data?.url === "string" ? data.url : "";
-            if (!res.ok || !url) {
+            if (response.status === 403) {
+                const err = typeof data?.error === "string" ? data.error : "";
+                if (/csrf/i.test(err)) {
+                    await showAlert("Security token mismatch. Please refresh this tab and try again.", "Top up");
+                    return;
+                }
+            }
+
+            if (!response.ok || !url) {
                 await showAlert(data?.error || "Unable to start top-up checkout. Please try again.", "Top up");
                 return;
             }
