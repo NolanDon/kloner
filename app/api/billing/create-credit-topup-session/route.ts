@@ -53,6 +53,24 @@ function normalizeNextPath(input: unknown): string | null {
     return raw;
 }
 
+function isMissingStripeCustomerError(err: any): boolean {
+    const code = typeof err?.code === "string" ? err.code : "";
+    const param = typeof err?.param === "string" ? err.param : "";
+    const message = typeof err?.message === "string" ? err.message : "";
+    return code === "resource_missing" && (param === "customer" || /no such customer/i.test(message));
+}
+
+function mapPublicErrorMessage(err: any, status: number): string {
+    const message = typeof err?.message === "string" ? err.message : "";
+    if (isMissingStripeCustomerError(err)) {
+        return "Billing profile mismatch detected. Please retry checkout.";
+    }
+    if (status === 401) return "Unauthorized";
+    if (status === 403) return "Forbidden";
+    if (status >= 500) return "Unable to start checkout right now. Please try again.";
+    return message || "Unable to start checkout. Please try again.";
+}
+
 function readBearerToken(req: NextRequest): string | null {
     const authHeader = req.headers.get("authorization") || "";
     if (!authHeader.toLowerCase().startsWith("bearer ")) return null;
@@ -108,9 +126,11 @@ async function handler(req: NextRequest, uid: string, sessionClaims?: Record<str
     const userData = snap.exists ? (snap.data() as any) : {};
 
     let customerId: string | undefined =
-        typeof userData?.stripeCustomerId === "string" ? userData.stripeCustomerId : undefined;
+        typeof userData?.stripeCustomerId === "string" && userData.stripeCustomerId.trim()
+            ? userData.stripeCustomerId.trim()
+            : undefined;
 
-    if (!customerId) {
+    const createAndPersistCustomer = async (): Promise<string> => {
         const authUser = await getAdminAuth().getUser(uid);
         const email = authUser.email ?? undefined;
 
@@ -119,10 +139,14 @@ async function handler(req: NextRequest, uid: string, sessionClaims?: Record<str
             metadata: { firebaseUid: uid },
         });
 
-        customerId = customer.id;
+        const nextCustomerId = customer.id;
+        await userRef.set({ stripeCustomerId: nextCustomerId }, { merge: true });
+        await linkCustomerToUid(nextCustomerId, uid);
+        return nextCustomerId;
+    };
 
-        await userRef.set({ stripeCustomerId: customerId }, { merge: true });
-        await linkCustomerToUid(customerId, uid);
+    if (!customerId) {
+        customerId = await createAndPersistCustomer();
     }
 
     const origin = new URL(req.url).origin;
@@ -138,33 +162,46 @@ async function handler(req: NextRequest, uid: string, sessionClaims?: Record<str
     const successUrl = successUrlObj.toString();
     const cancelUrl = cancelUrlObj.toString();
 
-    const session = await stripe.checkout.sessions.create({
-        mode: "payment",
-        customer: customerId,
-        allow_promotion_codes: true,
-        success_url: successUrl,
-        cancel_url: cancelUrl,
-        line_items: [
-            {
-                price_data: {
-                    currency,
-                    unit_amount: unitPriceCents,
-                    product_data: {
-                        name: `AI credit top-up (${creditsRaw} credits)`,
-                        description: "Adds AI edit credits to your account (does not change your monthly plan limits).",
+    const makeSession = async (resolvedCustomerId: string) =>
+        stripe.checkout.sessions.create({
+            mode: "payment",
+            customer: resolvedCustomerId,
+            allow_promotion_codes: true,
+            success_url: successUrl,
+            cancel_url: cancelUrl,
+            line_items: [
+                {
+                    price_data: {
+                        currency,
+                        unit_amount: unitPriceCents,
+                        product_data: {
+                            name: `AI credit top-up (${creditsRaw} credits)`,
+                            description: "Adds AI edit credits to your account (does not change your monthly plan limits).",
+                        },
                     },
+                    quantity: creditsRaw,
                 },
-                quantity: creditsRaw,
+            ],
+            metadata: {
+                type: "ai_credit_topup",
+                firebaseUid: uid,
+                aiEditCredits: String(creditsRaw),
+                unitPriceCents: String(unitPriceCents),
+                currency,
             },
-        ],
-        metadata: {
-            type: "ai_credit_topup",
-            firebaseUid: uid,
-            aiEditCredits: String(creditsRaw),
-            unitPriceCents: String(unitPriceCents),
-            currency,
-        },
-    });
+        });
+
+    let session;
+    try {
+        session = await makeSession(customerId);
+    } catch (err: any) {
+        if (customerId && isMissingStripeCustomerError(err)) {
+            const repairedCustomerId = await createAndPersistCustomer();
+            session = await makeSession(repairedCustomerId);
+        } else {
+            throw err;
+        }
+    }
 
     return NextResponse.json({ url: session.url });
 }
@@ -203,8 +240,13 @@ export async function POST(req: NextRequest) {
         }
         return response;
     } catch (err: any) {
-        const status = typeof err?.status === "number" ? err.status : 401;
-        const msg = typeof err?.message === "string" ? err.message : "Unauthorized";
+        const status =
+            typeof err?.status === "number"
+                ? err.status
+                : typeof err?.statusCode === "number"
+                  ? err.statusCode
+                  : 500;
+        const msg = mapPublicErrorMessage(err, status);
         if (status >= 500) {
             await captureException({
                 source: "vercel",
