@@ -8,7 +8,7 @@ import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateC
 import AIAgentChat from "./AIAgentChat";
 import KlonerLoader from "./KlonerLoader";
 import WebContainerRunner from "./WebContainerRunner";
-import { ensureSessionAndCsrf } from "@/lib/auth-client";
+import { bootstrapServerSession, ensureSessionAndCsrf } from "@/lib/auth-client";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 import { db } from "@/lib/firebase";
 import { doc, onSnapshot } from "firebase/firestore";
@@ -504,7 +504,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
         templateName?: string | null;
     };
 }) {
-    const { user } = useAuth();
+    const { user, loading: authLoading } = useAuth();
     const { showConfirm, showAlert } = useModal();
 
     const faviconInputRef = useRef<HTMLInputElement | null>(null);
@@ -2305,17 +2305,43 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
 
     // Load app data
     useEffect(() => {
+        if (authLoading) return;
+
         let didCancel = false;
         const controller = new AbortController();
 
         const loadApp = async () => {
             try {
-                const res = await fetch(`/api/app-builder/${appId}/files`, {
-                    method: "GET",
-                    credentials: "include",
-                    cache: "no-store",
-                    signal: controller.signal,
-                });
+                if (!user?.uid) {
+                    throw new Error("Failed to load app: 401 Unauthorized");
+                }
+
+                const fetchFiles = async (forceRefreshToken: boolean) => {
+                    await bootstrapServerSession({
+                        forceRefresh: forceRefreshToken,
+                        minIntervalMs: forceRefreshToken ? 0 : 10 * 60 * 1000,
+                        timeoutMs: 12_000,
+                        reason: "app_builder_load",
+                    }).catch(() => false);
+
+                    const idToken = await user.getIdToken(forceRefreshToken);
+
+                    return fetch(`/api/app-builder/${appId}/files`, {
+                        method: "GET",
+                        credentials: "include",
+                        cache: "no-store",
+                        signal: controller.signal,
+                        headers: {
+                            authorization: `Bearer ${idToken}`,
+                        },
+                    });
+                };
+
+                let res = await fetchFiles(false);
+                if (res.status === 401) {
+                    res = await fetchFiles(true);
+                }
+
                 if (!res.ok) {
                     if (res.status === 404) {
                         console.error("App not found, closing editor");
@@ -2347,7 +2373,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
             didCancel = true;
             controller.abort();
         };
-    }, [appId]);
+    }, [appId, authLoading, user]);
 
     // Derive current favicon URL from head.tsx if we created/updated one.
     useEffect(() => {

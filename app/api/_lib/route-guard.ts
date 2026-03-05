@@ -1,6 +1,6 @@
 // app/api/_lib/route-guard.ts
 import { NextRequest, NextResponse } from "next/server";
-import { assertCsrf, verifySession } from "./auth";
+import { assertCsrf, getAdminAuth, verifySession } from "./auth";
 import { captureCriticalEvent, captureException } from "@/lib/observability";
 
 function getReqId(req: NextRequest): string {
@@ -54,6 +54,13 @@ type AuthedHandler = (args: {
     uid: string;
 }) => Promise<NextResponse>;
 
+function readBearerToken(req: NextRequest): string | null {
+    const authHeader = req.headers.get("authorization") || "";
+    if (!authHeader.toLowerCase().startsWith("bearer ")) return null;
+    const token = authHeader.slice(7).trim();
+    return token || null;
+}
+
 export async function requireSessionAndMaybeCsrf(
     req: NextRequest,
     handler: AuthedHandler,
@@ -67,8 +74,15 @@ export async function requireSessionAndMaybeCsrf(
 
     let uid: string;
     try {
-        const session = await verifySession(req);
-        uid = session.uid;
+        try {
+            const session = await verifySession(req);
+            uid = session.uid;
+        } catch (sessionErr) {
+            const bearer = readBearerToken(req);
+            if (!bearer) throw sessionErr;
+            const decoded = await getAdminAuth().verifyIdToken(bearer, true);
+            uid = decoded.uid;
+        }
     } catch (err) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
