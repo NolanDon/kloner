@@ -135,6 +135,14 @@ function normalizeUrlStatus(
     return "unknown";
 }
 
+function stripHttpsUrlsFromPrompt(input: string): string {
+    const raw = String(input || "");
+    if (!raw) return "";
+    return raw
+        .replace(/https:\/\/[^\s]+/gi, "")
+        .replace(/[ \t]{2,}/g, " ");
+}
+
 type MiniDashboardEntryProps = {
     onSubmitUrl: (rawUrl: string) => void;
     onSubmitPrompt: (prompt: string) => void;
@@ -204,7 +212,7 @@ function MiniDashboardEntry({
                 return;
             }
 
-            const p = (prompt || "").trim();
+            const p = stripHttpsUrlsFromPrompt(prompt || "").trim();
             if (!p) {
                 setError("Enter a prompt to continue.");
                 return;
@@ -355,7 +363,7 @@ function MiniDashboardEntry({
                             ref={inputRef as any}
                             value={prompt}
                             onChange={(e) => {
-                                const v = e.target.value;
+                                const v = stripHttpsUrlsFromPrompt(e.target.value);
                                 setPrompt(v);
                                 setError(null);
                             }}
@@ -363,7 +371,7 @@ function MiniDashboardEntry({
                                 const pasted = e.clipboardData.getData("text");
                                 if (!pasted) return;
                                 e.preventDefault();
-                                setPrompt(pasted);
+                                setPrompt(stripHttpsUrlsFromPrompt(pasted));
                                 setError(null);
                             }}
                             placeholder=""
@@ -441,13 +449,12 @@ function MiniDashboardEntry({
                         aria-label={mode === "prompt" ? "Create from prompt" : "Preview from URL"}
                     >
                         {disabled && (captureStatus === "queued" || captureStatus === "processing") ? (
-                            mode === "prompt" ? (
+                            <>
                                 <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : captureStatus === "queued" ? (
-                                "Queued"
-                            ) : (
-                                "Processing…"
-                            )
+                                <span className="sr-only">
+                                    {captureStatus === "queued" ? "Queued" : "Processing"}
+                                </span>
+                            </>
                         ) : mode === "prompt" ? (
                             <>
                                 <Send className="h-4 w-4" />
@@ -1956,9 +1963,9 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                             disabled={effectiveLocked}
                                             className="relative w-full overflow-visible rounded-xl border border-[rgba(245,95,42,0.45)] bg-[linear-gradient(180deg,rgba(245,95,42,0.06),rgba(255,255,255,0))] p-4 text-left shadow-sm transition hover:bg-[rgba(245,95,42,0.05)] hover:border-[rgba(245,95,42,0.65)] disabled:opacity-60 disabled:cursor-not-allowed"
                                         >
-                                            <span className="pointer-events-none absolute -right-2 -top-2 z-10 inline-flex items-center rounded-full border border-[rgba(245,95,42,0.45)] bg-white px-2 py-0.5 text-[11px] font-semibold text-[rgba(245,95,42,1)] shadow-sm">
+                                            {/* <span className="pointer-events-none absolute -right-2 -top-2 z-10 inline-flex items-center rounded-full border border-[rgba(245,95,42,0.45)] bg-white px-2 py-0.5 text-[11px] font-semibold text-[rgba(245,95,42,1)] shadow-sm">
                                                 Recommended
-                                            </span>
+                                            </span> */}
                                             <div className="flex items-start gap-3">
                                                 <div
                                                     className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-900"
@@ -1977,7 +1984,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                 <div className="flex-1 space-y-1">
                                                     <div className="flex items-center gap-2">
                                                         <div className="text-sm font-semibold text-neutral-900">
-                                                            Advanced Website (NextJS)
+                                                            Website (NextJS)
                                                         </div>
                                                         <span className="inline-flex whitespace-nowrap items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800">
                                                             15 preview credits
@@ -1995,89 +2002,47 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                     </div>
                                                 </div>
                                             </div>
+
                                         </button>
                                     </div>
                                 </div>
 
-                                {/* 2) Website (HTML) */}
+                                {/* 2) Mobile apps (coming soon) */}
                                 <div className="relative">
                                     <button
                                         type="button"
-                                        onClick={handleWebsiteGeneration}
-                                        disabled={effectiveLocked || !canGenerateHtmlFromUrl}
-                                        className="w-full rounded-xl border border-neutral-200 bg-white p-4 text-left transition hover:bg-neutral-50 hover:border-neutral-300 disabled:opacity-60 disabled:cursor-not-allowed"
+                                        disabled
+                                        aria-disabled="true"
+                                        className="relative w-full rounded-xl border border-neutral-200 bg-white p-4 text-left opacity-75 cursor-not-allowed"
                                     >
+                                        <span className="pointer-events-none absolute -right-2 -top-2 z-10 inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 shadow-sm">
+                                            Coming Soon
+                                        </span>
                                         <div className="flex items-start gap-3">
-                                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#e34f26]/10" aria-hidden>
-                                                <Image
-                                                    src="/images/html.png"
-                                                    alt=""
-                                                    width={24}
-                                                    height={24}
-                                                    className="object-contain"
-                                                    priority={false}
-                                                />
+                                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-500/10" aria-hidden>
+                                                <svg
+                                                    xmlns="http://www.w3.org/2000/svg"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    strokeWidth="1.8"
+                                                    className="h-5 w-5 text-sky-700"
+                                                >
+                                                    <rect x="7" y="2" width="10" height="20" rx="2" />
+                                                    <path d="M11 18h2" />
+                                                </svg>
                                             </div>
                                             <div className="flex-1 space-y-1">
                                                 <div className="flex items-center gap-2">
                                                     <div className="text-sm font-semibold text-neutral-900">
-                                                        Basic Website (HTML)
+                                                        Mobile App
                                                     </div>
-                                                    <span className="inline-flex whitespace-nowrap items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800">
-                                                        15 preview credits
-                                                    </span>
                                                 </div>
                                                 <div className="text-xs text-neutral-600">
-                                                    Recommended for simple, static websites.
+                                                    Generate native-style app experiences for iOS and Android.
                                                 </div>
                                                 <div className="mt-1 text-[11px] leading-4 text-neutral-500">
-                                                    From: <span className="font-mono underline text-accent font-semibold">{sourceUrlDisplay || "(no URL selected)"}</span>
-                                                </div>
-                                                <div className="mt-1 text-[11px] leading-4 text-neutral-500">
-                                                    Best for: landing pages, marketing sites, performance-first pages. Not for auth / AI / databases.
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </button>
-                                </div>
-
-                                {/* 3) Website template (HTML) */}
-                                <div className="relative">
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            if (effectiveLocked) return;
-                                            setShowGenerationModal(false);
-                                            router.push("/community-builds");
-                                        }}
-                                        disabled={effectiveLocked}
-                                        className="w-full rounded-xl border border-neutral-200 bg-white p-4 text-left transition hover:bg-neutral-50 hover:border-neutral-300 disabled:opacity-60 disabled:cursor-not-allowed"
-                                    >
-                                        <div className="flex items-start gap-3">
-                                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10" aria-hidden>
-                                                <Image
-                                                    src="/images/html.png"
-                                                    alt=""
-                                                    width={24}
-                                                    height={24}
-                                                    className="object-contain opacity-95"
-                                                    priority={false}
-                                                />
-                                            </div>
-                                            <div className="flex-1 space-y-1">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="text-sm font-semibold text-neutral-900">
-                                                        Community Template (HTML)
-                                                    </div>
-                                                    {/* <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
-                                                        Free
-                                                    </span> */}
-                                                </div>
-                                                <div className="text-xs text-neutral-600">
-                                                    Start from a community-generated template.
-                                                </div>
-                                                <div className="mt-1 text-[11px] leading-4 text-neutral-500">
-                                                    Best for: fastest start, proven layouts, quick edits. No auth / AI / databases.
+                                                    Best for: product MVPs, mobile-first workflows, push-ready experiences, and app-store-ready UX.
                                                 </div>
                                             </div>
                                         </div>
@@ -2085,13 +2050,22 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                 </div>
                             </div>
 
-                            <div className="flex shrink-0 items-center justify-end gap-2 border-t border-neutral-200 px-5 py-4">
+                            <div className="flex shrink-0 items-center justify-between gap-2 border-t border-neutral-200 px-5 py-4">
                                 <button
                                     type="button"
                                     onClick={() => setShowGenerationModal(false)}
                                     className="rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-800 hover:bg-neutral-50"
                                 >
                                     Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleAppGeneration}
+                                    disabled={effectiveLocked}
+                                    className="rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
+                                    style={{ backgroundColor: ACCENT }}
+                                >
+                                    Continue
                                 </button>
                             </div>
                         </motion.div>
@@ -2317,9 +2291,15 @@ export default function PreviewPage(): JSX.Element {
     const [appWizardError, setAppWizardError] = useState<string | null>(null);
     const [appWizardUrl, setAppWizardUrl] = useState<string>("");
     const [appWizardShotsUrl, setAppWizardShotsUrl] = useState<string>("");
-    const [appWizardSource, setAppWizardSource] = useState<"website" | "prompt" | "sample">("website");
+    const [appWizardSource, setAppWizardSource] = useState<"website" | "prompt">("website");
     const [appWizardPrompt, setAppWizardPrompt] = useState<string>("");
+    const [appWizardPromptFocused, setAppWizardPromptFocused] = useState(false);
     const [appWizardSeedRenderId, setAppWizardSeedRenderId] = useState<string | null>(null);
+    const appWizardPromptPlaceholderIdx = useRotatingPlaceholderIndex({
+        enabled: appWizardOpen && appWizardSource === "prompt" && !appWizardPrompt.trim(),
+        length: PROMPT_PLACEHOLDERS.length,
+        intervalMs: 3200,
+    });
 
     const {
         status: vercelStatus,
@@ -2518,7 +2498,7 @@ export default function PreviewPage(): JSX.Element {
         if (!user) return;
         const wizardParam = search.get("wizard");
         const sourceParam = (search.get("source") || "").toLowerCase();
-        const promptParam = search.get("prompt") || "";
+        const promptParam = stripHttpsUrlsFromPrompt(search.get("prompt") || "");
 
         if (wizardParam !== "1") return;
         if (sourceParam !== "prompt") return;
@@ -2797,6 +2777,10 @@ export default function PreviewPage(): JSX.Element {
                     throw new Error(data?.error || "Failed to generate app from URL");
                 }
             } else if (mode === "prompt" && prompt) {
+                const sanitizedPrompt = stripHttpsUrlsFromPrompt(prompt).trim();
+                if (!sanitizedPrompt) {
+                    throw new Error("Prompt cannot be empty after removing URLs");
+                }
                 // Use the new prompt generation endpoint
                 const csrf = await ensureSessionAndCsrf().catch(() => null);
                 const res = await fetch("/api/generate-app-from-prompt", {
@@ -2805,7 +2789,7 @@ export default function PreviewPage(): JSX.Element {
                         "Content-Type": "application/json",
                         ...(csrf ? { "x-csrf": csrf } : {}),
                     },
-                    body: JSON.stringify({ prompt, name: appName }),
+                    body: JSON.stringify({ prompt: sanitizedPrompt, name: appName }),
                     credentials: "include",
                 });
 
@@ -2851,7 +2835,7 @@ export default function PreviewPage(): JSX.Element {
             setAgentWelcomeContextByAppId((prev) => {
                 const next = { ...prev };
                 if (mode === "prompt") {
-                    next[appId] = { source: "prompt", prompt: (prompt || "").trim() || null };
+                    next[appId] = { source: "prompt", prompt: stripHttpsUrlsFromPrompt(prompt || "").trim() || null };
                 } else if (mode === "url") {
                     next[appId] = { source: "url", url: (url || "").trim() || null };
                 } else {
@@ -2883,14 +2867,14 @@ export default function PreviewPage(): JSX.Element {
             setAppWizardUrl(url);
             setAppWizardShotsUrl(url);
             setAppWizardSeedRenderId(opts?.seedRenderId ?? null);
-            // Default to Clone from URL when we already have a URL; otherwise keep prior behavior.
-            setAppWizardSource(url ? "website" : (isAdmin ? "website" : "sample"));
+            // Default to Clone from URL when opening the wizard.
+            setAppWizardSource("website");
             setAppWizardPrompt("");
             setAppWizardError(null);
             setAppWizardBusy(false);
             setAppWizardOpen(true);
         },
-        [isAdmin, refreshVercelStatus],
+        [refreshVercelStatus],
     );
 
     const submitAppWizardWebsite = useCallback(async () => {
@@ -2901,7 +2885,31 @@ export default function PreviewPage(): JSX.Element {
         try {
             const url = (appWizardUrl || "").trim();
             if (!url) {
-                setAppWizardError("Enter a URL to continue.");
+                setAppWizardError("Select a successfully scanned URL to continue.");
+                return;
+            }
+
+            const successfulUrlSet = new Set(
+                urls
+                    .map((entry) => {
+                        const normalized = validateAndNormalizePublicHttpUrl(String(entry?.url || ""));
+                        if (!normalized) return "";
+                        const screenshotPathCount = Array.isArray(entry?.screenshotPaths) ? entry.screenshotPaths.length : 0;
+                        const screenshotMetaCount = Array.isArray(entry?.screenshots) ? entry.screenshots.length : 0;
+                        const statusUi = normalizeUrlStatus(
+                            entry?.status,
+                            screenshotPathCount + screenshotMetaCount,
+                            entry?.updatedAt,
+                        );
+                        return statusUi === "ready" ? normUrl(normalized) : "";
+                    })
+                    .filter(Boolean),
+            );
+
+            const normalizedSelected = validateAndNormalizePublicHttpUrl(url);
+            const canonicalSelected = normalizedSelected ? normUrl(normalizedSelected) : "";
+            if (!canonicalSelected || !successfulUrlSet.has(canonicalSelected)) {
+                setAppWizardError("Please choose a URL from the scanned dropdown.");
                 return;
             }
 
@@ -2927,28 +2935,11 @@ export default function PreviewPage(): JSX.Element {
         } finally {
             setAppWizardBusy(false);
         }
-    }, [appWizardBusy, appWizardUrl, appWizardShotsUrl, user, shots, handleCreateApp]);
-
-    const submitAppWizardSample = useCallback(async () => {
-        if (appWizardBusy) return;
-        setAppWizardBusy(true);
-        setAppWizardError(null);
-
-        try {
-            const created = await handleCreateApp("clone", undefined, undefined);
-            if (created) {
-                setAppWizardOpen(false);
-            } else {
-                setAppWizardError("Failed to create app. Please try again.");
-            }
-        } finally {
-            setAppWizardBusy(false);
-        }
-    }, [appWizardBusy, handleCreateApp]);
+    }, [appWizardBusy, appWizardUrl, appWizardShotsUrl, user, shots, handleCreateApp, urls]);
 
     const submitAppWizardPrompt = useCallback(async () => {
         if (appWizardBusy) return;
-        const prompt = (appWizardPrompt || "").trim();
+        const prompt = stripHttpsUrlsFromPrompt(appWizardPrompt || "").trim();
         if (!prompt) {
             setAppWizardError("Enter a prompt to continue.");
             return;
@@ -3620,7 +3611,7 @@ export default function PreviewPage(): JSX.Element {
 
     const submitMiniPrompt = useCallback(
         (prompt: string) => {
-            const p = (prompt || "").trim();
+            const p = stripHttpsUrlsFromPrompt(prompt || "").trim();
             if (!p) return;
             router.push(`/dashboard/view?wizard=1&source=prompt&prompt=${encodeURIComponent(p)}`, { scroll: false });
         },
@@ -4226,6 +4217,48 @@ export default function PreviewPage(): JSX.Element {
         const rest = urls.filter((u) => u.id !== activeUrlDoc.id);
         return [activeUrlDoc, ...rest];
     }, [urls, activeUrlDoc]);
+
+    const successfulScannedUrls = useMemo(() => {
+        if (!urls.length) return [] as string[];
+
+        const seen = new Set<string>();
+        const out: string[] = [];
+
+        for (const entry of urls) {
+            const normalized = validateAndNormalizePublicHttpUrl(String(entry?.url || ""));
+            if (!normalized) continue;
+
+            const screenshotPathCount = Array.isArray(entry?.screenshotPaths) ? entry.screenshotPaths.length : 0;
+            const screenshotMetaCount = Array.isArray(entry?.screenshots) ? entry.screenshots.length : 0;
+            const statusUi = normalizeUrlStatus(
+                entry?.status,
+                screenshotPathCount + screenshotMetaCount,
+                entry?.updatedAt,
+            );
+            if (statusUi !== "ready") continue;
+
+            const canonical = normUrl(normalized);
+            if (!canonical || seen.has(canonical)) continue;
+            seen.add(canonical);
+            out.push(canonical);
+        }
+
+        return out;
+    }, [urls]);
+
+    useEffect(() => {
+        if (!appWizardOpen || appWizardSource !== "website") return;
+        if (!successfulScannedUrls.length) return;
+
+        const normalizedCurrent = validateAndNormalizePublicHttpUrl(appWizardUrl || "");
+        const currentCanonical = normalizedCurrent ? normUrl(normalizedCurrent) : "";
+        const hasCurrent = currentCanonical
+            ? successfulScannedUrls.some((u) => normUrl(u) === currentCanonical)
+            : false;
+        if (hasCurrent) return;
+
+        setAppWizardUrl(successfulScannedUrls[0]);
+    }, [appWizardOpen, appWizardSource, appWizardUrl, successfulScannedUrls]);
 
     const countRendersForUrl = useCallback(
         async (uid: string, url: string, urlHash: string) => {
@@ -7493,7 +7526,7 @@ export default function PreviewPage(): JSX.Element {
                                         <div className="space-y-1">
                                             <div className="text-sm font-semibold text-neutral-900">Create a Website</div>
                                             <div className="text-xs text-neutral-600">
-                                                Start building now. You’ll only need Vercel when you deploy.
+                                                Start building now. Choose to clone from a URL or generate from a prompt. You can customize and deploy it live, all within our platform.
                                             </div>
                                         </div>
                                         <button
@@ -7503,7 +7536,7 @@ export default function PreviewPage(): JSX.Element {
                                                 setAppWizardError(null);
                                                 setAppWizardBusy(false);
                                             }}
-                                            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200"
+                                            className="inline-flex h-9 w-9 min-h-9 min-w-9 shrink-0 aspect-square items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200"
                                             title="Close"
                                         >
                                             <svg
@@ -7535,10 +7568,10 @@ export default function PreviewPage(): JSX.Element {
                                                     onClick={() => {
                                                         setAppWizardSource("website");
                                                         setAppWizardPrompt("");
-                                                        setAppWizardUrl((prev) => (prev || targetUrl || ""));
+                                                        setAppWizardUrl((prev) => (prev || successfulScannedUrls[0] || ""));
                                                         setAppWizardShotsUrl((prev) => (prev || targetUrl || ""));
                                                     }}
-                                                    className={`relative w-full rounded-xl border p-4 text-left transition ${appWizardSource === "website"
+                                                    className={`relative w-full rounded-xl border p-4 pb-14 text-left transition ${appWizardSource === "website"
                                                         ? "border-[#f55f2a] bg-[#f55f2a]/5"
                                                         : "border-neutral-200 bg-white hover:bg-neutral-50"
                                                         }`}
@@ -7547,26 +7580,41 @@ export default function PreviewPage(): JSX.Element {
                                                     <div className="mt-1 text-xs text-neutral-600 break-all">
                                                         High-fidelity clone using your saved screenshots when available.
                                                     </div>
-                                                    <div className="mt-1 text-[11px] leading-4 text-neutral-500">
-                                                        From: <span className="font-mono underline text-accent font-semibold">{appWizardUrl || targetUrl || "(no URL selected)"}</span>
+                                                    <div className="mt-2">
+                                                        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                                                            URL
+                                                        </label>
+                                                        <select
+                                                            value={appWizardUrl || ""}
+                                                            onChange={(e) => {
+                                                                setAppWizardUrl(e.target.value);
+                                                                setAppWizardError(null);
+                                                            }}
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            disabled={!successfulScannedUrls.length}
+                                                            className="w-full rounded-lg border border-neutral-200 bg-white px-2.5 py-2 text-xs text-neutral-800 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-[#f55f2a]/20"
+                                                        >
+                                                            <option value="" disabled>
+                                                                {successfulScannedUrls.length
+                                                                    ? "Select a scanned URL"
+                                                                    : "No successfully scanned URLs yet"}
+                                                            </option>
+                                                            {successfulScannedUrls.map((u) => (
+                                                                <option key={u} value={u}>
+                                                                    {u}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                        <div className="mt-1 text-[11px] leading-4 text-neutral-500">
+                                                            Only URLs with completed scans are listed.
+                                                        </div>
                                                     </div>
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setAppWizardSource("sample")}
-                                                    className={`w-full rounded-xl border p-4 text-left transition ${appWizardSource === "sample"
-                                                        ? "border-[#f55f2a] bg-[#f55f2a]/5"
-                                                        : "border-neutral-200 bg-white hover:bg-neutral-50"
-                                                        }`}
-                                                >
-                                                    <div className="text-sm font-semibold text-neutral-900">Quick start</div>
-                                                    <div className="mt-1 text-xs text-neutral-600">Start from a Kloner sample app. You&apos;ll still be able to customize it</div>
-                                                </button>
 
+                                                </button>
                                                 <button
                                                     type="button"
                                                     onClick={() => setAppWizardSource("prompt")}
-                                                    className={`relative w-full rounded-xl border p-4 text-left transition ${appWizardSource === "prompt"
+                                                    className={`relative w-full rounded-xl border p-4 pb-14 text-left transition ${appWizardSource === "prompt"
                                                         ? "border-[#f55f2a] bg-[#f55f2a]/5"
                                                         : "border-neutral-200 bg-white hover:bg-neutral-50"
                                                         }`}
@@ -7575,40 +7623,55 @@ export default function PreviewPage(): JSX.Element {
                                                     <div className="mt-1 text-xs text-neutral-600">Describe the app and we’ll generate the first version.</div>
                                                 </button>
                                             </div>
+
                                             {appWizardSource === "prompt" ? (
                                                 <div className="mt-2 space-y-2">
                                                     <label className="text-xs font-semibold text-neutral-700">
                                                         Prompt
                                                     </label>
-                                                    <textarea
-                                                        value={appWizardPrompt}
-                                                        onChange={(e) => setAppWizardPrompt(e.target.value)}
-                                                        rows={5}
-                                                        className="w-full resize-none rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-[#f55f2a]/20"
-                                                        placeholder="Describe what you want to build…"
-                                                    />
+                                                    <div className="relative rounded-2xl border border-neutral-200 bg-white/95 p-3 shadow-[0_10px_24px_rgba(0,0,0,0.07)] ring-1 ring-neutral-200/80 transition-all duration-300 ease-out">
+                                                        <textarea
+                                                            value={appWizardPrompt}
+                                                            onChange={(e) => {
+                                                                setAppWizardPrompt(stripHttpsUrlsFromPrompt(e.target.value));
+                                                                setAppWizardError(null);
+                                                            }}
+                                                            onPaste={(e) => {
+                                                                const pasted = e.clipboardData.getData("text");
+                                                                if (!pasted) return;
+                                                                e.preventDefault();
+                                                                setAppWizardPrompt(stripHttpsUrlsFromPrompt(pasted));
+                                                                setAppWizardError(null);
+                                                            }}
+                                                            onFocus={() => setAppWizardPromptFocused(true)}
+                                                            onBlur={() => setAppWizardPromptFocused(false)}
+                                                            rows={5}
+                                                            className="relative z-[1] min-h-[124px] w-full resize-none bg-transparent text-sm font-medium leading-snug text-neutral-800 outline-none"
+                                                            placeholder=""
+                                                        />
+                                                        {!appWizardPrompt.trim() ? (
+                                                            <div
+                                                                className={`pointer-events-none absolute inset-x-3 top-3 pr-1 text-left transition-opacity ${appWizardPromptFocused ? "opacity-60" : "opacity-100"}`}
+                                                                aria-hidden
+                                                            >
+                                                                <AnimatePresence mode="wait">
+                                                                    <motion.span
+                                                                        key={appWizardPromptPlaceholderIdx}
+                                                                        initial={{ opacity: 0, y: 6 }}
+                                                                        animate={{ opacity: 1, y: 0 }}
+                                                                        exit={{ opacity: 0, y: -6 }}
+                                                                        transition={{ duration: 0.35, ease: "easeOut" }}
+                                                                        className="block text-sm font-medium leading-snug text-neutral-400/90"
+                                                                    >
+                                                                        {PROMPT_PLACEHOLDERS[appWizardPromptPlaceholderIdx]}
+                                                                    </motion.span>
+                                                                </AnimatePresence>
+                                                            </div>
+                                                        ) : null}
+                                                    </div>
                                                 </div>
                                             ) : null}
 
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    if (appWizardSource === "sample") return void submitAppWizardSample();
-                                                    if (appWizardSource === "website") return void submitAppWizardWebsite();
-                                                    return void submitAppWizardPrompt();
-                                                }}
-                                                disabled={appWizardBusy}
-                                                className="w-full rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
-                                                style={{ backgroundColor: ACCENT }}
-                                            >
-                                                {appWizardBusy
-                                                    ? "Creating…"
-                                                    : appWizardSource === "sample"
-                                                        ? "Create website"
-                                                        : appWizardSource === "website"
-                                                            ? "Create from URL"
-                                                            : "Create from prompt"}
-                                            </button>
                                         </div>
                                     </div>
 
@@ -7623,6 +7686,18 @@ export default function PreviewPage(): JSX.Element {
                                             className="rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-800 hover:bg-neutral-50"
                                         >
                                             Cancel
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (appWizardSource === "website") return void submitAppWizardWebsite();
+                                                return void submitAppWizardPrompt();
+                                            }}
+                                            disabled={appWizardBusy}
+                                            className="rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
+                                            style={{ backgroundColor: ACCENT }}
+                                        >
+                                            {appWizardBusy ? "Creating…" : "Continue"}
                                         </button>
                                     </div>
                                 </motion.div>
