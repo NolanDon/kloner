@@ -3722,7 +3722,7 @@ export default function PreviewPage(): JSX.Element {
                 if (!res.ok) {
                     generateAbortedRef.current = startRequestKey;
                     await res.json().catch(() => ({})); // consume body
-                    setErr("This URL failed to process. Please ensure it is an accessible URL before trying again.");
+                    setErr("Sorry, we were not able to process this URL. Please ensure it is accessible before trying again.");
                     setInfo("");
                     captureLockMinUntilRef.current = 0;
                     setCaptureLockUrl(null);
