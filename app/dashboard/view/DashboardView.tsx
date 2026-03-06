@@ -531,7 +531,6 @@ const RenderCard = memo(
     (prev, next) => {
         const a = prev.r as any;
         const b = next.r as any;
-
         return (
             a.id === b.id &&
             a.status === b.status &&
@@ -2925,7 +2924,16 @@ export default function PreviewPage(): JSX.Element {
 
             const normalizedSelected = validateAndNormalizePublicHttpUrl(url);
             const canonicalSelected = normalizedSelected ? normUrl(normalizedSelected) : "";
-            if (!canonicalSelected || !successfulUrlSet.has(canonicalSelected)) {
+            const normalizedShotsUrl = validateAndNormalizePublicHttpUrl(appWizardShotsUrl || "");
+            const canonicalShotsUrl = normalizedShotsUrl ? normUrl(normalizedShotsUrl) : "";
+            const hasActiveShotContext = Array.isArray(shots) && shots.length > 0;
+            const canTrustCurrentSelectionFromShotContext =
+                !!canonicalSelected &&
+                !!canonicalShotsUrl &&
+                canonicalSelected === canonicalShotsUrl &&
+                hasActiveShotContext;
+
+            if (!canonicalSelected || (!successfulUrlSet.has(canonicalSelected) && !canTrustCurrentSelectionFromShotContext)) {
                 setAppWizardError("Please choose a URL from the scanned dropdown.");
                 return;
             }
@@ -4293,14 +4301,18 @@ export default function PreviewPage(): JSX.Element {
     }, [urls, activeUrlDoc]);
 
     const successfulScannedUrls = useMemo(() => {
-        if (!urls.length) return [] as string[];
-
         const seen = new Set<string>();
         const out: string[] = [];
 
-        for (const entry of urls) {
+        const addIfReady = (entry: {
+            url?: string;
+            status?: UrlDoc["status"];
+            screenshotPaths?: unknown;
+            screenshots?: unknown;
+            updatedAt?: any;
+        }) => {
             const normalized = validateAndNormalizePublicHttpUrl(String(entry?.url || ""));
-            if (!normalized) continue;
+            if (!normalized) return;
 
             const screenshotPathCount = Array.isArray(entry?.screenshotPaths) ? entry.screenshotPaths.length : 0;
             const screenshotMetaCount = Array.isArray(entry?.screenshots) ? entry.screenshots.length : 0;
@@ -4309,16 +4321,29 @@ export default function PreviewPage(): JSX.Element {
                 screenshotPathCount + screenshotMetaCount,
                 entry?.updatedAt,
             );
-            if (statusUi !== "ready") continue;
+            if (statusUi !== "ready") return;
 
             const canonical = normUrl(normalized);
-            if (!canonical || seen.has(canonical)) continue;
+            if (!canonical || seen.has(canonical)) return;
             seen.add(canonical);
             out.push(canonical);
+        };
+
+        // Prefer live active URL doc so the wizard dropdown updates immediately after first successful capture.
+        if (targetUrl && docData) {
+            addIfReady({
+                url: targetUrl,
+                status: docData.status,
+                screenshotPaths: docData.screenshotPaths,
+                screenshots: docData.screenshots,
+                updatedAt: docData.updatedAt,
+            });
         }
 
+        for (const entry of urls) addIfReady(entry);
+
         return out;
-    }, [urls]);
+    }, [urls, targetUrl, docData]);
 
     useEffect(() => {
         if (!appWizardOpen || appWizardSource !== "website") return;
