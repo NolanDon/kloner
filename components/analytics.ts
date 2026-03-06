@@ -258,6 +258,19 @@ export type EditorSessionCounters = {
 
 export type EditorSessionUser = { uid?: string } | null | undefined;
 
+export type AppBuilderSessionUser = { uid?: string } | null | undefined;
+
+export type AppBuilderSessionCounters = {
+    aiUserMessagesSent?: number;
+    viewSwitchCount?: number;
+};
+
+export type AppBuilderIntegrationSnapshot = {
+    supabaseConnected?: boolean;
+    vercelConnected?: boolean;
+    stripeConfigured?: boolean;
+};
+
 export async function recordEditorSessionAnalytics(
     user: EditorSessionUser,
     durationMs: number,
@@ -498,5 +511,157 @@ export async function recordEditorSessionAnalytics(
         }
     } catch (err) {
         console.error("recordEditorSessionAnalytics failed", err);
+    }
+}
+
+/* =========================
+ * APP BUILDER SESSION ANALYTICS
+ * ========================= */
+
+export async function recordAppBuilderSessionAnalytics(
+    user: AppBuilderSessionUser,
+    appId: string,
+    durationMs: number,
+    reason: string,
+    counters?: AppBuilderSessionCounters,
+    integrations?: AppBuilderIntegrationSnapshot,
+) {
+    try {
+        if (!user?.uid || !appId) {
+            console.log("[recordAppBuilderSessionAnalytics] skip – missing user/app");
+            return;
+        }
+
+        const uid = user.uid as string;
+        const appBuilderRef = doc(
+            db,
+            "kloner_users",
+            uid,
+            "meta",
+            "app_builder",
+        );
+
+        const safeDurationMs =
+            typeof durationMs === "number" && durationMs > 0
+                ? durationMs
+                : 0;
+        const durationMinutes = msToMinutesRounded(safeDurationMs) ?? 0;
+
+        const c = {
+            aiUserMessagesSent:
+                typeof counters?.aiUserMessagesSent === "number" && Number.isFinite(counters.aiUserMessagesSent)
+                    ? Math.max(0, counters.aiUserMessagesSent)
+                    : 0,
+            viewSwitchCount:
+                typeof counters?.viewSwitchCount === "number" && Number.isFinite(counters.viewSwitchCount)
+                    ? Math.max(0, counters.viewSwitchCount)
+                    : 0,
+        };
+
+        const integrationSnapshot = {
+            supabaseConnected: integrations?.supabaseConnected === true,
+            vercelConnected: integrations?.vercelConnected === true,
+            stripeConfigured: integrations?.stripeConfigured === true,
+        };
+
+        const now = serverTimestamp();
+
+        await runTransaction(db, async (tx) => {
+            const snap = await tx.get(appBuilderRef);
+            const data = (snap.data() || {}) as Record<string, any>;
+
+            const safeNum = (v: any) =>
+                typeof v === "number" && Number.isFinite(v) ? v : 0;
+
+            const prevSessionCount = safeNum(data.appBuilderSessionCount);
+            const prevTotalMs = safeNum(data.appBuilderSessionTotalMs);
+            const prevTotalMinutes = safeNum(data.appBuilderSessionTotalMinutes);
+            const prevAiTotal = safeNum(data.appBuilderAiUserMessageTotal);
+            const prevViewSwitchTotal = safeNum(data.appBuilderViewSwitchTotal);
+            const prevSessionsWithSupabase = safeNum(data.appBuilderSessionsWithSupabaseCount);
+            const prevSessionsWithVercel = safeNum(data.appBuilderSessionsWithVercelCount);
+            const prevSessionsWithStripe = safeNum(data.appBuilderSessionsWithStripeCount);
+
+            const nextSessionCount = prevSessionCount + 1;
+            const nextTotalMs = prevTotalMs + safeDurationMs;
+            const nextTotalMinutes = prevTotalMinutes + durationMinutes;
+            const nextAvgMinutes = nextSessionCount > 0 ? Math.round((nextTotalMinutes / nextSessionCount) * 10) / 10 : 0;
+
+            const basePatch = {
+                updatedAt: now,
+                appBuilderLastSessionEndedAt: now,
+                appBuilderLastSessionReason: reason,
+                appBuilderLastSessionDurationMs: safeDurationMs,
+                appBuilderLastSessionDurationMinutes: durationMinutes,
+
+                appBuilderSessionCount: nextSessionCount,
+                appBuilderSessionTotalMs: nextTotalMs,
+                appBuilderSessionTotalMinutes: nextTotalMinutes,
+                appBuilderAvgSessionMinutes: nextAvgMinutes,
+
+                appBuilderAiUserMessageCount: c.aiUserMessagesSent,
+                appBuilderViewSwitchCount: c.viewSwitchCount,
+
+                appBuilderAiUserMessageTotal: prevAiTotal + c.aiUserMessagesSent,
+                appBuilderViewSwitchTotal: prevViewSwitchTotal + c.viewSwitchCount,
+
+                appBuilderLastAppId: appId,
+                appBuilderLastSupabaseConnected: integrationSnapshot.supabaseConnected,
+                appBuilderLastVercelConnected: integrationSnapshot.vercelConnected,
+                appBuilderLastStripeConfigured: integrationSnapshot.stripeConfigured,
+
+                appBuilderSessionsWithSupabaseCount:
+                    prevSessionsWithSupabase + (integrationSnapshot.supabaseConnected ? 1 : 0),
+                appBuilderSessionsWithVercelCount:
+                    prevSessionsWithVercel + (integrationSnapshot.vercelConnected ? 1 : 0),
+                appBuilderSessionsWithStripeCount:
+                    prevSessionsWithStripe + (integrationSnapshot.stripeConfigured ? 1 : 0),
+
+                appBuilderAppIdsTouched: Array.from(
+                    new Set([...(Array.isArray(data.appBuilderAppIdsTouched) ? data.appBuilderAppIdsTouched : []), appId]),
+                ),
+            };
+
+            if (!snap.exists()) {
+                tx.set(
+                    appBuilderRef,
+                    {
+                        createdAt: now,
+                        ...basePatch,
+                    },
+                    { merge: true },
+                );
+            } else {
+                tx.set(appBuilderRef, basePatch, { merge: true });
+            }
+        });
+
+        try {
+            const sessionsCol = collection(
+                db,
+                "kloner_users",
+                uid,
+                "meta",
+                "app_builder",
+                "sessions",
+            );
+
+            await addDoc(sessionsCol, {
+                createdAt: serverTimestamp(),
+                appId,
+                reason,
+                durationMs: safeDurationMs,
+                durationMinutes,
+                aiUserMessagesSent: c.aiUserMessagesSent,
+                viewSwitchCount: c.viewSwitchCount,
+                supabaseConnected: integrationSnapshot.supabaseConnected,
+                vercelConnected: integrationSnapshot.vercelConnected,
+                stripeConfigured: integrationSnapshot.stripeConfigured,
+            });
+        } catch (err) {
+            console.error("recordAppBuilderSessionAnalytics session doc failed", err);
+        }
+    } catch (err) {
+        console.error("recordAppBuilderSessionAnalytics failed", err);
     }
 }

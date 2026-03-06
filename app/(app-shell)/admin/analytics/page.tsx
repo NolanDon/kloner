@@ -29,6 +29,20 @@ type UserAnalyticsRow = {
 
     vercelConnected?: boolean;
     deploymentCount?: number;
+
+    appCount?: number;
+    activeAppCount?: number;
+    archivedAppCount?: number;
+    appWithSupabaseCount?: number;
+    appWithVercelCount?: number;
+    appWithStripeCount?: number;
+    appAiChatUserMessageCount?: number;
+    appCreationDates?: Date[];
+
+    appBuilderSessionTotalMinutes?: number | null;
+    appBuilderSessionCount?: number | null;
+    appBuilderAvgSessionMinutes?: number | null;
+    appBuilderAiUserMessageTotal?: number | null;
 };
 
 type DailyBucket = {
@@ -37,6 +51,7 @@ type DailyBucket = {
 };
 
 type TabId = "overview" | "usage" | "power" | "credits" | "churn";
+type AnalyticsScope = "legacy" | "apps";
 
 function tsToDate(v: any): Date | null {
     if (!v) return null;
@@ -123,6 +138,42 @@ function buildTotalMinutesByTier(rows: UserAnalyticsRow[]) {
         pro: Math.round(out.pro * 10) / 10,
         agency: Math.round(out.agency * 10) / 10,
     };
+}
+
+function appFilesHaveStripeKeys(files: any): boolean {
+    if (!files || typeof files !== "object") return false;
+
+    const stripeKeyHints = [
+        "STRIPE_SECRET_KEY",
+        "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_WEBHOOK_SECRET",
+    ];
+
+    for (const [path, file] of Object.entries(files as Record<string, any>)) {
+        const lowerPath = String(path || "").toLowerCase();
+        if (
+            !lowerPath.endsWith(".env") &&
+            !lowerPath.endsWith(".env.local") &&
+            !lowerPath.endsWith(".env.production") &&
+            !lowerPath.endsWith(".env.development")
+        ) {
+            continue;
+        }
+        const content = typeof file?.content === "string" ? file.content : "";
+        if (!content) continue;
+        if (stripeKeyHints.some((k) => content.includes(k))) return true;
+    }
+
+    return false;
+}
+
+function countUserMessagesFromAiChatDoc(data: any): number {
+    const messages = Array.isArray(data?.messages) ? data.messages : [];
+    return messages.reduce((sum: number, m: any) => {
+        const role = typeof m?.role === "string" ? m.role.toLowerCase() : "";
+        return role === "user" ? sum + 1 : sum;
+    }, 0);
 }
 
 function LineChartCard(props: {
@@ -238,6 +289,7 @@ export default function AdminAnalyticsPage() {
     const [loadingData, setLoadingData] = useState(true);
     const [rows, setRows] = useState<UserAnalyticsRow[]>([]);
     const [activeTab, setActiveTab] = useState<TabId>("overview");
+    const [analyticsScope, setAnalyticsScope] = useState<AnalyticsScope>("legacy");
     const [tierFilter, setTierFilter] = useState<"all" | "free" | "pro" | "agency">("all");
 
     const [usageRangeDays, setUsageRangeDays] = useState<7 | 14 | 30 | 90>(30);
@@ -319,6 +371,18 @@ export default function AdminAnalyticsPage() {
                         lastSessionEndedAt: null,
                         vercelConnected: false,
                         deploymentCount: 0,
+                        appCount: 0,
+                        activeAppCount: 0,
+                        archivedAppCount: 0,
+                        appWithSupabaseCount: 0,
+                        appWithVercelCount: 0,
+                        appWithStripeCount: 0,
+                        appAiChatUserMessageCount: 0,
+                        appCreationDates: [],
+                        appBuilderSessionTotalMinutes: 0,
+                        appBuilderSessionCount: 0,
+                        appBuilderAvgSessionMinutes: 0,
+                        appBuilderAiUserMessageTotal: 0,
                     });
                 });
 
@@ -355,6 +419,36 @@ export default function AdminAnalyticsPage() {
                             } catch { }
 
                             try {
+                                const appBuilderMetaRef = doc(db, "kloner_users", uid, "meta", "app_builder");
+                                const appBuilderMetaSnap = await getDoc(appBuilderMetaRef);
+                                if (appBuilderMetaSnap.exists()) {
+                                    const data = appBuilderMetaSnap.data() as any;
+                                    const existing = map.get(uid);
+                                    if (existing) {
+                                        map.set(uid, {
+                                            ...existing,
+                                            appBuilderSessionTotalMinutes:
+                                                typeof data.appBuilderSessionTotalMinutes === "number"
+                                                    ? data.appBuilderSessionTotalMinutes
+                                                    : 0,
+                                            appBuilderSessionCount:
+                                                typeof data.appBuilderSessionCount === "number"
+                                                    ? data.appBuilderSessionCount
+                                                    : 0,
+                                            appBuilderAvgSessionMinutes:
+                                                typeof data.appBuilderAvgSessionMinutes === "number"
+                                                    ? data.appBuilderAvgSessionMinutes
+                                                    : 0,
+                                            appBuilderAiUserMessageTotal:
+                                                typeof data.appBuilderAiUserMessageTotal === "number"
+                                                    ? data.appBuilderAiUserMessageTotal
+                                                    : 0,
+                                        });
+                                    }
+                                }
+                            } catch { }
+
+                            try {
                                 const integRef = doc(db, "kloner_users", uid, "integrations", "vercel");
                                 const integSnap = await getDoc(integRef);
                                 if (integSnap.exists()) {
@@ -372,6 +466,103 @@ export default function AdminAnalyticsPage() {
                                 if (count > 0) {
                                     const existing = map.get(uid);
                                     if (existing) map.set(uid, { ...existing, deploymentCount: count });
+                                }
+                            } catch { }
+
+                            try {
+                                const appsCol = collection(db, "kloner_users", uid, "kloner_apps");
+                                const appsSnap = await getDocs(appsCol);
+                                const appDocs = appsSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+
+                                let activeAppCount = 0;
+                                let archivedAppCount = 0;
+                                let appWithSupabaseCount = 0;
+                                let appWithVercelCount = 0;
+                                let appWithStripeCount = 0;
+                                let appAiChatUserMessageCount = 0;
+                                const appCreationDates: Date[] = [];
+
+                                await Promise.all(
+                                    appDocs.map(async (appData) => {
+                                        const archived = appData?.archived === true;
+                                        if (archived) archivedAppCount += 1;
+                                        else activeAppCount += 1;
+
+                                        const appCreatedAt = tsToDate(appData?.createdAt);
+                                        if (appCreatedAt) appCreationDates.push(appCreatedAt);
+
+                                        if (
+                                            (typeof appData?.vercelProjectId === "string" && appData.vercelProjectId.trim()) ||
+                                            (typeof appData?.productionUrl === "string" && appData.productionUrl.trim()) ||
+                                            appData?.isDeployed === true
+                                        ) {
+                                            appWithVercelCount += 1;
+                                        }
+
+                                        if (appFilesHaveStripeKeys(appData?.files)) {
+                                            appWithStripeCount += 1;
+                                        }
+
+                                        try {
+                                            const supabaseRef = doc(
+                                                db,
+                                                "kloner_users",
+                                                uid,
+                                                "kloner_apps",
+                                                String(appData.id),
+                                                "integrations",
+                                                "supabase",
+                                            );
+                                            const supabaseSetupRef = doc(
+                                                db,
+                                                "kloner_users",
+                                                uid,
+                                                "kloner_apps",
+                                                String(appData.id),
+                                                "integrations",
+                                                "supabase_setup",
+                                            );
+
+                                            const [supabaseSnap, supabaseSetupSnap] = await Promise.all([
+                                                getDoc(supabaseRef),
+                                                getDoc(supabaseSetupRef),
+                                            ]);
+
+                                            const hasSupabase = supabaseSnap.exists() || supabaseSetupSnap.exists();
+                                            if (hasSupabase) appWithSupabaseCount += 1;
+                                        } catch { }
+
+                                        try {
+                                            const aiChatRef = doc(
+                                                db,
+                                                "kloner_users",
+                                                uid,
+                                                "kloner_apps",
+                                                String(appData.id),
+                                                "ai_chat",
+                                                "default",
+                                            );
+                                            const aiChatSnap = await getDoc(aiChatRef);
+                                            if (aiChatSnap.exists()) {
+                                                appAiChatUserMessageCount += countUserMessagesFromAiChatDoc(aiChatSnap.data());
+                                            }
+                                        } catch { }
+                                    }),
+                                );
+
+                                const existing = map.get(uid);
+                                if (existing) {
+                                    map.set(uid, {
+                                        ...existing,
+                                        appCount: appDocs.length,
+                                        activeAppCount,
+                                        archivedAppCount,
+                                        appWithSupabaseCount,
+                                        appWithVercelCount,
+                                        appWithStripeCount,
+                                        appAiChatUserMessageCount,
+                                        appCreationDates,
+                                    });
                                 }
                             } catch { }
                         })(),
@@ -408,6 +599,21 @@ export default function AdminAnalyticsPage() {
             if (!created) continue;
             const key = toYYYYMMDD(created);
             byDate.set(key, (byDate.get(key) || 0) + 1);
+        }
+        return Array.from(byDate.entries())
+            .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+            .map(([date, count]) => ({ date, count }));
+    }, [filteredRows]);
+
+    const appDailyBuckets: DailyBucket[] = useMemo(() => {
+        const byDate = new Map<string, number>();
+        for (const r of filteredRows) {
+            const createdDates = Array.isArray(r.appCreationDates) ? r.appCreationDates : [];
+            for (const created of createdDates) {
+                if (!created) continue;
+                const key = toYYYYMMDD(created);
+                byDate.set(key, (byDate.get(key) || 0) + 1);
+            }
         }
         return Array.from(byDate.entries())
             .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
@@ -479,6 +685,65 @@ export default function AdminAnalyticsPage() {
             conversionMetrics,
         };
     }, [filteredRows, dailyBuckets]);
+
+    const appBuilderOverview = useMemo(() => {
+        const totalUsers = filteredRows.length;
+        let usersWithApps = 0;
+        let totalApps = 0;
+        let activeApps = 0;
+        let archivedApps = 0;
+
+        let appsWithSupabase = 0;
+        let appsWithVercel = 0;
+        let appsWithStripe = 0;
+
+        let totalAppBuilderMinutes = 0;
+        let totalAppBuilderSessions = 0;
+        let totalAiUserMessages = 0;
+
+        for (const r of filteredRows) {
+            const appCount = r.appCount ?? 0;
+            const active = r.activeAppCount ?? 0;
+            const archived = r.archivedAppCount ?? 0;
+            const supabase = r.appWithSupabaseCount ?? 0;
+            const vercel = r.appWithVercelCount ?? 0;
+            const stripe = r.appWithStripeCount ?? 0;
+
+            if (appCount > 0) usersWithApps += 1;
+
+            totalApps += appCount;
+            activeApps += active;
+            archivedApps += archived;
+            appsWithSupabase += supabase;
+            appsWithVercel += vercel;
+            appsWithStripe += stripe;
+
+            totalAppBuilderMinutes += r.appBuilderSessionTotalMinutes ?? 0;
+            totalAppBuilderSessions += r.appBuilderSessionCount ?? 0;
+            totalAiUserMessages += r.appAiChatUserMessageCount ?? 0;
+        }
+
+        const avgAppsPerUser = totalUsers > 0 ? Math.round((totalApps / totalUsers) * 10) / 10 : 0;
+        const avgAppBuilderSessionMinutes =
+            totalAppBuilderSessions > 0 ? Math.round((totalAppBuilderMinutes / totalAppBuilderSessions) * 10) / 10 : 0;
+        const avgAiMessagesPerApp = totalApps > 0 ? Math.round((totalAiUserMessages / totalApps) * 10) / 10 : 0;
+
+        return {
+            usersWithApps,
+            totalApps,
+            activeApps,
+            archivedApps,
+            appsWithSupabase,
+            appsWithVercel,
+            appsWithStripe,
+            totalAppBuilderMinutes: Math.round(totalAppBuilderMinutes * 10) / 10,
+            totalAppBuilderSessions,
+            totalAiUserMessages,
+            avgAppsPerUser,
+            avgAppBuilderSessionMinutes,
+            avgAiMessagesPerApp,
+        };
+    }, [filteredRows]);
 
     const topByMinutes = useMemo(
         () =>
@@ -619,6 +884,11 @@ export default function AdminAnalyticsPage() {
 
     const signupsSeries = useMemo(() => buildSeriesFromBuckets(usageKeys, dailyBuckets), [usageKeys, dailyBuckets]);
 
+    const appCreationsSeries = useMemo(
+        () => buildSeriesFromBuckets(usageKeys, appDailyBuckets),
+        [usageKeys, appDailyBuckets],
+    );
+
     const activeUsersSeries = useMemo(() => buildActiveUsersByDay(usageKeys, filteredRows), [usageKeys, filteredRows]);
 
     const returningActiveUsersSeries = useMemo(
@@ -673,6 +943,28 @@ export default function AdminAnalyticsPage() {
         };
     }, [filteredRows, usageKeys]);
 
+    const visibleTabs = useMemo(() => {
+        if (analyticsScope === "apps") {
+            return [
+                { id: "overview" as TabId, label: "Overview" },
+                { id: "usage" as TabId, label: "Usage" },
+            ];
+        }
+        return [
+            { id: "overview" as TabId, label: "Overview" },
+            { id: "usage" as TabId, label: "Usage" },
+            { id: "power" as TabId, label: "Power users" },
+            { id: "credits" as TabId, label: "Credits" },
+            { id: "churn" as TabId, label: "Churn" },
+        ];
+    }, [analyticsScope]);
+
+    useEffect(() => {
+        if (analyticsScope === "apps" && activeTab !== "overview" && activeTab !== "usage") {
+            setActiveTab("overview");
+        }
+    }, [analyticsScope, activeTab]);
+
     if (gate === "loading") {
         return <div className="p-6 text-sm text-neutral-600">Checking admin access…</div>;
     }
@@ -708,13 +1000,30 @@ export default function AdminAnalyticsPage() {
 
 
             <div className="flex gap-2 border-b border-neutral-200 text-xs">
-                {[
-                    { id: "overview", label: "Overview" },
-                    { id: "usage", label: "Usage" },
-                    { id: "power", label: "Power users" },
-                    { id: "credits", label: "Credits" },
-                    { id: "churn", label: "Churn" },
-                ].map((t) => (
+                <div className="mr-4 inline-flex items-center gap-1 rounded-lg border border-neutral-200 bg-neutral-50 p-1">
+                    <button
+                        type="button"
+                        onClick={() => setAnalyticsScope("legacy")}
+                        className={`rounded-md px-2.5 py-1 text-[11px] font-medium ${analyticsScope === "legacy"
+                            ? "bg-white text-neutral-900 shadow-sm"
+                            : "text-neutral-600 hover:text-neutral-900"
+                            }`}
+                    >
+                        Legacy (kloner_renders)
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setAnalyticsScope("apps")}
+                        className={`rounded-md px-2.5 py-1 text-[11px] font-medium ${analyticsScope === "apps"
+                            ? "bg-white text-neutral-900 shadow-sm"
+                            : "text-neutral-600 hover:text-neutral-900"
+                            }`}
+                    >
+                        Apps (kloner_apps)
+                    </button>
+                </div>
+
+                {visibleTabs.map((t) => (
                     <button
                         key={t.id}
                         type="button"
@@ -732,6 +1041,58 @@ export default function AdminAnalyticsPage() {
                 <>
                     {activeTab === "overview" && (
                         <div className="space-y-6">
+                            {analyticsScope === "apps" ? (
+                                <>
+                                    <section className="rounded-xl border border-neutral-200 bg-white p-4">
+                                        <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-neutral-500">App builder health (kloner_apps)</p>
+                                        <div className="grid gap-4 md:grid-cols-4 text-sm">
+                                            <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                                <p className="text-[11px] text-neutral-500 mb-1">Users with apps</p>
+                                                <p className="text-xl font-semibold text-neutral-900">{appBuilderOverview.usersWithApps}</p>
+                                                <p className="mt-1 text-[11px] text-neutral-500">Out of {overview.totalUsers} users</p>
+                                            </div>
+                                            <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                                <p className="text-[11px] text-neutral-500 mb-1">Total apps</p>
+                                                <p className="text-xl font-semibold text-neutral-900">{appBuilderOverview.totalApps}</p>
+                                                <p className="mt-1 text-[11px] text-neutral-500">Avg/user: {appBuilderOverview.avgAppsPerUser}</p>
+                                            </div>
+                                            <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                                <p className="text-[11px] text-neutral-500 mb-1">Active apps</p>
+                                                <p className="text-xl font-semibold text-neutral-900">{appBuilderOverview.activeApps}</p>
+                                                <p className="mt-1 text-[11px] text-neutral-500">Archived: {appBuilderOverview.archivedApps}</p>
+                                            </div>
+                                            <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                                <p className="text-[11px] text-neutral-500 mb-1">AI chat messages</p>
+                                                <p className="text-xl font-semibold text-neutral-900">{appBuilderOverview.totalAiUserMessages}</p>
+                                                <p className="mt-1 text-[11px] text-neutral-500">Avg/app: {appBuilderOverview.avgAiMessagesPerApp}</p>
+                                            </div>
+                                        </div>
+                                        <div className="mt-4 grid gap-4 md:grid-cols-4 text-sm">
+                                            <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                                <p className="text-[11px] text-neutral-500 mb-1">Supabase-integrated apps</p>
+                                                <p className="text-xl font-semibold text-neutral-900">{appBuilderOverview.appsWithSupabase}</p>
+                                            </div>
+                                            <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                                <p className="text-[11px] text-neutral-500 mb-1">Vercel-integrated apps</p>
+                                                <p className="text-xl font-semibold text-neutral-900">{appBuilderOverview.appsWithVercel}</p>
+                                            </div>
+                                            <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                                <p className="text-[11px] text-neutral-500 mb-1">Stripe-configured apps</p>
+                                                <p className="text-xl font-semibold text-neutral-900">{appBuilderOverview.appsWithStripe}</p>
+                                            </div>
+                                            <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                                <p className="text-[11px] text-neutral-500 mb-1">Avg app-builder session</p>
+                                                <p className="text-xl font-semibold text-neutral-900">{appBuilderOverview.avgAppBuilderSessionMinutes} min</p>
+                                                <p className="mt-1 text-[11px] text-neutral-500">Sessions: {appBuilderOverview.totalAppBuilderSessions}</p>
+                                            </div>
+                                        </div>
+                                    </section>
+                                </>
+                            ) : null}
+
+                            {analyticsScope === "legacy" ? (
+                                <>
+
                             {/* Tier Breakdown */}
                             <section className="rounded-xl border border-neutral-200 bg-white p-4">
                                 <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-neutral-500">User tier breakdown</p>
@@ -872,11 +1233,78 @@ export default function AdminAnalyticsPage() {
                                     </div>
                                 )}
                             </section>
+                                </>
+                            ) : null}
                         </div>
                     )}
 
                     {activeTab === "usage" && (
                         <div className="space-y-6">
+                            {analyticsScope === "apps" ? (
+                                <>
+                                    <section className="rounded-xl border border-neutral-200 bg-white p-4">
+                                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                            <div>
+                                                <p className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">App builder usage</p>
+                                                <p className="mt-1 text-xs text-neutral-500">
+                                                    Session time and build activity for kloner_apps only.
+                                                </p>
+                                            </div>
+
+                                            <div className="flex items-center gap-2">
+                                                {([7, 14, 30, 90] as const).map((d) => (
+                                                    <button
+                                                        key={d}
+                                                        type="button"
+                                                        onClick={() => setUsageRangeDays(d)}
+                                                        className={`rounded-lg border px-3 py-1.5 text-xs ${usageRangeDays === d
+                                                            ? "border-neutral-300 bg-neutral-900 text-white"
+                                                            : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300"
+                                                            }`}
+                                                    >
+                                                        Last {d}d
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-4 grid gap-4 md:grid-cols-4 text-sm">
+                                            <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                                <p className="text-[11px] text-neutral-500 mb-1">Total app-builder minutes</p>
+                                                <p className="text-xl font-semibold text-neutral-900">{appBuilderOverview.totalAppBuilderMinutes}</p>
+                                            </div>
+                                            <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                                <p className="text-[11px] text-neutral-500 mb-1">App-builder sessions</p>
+                                                <p className="text-xl font-semibold text-neutral-900">{appBuilderOverview.totalAppBuilderSessions}</p>
+                                            </div>
+                                            <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                                <p className="text-[11px] text-neutral-500 mb-1">Avg session length</p>
+                                                <p className="text-xl font-semibold text-neutral-900">{appBuilderOverview.avgAppBuilderSessionMinutes} min</p>
+                                            </div>
+                                            <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                                <p className="text-[11px] text-neutral-500 mb-1">AI user messages</p>
+                                                <p className="text-xl font-semibold text-neutral-900">{appBuilderOverview.totalAiUserMessages}</p>
+                                            </div>
+                                        </div>
+                                    </section>
+
+                                    <div className="grid gap-4 xl:grid-cols-2">
+                                        <LineChartCard
+                                            title="App creations per day"
+                                            subtitle="New kloner_apps created per day"
+                                            points={appCreationsSeries}
+                                        />
+                                        <LineChartCard
+                                            title="Signups per day"
+                                            subtitle="New kloner_users created (createdAt) per day"
+                                            points={signupsSeries}
+                                        />
+                                    </div>
+                                </>
+                            ) : null}
+
+                            {analyticsScope === "legacy" ? (
+                                <>
                             <section className="rounded-xl border border-neutral-200 bg-white p-4">
                                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                                     <div>
@@ -930,7 +1358,7 @@ export default function AdminAnalyticsPage() {
                                 </div>
                             </section>
 
-                            <div className="grid gap-4 xl:grid-cols-3">
+                            <div className="grid gap-4 xl:grid-cols-4">
                                 <LineChartCard
                                     title="Active users per day"
                                     subtitle="Users whose last session ended on each day"
@@ -945,6 +1373,11 @@ export default function AdminAnalyticsPage() {
                                     title="Signups per day"
                                     subtitle="New kloner_users created (createdAt) per day"
                                     points={signupsSeries}
+                                />
+                                <LineChartCard
+                                    title="App creations per day"
+                                    subtitle="New kloner_apps created per day"
+                                    points={appCreationsSeries}
                                 />
                             </div>
 
@@ -1017,10 +1450,12 @@ export default function AdminAnalyticsPage() {
                                     </div>
                                 )}
                             </section>
+                                </>
+                            ) : null}
                         </div>
                     )}
 
-                    {activeTab === "power" && (
+                    {analyticsScope === "legacy" && activeTab === "power" && (
                         <div className="space-y-6">
                             <section className="rounded-xl border border-neutral-200 bg-white p-4">
                                 <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-neutral-500">Top editor usage (minutes)</p>
@@ -1072,7 +1507,7 @@ export default function AdminAnalyticsPage() {
                         </div>
                     )}
 
-                    {activeTab === "credits" && (
+                    {analyticsScope === "legacy" && activeTab === "credits" && (
                         <div className="space-y-6">
                             {/* Most Recent Returners */}
                             <section className="rounded-xl border border-neutral-200 bg-white p-4">
@@ -1223,7 +1658,7 @@ export default function AdminAnalyticsPage() {
                         </div>
                     )}
 
-                    {activeTab === "churn" && (
+                    {analyticsScope === "legacy" && activeTab === "churn" && (
                         <div className="space-y-6">
                             {/* Churn Overview */}
                             <section className="rounded-xl border border-neutral-200 bg-white p-4">

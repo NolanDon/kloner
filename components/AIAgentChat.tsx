@@ -63,6 +63,7 @@ type AIAgentChatProps = {
     }) => void | Promise<void>;
     creditError?: string | null;
     previewReady?: boolean;
+    onUserMessageSent?: () => void;
     welcomeContext?: {
         source?: "prompt" | "url" | "quickstart" | "template" | "sample" | "unknown";
         prompt?: string | null;
@@ -171,7 +172,7 @@ function buildCompileFixPrefill(ctx: CompileErrorQuickFixContext): string {
     ].join("\n");
 }
 
-export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, welcomeContext }: AIAgentChatProps) {
+export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, onUserMessageSent, welcomeContext }: AIAgentChatProps) {
     const { user, userTier } = useAuth();
     const { showConfirm, showAlert } = useModal();
     const AI_EDIT_COST = 5;
@@ -1952,6 +1953,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             };
 
             setMessages((prev) => [...prev, userMessage]);
+            onUserMessageSent?.();
             setInput("");
             setIsLoading(true);
 
@@ -2068,6 +2070,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         };
 
         setMessages(prev => [...prev, userMessage]);
+        onUserMessageSent?.();
         setInput("");
         setIsLoading(true);
 

@@ -16,6 +16,7 @@ import { useAuth } from "@/src/hooks/useAuth";
 import { useModal } from "@/components/ui/ModalContext";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { sanitizeImageName } from "./helpers";
+import { recordAppBuilderSessionAnalytics } from "@/components/analytics";
 
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
@@ -229,6 +230,31 @@ function buildHeadTsxWithFavicon(faviconUrl: string): string {
         `  );\n` +
         `}\n`
     );
+}
+
+function appHasStripeConfig(files: AppData["files"] | null | undefined): boolean {
+    if (!files || typeof files !== "object") return false;
+
+    const keyHints = [
+        "STRIPE_SECRET_KEY",
+        "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_WEBHOOK_SECRET",
+    ];
+
+    for (const [path, file] of Object.entries(files)) {
+        const lower = String(path || "").toLowerCase();
+        if (!lower.endsWith(".env") && !lower.endsWith(".env.local") && !lower.endsWith(".env.production") && !lower.endsWith(".env.development")) {
+            continue;
+        }
+        const content = typeof file?.content === "string" ? file.content : "";
+        if (!content) continue;
+        if (keyHints.some((k) => content.includes(k))) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 function upsertFaviconInHeadTsx(existing: string, faviconUrl: string): string {
@@ -929,6 +955,10 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
     const [vercelConnectOpen, setVercelConnectOpen] = useState(false);
     const [vercelConnectOpening, setVercelConnectOpening] = useState(false);
     const [generationEver, setGenerationEver] = useState(false);
+    const appBuilderSessionStartedAtRef = useRef<number>(Date.now());
+    const appBuilderAiMessagesSentRef = useRef<number>(0);
+    const appBuilderViewSwitchesRef = useRef<number>(0);
+    const previousViewModeRef = useRef<LeftViewMode>("ai");
 
     const handleCompileErrorFixRequest = useCallback((payload: {
         appId: string;
@@ -955,6 +985,41 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
     useEffect(() => {
         stagedImagesRef.current = stagedImages;
     }, [stagedImages]);
+
+    useEffect(() => {
+        const previous = previousViewModeRef.current;
+        if (previous !== viewMode) {
+            appBuilderViewSwitchesRef.current += 1;
+            previousViewModeRef.current = viewMode;
+        }
+    }, [viewMode]);
+
+    useEffect(() => {
+        appBuilderSessionStartedAtRef.current = Date.now();
+        return () => {
+            const durationMs = Math.max(0, Date.now() - appBuilderSessionStartedAtRef.current);
+            // Ignore ultra-short mounts (React strict-mode/dev remount jitter).
+            if (durationMs < 1500) return;
+
+            void recordAppBuilderSessionAnalytics(
+                user,
+                appId,
+                durationMs,
+                "close",
+                {
+                    aiUserMessagesSent: appBuilderAiMessagesSentRef.current,
+                    viewSwitchCount: appBuilderViewSwitchesRef.current,
+                },
+                {
+                    supabaseConnected: supabaseConnected === true,
+                    vercelConnected:
+                        !!(app?.vercelProjectId && String(app.vercelProjectId).trim()) ||
+                        !!(app?.productionUrl && String(app.productionUrl).trim()),
+                    stripeConfigured: appHasStripeConfig(app?.files),
+                },
+            );
+        };
+    }, [appId, app?.files, app?.productionUrl, app?.vercelProjectId, supabaseConnected, user]);
 
     useEffect(() => {
         if (viewMode !== "images") return;
@@ -4016,6 +4081,9 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                                     onRestoreApplied={handleRestoreApplied}
                                     creditError={agentCreditError}
                                     previewReady={previewMode !== "webcontainer" ? true : isWebPreviewReady}
+                                    onUserMessageSent={() => {
+                                        appBuilderAiMessagesSentRef.current += 1;
+                                    }}
                                     welcomeContext={agentWelcomeContext}
                                 />
                             ) : viewMode === "code" ? (
