@@ -289,7 +289,7 @@ export default function AdminAnalyticsPage() {
     const [loadingData, setLoadingData] = useState(true);
     const [rows, setRows] = useState<UserAnalyticsRow[]>([]);
     const [activeTab, setActiveTab] = useState<TabId>("overview");
-    const [analyticsScope, setAnalyticsScope] = useState<AnalyticsScope>("legacy");
+    const [analyticsScope, setAnalyticsScope] = useState<AnalyticsScope>("apps");
     const [tierFilter, setTierFilter] = useState<"all" | "free" | "pro" | "agency">("all");
 
     const [usageRangeDays, setUsageRangeDays] = useState<7 | 14 | 30 | 90>(30);
