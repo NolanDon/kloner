@@ -107,6 +107,10 @@ const VERCEL_INTEGRATION_SLUG =
 
 const ACCENT = "#f55f2a";
 const CAPTURE_STALL_TIMEOUT_MS = 10 * 60 * 1000;
+const ERR_AUTO_DISMISS_MS = 30 * 1000;
+const FRONTEND_TIMEOUT_DEDUPE_TTL_MS = 10 * 60 * 1000;
+const FRONTEND_TIMEOUT_DEDUPE_STORAGE_KEY = "dashboardViewFrontendTimeoutAlertsV1";
+const URL_ADD_SUCCESS_MESSAGE = "URL added successfully! You can now generate websites from this URL below.";
 
 type UrlStatusUi = "queued" | "processing" | "ready" | "stale" | "error" | "unknown";
 
@@ -1758,6 +1762,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     onClick,
     onAppClick,
     sourceUrl,
+    highlight,
     isAdmin: _isAdmin,
     onStartFromTemplate,
     onStartFromCommunityBuild,
@@ -1767,6 +1772,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     onClick: () => void;
     onAppClick?: () => void;
     sourceUrl?: string | null;
+    highlight?: boolean;
     isAdmin: boolean;
     onStartFromTemplate?: () => void;
     onStartFromCommunityBuild?: () => void;
@@ -1844,24 +1850,34 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
         }
     };
 
-    const title = effectiveLocked ? "Processing…" : "Generate website";
+    const title = effectiveLocked ? "Processing…" : "Generate";
     const subtitle = effectiveLocked
         ? "You have a pending job. This may take a few moments."
         : sourceUrlDisplay
-            ? "Generate from your selected URL."
+            ? "Create an editable website."
             : "Create an editable website.";
 
     const iconWrapperSize = "h-14 w-14";
 
     return (
         <>
-            <div className="relative w-full overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm hover:shadow-md transition-shadow">
+            <div
+                className={`relative w-full overflow-hidden rounded-xl border bg-white transition-shadow ${highlight
+                    ? "border-orange-300 ring-2 ring-orange-200 shadow-[0_0_0_3px_rgba(251,146,60,0.18)]"
+                    : "border-neutral-200 shadow-sm hover:shadow-md"
+                    }`}
+            >
+                {highlight ? (
+                    <div className="pointer-events-none absolute right-3 top-3 z-10 rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-orange-700">
+                        Next step
+                    </div>
+                ) : null}
                 <button
                     type="button"
                     onClick={handleClick}
                     disabled={localDisabled}
                     aria-disabled={effectiveLocked}
-                    className={`group flex aspect-square w-full flex-col items-center justify-center rounded-lg border-2 border-dashed bg-white px-5 py-6 text-center transition ${effectiveLocked ? "opacity-70 cursor-wait" : "hover:border-neutral-400 cursor-pointer"} border-neutral-300`}
+                    className={`group flex aspect-square w-full flex-col items-center justify-center rounded-lg border-2 border-dashed bg-white px-5 py-6 text-center transition ${effectiveLocked ? "opacity-70 cursor-wait" : "cursor-pointer"} ${highlight ? "animate-pulse border-orange-300 hover:border-orange-400" : "border-neutral-300 hover:border-neutral-400"}`}
                     aria-label="Generate a new website or app"
                 >
                     <div
@@ -2204,6 +2220,7 @@ export default function PreviewPage(): JSX.Element {
     const [err, setErr] = useState<string>("");
     const [info, setInfo] = useState<string>("");
     const [success, setSuccess] = useState<string>("");
+    const errAutoDismissTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const [loading, setLoading] = useState<boolean>(true);
 
@@ -3643,6 +3660,38 @@ export default function PreviewPage(): JSX.Element {
     const captureStallReportedForUrlRef = useRef<string>("");
     const captureStaleReportedForUrlRef = useRef<string>("");
 
+    const shouldSendFrontendTimeoutAlert = useCallback((action: string, rawUrl: string) => {
+        try {
+            if (typeof window === "undefined") return true;
+            const normalizedUrl = normUrl(rawUrl);
+            if (!normalizedUrl) return true;
+
+            const now = Date.now();
+            const cacheRaw = window.sessionStorage.getItem(FRONTEND_TIMEOUT_DEDUPE_STORAGE_KEY);
+            const cache = cacheRaw ? JSON.parse(cacheRaw) as Record<string, number> : {};
+            const next: Record<string, number> = {};
+
+            for (const [key, at] of Object.entries(cache)) {
+                if (typeof at === "number" && now - at < FRONTEND_TIMEOUT_DEDUPE_TTL_MS) {
+                    next[key] = at;
+                }
+            }
+
+            const dedupeKey = `${action}:${normalizedUrl}`;
+            if (typeof next[dedupeKey] === "number") {
+                window.sessionStorage.setItem(FRONTEND_TIMEOUT_DEDUPE_STORAGE_KEY, JSON.stringify(next));
+                return false;
+            }
+
+            next[dedupeKey] = now;
+            window.sessionStorage.setItem(FRONTEND_TIMEOUT_DEDUPE_STORAGE_KEY, JSON.stringify(next));
+            return true;
+        } catch {
+            // If storage is unavailable, fail open so alerts still work.
+            return true;
+        }
+    }, []);
+
     const clearStartQueryParam = useCallback(() => {
         try {
             const url = new URL(window.location.href);
@@ -3730,6 +3779,7 @@ export default function PreviewPage(): JSX.Element {
                     clearStartQueryParam();
 
                     void (async () => {
+                        if (!shouldSendFrontendTimeoutAlert("url_capture_enqueue_failed", targetUrl)) return;
                         try {
                             await fetch("/api/internal/observability/frontend-timeout", {
                                 method: "POST",
@@ -3776,7 +3826,7 @@ export default function PreviewPage(): JSX.Element {
         return () => {
             cancelled = true;
         };
-    }, [startRequested, user, targetUrl, clearStartQueryParam]);
+    }, [startRequested, user, targetUrl, clearStartQueryParam, shouldSendFrontendTimeoutAlert]);
 
     // Polling fallback: retries /generate up to MAX_POLL_ATTEMPTS times if the main effect
     // fails to enqueue (network hiccup, slow auth hydration on live, etc.). The poll starts
@@ -3857,6 +3907,8 @@ export default function PreviewPage(): JSX.Element {
                 void tryMarkError().catch(() => tryMarkError().catch(() => undefined));
             }
 
+            if (!shouldSendFrontendTimeoutAlert("url_capture_poll_enqueue_failed", targetUrl)) return false;
+
             void fetch("/api/internal/observability/frontend-timeout", {
                 method: "POST",
                 headers: {
@@ -3924,7 +3976,7 @@ export default function PreviewPage(): JSX.Element {
             cancelled = true;
             if (nextPollTimeoutId !== null) clearTimeout(nextPollTimeoutId);
         };
-    }, [startRequested, user, targetUrl, clearStartQueryParam]);
+    }, [startRequested, user, targetUrl, clearStartQueryParam, shouldSendFrontendTimeoutAlert]);
 
     const startLockRequested = !!startRequested && !!targetUrl && !err;
 
@@ -4048,6 +4100,7 @@ export default function PreviewPage(): JSX.Element {
             setCaptureLockUrl(null);
             captureLockStartedAtRef.current = 0;
             setInfo("");
+            if (!shouldSendFrontendTimeoutAlert("url_capture_stalled", currentTarget)) return;
             setErr("We couldn't finish capturing this URL. Please re-enter the URL above and try again.");
 
             void (async () => {
@@ -4079,7 +4132,7 @@ export default function PreviewPage(): JSX.Element {
         }, remaining);
 
         return () => window.clearTimeout(timeoutId);
-    }, [targetUrl, captureStatus, err, docData]);
+    }, [targetUrl, captureStatus, err, docData, shouldSendFrontendTimeoutAlert]);
 
     useEffect(() => {
         if (!targetUrl) return;
@@ -4091,6 +4144,8 @@ export default function PreviewPage(): JSX.Element {
         const normalizedUrl = normUrl(targetUrl);
         if (captureStaleReportedForUrlRef.current === normalizedUrl) return;
         captureStaleReportedForUrlRef.current = normalizedUrl;
+
+        if (!shouldSendFrontendTimeoutAlert("url_capture_stale", targetUrl)) return;
 
         if (!err) {
             setInfo("");
@@ -4122,7 +4177,26 @@ export default function PreviewPage(): JSX.Element {
                 // ignore telemetry failures
             }
         })();
-    }, [targetUrl, captureStatus, err, startRequested]);
+    }, [targetUrl, captureStatus, err, startRequested, shouldSendFrontendTimeoutAlert]);
+
+    useEffect(() => {
+        if (errAutoDismissTimeoutRef.current) {
+            clearTimeout(errAutoDismissTimeoutRef.current);
+            errAutoDismissTimeoutRef.current = null;
+        }
+        if (!err) return;
+
+        errAutoDismissTimeoutRef.current = setTimeout(() => {
+            setErr("");
+        }, ERR_AUTO_DISMISS_MS);
+
+        return () => {
+            if (errAutoDismissTimeoutRef.current) {
+                clearTimeout(errAutoDismissTimeoutRef.current);
+                errAutoDismissTimeoutRef.current = null;
+            }
+        };
+    }, [err]);
 
     useEffect(() => {
         // Avoid stale/duplicate legacy notifications after capture finishes (e.g. during hot reload).
@@ -4174,7 +4248,7 @@ export default function PreviewPage(): JSX.Element {
         if (captureSuccessShownForUrlRef.current === urlKey) return;
         captureSuccessShownForUrlRef.current = urlKey;
 
-        setSuccess("URL added successfully! You can now generate websites from this URL below.");
+        setSuccess(URL_ADD_SUCCESS_MESSAGE);
         if (captureSuccessTimeoutRef.current) clearTimeout(captureSuccessTimeoutRef.current);
         captureSuccessTimeoutRef.current = setTimeout(() => setSuccess(""), 60000);
     }, [captureStatus, targetUrl, lockMatches, err, info, isDuplicateUrlConfirmationMessage]);
@@ -6573,6 +6647,18 @@ export default function PreviewPage(): JSX.Element {
         step3Done &&
         renders.some((r) => (r as any).lastExportedAt);
 
+    const shouldHighlightCreateWebsiteCta = useMemo(() => {
+        const isUrlAddSuccess = success === URL_ADD_SUCCESS_MESSAGE;
+        if (!isUrlAddSuccess) return false;
+
+        const isDev = process.env.NODE_ENV !== "production";
+        if (isDev) return true;
+
+        const hasNoWebsiteGenerations = renders.length === 0;
+        const hasOnlyFirstSuccessfulUrl = successfulScannedUrls.length === 1;
+        return hasNoWebsiteGenerations && hasOnlyFirstSuccessfulUrl;
+    }, [success, renders.length, successfulScannedUrls.length]);
+
     const planLabel =
         userTier === "unknown"
             ? "Detecting plan…"
@@ -7079,8 +7165,17 @@ export default function PreviewPage(): JSX.Element {
                 </section>
 
                 {err ? (
-                    <div className="mt-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
-                        {err}
+                    <div className="mt-2 flex items-start justify-between gap-3 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+                        <span>{err}</span>
+                        <button
+                            type="button"
+                            onClick={() => setErr("")}
+                            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-red-200 bg-white/70 text-red-600 transition hover:bg-white hover:text-red-700"
+                            aria-label="Dismiss error"
+                            title="Dismiss"
+                        >
+                            <X className="h-3.5 w-3.5" />
+                        </button>
                     </div>
                 ) : null}
 
@@ -7154,6 +7249,7 @@ export default function PreviewPage(): JSX.Element {
                                     <GhostGeneratePreviewCard
                                         locked={captureLocked}
                                         sourceUrl={targetUrl}
+                                        highlight={shouldHighlightCreateWebsiteCta}
                                         onClick={() => {
                                             if (groupedShots.length > 0) {
                                                 const firstGroup = groupedShots[0];
@@ -7198,6 +7294,7 @@ export default function PreviewPage(): JSX.Element {
                                                 key={`ghost-${group.snapshotId || first.path}`}
                                                 locked={captureLocked || locked}
                                                 sourceUrl={targetUrl}
+                                                highlight={shouldHighlightCreateWebsiteCta}
                                                 onClick={() => buildFromCollection(collectionKeys)}
                                                 onAppClick={() => {
                                                     startWebAppWizard({ seedRenderId: null, url: targetUrl || "" });
@@ -7278,6 +7375,7 @@ export default function PreviewPage(): JSX.Element {
                                                 <GhostGeneratePreviewCard
                                                     locked={locked}
                                                     sourceUrl={targetUrl}
+                                                    highlight={shouldHighlightCreateWebsiteCta}
                                                     onClick={() => {
                                                         if (groupedShots.length > 0) {
                                                             const firstGroup = groupedShots[0];
@@ -7384,6 +7482,7 @@ export default function PreviewPage(): JSX.Element {
                                             key={`ghost-${group.snapshotId || first.path}`}
                                             locked={captureLocked || locked}
                                             sourceUrl={targetUrl}
+                                            highlight={shouldHighlightCreateWebsiteCta}
                                             onClick={() => buildFromCollection(collectionKeys)}
                                             onAppClick={() => {
                                                 // Find the most recent render from this group (optional seed)
