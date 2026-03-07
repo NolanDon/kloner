@@ -3337,7 +3337,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
         const alreadyDeployed = Boolean(app.isDeployed) || Boolean(app.productionUrl);
         if (!alreadyDeployed) {
             const confirmed = await showConfirm(
-                "Start deployment for this app now?",
+                "Publish this website now?\n\nThis will make your website publicly accessible on a live URL that you can share with anyone.",
                 "Deploy",
             );
             if (!confirmed) return;
