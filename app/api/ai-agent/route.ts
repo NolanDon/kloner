@@ -84,6 +84,44 @@ function requestLikelyNeedsDatabase(userMessage: string): boolean {
     return keywords.some((k) => m.includes(k));
 }
 
+function messageExplicitlyDeclinesDatabase(text: string): boolean {
+    const m = String(text || "").toLowerCase();
+    if (!m.trim()) return false;
+
+    const noDbSignals = [
+        /\b(no|without|dont|don't|do not)\b[^\n]{0,40}\b(database|db|supabase|postgres)\b/i,
+        /\b(database|db|supabase|postgres)\b[^\n]{0,40}\b(not needed|not required|not now|later|skip|no thanks)\b/i,
+        /\b(doesnt|doesn't|do not|don't)\s+need\b[^\n]{0,60}\b(database|db|supabase|postgres)\b/i,
+        /\b(database|db|supabase|postgres)\b[^\n]{0,60}\b(doesnt|doesn't|do not|don't)\s+need\b/i,
+        /\bno\s+database\b/i,
+        /\bwithout\s+(a\s+)?database\b/i,
+        /\b(do\s+not|don't)\s+ask\s+.*\b(database|db|supabase)\b/i,
+    ];
+
+    return noDbSignals.some((re) => re.test(m));
+}
+
+function userDeclinedDatabaseInRecentHistory(history: unknown[]): boolean {
+    const recent = Array.isArray(history) ? history.slice(-12) : [];
+    for (let i = recent.length - 1; i >= 0; i--) {
+        const raw = recent[i] as any;
+        if (!raw || typeof raw !== "object") continue;
+        if (raw.role !== "user") continue;
+        if (messageExplicitlyDeclinesDatabase(String(raw.content || ""))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function requestLooksLikeUiOnlyAuthPreference(userMessage: string): boolean {
+    const m = String(userMessage || "").toLowerCase();
+    if (!m.trim()) return false;
+    const wantsAuthUi = /\b(login|log in|signup|sign up|register|auth|authentication)\b/i.test(m);
+    const uiOnly = /\b(ui|frontend|front-end|mock|placeholder|not connected|conencted|unconnected|static|without backend|no backend|just the page|just screens?)\b/i.test(m);
+    return wantsAuthUi && uiOnly;
+}
+
 function fileEditsLookLikeInsecureLocalAuth(edits: FileEdit[]): boolean {
     const joined = edits.map((e) => `${e.path}\n${e.content}`).join("\n\n").toLowerCase();
 
@@ -468,10 +506,14 @@ export async function POST(req: NextRequest) {
             // Determine whether Supabase is actually connected (source of truth used elsewhere in the product).
             const supabase = await getSupabaseIntegrationStatus({ db, uid, appId });
             const hasAnyDb = supabase.connected || databaseConnections.length > 0;
+            const userDeclinedDb =
+                messageExplicitlyDeclinesDatabase(message) ||
+                userDeclinedDatabaseInRecentHistory(conversationHistory);
+            const allowUiOnlyAuthWithoutDb = userDeclinedDb && requestLooksLikeUiOnlyAuthPreference(message);
 
             // Security-first guard: if a request likely needs persistence/auth and no DB is connected,
             // do not implement fake/local auth. Instead, push the user to connect Supabase.
-            if (requestLikelyNeedsDatabase(message) && !hasAnyDb) {
+            if (requestLikelyNeedsDatabase(message) && !hasAnyDb && !allowUiOnlyAuthWithoutDb) {
                 const response =
                     "This feature needs secure, persistent storage (database) to be safe. Right now no database is connected, so I won’t create local/in-memory users or store passwords on the client.\n\nDo you want to connect Supabase now and have me set up authentication + the required schema (e.g. a profiles table + RLS) for you?";
 
@@ -550,6 +592,10 @@ export async function POST(req: NextRequest) {
                         : ""}`
                     : "\n\nNo databases connected yet.";
 
+                const dbPreferenceContext = userDeclinedDb
+                    ? "\n\nUser preference signal:\n- The user explicitly declined connecting a database in this conversation.\n- Do not ask them to connect Supabase again unless they explicitly request persistent auth/data.\n- If they ask for login/signup without backend persistence, provide UI-only pages/components (no localStorage/sessionStorage/in-memory user auth, no password handling), and set setupDatabase=false."
+                    : "";
+
                                 const systemPrompt = `You are an expert Next.js developer working inside an app builder. Be conversational and helpful!
 
 SECURITY + PERSISTENCE (TOP PRIORITY):
@@ -591,7 +637,7 @@ Rules:
 - Set setupDatabase: true if you want to offer Supabase MCP connection setup to the user.
 
 Current app files:
-${fileContext}${dbContext}
+${fileContext}${dbContext}${dbPreferenceContext}
 
 Recent conversation:
 ${recentConversation}

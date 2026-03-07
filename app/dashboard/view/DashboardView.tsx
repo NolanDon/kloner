@@ -111,6 +111,36 @@ const ERR_AUTO_DISMISS_MS = 30 * 1000;
 const FRONTEND_TIMEOUT_DEDUPE_TTL_MS = 10 * 60 * 1000;
 const FRONTEND_TIMEOUT_DEDUPE_STORAGE_KEY = "dashboardViewFrontendTimeoutAlertsV1";
 const URL_ADD_SUCCESS_MESSAGE = "URL added successfully! You can now generate websites from this URL below.";
+const APP_BUILDER_COOKIE_CONSENT_KEY = "kloner.appBuilder.necessaryCookiesAccepted.v1";
+const APP_BUILDER_COOKIE_CONSENT_COOKIE = "kloner_app_builder_nc";
+
+function getCookieValueSafe(name: string): string | null {
+    if (typeof document === "undefined") return null;
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = document.cookie.match(new RegExp(`(?:^|; )${escaped}=([^;]*)`));
+    return match ? decodeURIComponent(match[1] || "") : null;
+}
+
+function hasAcceptedAppBuilderNecessaryCookies(): boolean {
+    if (typeof window === "undefined") return false;
+    try {
+        if (window.localStorage.getItem(APP_BUILDER_COOKIE_CONSENT_KEY) === "1") return true;
+    } catch {
+        // ignore
+    }
+    return getCookieValueSafe(APP_BUILDER_COOKIE_CONSENT_COOKIE) === "1";
+}
+
+function persistAppBuilderNecessaryCookiesConsent(): void {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+    try {
+        window.localStorage.setItem(APP_BUILDER_COOKIE_CONSENT_KEY, "1");
+    } catch {
+        // ignore
+    }
+    const secure = window.location.protocol === "https:" ? "; Secure" : "";
+    document.cookie = `${APP_BUILDER_COOKIE_CONSENT_COOKIE}=1; Path=/; Max-Age=${60 * 60 * 24 * 365}; SameSite=Lax${secure}`;
+}
 
 type UrlStatusUi = "queued" | "processing" | "ready" | "stale" | "error" | "unknown";
 
@@ -1578,6 +1608,7 @@ function AppCard({
     onDelete: (appId: string) => void;
 }) {
     const router = useRouter();
+    const showVersionBadge = process.env.NODE_ENV !== "production";
 
     const isDeployedFlag = Boolean((app as any)?.isDeployed) || Boolean((app as any)?.productionUrl) || Boolean((app as any)?.lastDeployUrl);
     const appDisplayName = String(app.name || app.id.slice(0, 10)).trim();
@@ -1618,13 +1649,15 @@ function AppCard({
                 <X className="h-3.5 w-3.5 transition-colors" />
             </button>
 
-            {/* App badge - moved to avoid overlap */}
-            <span
-                className="absolute left-2 top-2 z-40 inline-flex items-center rounded-full border border-neutral-200 bg-[#f55f2a]/10 px-2 py-0.5 text-[10px] font-semibold text-[#f55f2a] shadow-sm"
-                title="v2"
-            >
-                v2
-            </span>
+            {/* App badge - dev only for testing */}
+            {showVersionBadge ? (
+                <span
+                    className="absolute left-2 top-2 z-40 inline-flex items-center rounded-full border border-neutral-200 bg-[#f55f2a]/10 px-2 py-0.5 text-[10px] font-semibold text-[#f55f2a] shadow-sm"
+                    title="v2"
+                >
+                    v2
+                </span>
+            ) : null}
 
             {/* Main visual area */}
             <div className="relative aspect-[3/3] w-full overflow-hidden flex flex-col items-center justify-center bg-gradient-to-br from-neutral-50 to-neutral-100">
@@ -2251,6 +2284,9 @@ export default function PreviewPage(): JSX.Element {
 
     const [appBuilderOpen, setAppBuilderOpen] = useState(false);
     const [currentAppId, setCurrentAppId] = useState<string | null>(null);
+    const [appBuilderCookiePromptOpen, setAppBuilderCookiePromptOpen] = useState(false);
+    const [pendingAppBuilderAppId, setPendingAppBuilderAppId] = useState<string | null>(null);
+    const appBuilderCookiePromptResolverRef = useRef<((accepted: boolean) => void) | null>(null);
 
     const [agentWelcomeContextByAppId, setAgentWelcomeContextByAppId] = useState<
         Record<
@@ -2263,6 +2299,61 @@ export default function PreviewPage(): JSX.Element {
             }
         >
     >({});
+
+    const resolveAppBuilderCookiePrompt = useCallback((accepted: boolean) => {
+        const resolve = appBuilderCookiePromptResolverRef.current;
+        appBuilderCookiePromptResolverRef.current = null;
+
+        setAppBuilderCookiePromptOpen(false);
+        setPendingAppBuilderAppId(null);
+        if (!accepted) {
+            setCurrentAppId(null);
+        }
+
+        if (resolve) resolve(accepted);
+    }, []);
+
+    const requestAppBuilderCookieConsent = useCallback(async (): Promise<boolean> => {
+        const forceCookiePromptInDev = process.env.NODE_ENV !== "production";
+        if (!forceCookiePromptInDev && hasAcceptedAppBuilderNecessaryCookies()) {
+            return true;
+        }
+
+        setPendingAppBuilderAppId(null);
+        setCurrentAppId(null);
+        setAppBuilderCookiePromptOpen(true);
+
+        return await new Promise<boolean>((resolve) => {
+            appBuilderCookiePromptResolverRef.current = resolve;
+        });
+    }, []);
+
+    const openAppBuilderWithCookieGate = useCallback((appId: string | null) => {
+        const nextId = typeof appId === "string" ? appId.trim() : "";
+        if (!nextId) return;
+        const forceCookiePromptInDev = process.env.NODE_ENV !== "production";
+
+        setCurrentAppId(nextId);
+        if (!forceCookiePromptInDev && hasAcceptedAppBuilderNecessaryCookies()) {
+            setAppBuilderCookiePromptOpen(false);
+            setPendingAppBuilderAppId(null);
+            setAppBuilderOpen(true);
+            return;
+        }
+
+        setPendingAppBuilderAppId(nextId);
+        setAppBuilderCookiePromptOpen(true);
+    }, []);
+
+    const acceptCookiesAndOpenAppBuilder = useCallback(() => {
+        persistAppBuilderNecessaryCookiesConsent();
+        const nextId = pendingAppBuilderAppId || currentAppId;
+        resolveAppBuilderCookiePrompt(true);
+        if (nextId) {
+            setCurrentAppId(nextId);
+            setAppBuilderOpen(true);
+        }
+    }, [pendingAppBuilderAppId, currentAppId, resolveAppBuilderCookiePrompt]);
 
     // ───────── app deploy wizard (first deploy) ─────────
     const [appDeployWizardOpen, setAppDeployWizardOpen] = useState(false);
@@ -2735,6 +2826,11 @@ export default function PreviewPage(): JSX.Element {
     ) => {
         if (!user) return;
 
+        const consentAccepted = await requestAppBuilderCookieConsent();
+        if (!consentAccepted) {
+            return null;
+        }
+
         try {
             function appNameFromUrl(raw: string): string {
                 try {
@@ -2861,8 +2957,7 @@ export default function PreviewPage(): JSX.Element {
             });
 
             // Open app builder as overlay
-            setCurrentAppId(appId);
-            setAppBuilderOpen(true);
+            openAppBuilderWithCookieGate(appId);
 
             // No agent application for new modes, as they are full generations
 
@@ -2872,7 +2967,7 @@ export default function PreviewPage(): JSX.Element {
             push("Failed to create app. Please try again.", "err");
             return null;
         }
-    }, [user, router, push, activeRenderId]);
+    }, [user, router, push, activeRenderId, openAppBuilderWithCookieGate, requestAppBuilderCookieConsent]);
 
     const startWebAppWizard = useCallback(
         (opts?: { seedRenderId?: string | null; url?: string | null }) => {
@@ -2895,6 +2990,7 @@ export default function PreviewPage(): JSX.Element {
 
     const submitAppWizardWebsite = useCallback(async () => {
         if (appWizardBusy) return;
+
         setAppWizardBusy(true);
         setAppWizardError(null);
 
@@ -2964,6 +3060,7 @@ export default function PreviewPage(): JSX.Element {
 
     const submitAppWizardPrompt = useCallback(async () => {
         if (appWizardBusy) return;
+
         const prompt = stripHttpsUrlsFromPrompt(appWizardPrompt || "").trim();
         if (!prompt) {
             setAppWizardError("Enter a prompt to continue.");
@@ -2993,6 +3090,12 @@ export default function PreviewPage(): JSX.Element {
     // New: create an app from the starter template (free)
     const handleCreateTemplateApp = useCallback(async () => {
         if (!user) return;
+
+        const consentAccepted = await requestAppBuilderCookieConsent();
+        if (!consentAccepted) {
+            return;
+        }
+
         try {
             const res = await fetch("/api/app-builder/create", {
                 method: "POST",
@@ -3013,8 +3116,7 @@ export default function PreviewPage(): JSX.Element {
             setActiveArchivedPageIds([]);
 
             // Open app builder overlay
-            setCurrentAppId(appId);
-            setAppBuilderOpen(true);
+            openAppBuilderWithCookieGate(appId);
 
             setAgentWelcomeContextByAppId((prev) => ({
                 ...prev,
@@ -3024,7 +3126,7 @@ export default function PreviewPage(): JSX.Element {
             console.error("Failed to create template app:", error);
             push("Failed to start from template. Please try again.", "err");
         }
-    }, [user, push]);
+    }, [user, push, openAppBuilderWithCookieGate, requestAppBuilderCookieConsent]);
 
 
     const [optimisticByKey, setOptimisticByKey] = useState<
@@ -6383,8 +6485,7 @@ export default function PreviewPage(): JSX.Element {
             }
 
             if (pendingApp?.appId) {
-                setCurrentAppId(pendingApp.appId);
-                setAppBuilderOpen(true);
+                openAppBuilderWithCookieGate(pendingApp.appId);
                 return;
             }
 
@@ -7340,8 +7441,7 @@ export default function PreviewPage(): JSX.Element {
                                         isDeleting={!!deletingApp[app.id]}
                                         isArchiving={!!archivingApp[app.id]}
                                         onCustomize={(appId) => {
-                                            setCurrentAppId(appId);
-                                            setAppBuilderOpen(true);
+                                            openAppBuilderWithCookieGate(appId);
                                         }}
                                         onArchive={handleArchiveApp}
                                         onRename={handleRenameAppCard}
@@ -7474,8 +7574,7 @@ export default function PreviewPage(): JSX.Element {
                                         isDeleting={!!deletingApp[app.id]}
                                         isArchiving={!!archivingApp[app.id]}
                                         onCustomize={(appId) => {
-                                            setCurrentAppId(appId);
-                                            setAppBuilderOpen(true);
+                                            openAppBuilderWithCookieGate(appId);
                                         }}
                                         onArchive={handleArchiveApp}
                                         onRename={handleRenameAppCard}
@@ -7616,6 +7715,67 @@ export default function PreviewPage(): JSX.Element {
                         agentWelcomeContext={agentWelcomeContextByAppId[currentAppId]}
                     />
                 )}
+
+                <AnimatePresence>
+                    {appBuilderCookiePromptOpen && (
+                        <motion.div
+                            key="app-builder-cookie-wizard"
+                            className="fixed inset-0 z-[18100]"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                        >
+                            <motion.div
+                                className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+                                onClick={() => {
+                                    resolveAppBuilderCookiePrompt(false);
+                                }}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 0.18 }}
+                            />
+
+                            <div className="absolute inset-0 flex items-center justify-center px-4 sm:px-6">
+                                <motion.div
+                                    className="relative w-full max-w-md overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-xl"
+                                    initial={{ opacity: 0, y: 24, scale: 0.96 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    exit={{ opacity: 0, y: 16, scale: 0.96 }}
+                                    transition={{ duration: 0.22, ease: [0.23, 0.82, 0.25, 1] }}
+                                >
+                                    <div className="p-5 pt-6">
+                                        <p className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">Final step</p>
+                                        <p className="mt-1 text-lg font-semibold text-neutral-900">One quick cookie check</p>
+                                        <p className="mt-2 text-sm text-neutral-600">
+                                            To keep your preview connected, we need essential app cookies. No marketing cookies, just builder basics.
+                                        </p>
+
+                                        <div className="mt-4 flex items-center justify-end gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    resolveAppBuilderCookiePrompt(false);
+                                                }}
+                                                className="rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-800 hover:bg-neutral-50"
+                                            >
+                                                Not now
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={acceptCookiesAndOpenAppBuilder}
+                                                className="rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+                                                style={{ backgroundColor: ACCENT }}
+                                            >
+                                                Continue
+                                            </button>
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
 
                 {/* web app wizard */}
                 <AnimatePresence>
@@ -7917,8 +8077,7 @@ export default function PreviewPage(): JSX.Element {
                                                                     const id = appDeployWizardAppId;
                                                                     if (!id) return;
                                                                     closeAppDeployWizard();
-                                                                    setCurrentAppId(id);
-                                                                    setAppBuilderOpen(true);
+                                                                    openAppBuilderWithCookieGate(id);
                                                                 }}
                                                                 className="rounded-xl bg-white px-3 py-2 text-sm font-semibold text-neutral-900 shadow-sm hover:bg-neutral-50"
                                                             >

@@ -3724,20 +3724,14 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
             <div className="fixed inset-0 z-[20000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
                 <div className="w-full max-w-lg rounded-2xl border border-neutral-200 bg-white shadow-2xl overflow-hidden">
                     <div className="border-b border-neutral-200 px-5 py-4 bg-gradient-to-b from-gray-50 to-white">
-                        <div className="text-lg font-semibold text-neutral-900">Accept necessary cookies</div>
-                        <div className="mt-1 text-sm text-neutral-600">Required before opening the app builder</div>
+                        <div className="text-lg font-semibold text-neutral-900">One quick cookie check</div>
+                        <div className="mt-1 text-sm text-neutral-600">Needed to keep your preview connected</div>
                     </div>
 
                     <div className="px-5 py-4 space-y-3">
                         <p className="text-sm text-neutral-700">
-                            Necessary cookies are absolutely required for app building and for connecting your preview to our application inside the embedded editor.
+                            We only use essential app-builder cookies so preview + routing work correctly. No optional marketing cookies here.
                         </p>
-                        <p className="text-sm text-neutral-700">
-                            Without this, some browsers may block the routing cookie used by the preview iframe and show a preview load error.
-                        </p>
-                        <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600">
-                            This only enables essential app-builder session/routing cookies. No optional marketing cookies are required here.
-                        </div>
                     </div>
 
                     <div className="flex items-center justify-end gap-2 border-t border-neutral-200 px-5 py-4">
@@ -3753,7 +3747,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                             onClick={acceptNecessaryCookiesAndContinue}
                             className="px-4 py-2 text-sm font-semibold text-white bg-[#F55F2A] rounded-full hover:bg-[#E04E1B]"
                         >
-                            Accept necessary cookies
+                            Accept and continue
                         </button>
                     </div>
                 </div>
