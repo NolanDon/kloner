@@ -61,12 +61,10 @@ const tiers: Tier[] = [
         topFeatures: [
             "30 screenshot credits (3 site captures)",
             "60 preview credits (4 site generations)",
-            "50 AI credits",
+            "15 AI credits",
         ],
         allFeatures: [
             "Limited to 3 pages per generation",
-            "No deployments",
-            "No AI assisted editing",
             "Single user workspace",
             "Community-level email support",
         ],
@@ -83,7 +81,7 @@ const tiers: Tier[] = [
         topFeatures: [
             "100 screenshot credits (10 site captures)",
             "400 preview credits (15 site generations)",
-            "AI editing + SEO tools included",
+            "AI editing support",
         ],
         allFeatures: [
             "300 monthly AI credits",

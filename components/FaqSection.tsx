@@ -14,11 +14,11 @@ const GROUPS: Group[] = [
         items: [
             {
                 q: 'Will it copy entire web applications, or mobile applications?',
-                a: 'No, Kloner is specifically for users looking to create high-performing, secure, single or mulit-page websites without strict database requirements'
+                a: 'Kloner generates Next.js websites and web apps. It does not generate native mobile apps.'
             },
             {
                 q: 'How can I customize or change fonts, colors after generating a preview?',
-                a: 'Kloner has it\'s own editor, after generating a website you can fine-tune fonts, colors, images, seo data, and much more.'
+                a: 'After your site is generated, you can customize fonts, colors, images, and SEO by chatting with the AI agent, which applies those changes directly to your project.'
             },
             {
                 q: 'How long does the process take from entering a URL to deployment?',
@@ -26,7 +26,7 @@ const GROUPS: Group[] = [
             },
             {
                 q: 'What exactly gets exported?',
-                a: 'A clean, secure and well-structured HTML project, componentized layouts, optimized images, subset fonts.'
+                a: 'A clean, production-ready Next.js project (V2) with structured routes/components, optimized assets, and integration scaffolding.'
             },
             {
                 q: 'Can I attach my own domain?',
@@ -34,7 +34,7 @@ const GROUPS: Group[] = [
             },
             {
                 q: 'Will forms and client scripts work?',
-                a: 'We preserve markup and isolate scripts. Full form integration is currently in development'
+                a: 'Yes. V2 projects are generated as functional Next.js apps, so forms and client/server logic can be implemented with Supabase, MCP tools, and other integrations.'
             },
             {
                 q: 'Do internal links keep working?',
@@ -42,7 +42,7 @@ const GROUPS: Group[] = [
             },
             {
                 q: 'Can I run the exported project anywhere?',
-                a: 'Yes. The output is standard HTML. It runs on Vercel, Netlify, or any Node/Edge host. However Kloner strictly deploys to Vercel only'
+                a: 'V2 output is Next.js and optimized for Vercel deployments, including one-click Vercel connection in the product flow.'
             },
         ],
     },
@@ -76,7 +76,7 @@ const GROUPS: Group[] = [
             },
             {
                 q: 'Are mobile apps available?',
-                a: 'URL to mobile app is currently in development and will be available for pro members soon.'
+                a: 'Mobile app generation is coming soon. Today, Kloner focuses on Next.js web experiences.'
             },
             {
                 q: 'Does it support Routing?',
@@ -84,7 +84,7 @@ const GROUPS: Group[] = [
             },
             {
                 q: 'What about frameworks other than HTML?',
-                a: 'Exporters for Remix, SvelteKit, and Astro are in development and will be available soon. You can still export raw assets and wire your framework of choice.'
+                a: 'Current generation is Next.js V2. Community templates are legacy V1 HTML templates, which are still usable but do not support the same integration and runtime functionality as V2 apps.'
             },
         ],
     },
