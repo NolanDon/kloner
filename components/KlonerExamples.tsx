@@ -270,6 +270,13 @@ export default function DeckImageCarousel({
 
                             // only center card is clickable now
                             const isCenter = state.delta === 0;
+                            const absDelta = Math.abs(state.delta);
+                            const imageSizes =
+                                absDelta === 0
+                                    ? "(min-width: 1024px) 900px, (min-width: 768px) 75vw, 96vw"
+                                    : absDelta === 1
+                                        ? "(min-width: 1024px) 780px, (min-width: 768px) 64vw, 82vw"
+                                        : "(min-width: 1024px) 640px, (min-width: 768px) 52vw, 70vw";
 
                             return (
                                 <div
@@ -287,18 +294,24 @@ export default function DeckImageCarousel({
                                         opacity: state.opacity,
                                         zIndex: state.zIndex,
                                         pointerEvents: state.opacity < 0.15 ? "none" : "auto",
-                                        filter: state.blur ? `blur(${state.blur}px)` : undefined,
+                                        contain: "layout paint style",
+                                        backfaceVisibility: "hidden",
                                     }}
                                     aria-hidden={!isCenter}
                                 >
                                     <div className="flex w-full flex-col">
-                                        <div className="relative h-3/4 w-full">
+                                        <div
+                                            className="relative h-3/4 w-full"
+                                            style={{ filter: state.blur ? `blur(${state.blur}px)` : undefined }}
+                                        >
                                             <Image
                                                 src={item.src}
                                                 alt={item.alt || item.label || "Showcase image"}
                                                 fill
-                                                sizes="(min-width: 768px) 75vw, 100vw"
-                                                priority={idx === 0}
+                                                sizes={imageSizes}
+                                                quality={82}
+                                                loading={isCenter || absDelta === 1 ? "eager" : "lazy"}
+                                                priority={idx === activeIndex}
                                                 className="object-cover object-top"
                                             />
                                             <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/45 via-transparent to-black/80" />
