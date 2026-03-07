@@ -10,6 +10,8 @@ import {
     signInWithPopup,
     setPersistence,
     browserLocalPersistence,
+    browserSessionPersistence,
+    inMemoryPersistence,
     indexedDBLocalPersistence,
     onAuthStateChanged,
     signInWithEmailAndPassword,
@@ -73,6 +75,25 @@ function normalizeError(e: unknown): string {
     }
     if (e instanceof Error) return e.message;
     return "Request failed.";
+}
+
+async function ensureBestAuthPersistence(): Promise<void> {
+    // Prefer IndexedDB, then progressively fall back for restricted browsers/privacy modes.
+    const candidates = [
+        indexedDBLocalPersistence,
+        browserLocalPersistence,
+        browserSessionPersistence,
+        inMemoryPersistence,
+    ];
+
+    for (const persistence of candidates) {
+        try {
+            await setPersistence(auth, persistence);
+            return;
+        } catch {
+            // Keep trying fallbacks; auth can still proceed with the next option.
+        }
+    }
 }
 
 /* ───────── URL helpers ───────── */
@@ -458,17 +479,7 @@ export default function LoginPage(): JSX.Element {
 
         setLoading(true);
         try {
-            try {
-                // Prefer IndexedDB persistence to avoid filling localStorage quota.
-                await setPersistence(auth, indexedDBLocalPersistence);
-            } catch (err) {
-                // Fall back to localStorage if IndexedDB isn't available.
-                try {
-                    await setPersistence(auth, browserLocalPersistence);
-                } catch (e) {
-                    // ignore — we'll still attempt sign-in
-                }
-            }
+            await ensureBestAuthPersistence();
             const provider = new GoogleAuthProvider();
             provider.setCustomParameters({ prompt: "select_account" });
 
@@ -499,15 +510,7 @@ export default function LoginPage(): JSX.Element {
 
         setLoading(true);
         try {
-            try {
-                await setPersistence(auth, indexedDBLocalPersistence);
-            } catch (err) {
-                try {
-                    await setPersistence(auth, browserLocalPersistence);
-                } catch (e) {
-                    // ignore
-                }
-            }
+            await ensureBestAuthPersistence();
             if (!email || !pw) throw new Error("Enter email and password.");
 
             if (mode === "signin") {

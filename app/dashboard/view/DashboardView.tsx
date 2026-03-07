@@ -111,6 +111,7 @@ const ERR_AUTO_DISMISS_MS = 30 * 1000;
 const FRONTEND_TIMEOUT_DEDUPE_TTL_MS = 10 * 60 * 1000;
 const FRONTEND_TIMEOUT_DEDUPE_STORAGE_KEY = "dashboardViewFrontendTimeoutAlertsV1";
 const URL_ADD_SUCCESS_MESSAGE = "URL added successfully! You can now generate websites from this URL below.";
+const APP_WIZARD_PROMPT_MAX_CHARS = 2000;
 const APP_BUILDER_COOKIE_CONSENT_KEY = "kloner.appBuilder.necessaryCookiesAccepted.v1";
 const APP_BUILDER_COOKIE_CONSENT_COOKIE = "kloner_app_builder_nc";
 
@@ -2407,6 +2408,8 @@ export default function PreviewPage(): JSX.Element {
         length: PROMPT_PLACEHOLDERS.length,
         intervalMs: 3200,
     });
+    const appWizardPromptLength = appWizardPrompt.length;
+    const appWizardPromptOverLimit = appWizardPromptLength > APP_WIZARD_PROMPT_MAX_CHARS;
 
     const {
         status: vercelStatus,
@@ -2453,16 +2456,27 @@ export default function PreviewPage(): JSX.Element {
         const appsRef = collection(db, "kloner_users", user.uid, "kloner_apps");
         const appsQuery = query(appsRef, orderBy("createdAt", "desc"), limit(100));
 
-        const unsub = onSnapshot(appsQuery, (snap) => {
-            const appList = snap.docs.map((doc) => ({
-                id: doc.id,
-                ...(doc.data() as any),
-            }));
-            // Keep archived apps off the main dashboard without requiring a Firestore index
-            // (and so legacy docs missing the `archived` field still show up).
-            // IMPORTANT: only treat boolean true as archived.
-            setApps(appList.filter((a: any) => a?.archived !== true));
-        });
+        const unsub = onSnapshot(
+            appsQuery,
+            (snap) => {
+                const appList = snap.docs.map((doc) => ({
+                    id: doc.id,
+                    ...(doc.data() as any),
+                }));
+                // Keep archived apps off the main dashboard without requiring a Firestore index
+                // (and so legacy docs missing the `archived` field still show up).
+                // IMPORTANT: only treat boolean true as archived.
+                setApps(appList.filter((a: any) => a?.archived !== true));
+            },
+            (err) => {
+                console.warn("[firestore] apps snapshot failed", err);
+                const code = String((err as any)?.code || "").toLowerCase();
+                if (code.includes("permission-denied")) {
+                    push("Your session permissions expired. Refresh the page and sign in again.", "err");
+                }
+                setApps([]);
+            },
+        );
 
         let didCleanup = false;
         return () => {
@@ -2474,7 +2488,7 @@ export default function PreviewPage(): JSX.Element {
                 console.warn("[firestore] apps onSnapshot unsubscribe failed", err);
             }
         };
-    }, [user]);
+    }, [user, push]);
 
     useEffect(() => {
         const billingParam = search.get("billing");
@@ -3043,11 +3057,6 @@ export default function PreviewPage(): JSX.Element {
                 : [];
 
             const created = await handleCreateApp("url", undefined, undefined, url, { screenshotKeys });
-            if (created === null) {
-                // Async processing started
-                setAppWizardBusy(false);
-                return;
-            }
             if (created) {
                 setAppWizardOpen(false);
             } else {
@@ -3066,17 +3075,16 @@ export default function PreviewPage(): JSX.Element {
             setAppWizardError("Enter a prompt to continue.");
             return;
         }
+        if (prompt.length > APP_WIZARD_PROMPT_MAX_CHARS) {
+            // Inline counter/help text already explains the limit; avoid duplicate top-level error.
+            return;
+        }
 
         setAppWizardBusy(true);
         setAppWizardError(null);
 
         try {
             const created = await handleCreateApp("prompt", prompt);
-            if (created === null) {
-                // Async processing started
-                setAppWizardBusy(false);
-                return;
-            }
             if (created) {
                 setAppWizardOpen(false);
             } else {
@@ -5151,6 +5159,13 @@ export default function PreviewPage(): JSX.Element {
                 }
                 return next;
             });
+        }, (err) => {
+            console.warn("[firestore] renders snapshot failed", err);
+            const code = String((err as any)?.code || "").toLowerCase();
+            if (code.includes("permission-denied")) {
+                push("Couldn’t load your previews due to a permissions issue. Refresh and sign in again.", "err");
+            }
+            setRenders([]);
         });
 
         let didCleanup = false;
@@ -5168,6 +5183,7 @@ export default function PreviewPage(): JSX.Element {
         targetUrl,
         targetHash,
         deepLinkRenderId,
+        push,
     ]);
 
     useEffect(() => {
@@ -7917,14 +7933,16 @@ export default function PreviewPage(): JSX.Element {
                                                         <textarea
                                                             value={appWizardPrompt}
                                                             onChange={(e) => {
-                                                                setAppWizardPrompt(stripHttpsUrlsFromPrompt(e.target.value));
+                                                                const nextPrompt = stripHttpsUrlsFromPrompt(e.target.value);
+                                                                setAppWizardPrompt(nextPrompt);
                                                                 setAppWizardError(null);
                                                             }}
                                                             onPaste={(e) => {
                                                                 const pasted = e.clipboardData.getData("text");
                                                                 if (!pasted) return;
                                                                 e.preventDefault();
-                                                                setAppWizardPrompt(stripHttpsUrlsFromPrompt(pasted));
+                                                                const nextPrompt = stripHttpsUrlsFromPrompt(pasted);
+                                                                setAppWizardPrompt(nextPrompt);
                                                                 setAppWizardError(null);
                                                             }}
                                                             onFocus={() => setAppWizardPromptFocused(true)}
@@ -7953,6 +7971,16 @@ export default function PreviewPage(): JSX.Element {
                                                             </div>
                                                         ) : null}
                                                     </div>
+                                                    <div className="mt-1 flex items-center justify-between text-[11px]">
+                                                        <span className={appWizardPromptOverLimit ? "text-red-600" : "text-neutral-500"}>
+                                                            {appWizardPromptOverLimit
+                                                                ? `Please shorten your prompt to ${APP_WIZARD_PROMPT_MAX_CHARS} characters.`
+                                                                : "Keep it concise for best results."}
+                                                        </span>
+                                                        <span className={`tabular-nums ${appWizardPromptOverLimit ? "text-red-600 font-semibold" : "text-neutral-500"}`}>
+                                                            {appWizardPromptLength}/{APP_WIZARD_PROMPT_MAX_CHARS}
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             ) : null}
 
@@ -7977,7 +8005,7 @@ export default function PreviewPage(): JSX.Element {
                                                 if (appWizardSource === "website") return void submitAppWizardWebsite();
                                                 return void submitAppWizardPrompt();
                                             }}
-                                            disabled={appWizardBusy}
+                                            disabled={appWizardBusy || (appWizardSource === "prompt" && appWizardPromptOverLimit)}
                                             className="rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
                                             style={{ backgroundColor: ACCENT }}
                                         >
