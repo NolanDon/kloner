@@ -5,6 +5,7 @@ import { getAdminDb } from "../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../_lib/route-guard";
 import { assertAppBuilderScope } from "../_lib/appBuilderScope";
 import crypto from "node:crypto";
+import { captureCriticalEvent } from "@/lib/observability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -130,6 +131,72 @@ function isSafeAppFilePath(path: string): boolean {
 function safeString(val: unknown, maxLen: number): string {
     if (typeof val !== "string") return "";
     return val.length > maxLen ? val.slice(0, maxLen) : val;
+}
+
+function classifyAiProviderError(err: unknown): {
+    statusCode: number;
+    providerMessage: string;
+    userMessage: string;
+    code: string;
+} {
+    const raw = err instanceof Error ? err.message : String(err || "Unknown AI provider error");
+    const msg = safeString(raw, 1500) || "Unknown AI provider error";
+    const lower = msg.toLowerCase();
+
+    const statusFromMessage = (() => {
+        const m = msg.match(/\b(4\d\d|5\d\d)\b/);
+        if (!m) return 500;
+        const n = Number(m[1]);
+        return Number.isFinite(n) ? n : 500;
+    })();
+
+    if (statusFromMessage === 429 || lower.includes("quota") || lower.includes("rate")) {
+        return {
+            statusCode: 429,
+            providerMessage: msg,
+            userMessage: "AI usage is temporarily rate-limited. Please try again shortly.",
+            code: "AI_RATE_LIMITED",
+        };
+    }
+
+    if (
+        statusFromMessage === 503 ||
+        lower.includes("service unavailable") ||
+        lower.includes("temporarily unavailable") ||
+        lower.includes("unavailable")
+    ) {
+        return {
+            statusCode: 503,
+            providerMessage: msg,
+            userMessage: "The AI service is temporarily unavailable. Please try again in a few minutes.",
+            code: "AI_PROVIDER_UNAVAILABLE",
+        };
+    }
+
+    if (statusFromMessage >= 500) {
+        return {
+            statusCode: 503,
+            providerMessage: msg,
+            userMessage: "The AI service had a temporary server issue. Please try again in a few minutes.",
+            code: "AI_PROVIDER_SERVER_ERROR",
+        };
+    }
+
+    if (statusFromMessage >= 400) {
+        return {
+            statusCode: 400,
+            providerMessage: msg,
+            userMessage: "Your request could not be completed. Please adjust your prompt and try again.",
+            code: "AI_BAD_REQUEST",
+        };
+    }
+
+    return {
+        statusCode: 503,
+        providerMessage: msg,
+        userMessage: "The AI request failed unexpectedly. Please try again in a few minutes.",
+        code: "AI_UNKNOWN_ERROR",
+    };
 }
 
 function normalizeStoredMessages(input: unknown): StoredMessage[] {
@@ -372,10 +439,12 @@ export async function POST(req: NextRequest) {
     return requireSessionAndMaybeCsrf(
         req,
         async ({ uid, req: authedReq }) => {
+        let observedAppId = "";
         try {
             const body = await req.json();
             const message = safeString(body?.message, 10_000);
             const appId = safeString(body?.appId, 200);
+            observedAppId = appId;
             const persistChat = body?.persistChat === true;
             const conversationId = safeString(body?.conversationId, 80);
             const conversationHistory = Array.isArray(body?.conversationHistory)
@@ -737,8 +806,32 @@ ${buildContext}`;
                 restorePointId: lastRestorePointId,
             });
         } catch (error) {
+            const classified = classifyAiProviderError(error);
+
+            void captureCriticalEvent({
+                source: "internal",
+                severity: classified.statusCode >= 500 ? "critical" : "error",
+                statusCode: classified.statusCode,
+                route: "/api/ai-agent",
+                method: "POST",
+                action: "ai_agent_generate_failed",
+                userId: uid,
+                message: `AI agent provider failure: ${classified.providerMessage}`,
+                service: "ai-agent",
+                tags: ["ai-agent", "gemini", "provider-error"],
+                extra: {
+                    appId: observedAppId || null,
+                    model: process.env.GEMINI_MODEL || "gemini-3-pro-preview",
+                    providerMessage: classified.providerMessage,
+                    code: classified.code,
+                },
+            });
+
             console.error("AI agent error:", error);
-            return NextResponse.json({ error: "Failed to process AI request" }, { status: 500 });
+            return NextResponse.json(
+                { error: classified.userMessage, code: classified.code },
+                { status: classified.statusCode },
+            );
         }
         },
         { csrf: true, methods: ["POST"] }

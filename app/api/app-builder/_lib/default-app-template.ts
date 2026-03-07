@@ -4,7 +4,7 @@
 
 export type TemplateFiles = Record<string, { content: string }>;
 
-export const DEFAULT_APP_TEMPLATE_VERSION = "1.0.1";
+export const DEFAULT_APP_TEMPLATE_VERSION = "1.0.2";
 
 export const DEFAULT_APP_TEMPLATE_FILES: TemplateFiles = {
     "package.json": {
@@ -403,7 +403,10 @@ export default function Error({ error, reset }) {
         <div className="kloner-body">
           <h1 className="kloner-title" style={{ fontSize: 26 }}>Something went wrong.</h1>
           <p className="kloner-sub" style={{ marginTop: 10 }}>
-            {String(error?.message || 'An unexpected error occurred.')}
+            The service is temporarily unavailable. Please try again in a few minutes.
+          </p>
+          <p className="kloner-sub" style={{ marginTop: 6 }}>
+            If this keeps happening, contact support and include what you were trying to do.
           </p>
           <div className="kloner-actions">
             <button className="btn btn-primary" onClick={() => reset()}>Try again</button>

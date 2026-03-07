@@ -2365,7 +2365,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             const errorMessage: Message = {
                 id: `error_${Date.now()}`,
                 role: "assistant",
-                content: "Sorry, I encountered an error. Please try again.",
+                content: "Sorry, I couldn’t complete that request right now. Please try again in a few minutes.",
                 timestamp: new Date(),
                 type: "text"
             };
