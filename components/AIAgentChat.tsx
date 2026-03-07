@@ -94,6 +94,13 @@ type RestorePointItem = {
     undoOf?: string | null;
 };
 
+const STARTER_PROMPTS = [
+    "Improve the hero section with stronger hierarchy and clearer CTA.",
+    "Tighten spacing and typography to make the layout feel more polished.",
+    "Add a pricing section with plans, feature bullets, and a compare view.",
+    "Refine mobile responsiveness for navigation, spacing, and tap targets.",
+];
+
 function stripMarkdownBold(text: string): string {
     // Chat renders content as plain text (not markdown), so remove bold markers.
     return (text || "")
@@ -337,7 +344,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             contextLine,
             "",
             "I can help with layout, styling, images, copy, and features.",
-            "Ideas to start: improve the hero, tighten spacing, add a pricing section, or refine mobile responsiveness.",
+            "Pick a direction below, or type your own request.",
             "Tell me what direction you want, and I’ll implement it.",
         ]
             .filter(Boolean)
@@ -2511,7 +2518,26 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                 </button>
                             </div>
 
-                            <div className="whitespace-pre-wrap break-words text-sm">{renderTextWithLinks(message.content)}</div>
+                            <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">{renderTextWithLinks(message.content)}</div>
+
+                            {message.id === "welcome" && message.role === "assistant" ? (
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    {STARTER_PROMPTS.map((starter) => (
+                                        <button
+                                            key={starter}
+                                            type="button"
+                                            onClick={() => {
+                                                setInput(starter);
+                                                inputRef.current?.focus();
+                                            }}
+                                            className="rounded-full border border-[#F55F2A]/25 bg-[#F55F2A]/10 px-3 py-1.5 text-xs font-semibold text-[#B94118] transition hover:bg-[#F55F2A]/20"
+                                            title="Use this as your prompt"
+                                        >
+                                            {starter}
+                                        </button>
+                                    ))}
+                                </div>
+                            ) : null}
 
                             {message.stagedBundleId ? (
                                 <div className="mt-2 text-[11px] text-gray-600">
