@@ -3,7 +3,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import NavBar from "@/components/NavBar";
 import { auth, db } from "@/lib/firebase";
 import {
     GoogleAuthProvider,
@@ -33,6 +32,8 @@ import {
     getDoc,
 } from "firebase/firestore";
 import Image from "next/image";
+import orangeLogo from "@/public/images/orange_logo.png";
+import whiteLogo from "@/public/images/logo.png";
 
 const ACCENT = "#f55f2a";
 
@@ -541,9 +542,36 @@ export default function LoginPage(): JSX.Element {
     };
 
     return (
-        <main className="min-h-[100dvh] bg-white text-black px-4 sm:px-6 pt-24 pb-12 sm:pt-28 sm:pb-16 flex items-start md:items-center justify-center">
-            <NavBar />
-            <div className="w-full max-w-md rounded-2xl border border-black/10 bg-white p-4 sm:p-6 md:p-8 shadow-md">
+        <main className="relative min-h-[100dvh] overflow-hidden text-black">
+            <Image src="/images/hero_bg.jpg" alt="Kloner hero background" fill priority className="object-cover" />
+            <div className="absolute inset-0 bg-[#06141f]/50" />
+
+            <a
+                href="/"
+                className="absolute left-4 top-4 z-20 inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/25 px-3 py-1.5 text-xs font-medium text-white/90 backdrop-blur hover:bg-black/35 sm:left-6 sm:top-6"
+            >
+                <span aria-hidden>←</span>
+                Return to homepage
+            </a>
+
+            <div className="relative z-10 flex min-h-[100dvh] items-center justify-center px-4 py-20 sm:px-6">
+                <div className="grid w-full max-w-6xl overflow-hidden rounded-[28px] border border-white/20 bg-white/10 shadow-[0_30px_100px_rgba(0,0,0,0.55)] backdrop-blur-sm md:grid-cols-[1.05fr_0.95fr]">
+                    <div className="relative hidden min-h-[580px] md:block">
+                        <Image src="/images/hero_bg.jpg" alt="Kloner visual" fill className="object-cover" sizes="(min-width: 768px) 50vw, 100vw" />
+                        <div className="absolute inset-0 bg-gradient-to-tr from-black/55 via-[#0a2638]/25 to-black/15" />
+                        <div className="absolute left-8 top-8">
+                            <Image src={whiteLogo} alt="Kloner" width={360} height={360} className="h-28 w-auto" />
+                        </div>
+                        <div className="absolute bottom-8 left-8 right-8 text-white">
+                            <p className="text-xs uppercase tracking-[0.22em] text-white/75">Build with Kloner</p>
+                            <h2 className="mt-3 text-3xl font-semibold leading-tight">Bring your next website live in minutes.</h2>
+                            <p className="mt-3 max-w-sm text-sm leading-relaxed text-white/80">
+                                Sign in, generate from a URL or prompt, and publish a fast, shareable website.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="bg-white px-5 py-6 sm:px-8 sm:py-8 md:px-10 md:py-10">
                 {/* TOP MODE TOGGLE */}
                 <div className="mb-4 flex justify-center">
                     <div className="inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 p-1 text-xs">
@@ -588,30 +616,37 @@ export default function LoginPage(): JSX.Element {
                 </div>
 
                 {pendingPrompt ? (
-                    <div className="mb-3 flex items-start justify-between gap-2 rounded-lg bg-indigo-50 px-3 py-2.5 text-xs text-indigo-900 ring-1 ring-indigo-200">
-                        <div>
-                            We will start from this prompt after you{" "}
-                            {mode === "signin" ? "sign in" : "sign up"}:{" "}
-                            <span className="font-medium break-words">{pendingPrompt}</span>
+                    <div className="mb-3 rounded-xl border border-[#d6defb] bg-[#f5f7ff] px-3 py-2.5 text-xs text-[#233870]">
+                        <div className="mb-1 inline-flex items-center rounded-full bg-[#e7edff] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#425fb6]">
+                            Auto-add prompt
                         </div>
+                        <div className="mt-1 flex items-start justify-between gap-2">
+                            <div>
+                                We&apos;ll use this prompt right after you {mode === "signin" ? "sign in" : "sign up"}:
+                                <span className="mt-1 block font-medium break-words">{pendingPrompt}</span>
+                            </div>
                         <button
                             type="button"
                             onClick={clearPendingPrompt}
-                            className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full border border-indigo-500 text-[11px] leading-none text-indigo-800 hover:bg-indigo-600 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                            className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full border border-[#9eb1f7] text-[11px] leading-none text-[#425fb6] hover:bg-[#425fb6] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#425fb6]"
                             aria-label="Do not auto-add this prompt"
                         >
                             ×
                         </button>
+                        </div>
                     </div>
                 ) : null}
 
                 {pendingUrl ? (
-                    <div className="mb-4 flex items-start justify-between gap-2 rounded-lg bg-emerald-50 px-3 py-2.5 text-xs text-emerald-800 ring-1 ring-emerald-200">
-                        <div>
-                            We will add this URL after you {" "}
-                            {mode === "signin" ? "sign in\n" : "sign up\n"}:{" "}
-                            <span className="font-medium break-all">{pendingUrl}</span>
+                    <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50/90 px-3 py-2.5 text-xs text-emerald-900">
+                        <div className="mb-1 inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-700">
+                            Auto-add URL
                         </div>
+                        <div className="mt-1 flex items-start justify-between gap-2">
+                            <div>
+                                We&apos;ll add this URL automatically after you {mode === "signin" ? "sign in" : "sign up"}:
+                                <span className="mt-1 block font-medium break-all">{pendingUrl}</span>
+                            </div>
                         <button
                             type="button"
                             onClick={clearPendingUrl}
@@ -620,6 +655,7 @@ export default function LoginPage(): JSX.Element {
                         >
                             ×
                         </button>
+                        </div>
                     </div>
                 ) : null}
 
@@ -698,8 +734,7 @@ export default function LoginPage(): JSX.Element {
                                     >
                                         Privacy Policy
                                     </a>
-                                    . I am responsible for any URLs I submit and for how I use any
-                                    cloned or generated sites.
+                                    .
                                 </span>
                             </label>
                         </div>
@@ -796,6 +831,8 @@ export default function LoginPage(): JSX.Element {
                             Privacy Policy
                         </a>
                         .
+                    </div>
+                </div>
                     </div>
                 </div>
             </div>

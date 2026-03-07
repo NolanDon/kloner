@@ -2,7 +2,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import LoginPage from "./LoginForm";
-import Footer from "@/components/Footer";
 
 export const metadata: Metadata = {
     title: "Login",
@@ -14,11 +13,8 @@ export const metadata: Metadata = {
 
 export default function Page() {
     return (
-        <>
-            <Suspense fallback={null}>
-                <LoginPage />
-            </Suspense>
-            <Footer />
-        </>
+        <Suspense fallback={null}>
+            <LoginPage />
+        </Suspense>
     );
 }
