@@ -28,10 +28,6 @@ export default function HeroContent({
     intervalMs: 3200,
   });
 
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     const user = auth.currentUser;

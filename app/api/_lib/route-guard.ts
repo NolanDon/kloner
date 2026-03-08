@@ -61,6 +61,47 @@ function readBearerToken(req: NextRequest): string | null {
     return token || null;
 }
 
+async function getResponseDebugDetails(response: NextResponse): Promise<{
+    errorMessage?: string;
+    errorCode?: string;
+    errorReason?: string;
+    debugDetails?: Record<string, unknown>;
+}> {
+    try {
+        const clone = response.clone();
+        const contentType = (clone.headers.get("content-type") || "").toLowerCase();
+
+        if (contentType.includes("application/json")) {
+            const json: any = await clone.json().catch(() => null);
+            if (!json || typeof json !== "object") return {};
+
+            const errorMessage = typeof json.error === "string" ? json.error : undefined;
+            const errorCode = typeof json.code === "string" ? json.code : undefined;
+            const errorReason = typeof json.reason === "string" ? json.reason : undefined;
+
+            const debugDetails: Record<string, unknown> = {};
+            if (json.kind !== undefined) debugDetails.kind = json.kind;
+            if (json.remaining !== undefined) debugDetails.remaining = json.remaining;
+            if (json.limit !== undefined) debugDetails.limit = json.limit;
+            if (json.reqId !== undefined) debugDetails.reqId = json.reqId;
+            if (json.debug !== undefined) debugDetails.debug = json.debug;
+
+            return {
+                errorMessage,
+                errorCode,
+                errorReason,
+                debugDetails: Object.keys(debugDetails).length ? debugDetails : undefined,
+            };
+        }
+
+        const text = (await clone.text().catch(() => "")).trim();
+        if (!text) return {};
+        return { errorMessage: text.slice(0, 300) };
+    } catch {
+        return {};
+    }
+}
+
 export async function requireSessionAndMaybeCsrf(
     req: NextRequest,
     handler: AuthedHandler,
@@ -102,6 +143,11 @@ export async function requireSessionAndMaybeCsrf(
         const status = response.status;
 
         if (status >= 400) {
+            const responseDetails = await getResponseDebugDetails(response);
+            const messageParts = [`API responded with status ${status}`];
+            if (responseDetails.errorCode) messageParts.push(`code=${responseDetails.errorCode}`);
+            if (responseDetails.errorReason) messageParts.push(`reason=${responseDetails.errorReason}`);
+            if (responseDetails.errorMessage) messageParts.push(`error=${responseDetails.errorMessage}`);
             const severity = status >= 500 ? "critical" : "error";
             await captureCriticalEvent({
                 source: "vercel",
@@ -112,11 +158,15 @@ export async function requireSessionAndMaybeCsrf(
                 action: `api.${req.method.toLowerCase()}`,
                 userId: uid,
                 requestId: getReqId(req),
-                message: `API responded with status ${status}`,
+                message: messageParts.join(" | "),
                 url: req.url,
                 service: "next-api",
                 extra: {
                     query: req.nextUrl?.search || "",
+                    responseError: responseDetails.errorMessage || null,
+                    responseCode: responseDetails.errorCode || null,
+                    responseReason: responseDetails.errorReason || null,
+                    responseDebug: responseDetails.debugDetails || null,
                 },
             });
         }

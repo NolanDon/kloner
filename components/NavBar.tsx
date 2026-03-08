@@ -396,7 +396,7 @@ export default function NavBar(): JSX.Element {
                           setMOpen(false);
                           openUrlOverlay();
                         }}
-                        className="inline-flex items-center justify-center gap-2 rounded-2xl border border-neutral-300 bg-white px-3 py-3 text-sm font-semibold text-neutral-900"
+                        className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[#F55F2A] bg-[#F55F2A] px-3 py-3 text-sm font-semibold text-white hover:bg-[#E04E1B]"
                       >
                         <ScanSearch className="h-4 w-4" />
                         Start project

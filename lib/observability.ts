@@ -166,6 +166,25 @@ function toSlackBlocks(event: StoredEvent, eventId: string) {
         });
     }
 
+    if (event.extra && Object.keys(event.extra).length > 0) {
+        let debugJson = "";
+        try {
+            debugJson = JSON.stringify(event.extra, null, 2);
+        } catch {
+            debugJson = String(event.extra);
+        }
+
+        if (debugJson) {
+            blocks.push({
+                type: "section",
+                text: {
+                    type: "mrkdwn",
+                    text: truncate(`*Debug:*\n\`\`\`${debugJson}\`\`\``, MAX_TEXT_CHARS),
+                },
+            });
+        }
+    }
+
     const links: string[] = [];
     if (dashboardUrl) {
         links.push(`<${dashboardUrl}|Open in dashboard>`);

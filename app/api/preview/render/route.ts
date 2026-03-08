@@ -106,6 +106,8 @@ export async function POST(req: NextRequest) {
                     return NextResponse.json(
                         {
                             error: "Monthly preview limit reached for your plan.",
+                            code: "PREVIEW_CREDITS_EXHAUSTED",
+                            reason: "preview_credits_exhausted",
                             remaining: peek.remaining,
                             kind: "preview",
                         },

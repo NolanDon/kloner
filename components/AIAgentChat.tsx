@@ -2530,7 +2530,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                                 setInput(starter);
                                                 inputRef.current?.focus();
                                             }}
-                                            className="rounded-full border border-[#F55F2A]/25 bg-[#F55F2A]/10 px-3 py-1.5 text-xs font-semibold text-[#B94118] transition hover:bg-[#F55F2A]/20"
+                                            className="rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-800 transition hover:bg-neutral-100"
                                             title="Use this as your prompt"
                                         >
                                             {starter}
