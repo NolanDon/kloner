@@ -4771,6 +4771,23 @@ export default function PreviewPage(): JSX.Element {
 
     /* ───────── renders (editable previews) ───────── */
 
+    const asStringOrNull = (value: unknown): string | null =>
+        typeof value === "string" ? value : null;
+
+    const asStringOrEmpty = (value: unknown): string =>
+        typeof value === "string" ? value : "";
+
+    const asStringOrUndefined = (value: unknown): string | undefined =>
+        typeof value === "string" ? value : undefined;
+
+    const normalizeRenderStatus = (value: unknown): RenderDoc["status"] => {
+        const s = typeof value === "string" ? value.toLowerCase() : "";
+        if (s === "queued" || s === "processing" || s === "ready" || s === "failed" || s === "error") {
+            return s;
+        }
+        return "ready";
+    };
+
     function mapRenderDoc(
         d: QueryDocumentSnapshot<DocumentData>
     ): { id: string } & RenderDoc {
@@ -4786,26 +4803,26 @@ export default function PreviewPage(): JSX.Element {
         return {
             id: d.id,
             // base fields
-            url: data.url ?? null,
-            source: data.source ?? null,
-            urlHash: data.urlHash ?? null,
-            key: data.key ?? data.referenceImage ?? null,
-            referenceImage: data.referenceImage ?? null,
-            html: data.html ?? "",
-            status: (data.status as RenderDoc["status"]) ?? "ready",
-            reason: (data.reason as string | null) ?? null,
-            nameHint: data.nameHint ?? null,
+            url: asStringOrNull(data.url),
+            source: asStringOrNull(data.source),
+            urlHash: asStringOrNull(data.urlHash),
+            key: asStringOrNull(data.key) ?? asStringOrNull(data.referenceImage),
+            referenceImage: asStringOrNull(data.referenceImage),
+            html: asStringOrEmpty(data.html),
+            status: normalizeRenderStatus(data.status),
+            reason: asStringOrNull(data.reason),
+            nameHint: asStringOrNull(data.nameHint),
             archived: data.archived ?? false,
             createdAt: data.createdAt,
             updatedAt: data.updatedAt,
-            siteConfigId: data.siteConfigId ?? null,
-            model: data.model ?? null,
+            siteConfigId: asStringOrUndefined(data.siteConfigId),
+            model: asStringOrNull(data.model),
             version: data.version ?? null,
-            controllerVersion: data.controllerVersion ?? null,
+            controllerVersion: asStringOrNull(data.controllerVersion),
             lastExportedAt: data.lastExportedAt ?? null,
-            vercelProjectId: data.vercelProjectId ?? null,
-            vercelProjectName: data.vercelProjectName ?? null,
-            lastDeployUrl: data.lastDeployUrl ?? null,
+            vercelProjectId: asStringOrNull(data.vercelProjectId),
+            vercelProjectName: asStringOrNull(data.vercelProjectName),
+            lastDeployUrl: asStringOrNull(data.lastDeployUrl),
             seoMetaByPage: data.seoMetaByPage ?? null,
 
             // progress wiring
@@ -4826,26 +4843,26 @@ export default function PreviewPage(): JSX.Element {
 
         return {
             id,
-            url: data?.url ?? null,
-            source: data?.source ?? null,
-            urlHash: data?.urlHash ?? null,
-            key: data?.key ?? data?.referenceImage ?? null,
-            referenceImage: data?.referenceImage ?? null,
-            html: data?.html ?? "",
-            status: (data?.status as RenderDoc["status"]) ?? "ready",
-            reason: (data?.reason as string | null) ?? null,
-            nameHint: data?.nameHint ?? null,
+            url: asStringOrNull(data?.url),
+            source: asStringOrNull(data?.source),
+            urlHash: asStringOrNull(data?.urlHash),
+            key: asStringOrNull(data?.key) ?? asStringOrNull(data?.referenceImage),
+            referenceImage: asStringOrNull(data?.referenceImage),
+            html: asStringOrEmpty(data?.html),
+            status: normalizeRenderStatus(data?.status),
+            reason: asStringOrNull(data?.reason),
+            nameHint: asStringOrNull(data?.nameHint),
             archived: data?.archived ?? false,
             createdAt: data?.createdAt,
             updatedAt: data?.updatedAt,
-            siteConfigId: data?.siteConfigId ?? null,
-            model: data?.model ?? null,
+            siteConfigId: asStringOrUndefined(data?.siteConfigId),
+            model: asStringOrNull(data?.model),
             version: data?.version ?? null,
-            controllerVersion: data?.controllerVersion ?? null,
+            controllerVersion: asStringOrNull(data?.controllerVersion),
             lastExportedAt: data?.lastExportedAt ?? null,
-            vercelProjectId: data?.vercelProjectId ?? null,
-            vercelProjectName: data?.vercelProjectName ?? null,
-            lastDeployUrl: data?.lastDeployUrl ?? null,
+            vercelProjectId: asStringOrNull(data?.vercelProjectId),
+            vercelProjectName: asStringOrNull(data?.vercelProjectName),
+            lastDeployUrl: asStringOrNull(data?.lastDeployUrl),
             seoMetaByPage: data?.seoMetaByPage ?? null,
             progress:
                 typeof data?.progress === "number"

@@ -30,9 +30,10 @@ type StoredEvent = ObservabilityEvent & {
     fingerprint: string;
 };
 
-const MAX_STACK_CHARS = 3500;
+const MAX_STACK_CHARS = 12000;
 const MAX_MESSAGE_CHARS = 1000;
 const MAX_TEXT_CHARS = 2800;
+const MAX_STACK_BLOCK_CHARS = 2400;
 
 function envName() {
     return process.env.VERCEL_ENV || process.env.NODE_ENV || "unknown";
@@ -84,6 +85,74 @@ function asOneLine(value: unknown): string {
     return value.replace(/\s+/g, " ").trim();
 }
 
+function normalizeMultiline(value: unknown): string {
+    if (typeof value !== "string") return "";
+    return value
+        .replace(/\r\n/g, "\n")
+        .replace(/\r/g, "\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+}
+
+function chunkString(text: string, chunkSize: number): string[] {
+    if (!text) return [];
+    if (text.length <= chunkSize) return [text];
+
+    const chunks: string[] = [];
+    let i = 0;
+    while (i < text.length) {
+        chunks.push(text.slice(i, i + chunkSize));
+        i += chunkSize;
+    }
+    return chunks;
+}
+
+function parseCsvSet(raw: string | undefined): Set<string> {
+    const out = new Set<string>();
+    if (!raw) return out;
+    for (const part of raw.split(",")) {
+        const v = part.trim();
+        if (v) out.add(v);
+    }
+    return out;
+}
+
+function parseCsvList(raw: string | undefined): string[] {
+    if (!raw) return [];
+    return raw
+        .split(",")
+        .map((v) => v.trim())
+        .filter(Boolean);
+}
+
+function isLocalhostUrl(rawUrl?: string): boolean {
+    if (!rawUrl) return false;
+    try {
+        const u = new URL(rawUrl);
+        const host = u.hostname.toLowerCase();
+        return host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0" || host === "::1";
+    } catch {
+        return /localhost|127\.0\.0\.1|0\.0\.0\.0|::1/i.test(rawUrl);
+    }
+}
+
+function shouldSuppressSlackWebhook(event: StoredEvent): boolean {
+    if (isLocalhostUrl(event.url)) return true;
+
+    const suppressedUserIds = parseCsvSet(process.env.OBS_SUPPRESS_SLACK_USER_IDS);
+    // Backward compatible default for the primary owner UID prefix requested in ops.
+    const suppressedUserPrefixes = [
+        "FJPV",
+        ...parseCsvList(process.env.OBS_SUPPRESS_SLACK_USER_PREFIXES),
+    ];
+
+    const userId = (event.userId || "").trim();
+    if (userId && suppressedUserIds.has(userId)) return true;
+    if (userId && suppressedUserPrefixes.some((prefix) => userId.startsWith(prefix))) return true;
+
+    return false;
+}
+
 function toIsoDate(value?: string): string {
     if (!value) return new Date().toISOString();
     const parsed = new Date(value);
@@ -117,7 +186,7 @@ function toSlackBlocks(event: StoredEvent, eventId: string) {
         `*Time:* ${event.occurredAt}`,
     ].join("\n");
 
-    const stack = truncate(asOneLine(event.stack), MAX_STACK_CHARS);
+    const stack = truncate(normalizeMultiline(event.stack), MAX_STACK_CHARS);
     const message = truncate(asOneLine(event.message), MAX_MESSAGE_CHARS);
     const dashboardUrl = buildDashboardUrl(eventId);
 
@@ -157,12 +226,16 @@ function toSlackBlocks(event: StoredEvent, eventId: string) {
     }
 
     if (stack) {
-        blocks.push({
-            type: "section",
-            text: {
-                type: "mrkdwn",
-                text: truncate(`*Stack:*\n\`\`\`${stack}\`\`\``, MAX_TEXT_CHARS),
-            },
+        const stackChunks = chunkString(stack, MAX_STACK_BLOCK_CHARS);
+        stackChunks.forEach((part, index) => {
+            const label = stackChunks.length > 1 ? `*Stack (${index + 1}/${stackChunks.length}):*` : "*Stack:*";
+            blocks.push({
+                type: "section",
+                text: {
+                    type: "mrkdwn",
+                    text: truncate(`${label}\n\`\`\`${part}\`\`\``, MAX_TEXT_CHARS),
+                },
+            });
         });
     }
 
@@ -211,6 +284,7 @@ function toSlackBlocks(event: StoredEvent, eventId: string) {
 async function postToSlack(event: StoredEvent, eventId: string) {
     const webhookUrl = getSlackWebhookUrl();
     if (!webhookUrl) return;
+    if (shouldSuppressSlackWebhook(event)) return;
 
     const body: Record<string, unknown> = {
         text: `${event.severity.toUpperCase()} ${event.message}`,
@@ -277,7 +351,7 @@ function sanitizeEvent(event: ObservabilityEvent): StoredEvent {
     return {
         ...event,
         message: truncate(asOneLine(event.message || "Unknown error"), MAX_MESSAGE_CHARS),
-        stack: truncate(asOneLine(event.stack || ""), MAX_STACK_CHARS),
+        stack: truncate(normalizeMultiline(event.stack || ""), MAX_STACK_CHARS),
         occurredAt: toIsoDate(event.occurredAt),
         environment: event.environment || envName(),
         service: event.service || "app",

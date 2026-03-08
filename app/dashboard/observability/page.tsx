@@ -47,10 +47,17 @@ export default function DashboardObservabilityPage() {
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string>("");
     const [selectedEventId, setSelectedEventId] = useState<string>(focusEventId);
+    const [stackExpanded, setStackExpanded] = useState<boolean>(false);
+    const [extraExpanded, setExtraExpanded] = useState<boolean>(false);
 
     useEffect(() => {
         setSelectedEventId(focusEventId);
     }, [focusEventId]);
+
+    useEffect(() => {
+        setStackExpanded(false);
+        setExtraExpanded(false);
+    }, [selectedEventId]);
 
     useEffect(() => {
         let active = true;
@@ -197,15 +204,43 @@ export default function DashboardObservabilityPage() {
                             ) : null}
 
                             {selected.stack ? (
-                                <pre className="max-h-[32vh] overflow-auto rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-700">
-                                    {selected.stack}
-                                </pre>
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="text-xs font-medium uppercase tracking-wide text-neutral-500">Stack</div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setStackExpanded((v) => !v)}
+                                            className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-700 hover:bg-neutral-50"
+                                        >
+                                            {stackExpanded ? "Collapse" : "Expand"}
+                                        </button>
+                                    </div>
+                                    <pre
+                                        className={`${stackExpanded ? "max-h-[72vh]" : "max-h-[32vh]"} overflow-auto whitespace-pre-wrap break-words rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-700`}
+                                    >
+                                        {selected.stack}
+                                    </pre>
+                                </div>
                             ) : null}
 
                             {selected.extra ? (
-                                <pre className="max-h-[24vh] overflow-auto rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-700">
-                                    {JSON.stringify(selected.extra, null, 2)}
-                                </pre>
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="text-xs font-medium uppercase tracking-wide text-neutral-500">Debug</div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setExtraExpanded((v) => !v)}
+                                            className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-700 hover:bg-neutral-50"
+                                        >
+                                            {extraExpanded ? "Collapse" : "Expand"}
+                                        </button>
+                                    </div>
+                                    <pre
+                                        className={`${extraExpanded ? "max-h-[60vh]" : "max-h-[24vh]"} overflow-auto whitespace-pre-wrap break-words rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-700`}
+                                    >
+                                        {JSON.stringify(selected.extra, null, 2)}
+                                    </pre>
+                                </div>
                             ) : null}
                         </div>
                     )}
