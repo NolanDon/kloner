@@ -2620,18 +2620,26 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
 
     // Load panel width from localStorage on mount
     useEffect(() => {
-        const savedWidth = localStorage.getItem('app-builder-left-panel-width');
-        if (savedWidth) {
-            const width = parseInt(savedWidth, 10);
-            if (width >= 300 && width <= 800) { // Reasonable bounds
-                setLeftPanelWidth(width);
+        try {
+            const savedWidth = window.localStorage.getItem('app-builder-left-panel-width');
+            if (savedWidth) {
+                const width = parseInt(savedWidth, 10);
+                if (width >= 300 && width <= 800) { // Reasonable bounds
+                    setLeftPanelWidth(width);
+                }
             }
+        } catch {
+            // Some browsers/webviews block storage access; keep default width.
         }
     }, []);
 
     // Save panel width to localStorage when it changes
     useEffect(() => {
-        localStorage.setItem('app-builder-left-panel-width', leftPanelWidth.toString());
+        try {
+            window.localStorage.setItem('app-builder-left-panel-width', leftPanelWidth.toString());
+        } catch {
+            // Ignore storage write failures to avoid crashing editor mount.
+        }
     }, [leftPanelWidth]);
 
     // Handle resize mouse events
