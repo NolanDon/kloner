@@ -1549,9 +1549,32 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
     }, [app]);
 
     const suppressNextFilesReplaceApplyRef = useRef(false);
+    const scopeBootstrappedForAppIdRef = useRef<string | null>(null);
 
     const autoPreviewRunIdRef = useRef(0);
     const didAutoPreviewStartRef = useRef(false);
+
+    const bootstrapAppScope = useCallback(async (): Promise<boolean> => {
+        if (!appId) return false;
+        try {
+            const res = await fetch(`/api/app-builder/${encodeURIComponent(appId)}/scope`, {
+                method: "GET",
+                credentials: "include",
+                cache: "no-store",
+            });
+            return res.ok;
+        } catch {
+            return false;
+        }
+    }, [appId]);
+
+    // Proactively issue scope cookie once per app open to reduce first-write 403s.
+    useEffect(() => {
+        if (!appId) return;
+        if (scopeBootstrappedForAppIdRef.current === appId) return;
+        scopeBootstrappedForAppIdRef.current = appId;
+        void bootstrapAppScope();
+    }, [appId, bootstrapAppScope]);
 
     const previewSrc = useMemo(() => {
         const base = (app?.previewUrl || "").trim();
@@ -2924,34 +2947,64 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
         opts?: { afterSave?: "apply" | "none"; interactive?: boolean }
     ): Promise<boolean> => {
         try {
-            // Always fetch a fresh CSRF token so the header matches the cookie.
-            // (Relying on an existing cookie can drift and cause 403s.)
-            let csrf: string | null = null;
-            try {
-                const res = await fetch("/api/auth/csrf", {
+            const getCsrfToken = async (): Promise<string | null> => {
+                try {
+                    const res = await fetch("/api/auth/csrf", {
+                        method: "POST",
+                        headers: { "content-type": "application/json" },
+                        credentials: "include",
+                        cache: "no-store",
+                    });
+                    if (!res.ok) return null;
+                    const data = await res.json().catch(() => null);
+                    return data?.csrf || null;
+                } catch {
+                    return null;
+                }
+            };
+
+            const postUpdate = async (csrf: string | null) => {
+                const res = await fetch(`/api/app-builder/${appId}/update-file`, {
                     method: "POST",
-                    headers: { "content-type": "application/json" },
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
+                    },
                     credentials: "include",
                     cache: "no-store",
+                    body: JSON.stringify({ path, content }),
                 });
-                if (res.ok) {
-                    const data = await res.json().catch(() => null);
-                    csrf = data?.csrf || null;
+                const data = await res.json().catch(() => ({} as any));
+                return { res, data };
+            };
+
+            // Always fetch a fresh CSRF token so the header matches the cookie.
+            // (Relying on an existing cookie can drift and cause 403s.)
+            let csrf = await getCsrfToken();
+            let { res, data } = await postUpdate(csrf);
+
+            const errCode = String((data as any)?.code || "").trim();
+            const errMsg = String((data as any)?.error || "").toLowerCase();
+            const isScopeProblem =
+                errCode === "MISSING_APP_SCOPE" ||
+                errCode === "INVALID_APP_SCOPE" ||
+                errMsg.includes("app scope");
+
+            // Self-heal missing/expired app-scope cookie and retry once.
+            if (!res.ok && res.status === 403 && isScopeProblem) {
+                const bootstrapped = await bootstrapAppScope();
+                if (bootstrapped) {
+                    csrf = await getCsrfToken();
+                    ({ res, data } = await postUpdate(csrf));
                 }
-            } catch {
-                csrf = null;
             }
-            const res = await fetch(`/api/app-builder/${appId}/update-file`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
-                },
-                credentials: "include",
-                cache: "no-store",
-                body: JSON.stringify({ path, content }),
-            });
-            if (!res.ok) throw new Error("Failed to save");
+
+            if (!res.ok || (data && data.ok === false)) {
+                const msg =
+                    String((data as any)?.error || "").trim() ||
+                    `Failed to save (HTTP ${res.status})`;
+                throw new Error(msg);
+            }
 
             const afterSave = opts?.afterSave || "apply";
             if (afterSave === "apply") {
@@ -2965,7 +3018,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
             }
             return false;
         }
-    }, [appId, queuePreviewApply, showAlert]);
+    }, [appId, bootstrapAppScope, queuePreviewApply, showAlert]);
 
     const applyStagedImage = useCallback(async (id: string) => {
         const item = stagedImages.find((entry) => entry.id === id);

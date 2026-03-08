@@ -3926,7 +3926,7 @@ export default function PreviewPage(): JSX.Element {
                 generateAbortedRef.current = startRequestKey;
                 setInfo("");
                 clearStartQueryParam();
-                if (!cancelled) setErr("This URL failed to process. Please ensure it is an acc.");
+                if (!cancelled) setErr("This URL failed to process. Please ensure it is accessible before retrying.");
                 captureLockMinUntilRef.current = 0;
                 setCaptureLockUrl(null);
                 captureLockStartedAtRef.current = 0;
@@ -3995,7 +3995,7 @@ export default function PreviewPage(): JSX.Element {
             // Server error — abort polling, wipe captured UI state, show error.
             generateAbortedRef.current = startRequestKey;
             if (!cancelled) {
-                setErr("This URL failed to process. Please ensure it is an acc.");
+                setErr("This URL failed to process. Please ensure it is accessible before retrying.");
                 setInfo("");
                 captureLockMinUntilRef.current = 0;
                 setCaptureLockUrl(null);
