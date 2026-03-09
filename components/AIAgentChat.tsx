@@ -184,7 +184,7 @@ function buildCompileFixPrefill(ctx: CompileErrorQuickFixContext): string {
 export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, onUserMessageSent, welcomeContext }: AIAgentChatProps) {
     const { user, userTier } = useAuth();
     const { showConfirm, showAlert } = useModal();
-    const AI_EDIT_COST = 5;
+    const AI_EDIT_COST = 3;
     const PRO_MONTHLY_PRICE_USD = Number.isFinite(Number(process.env.NEXT_PUBLIC_PRO_MONTHLY_PRICE_USD))
         ? Math.max(1, Number(process.env.NEXT_PUBLIC_PRO_MONTHLY_PRICE_USD))
         : 29;

@@ -7,7 +7,7 @@ import { captureCriticalEvent, captureException } from "@/lib/observability";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const DEFAULT_COST = 5;
+const DEFAULT_COST = 3;
 
 function nextPeriodEndUtc(now: Date) {
     const y = now.getUTCFullYear();
