@@ -5,6 +5,7 @@ import { callBackend } from "@/src/lib/callBackend";
 import { getAuthoritativeUserTier } from "../_lib/userTier";
 import { verifySession } from "../_lib/auth";
 import type { UserTier } from "@/src/lib/credits";
+import { peekUserCredit, consumeUserCredit } from "../_lib/credits-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,6 +60,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Hard gate: app generation with createPreview consumes preview credits.
+    try {
+      const peek = await peekUserCredit(decoded.uid, tier, "preview");
+      if (!peek.ok || (peek.remaining !== null && peek.remaining <= 0)) {
+        return NextResponse.json(
+          {
+            error: "Monthly preview limit reached for your plan.",
+            code: "PREVIEW_CREDITS_EXHAUSTED",
+            reason: "preview_credits_exhausted",
+            remaining: peek.remaining,
+            kind: "preview",
+          },
+          { status: 429 }
+        );
+      }
+    } catch {
+      return NextResponse.json(
+        { error: "Unable to check preview credits. Try again shortly." },
+        { status: 503 }
+      );
+    }
+
     try {
       // Call the backend to generate the app
       const backendResponse = await callBackend(req, {
@@ -100,11 +123,25 @@ export async function POST(req: NextRequest) {
       // Treat any 2xx as a successful "job accepted".
       if (backendResponse.status >= 200 && backendResponse.status < 300) {
         const appData = (backendResponse.json || {}) as any;
+        const acceptedAppId = typeof appData.appId === "string" ? appData.appId.trim() : "";
+
+        // Charge one preview credit when generation is accepted with an appId.
+        if (acceptedAppId) {
+          try {
+            await consumeUserCredit(decoded.uid, tier, "preview");
+          } catch (err: any) {
+            console.warn("consumeUserCredit failed (preview, generate-app-from-prompt)", {
+              uid: decoded.uid,
+              err: err?.message || String(err),
+            });
+          }
+        }
+
         return NextResponse.json(
           {
             message: appData.message || "App generation started. Check back later.",
             status: appData.status || "processing",
-            appId: appData.appId,
+            appId: acceptedAppId || appData.appId,
             reqId: backendResponse.reqId,
           },
           { status: 202 },

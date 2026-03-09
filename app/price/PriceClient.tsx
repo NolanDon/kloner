@@ -9,6 +9,7 @@ import { useAuth } from "@/src/hooks/useAuth";
 import { Check } from "lucide-react";
 
 const ACCENT = "#f55f2a";
+const AI_EDIT_CREDIT_COST = 3;
 
 /* ───────── CSRF helper (reuse / centralize later) ───────── */
 
@@ -550,7 +551,7 @@ export default function PriceClient(): JSX.Element {
                                         {creditsDisplay.totalLabel}
                                     </p>
                                     <p className="mt-1 text-[12px] text-neutral-600">
-                                        Used for AI edits inside the builder.
+                                        Used for AI edits inside the builder. 1 AI edit = {AI_EDIT_CREDIT_COST} credits.
                                     </p>
                                 </div>
 
@@ -775,7 +776,7 @@ export default function PriceClient(): JSX.Element {
                                     </select>
 
                                     <p className="mt-2 text-[11px] text-neutral-600">
-                                        ≈ {Math.max(1, Math.floor(topupCredits / 5)).toLocaleString()} AI edits
+                                        ≈ {Math.max(1, Math.floor(topupCredits / AI_EDIT_CREDIT_COST)).toLocaleString()} AI edits
                                     </p>
                                 </div>
 
