@@ -3934,6 +3934,9 @@ export default function PreviewPage(): JSX.Element {
                     clearStartQueryParam();
 
                     void (async () => {
+                        // For blocked/conflict outcomes, /api/private/generate already emits a
+                        // richer backend alert (url_scan_failed). Avoid duplicate Slack noise.
+                        if (res.status === 409) return;
                         if (!shouldSendFrontendTimeoutAlert("url_capture_enqueue_failed", targetUrl)) return;
                         try {
                             await fetch("/api/internal/observability/frontend-timeout", {
@@ -4087,6 +4090,8 @@ export default function PreviewPage(): JSX.Element {
                 void tryMarkError().catch(() => tryMarkError().catch(() => undefined));
             }
 
+            // For blocked/conflict outcomes, backend already emits url_scan_failed.
+            if (res.status === 409) return false;
             if (!shouldSendFrontendTimeoutAlert("url_capture_poll_enqueue_failed", targetUrl)) return false;
 
             void fetch("/api/internal/observability/frontend-timeout", {

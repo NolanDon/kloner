@@ -5,6 +5,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { db } from "@/lib/firebase";
 import { doc, onSnapshot, updateDoc, getDoc } from "firebase/firestore";
 import { useAuth } from "@/src/hooks/useAuth";
+import {
+  buildPreviewAlertKey,
+  classifyBackendSignal,
+  getPollBackoffMs,
+  parsePreviewTimeoutMs,
+  PREVIEW_ALERT_DEDUPE_TTL_MS,
+  shouldDedupeAlert,
+} from './previewAlertPolicy';
 
 // React 18 StrictMode in dev intentionally mounts/unmounts twice.
 // If we eagerly stop the local runner on unmount, we create a start/stop/start loop.
@@ -190,6 +198,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const lastStatusRef = useRef<string>('');
   const statusPollTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Track status polling timeout
   const iframeLoadTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Track iframe load timeout
+  const iframeCriticalTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const iframePostLoadTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Detect white-screen after iframe navigation
   const automaticRetryTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Track automatic retry timeout
   const pollStartedAtRef = useRef<number>(0);
@@ -207,6 +216,20 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const lastAppServerKindRef = useRef<'fallback' | 'next-dev' | 'next-prod' | ''>('');
   const stickyProgressByCodeRef = useRef<Record<string, number>>({});
   const lastTimeoutReportKeyRef = useRef<string>('');
+  const lastBackendStatusRef = useRef<any>(null);
+  const iframeWarnContextRef = useRef<{ key: string; code: string; previewUrl: string; warnedAt: number } | null>(null);
+
+  const PREVIEW_IFRAME_WARN_MS = parsePreviewTimeoutMs(
+    process.env.NEXT_PUBLIC_PREVIEW_IFRAME_WARN_MS || process.env.PREVIEW_IFRAME_WARN_MS,
+    30_000,
+  );
+  const PREVIEW_IFRAME_CRITICAL_MS = Math.max(
+    PREVIEW_IFRAME_WARN_MS + 5_000,
+    parsePreviewTimeoutMs(
+      process.env.NEXT_PUBLIC_PREVIEW_IFRAME_CRITICAL_MS || process.env.PREVIEW_IFRAME_CRITICAL_MS,
+      120_000,
+    ),
+  );
 
   // Default status polling interval while the preview is booting/compiling.
   // We keep this relatively infrequent; readiness is primarily driven by the
@@ -467,6 +490,10 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
       clearTimeout(iframeLoadTimeoutRef.current);
       iframeLoadTimeoutRef.current = null;
     }
+    if (iframeCriticalTimeoutRef.current) {
+      clearTimeout(iframeCriticalTimeoutRef.current);
+      iframeCriticalTimeoutRef.current = null;
+    }
     if (iframePostLoadTimeoutRef.current) {
       clearTimeout(iframePostLoadTimeoutRef.current);
       iframePostLoadTimeoutRef.current = null;
@@ -513,13 +540,22 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const reportPreviewTimeout = async (payload: {
     appId: string;
     code?: string;
+    action?: string;
+    severity?: 'critical' | 'error' | 'warning' | 'info';
+    statusCode?: number;
     status?: string;
     message: string;
     ageMs?: number;
+    elapsedMs?: number;
     previewUrl?: string | null;
     browser?: string;
     userAgent?: string;
     reason?: string;
+    requestId?: string;
+    jobId?: string;
+    alertKey?: string;
+    deduped?: boolean;
+    backend?: any;
   }) => {
     try {
       const headers = await getAuthenticatedHeaders();
@@ -535,36 +571,186 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     }
   };
 
+  const shouldEmitAlertForKey = (alertKey: string): { deduped: boolean } => {
+    try {
+      if (typeof window === 'undefined') return { deduped: false };
+      const storageKey = 'kloner.preview.alert.dedupe.v1';
+      const now = Date.now();
+      const raw = window.sessionStorage.getItem(storageKey);
+      const parsed = raw ? (JSON.parse(raw) as Record<string, number>) : {};
+      const next: Record<string, number> = {};
+
+      for (const [k, at] of Object.entries(parsed)) {
+        if (typeof at === 'number' && now - at < PREVIEW_ALERT_DEDUPE_TTL_MS) {
+          next[k] = at;
+        }
+      }
+
+      const deduped = shouldDedupeAlert(next, alertKey, now, PREVIEW_ALERT_DEDUPE_TTL_MS);
+      if (!deduped) next[alertKey] = now;
+      window.sessionStorage.setItem(storageKey, JSON.stringify(next));
+      return { deduped };
+    } catch {
+      return { deduped: false };
+    }
+  };
+
+  const reportPreviewAlert = async (payload: {
+    appId: string;
+    code?: string;
+    action: string;
+    severity: 'critical' | 'error' | 'warning' | 'info';
+    statusCode?: number;
+    status?: string;
+    reason?: string;
+    message: string;
+    elapsedMs?: number;
+    previewUrl?: string | null;
+    requestId?: string;
+    jobId?: string;
+    backendStatusData?: any;
+    force?: boolean;
+  }): Promise<{ sent: boolean; deduped: boolean; alertKey: string }> => {
+    const code = payload.code || pollingCodeRef.current || undefined;
+    const alertKey = buildPreviewAlertKey({
+      userId: user?.uid,
+      appId: payload.appId,
+      code,
+      reason: payload.reason || payload.action,
+    });
+
+    const dedupe = shouldEmitAlertForKey(alertKey);
+    if (dedupe.deduped && !payload.force) {
+      return { sent: false, deduped: true, alertKey };
+    }
+
+    const backend = payload.backendStatusData || lastBackendStatusRef.current || null;
+    const backendDebug = backend?.debug && typeof backend.debug === 'object' ? backend.debug : {};
+
+    const debugPayload = {
+      appId: payload.appId,
+      code: code || null,
+      userId: user?.uid || null,
+      requestId: payload.requestId || backend?.requestId || backend?.reqId || backendDebug?.requestId || backendDebug?.reqId || null,
+      jobId: payload.jobId || backend?.jobId || backendDebug?.jobId || null,
+      elapsedMs: typeof payload.elapsedMs === 'number' ? payload.elapsedMs : null,
+      backend: {
+        status: String(backend?.status || '').trim() || null,
+        uiStage: String(backend?.uiStage || '').trim() || null,
+        debug: {
+          timeoutReason: String(backendDebug?.timeoutReason || backend?.timeoutReason || '').trim() || null,
+          machine: {
+            state: backendDebug?.machine?.state ?? null,
+            restartCount: backendDebug?.machine?.restartCount ?? null,
+          },
+          compile: {
+            summary: backendDebug?.compile?.summary ?? backend?.compileError?.summary ?? null,
+          },
+          storage: {
+            rootfsIoCorruption: backendDebug?.storage?.rootfsIoCorruption ?? null,
+          },
+        },
+      },
+      alertKey,
+      deduped: false,
+    };
+
+    await reportPreviewTimeout({
+      appId: payload.appId,
+      code,
+      action: payload.action,
+      severity: payload.severity,
+      statusCode: payload.statusCode,
+      status: payload.status,
+      reason: payload.reason,
+      message: payload.message,
+      elapsedMs: payload.elapsedMs,
+      ageMs: payload.elapsedMs,
+      previewUrl: payload.previewUrl,
+      browser: detectBrowserLabel(),
+      userAgent: typeof navigator !== 'undefined' ? String(navigator.userAgent || '') : 'unknown',
+      requestId: debugPayload.requestId || undefined,
+      jobId: debugPayload.jobId || undefined,
+      alertKey,
+      deduped: false,
+      backend: debugPayload.backend,
+    });
+
+    return { sent: true, deduped: false, alertKey };
+  };
+
   const reportLoadingIssueOnce = (key: string, payload: {
     appId: string;
     code?: string;
+    action?: string;
+    severity?: 'critical' | 'error' | 'warning' | 'info';
+    statusCode?: number;
     status?: string;
     message: string;
     ageMs?: number;
+    elapsedMs?: number;
     previewUrl?: string | null;
     browser?: string;
     userAgent?: string;
     reason?: string;
+    requestId?: string;
+    jobId?: string;
+    backendStatusData?: any;
   }) => {
     if (lastTimeoutReportKeyRef.current === key) return;
     lastTimeoutReportKeyRef.current = key;
-    void reportPreviewTimeout(payload);
+    void reportPreviewAlert({
+      appId: payload.appId,
+      code: payload.code,
+      action: payload.action || payload.status || 'preview_timeout_12min',
+      severity: payload.severity || 'critical',
+      statusCode: payload.statusCode,
+      status: payload.status,
+      reason: payload.reason,
+      message: payload.message,
+      elapsedMs: payload.elapsedMs ?? payload.ageMs,
+      previewUrl: payload.previewUrl,
+      requestId: payload.requestId,
+      jobId: payload.jobId,
+      backendStatusData: payload.backendStatusData,
+    });
   };
 
   const reportPollIssueOnce = (key: string, payload: {
     appId: string;
     code?: string;
+    action?: string;
+    severity?: 'critical' | 'error' | 'warning' | 'info';
+    statusCode?: number;
     status?: string;
     message: string;
     ageMs?: number;
+    elapsedMs?: number;
     previewUrl?: string | null;
     browser?: string;
     userAgent?: string;
     reason?: string;
+    requestId?: string;
+    jobId?: string;
+    backendStatusData?: any;
   }) => {
     if (lastPollIssueReportKeyRef.current === key) return;
     lastPollIssueReportKeyRef.current = key;
-    void reportPreviewTimeout(payload);
+    void reportPreviewAlert({
+      appId: payload.appId,
+      code: payload.code,
+      action: payload.action || payload.status || 'preview_timeout_12min',
+      severity: payload.severity || 'critical',
+      statusCode: payload.statusCode,
+      status: payload.status,
+      reason: payload.reason,
+      message: payload.message,
+      elapsedMs: payload.elapsedMs ?? payload.ageMs,
+      previewUrl: payload.previewUrl,
+      requestId: payload.requestId,
+      jobId: payload.jobId,
+      backendStatusData: payload.backendStatusData,
+    });
   };
 
   const emitCompileErrorTelemetry = useCallback((kind: 'compile_error_seen' | 'compile_error_fix_clicked' | 'compile_error_fix_sent' | 'compile_error_recovered', detail: Record<string, any>) => {
@@ -1246,6 +1432,7 @@ export default function NavBar() {
 
   // When the preview URL changes (new machine / new viewer token), re-show the overlay.
   useEffect(() => {
+    iframeWarnContextRef.current = null;
     setShowPreviewUrlOverlay(true);
     setPreviewUrlDetailsOpen(false);
     setShowHmrWarning(true);
@@ -2221,7 +2408,7 @@ export default function NavBar() {
             setConnectingToExisting(false);
             setLoadingStatus('');
             setCurrentStatusData(null);
-            setError('Preview is taking longer than expected (6 minute timeout). Try Refresh first, if it still fails, please contact support.');
+            setError('Preview is taking longer than expected (12 minute timeout). Try Refresh first, if it still fails, please contact support.');
             setCanRetry(true);
             return;
           }
@@ -2311,6 +2498,7 @@ export default function NavBar() {
 
             const statusDataRaw = await statusResponse.json().catch(() => ({} as any));
             const statusData = normalizeStatusDataForUi(code, statusDataRaw);
+            lastBackendStatusRef.current = statusData;
             if (process.env.NODE_ENV !== 'production') {
               try {
                 const status = String((statusData as any)?.status || '').toLowerCase();
@@ -2362,6 +2550,7 @@ export default function NavBar() {
             const status = String((statusData as any)?.status || '').toLowerCase();
             const uiStage = String((statusData as any)?.uiStage || '').toLowerCase();
             const readyFlag = Boolean((statusData as any)?.ready);
+            const backendSignal = classifyBackendSignal(statusData);
             const deploymentUrlRaw = String((statusData as any)?.url || '').trim();
             const deploymentUrl = deploymentUrlRaw ? normalizePreviewUrlHost(deploymentUrlRaw) : '';
             const appServerKindRaw = String((statusData as any)?.appServerKind || '').toLowerCase();
@@ -2370,6 +2559,25 @@ export default function NavBar() {
               : '';
 
             lastAppServerKindRef.current = appServerKind;
+
+            if (!readyFlag && backendSignal.hardFailure) {
+              const elapsedMs = pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : undefined;
+              reportPollIssueOnce(`backend-hard-failure:${appId}:${code}:${backendSignal.timeoutReason || backendSignal.uiStage || backendSignal.status || 'unknown'}`, {
+                appId,
+                code,
+                action: 'preview_backend_hard_failure',
+                severity: 'critical',
+                statusCode: 504,
+                status: 'backend_hard_failure',
+                reason: backendSignal.timeoutReason || backendSignal.uiStage || backendSignal.status || 'backend_hard_failure',
+                message: 'Backend signaled an unrecoverable preview startup failure before iframe readiness.',
+                elapsedMs,
+                previewUrl: previewUrlRef.current,
+                requestId: backendSignal.requestId,
+                jobId: backendSignal.jobId,
+                backendStatusData: statusData,
+              });
+            }
 
             const compileErrorInfo = getCompileErrorStateFromStatus(code, statusData);
             if (compileErrorInfo) {
@@ -2733,23 +2941,47 @@ export default function NavBar() {
 
             if (looksLikeNetworkFetchFailure) {
               pollFetchFailureCountRef.current += 1;
+              const elapsedMs = pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : undefined;
 
               if (pollFetchFailureCountRef.current >= 3 && online !== false) {
                 setPollNetworkWarning(
                   'Connection checks are being blocked or interrupted. This is often caused by privacy/adblock extensions, strict corporate proxies, or VPN routing. You can keep waiting, or temporarily disable blockers for this site.'
                 );
 
-                reportPollIssueOnce(`poll-fetch-failed:${appId}:${code}`, {
-                  appId,
-                  code,
-                  status: 'poll_fetch_failed_network_interference_suspected',
-                  reason: 'network_interference_suspected',
-                  message: 'Repeated status polling fetch failures while browser was online; privacy extension/adblock/VPN interference suspected.',
-                  ageMs: pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : undefined,
-                  previewUrl: previewUrlRef.current,
-                  browser: detectBrowserLabel(),
-                  userAgent: typeof navigator !== 'undefined' ? String(navigator.userAgent || '') : 'unknown',
-                });
+                if (typeof elapsedMs === 'number' && elapsedMs >= PREVIEW_IFRAME_WARN_MS) {
+                  reportPollIssueOnce(`poll-fetch-failed-warn:${appId}:${code}`, {
+                    appId,
+                    code,
+                    action: 'preview_poll_fetch_warn',
+                    severity: 'warning',
+                    statusCode: 504,
+                    status: 'poll_fetch_failed_network_interference_suspected',
+                    reason: 'network_interference_suspected',
+                    message: 'Repeated status polling fetch failures while browser was online; privacy extension/adblock/VPN interference suspected.',
+                    elapsedMs,
+                    previewUrl: previewUrlRef.current,
+                    backendStatusData: lastBackendStatusRef.current,
+                  });
+                }
+
+                if (typeof elapsedMs === 'number' && elapsedMs >= PREVIEW_IFRAME_CRITICAL_MS && !backendReadyRef.current) {
+                  const backendSignal = classifyBackendSignal(lastBackendStatusRef.current);
+                  reportPollIssueOnce(`poll-fetch-failed-critical:${appId}:${code}:${backendSignal.timeoutReason || 'not_ready'}`, {
+                    appId,
+                    code,
+                    action: 'preview_poll_fetch_critical',
+                    severity: 'critical',
+                    statusCode: 504,
+                    status: 'poll_fetch_failed_critical_timeout',
+                    reason: backendSignal.timeoutReason || 'poll_fetch_failed_critical_timeout',
+                    message: 'Status polling fetch failures persisted past the critical timeout while preview was still not ready.',
+                    elapsedMs,
+                    previewUrl: previewUrlRef.current,
+                    requestId: backendSignal.requestId,
+                    jobId: backendSignal.jobId,
+                    backendStatusData: lastBackendStatusRef.current,
+                  });
+                }
               }
             }
 
@@ -2811,7 +3043,8 @@ export default function NavBar() {
               // Retry polling
               console.log(`Polling retry ${pollingRetryCountRef.current}/${maxPollingRetries}`);
               setLoadingStatus(`Retrying status check... (${pollingRetryCountRef.current}/${maxPollingRetries})`);
-              statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
+              const nextDelay = Math.max(POLL_INTERVAL_MS, getPollBackoffMs(pollFetchFailureCountRef.current));
+              statusPollTimeoutRef.current = setTimeout(pollStatus, nextDelay);
             }
           }
         };
@@ -3105,6 +3338,10 @@ export default function NavBar() {
         clearTimeout(iframeLoadTimeoutRef.current);
         iframeLoadTimeoutRef.current = null;
       }
+      if (iframeCriticalTimeoutRef.current) {
+        clearTimeout(iframeCriticalTimeoutRef.current);
+        iframeCriticalTimeoutRef.current = null;
+      }
       return;
     }
 
@@ -3113,6 +3350,10 @@ export default function NavBar() {
       if (iframeLoadTimeoutRef.current) {
         clearTimeout(iframeLoadTimeoutRef.current);
         iframeLoadTimeoutRef.current = null;
+      }
+      if (iframeCriticalTimeoutRef.current) {
+        clearTimeout(iframeCriticalTimeoutRef.current);
+        iframeCriticalTimeoutRef.current = null;
       }
       return;
     }
@@ -3140,7 +3381,7 @@ export default function NavBar() {
       try { onPreviewReadyChange?.(false); } catch { }
     }
 
-    // Set a timeout for iframe loading (30 seconds for DNS/network issues)
+    // Two-stage timeout policy: warn at 30s (configurable), critical at 120s (configurable).
     if (!isSoftReload) {
       iframeLoadTimeoutRef.current = setTimeout(() => {
         if (!iframeLoadedSuccessfullyRef.current) {
@@ -3148,17 +3389,61 @@ export default function NavBar() {
           // If backend hasn't declared ready yet, treat iframe reachability as transient.
           // Keep polling so we can recover from restarts/DNS delays.
           if (!backendReadyRef.current) {
-            reportLoadingIssueOnce(`iframe-load-timeout-waiting:${appId}:${pollingCodeRef.current || 'unknown'}:${String(previewUrl || '')}`, {
+            const elapsedMs = pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : 0;
+            void reportPreviewAlert({
               appId,
               code: pollingCodeRef.current || undefined,
+              action: 'preview_slow_start_warn',
+              severity: 'warning',
+              statusCode: 504,
               status: 'iframe_load_timeout_waiting_for_ready',
               reason: 'iframe_load_timeout_waiting_for_ready',
-              message: 'Preview iframe did not load within 30s while backend was still not ready.',
-              ageMs: pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : undefined,
+              message: 'Preview iframe did not load within warning threshold while backend was still not ready.',
+              elapsedMs,
               previewUrl,
-              browser: detectBrowserLabel(),
-              userAgent: typeof navigator !== 'undefined' ? String(navigator.userAgent || '') : 'unknown',
-            });
+              backendStatusData: lastBackendStatusRef.current,
+            }).then((result) => {
+              if (result.sent) {
+                iframeWarnContextRef.current = {
+                  key: result.alertKey,
+                  code: pollingCodeRef.current || 'unknown',
+                  previewUrl: String(previewUrl || ''),
+                  warnedAt: Date.now(),
+                };
+              }
+            }).catch(() => undefined);
+
+            const remainingToCritical = Math.max(1_000, PREVIEW_IFRAME_CRITICAL_MS - PREVIEW_IFRAME_WARN_MS);
+            if (iframeCriticalTimeoutRef.current) {
+              clearTimeout(iframeCriticalTimeoutRef.current);
+              iframeCriticalTimeoutRef.current = null;
+            }
+            iframeCriticalTimeoutRef.current = setTimeout(() => {
+              if (iframeLoadedSuccessfullyRef.current || backendReadyRef.current) return;
+              const latestStatus = lastBackendStatusRef.current;
+              const signal = classifyBackendSignal(latestStatus);
+              const criticalElapsedMs = pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : PREVIEW_IFRAME_CRITICAL_MS;
+
+              if (!signal.hardFailure && signal.recoverable && criticalElapsedMs < PREVIEW_IFRAME_CRITICAL_MS) {
+                return;
+              }
+
+              void reportPreviewAlert({
+                appId,
+                code: pollingCodeRef.current || undefined,
+                action: 'preview_slow_start_critical',
+                severity: 'critical',
+                statusCode: 504,
+                status: 'iframe_load_timeout_waiting_for_ready',
+                reason: signal.timeoutReason || 'iframe_load_timeout_waiting_for_ready',
+                message: 'Preview iframe remained unavailable beyond critical timeout and backend still was not ready.',
+                elapsedMs: criticalElapsedMs,
+                previewUrl,
+                requestId: signal.requestId,
+                jobId: signal.jobId,
+                backendStatusData: latestStatus,
+              });
+            }, remainingToCritical);
 
             setError(null);
             setCanRetry(false);
@@ -3233,7 +3518,7 @@ export default function NavBar() {
           try { onPreviewReadyChange?.(false); } catch { }
           stopAllTimers();
         }
-      }, 30000); // 30 second timeout
+      }, PREVIEW_IFRAME_WARN_MS);
     }
 
     return () => {
@@ -3241,8 +3526,12 @@ export default function NavBar() {
         clearTimeout(iframeLoadTimeoutRef.current);
         iframeLoadTimeoutRef.current = null;
       }
+      if (iframeCriticalTimeoutRef.current) {
+        clearTimeout(iframeCriticalTimeoutRef.current);
+        iframeCriticalTimeoutRef.current = null;
+      }
     };
-  }, [previewUrl, onPreviewReadyChange, externalPreviewMode]);
+  }, [previewUrl, onPreviewReadyChange, externalPreviewMode, PREVIEW_IFRAME_WARN_MS, PREVIEW_IFRAME_CRITICAL_MS]);
 
   const previewStatus = String((currentStatusData as any)?.status || '').toLowerCase();
   const previewInteractiveByStatus = [
@@ -3560,6 +3849,30 @@ export default function NavBar() {
             onLoad={() => {
               console.log('[WebContainerRunner] iframe onLoad (navigation complete):', previewUrl);
 
+              if (iframeCriticalTimeoutRef.current) {
+                clearTimeout(iframeCriticalTimeoutRef.current);
+                iframeCriticalTimeoutRef.current = null;
+              }
+
+              const warnCtx = iframeWarnContextRef.current;
+              if (warnCtx && warnCtx.previewUrl === String(activePreviewUrl || '')) {
+                const elapsedMs = pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : Date.now() - warnCtx.warnedAt;
+                void reportPreviewAlert({
+                  appId,
+                  code: warnCtx.code,
+                  action: 'preview_recovered_after_warn',
+                  severity: 'info',
+                  statusCode: 200,
+                  status: 'recovered_after_warn',
+                  reason: 'preview_recovered_after_warn',
+                  message: 'Preview iframe recovered after slow-start warning before terminal failure.',
+                  elapsedMs,
+                  previewUrl: activePreviewUrl,
+                  backendStatusData: lastBackendStatusRef.current,
+                }).catch(() => undefined);
+                iframeWarnContextRef.current = null;
+              }
+
               clearSafariEmbedFailure(activePreviewUrl);
 
               if (iframePostLoadTimeoutRef.current) {
@@ -3662,17 +3975,57 @@ export default function NavBar() {
 
               // If backend hasn't declared ready, treat this as transient and keep polling.
               if (!backendReadyRef.current) {
-                reportLoadingIssueOnce(`iframe-onerror-waiting:${appId}:${pollingCodeRef.current || 'unknown'}:${String(activePreviewUrl || '')}`, {
-                  appId,
-                  code: pollingCodeRef.current || undefined,
-                  status: 'iframe_onerror_waiting_for_ready',
-                  reason: 'iframe_onerror_waiting_for_ready',
-                  message: 'Preview iframe onError fired while backend was still not ready.',
-                  ageMs: pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : undefined,
-                  previewUrl: activePreviewUrl,
-                  browser: detectBrowserLabel(),
-                  userAgent: typeof navigator !== 'undefined' ? String(navigator.userAgent || '') : 'unknown',
-                });
+                const elapsedMs = pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : 0;
+                const backendSignal = classifyBackendSignal(lastBackendStatusRef.current);
+                if (backendSignal.hardFailure) {
+                  reportLoadingIssueOnce(`iframe-onerror-hard-failure:${appId}:${pollingCodeRef.current || 'unknown'}:${String(activePreviewUrl || '')}:${backendSignal.timeoutReason || 'hard'}`, {
+                    appId,
+                    code: pollingCodeRef.current || undefined,
+                    action: 'preview_backend_hard_failure',
+                    severity: 'critical',
+                    statusCode: 504,
+                    status: 'iframe_onerror_waiting_for_ready',
+                    reason: backendSignal.timeoutReason || 'iframe_onerror_waiting_for_ready',
+                    message: 'Preview iframe onError fired and backend signaled an unrecoverable startup failure.',
+                    elapsedMs,
+                    previewUrl: activePreviewUrl,
+                    requestId: backendSignal.requestId,
+                    jobId: backendSignal.jobId,
+                    backendStatusData: lastBackendStatusRef.current,
+                  });
+                } else if (elapsedMs >= PREVIEW_IFRAME_CRITICAL_MS) {
+                  reportLoadingIssueOnce(`iframe-onerror-critical:${appId}:${pollingCodeRef.current || 'unknown'}:${String(activePreviewUrl || '')}`, {
+                    appId,
+                    code: pollingCodeRef.current || undefined,
+                    action: 'preview_slow_start_critical',
+                    severity: 'critical',
+                    statusCode: 504,
+                    status: 'iframe_onerror_waiting_for_ready',
+                    reason: 'iframe_onerror_waiting_for_ready',
+                    message: 'Preview iframe onError persisted past critical timeout while backend was still not ready.',
+                    elapsedMs,
+                    previewUrl: activePreviewUrl,
+                    requestId: backendSignal.requestId,
+                    jobId: backendSignal.jobId,
+                    backendStatusData: lastBackendStatusRef.current,
+                  });
+                } else if (elapsedMs >= PREVIEW_IFRAME_WARN_MS) {
+                  reportLoadingIssueOnce(`iframe-onerror-warn:${appId}:${pollingCodeRef.current || 'unknown'}:${String(activePreviewUrl || '')}`, {
+                    appId,
+                    code: pollingCodeRef.current || undefined,
+                    action: 'preview_slow_start_warn',
+                    severity: 'warning',
+                    statusCode: 504,
+                    status: 'iframe_onerror_waiting_for_ready',
+                    reason: 'iframe_onerror_waiting_for_ready',
+                    message: 'Preview iframe onError fired while backend was still not ready; waiting for recovery.',
+                    elapsedMs,
+                    previewUrl: activePreviewUrl,
+                    requestId: backendSignal.requestId,
+                    jobId: backendSignal.jobId,
+                    backendStatusData: lastBackendStatusRef.current,
+                  });
+                }
 
                 setError(null);
                 setCanRetry(false);

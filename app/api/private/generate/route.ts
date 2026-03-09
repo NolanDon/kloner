@@ -217,6 +217,7 @@ export async function POST(req: NextRequest) {
                             headers: {
                                 "x-request-id": r.reqId,
                                 "cache-control": "no-store",
+                                "x-observability-skip-status-alert": "1",
                             },
                         }
                     );
@@ -250,7 +251,12 @@ export async function POST(req: NextRequest) {
 
                 return NextResponse.json(
                     { error: e?.message || "Proxy failed" },
-                    { status: 502 }
+                    {
+                        status: 502,
+                        headers: {
+                            "x-observability-skip-status-alert": "1",
+                        },
+                    }
                 );
             }
         },

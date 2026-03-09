@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSessionAndMaybeCsrf } from "@/app/api/_lib/route-guard";
 import { captureCriticalEvent } from "@/lib/observability";
+import type { ObservabilitySeverity } from "@/lib/observability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,6 +32,12 @@ function cleanTags(value: unknown): string[] | undefined {
     return tags.length ? tags : undefined;
 }
 
+function cleanSeverity(value: unknown): ObservabilitySeverity {
+    const raw = typeof value === "string" ? value.trim().toLowerCase() : "";
+    if (raw === "critical" || raw === "error" || raw === "warning" || raw === "info") return raw;
+    return "critical";
+}
+
 export async function POST(req: NextRequest) {
     return requireSessionAndMaybeCsrf(
         req,
@@ -46,6 +53,7 @@ export async function POST(req: NextRequest) {
             const code = cleanText(body?.code, 200);
             const status = cleanText(body?.status, 80) || "unknown";
             const action = cleanText(body?.action, 120) || "preview_timeout_12min";
+            const severity = cleanSeverity(body?.severity);
             const route = cleanText(body?.route, 300) || "/dashboard/view";
             const service = cleanText(body?.service, 200) || "webcontainer-runner";
             const message =
@@ -56,8 +64,27 @@ export async function POST(req: NextRequest) {
             const userAgent = cleanText(body?.userAgent, 500);
             const reason = cleanText(body?.reason, 200);
             const ageMs = cleanNumber(body?.ageMs);
-            const statusCode = cleanNumber(body?.statusCode) || 504;
+            const elapsedMs = cleanNumber(body?.elapsedMs);
+            const statusCode = cleanNumber(body?.statusCode) || (severity === "info" ? 200 : 504);
             const tags = cleanTags(body?.tags) || ["preview", "timeout", "frontend"];
+            const requestId = cleanText(body?.requestId, 200);
+            const jobId = cleanText(body?.jobId, 200);
+            const alertKey = cleanText(body?.alertKey, 300);
+            const deduped = body?.deduped === true;
+
+            const backend = body?.backend && typeof body.backend === "object" ? body.backend : {};
+            const backendDebug = backend?.debug && typeof backend.debug === "object" ? backend.debug : {};
+
+            const backendStatus = cleanText((backend as any)?.status, 80);
+            const backendUiStage = cleanText((backend as any)?.uiStage, 120);
+            const timeoutReason = cleanText((backendDebug as any)?.timeoutReason, 120);
+            const machineState = cleanText((backendDebug as any)?.machine?.state, 120);
+            const machineRestartCount = cleanNumber((backendDebug as any)?.machine?.restartCount);
+            const compileSummary = cleanText((backendDebug as any)?.compile?.summary, 300);
+            const rootfsIoCorruption =
+                typeof (backendDebug as any)?.storage?.rootfsIoCorruption === "boolean"
+                    ? (backendDebug as any).storage.rootfsIoCorruption
+                    : undefined;
 
             const enrichedMessage = [
                 message,
@@ -70,7 +97,7 @@ export async function POST(req: NextRequest) {
 
             await captureCriticalEvent({
                 source: "frontend",
-                severity: "critical",
+                severity,
                 statusCode,
                 route,
                 method: "POST",
@@ -88,6 +115,28 @@ export async function POST(req: NextRequest) {
                     reason: reason || undefined,
                     userAgent: userAgent || undefined,
                     ageMs: typeof ageMs === "number" ? ageMs : undefined,
+                    elapsedMs: typeof elapsedMs === "number" ? elapsedMs : undefined,
+                    requestId: requestId || undefined,
+                    jobId: jobId || undefined,
+                    alertKey: alertKey || undefined,
+                    deduped,
+                    backend: {
+                        status: backendStatus || undefined,
+                        uiStage: backendUiStage || undefined,
+                        debug: {
+                            timeoutReason: timeoutReason || undefined,
+                            machine: {
+                                state: machineState || undefined,
+                                restartCount: typeof machineRestartCount === "number" ? machineRestartCount : undefined,
+                            },
+                            compile: {
+                                summary: compileSummary || undefined,
+                            },
+                            storage: {
+                                rootfsIoCorruption,
+                            },
+                        },
+                    },
                 },
             });
 

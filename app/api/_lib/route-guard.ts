@@ -141,8 +141,9 @@ export async function requireSessionAndMaybeCsrf(
     try {
         const response = await handler({ req, uid });
         const status = response.status;
+        const skipStatusAlert = response.headers.get("x-observability-skip-status-alert") === "1";
 
-        if (status >= 400) {
+        if (status >= 400 && !skipStatusAlert) {
             const responseDetails = await getResponseDebugDetails(response);
             const messageParts = [`API responded with status ${status}`];
             if (responseDetails.errorCode) messageParts.push(`code=${responseDetails.errorCode}`);
