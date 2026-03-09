@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import Editor from "@monaco-editor/react";
 import Image from "next/image";
-import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database, Rocket, Monitor, SlidersHorizontal, Images, Send } from "lucide-react";
+import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database, Rocket, Monitor, SlidersHorizontal, Images, Send, Pencil } from "lucide-react";
 import AIAgentChat from "./AIAgentChat";
 import KlonerLoader from "./KlonerLoader";
 import WebContainerRunner from "./WebContainerRunner";
@@ -3848,10 +3848,10 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
             ) : null}
             <div className="h-full w-full bg-white flex flex-col">
                 {/* Header */}
-                <div className="flex items-center justify-between p-4 border-b bg-gray-50">
-                    <div className="flex flex-1 min-w-0 items-center gap-3">
+                <div className="relative flex items-center justify-between p-2.5 sm:p-4 border-b bg-gray-50">
+                    <div className="relative z-20 flex flex-1 min-w-0 items-center gap-2 sm:gap-3">
                         {isRenaming ? (
-                            <div className="flex items-center gap-2">
+                            <div className="flex min-w-0 max-w-full items-center gap-1.5 sm:gap-2">
                                 <input
                                     type="text"
                                     value={tempName}
@@ -3860,32 +3860,33 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                                         if (e.key === "Enter") handleRename();
                                         if (e.key === "Escape") cancelRename();
                                     }}
-                                    className="px-2 py-1 border rounded text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-accent"
+                                    className="min-w-0 w-[46vw] sm:w-auto px-2 py-1 border rounded text-sm sm:text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-accent"
                                     autoFocus
                                 />
                                 <button
                                     onClick={handleRename}
-                                    className="p-1 hover:bg-gray-200 rounded transition-colors"
+                                    className="shrink-0 p-1 hover:bg-gray-200 rounded transition-colors"
                                     title="Save name"
                                 >
                                     <Check className="w-4 h-4 text-green-600" />
                                 </button>
                                 <button
                                     onClick={cancelRename}
-                                    className="p-1 hover:bg-gray-200 rounded transition-colors"
+                                    className="shrink-0 p-1 hover:bg-gray-200 rounded transition-colors"
                                     title="Cancel"
                                 >
                                     <RotateCcw className="w-4 h-4 text-red-600" />
                                 </button>
                             </div>
                         ) : (
-                            <div className="relative group min-w-0">
+                            <div className="relative group min-w-0 max-w-[52vw] sm:max-w-[60vw] md:max-w-none">
                                 <h1
-                                    className="block truncate text-lg sm:text-xl font-semibold cursor-pointer hover:text-accent transition-colors"
+                                    className="inline-flex max-w-full items-center gap-1.5 text-sm sm:text-lg md:text-xl font-semibold cursor-pointer hover:text-accent transition-colors"
                                     onClick={startRename}
                                     title="Click to rename"
                                 >
-                                    {app?.name || "Untitled Project"}
+                                    <span className="truncate">{app?.name || "Untitled Project"}</span>
+                                    <Pencil className="h-3.5 w-3.5 shrink-0 text-neutral-500 group-hover:text-accent" aria-hidden="true" />
                                 </h1>
                             </div>
                         )}
@@ -3965,15 +3966,17 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                             ) : null}
                         </div>
                     </div>
-                    <div className="flex gap-2 items-center">
-                        <button
-                            onClick={() => setMobileControlsOpen(true)}
-                            className="md:hidden inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-300 bg-white text-neutral-700 shadow-md transition hover:bg-neutral-50"
-                            title="Controls"
-                            aria-label="Controls"
-                        >
-                            <SlidersHorizontal className="h-4 w-4" />
-                        </button>
+                    <div className="relative z-10 flex shrink-0 gap-2 items-center">
+                        {!(isRenaming && isMobile) ? (
+                            <button
+                                onClick={() => setMobileControlsOpen(true)}
+                                className="md:hidden inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-300 bg-white text-neutral-700 shadow-md transition hover:bg-neutral-50"
+                                title="Controls"
+                                aria-label="Controls"
+                            >
+                                <SlidersHorizontal className="h-4 w-4" />
+                            </button>
+                        ) : null}
 
                         {/* Top-right reserved for machine + deploy (PreviewEditorV2-style) */}
                         <div className="hidden md:inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-2 py-1 shadow-md">
@@ -4014,7 +4017,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                             </button>
                         </div>
 
-                        {showDeploySuccess ? (
+                        {showDeploySuccess && !(isRenaming && isMobile) ? (
                             <div className="md:hidden rounded-xl border border-emerald-200 bg-emerald-50/70 px-2.5 py-2 text-[11px] text-emerald-900">
                                 <div className="font-semibold">Live deploy started</div>
                                 <div className="mt-0.5 text-emerald-800/90">Rebuild can take a few minutes before updates appear.</div>
@@ -4031,16 +4034,18 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                             </div>
                         ) : null}
 
-                        <button
-                            onClick={handleDeploy}
-                            disabled={isDeploying}
-                            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#f55f2a] bg-[#f55f2a] px-3 py-1 text-[13px] font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60"
-                            title="Deploy"
-                            aria-label="Deploy"
-                        >
-                            <Rocket className="h-3.5 w-3.5" aria-hidden="true" />
-                            <span>{isDeploying ? "Deploying…" : "Deploy"}</span>
-                        </button>
+                        {!(isRenaming && isMobile) ? (
+                            <button
+                                onClick={handleDeploy}
+                                disabled={isDeploying}
+                                className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#f55f2a] bg-[#f55f2a] px-3 py-1 text-[13px] font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60"
+                                title="Deploy"
+                                aria-label="Deploy"
+                            >
+                                <Rocket className="h-3.5 w-3.5" aria-hidden="true" />
+                                <span>{isDeploying ? "Deploying…" : "Deploy"}</span>
+                            </button>
+                        ) : null}
 
                         <button
                             onClick={() => void requestClose()}
