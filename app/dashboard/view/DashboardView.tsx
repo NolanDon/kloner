@@ -478,7 +478,9 @@ function MiniDashboardEntry({
                         disabled={disabled || busy || (mode === "prompt" ? !prompt.trim() : !url.trim())}
                         className={
                             "shrink-0 rounded-full text-white transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed " +
-                            (mode === "prompt" ? "h-11 w-11 grid place-items-center" : "h-full px-6 sm:px-10")
+                            (mode === "prompt"
+                                ? "h-11 w-11 grid place-items-center"
+                                : "h-full px-6 sm:px-10 max-[380px]:h-11 max-[380px]:w-11 max-[380px]:grid max-[380px]:place-items-center max-[380px]:px-0")
                         }
                         style={{ backgroundColor: ACCENT }}
                         aria-label={mode === "prompt" ? "Create from prompt" : "Preview from URL"}
@@ -496,7 +498,11 @@ function MiniDashboardEntry({
                                 <span className="sr-only">Preview</span>
                             </>
                         ) : (
-                            "Add URL"
+                            <>
+                                <Send className="hidden max-[380px]:inline h-4 w-4" />
+                                <span className="max-[380px]:hidden">Add URL</span>
+                                <span className="sr-only">Add URL</span>
+                            </>
                         )}
                     </button>
                 </div>
